@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer } from './helpers.mjs';
+import { stubAssFontCoverage } from './ass-font-readiness.mjs';
 
 let tempDir, server;
 test.beforeAll(async () => {
@@ -18,6 +19,7 @@ test.beforeAll(async () => {
   server = await startServer(project, media, await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
+test.beforeEach(async ({ page }) => { await stubAssFontCoverage(page); });
 
 async function open(page, format = 'png') {
   await disableOnboarding(page);
@@ -28,6 +30,46 @@ async function open(page, format = 'png') {
   await expect(page.locator('#fcp7-export-native-text')).toBeHidden();
   await page.locator('input[name="fcp7-export-timeline-mode"][value="source"]').check();
   await page.locator('#fcp7-export-fps').selectOption('25');
+}
+
+for (const action of ['stop', 'switch project']) {
+  test(`FCP7 image export can ${action} during shared font loading`, async ({ page }) => {
+    let releaseCoverage;
+    const gate = new Promise(resolve => { releaseCoverage = resolve; });
+    const jobs = [];
+    await page.route('**/api/ass-font-coverage', async route => {
+      await gate;
+      await route.fulfill({ json: { schema: 'moy.asr.font_coverage.v1', faces: [], fallbacks: [] } });
+    });
+    await page.route('**/api/exports/fcp7-png/jobs', async route => {
+      jobs.push(route.request().method());
+      await route.fulfill({ status: 409 });
+    });
+    try {
+      await open(page);
+      const requested = page.waitForRequest('**/api/ass-font-coverage');
+      const confirm = page.locator('#fcp7-export-confirm');
+      await confirm.click();
+      await requested;
+      await expect(confirm).toBeDisabled();
+      if (action === 'stop') {
+        await page.locator('#fcp7-export-stop').click();
+        await expect(confirm).toBeEnabled({ timeout: 5000 });
+        expect(await page.evaluate(() => MaweAssFontAliases.pending())).toBe(true);
+      } else {
+        await page.evaluate(() => MaweProjectLoad.applyCanonicalProject({
+          media: '', segments: [{ start: 0, end: 1000, text: '新工程' }],
+        }, 'other.mosp'));
+      }
+      releaseCoverage();
+      await expect(confirm).toBeEnabled();
+      await expect.poll(() => page.evaluate(() => MaweAssFontAliases.coverageAvailable())).toBe(true);
+      await expect(page.locator('#fcp7-export-status')).toContainText('已停止');
+      expect(jobs).toEqual([]);
+    } finally {
+      releaseCoverage();
+    }
+  });
 }
 
 test('image dimensions stay within the open project session', async ({ page }) => {
@@ -141,7 +183,7 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   const response = await published;
   expect(response.status()).toBe(200);
   const result = await response.json();
-  expect(resolve(dirname(result.packagePath))).toBe(resolve(tempDir));
+  expect(relative(tempDir, dirname(result.packagePath))).toBe('');
   await expect(page.locator('#fcp7-export-status')).toContainText('已保存');
   expect(existsSync(result.xmlPath)).toBeTruthy();
   expect(existsSync(result.vegasXmlPath)).toBeTruthy();

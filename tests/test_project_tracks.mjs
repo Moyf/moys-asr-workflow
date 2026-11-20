@@ -347,3 +347,28 @@ test('new producers construct canonical projects without a temporary legacy tree
   const invalid = [{ id: 'bad', start: 0, end: 10, text: 'A' }, { id: 'bad', start: 10, end: 20, text: 'B' }];
   assert.throws(() => model.makeProject(invalid), model.ProjectTracksError);
 });
+test('shared style contract validates references and preserves snapshots', () => {
+  const data = fixture('style-contract');
+  const project = canonical();
+  project.styles = json(data.styles);
+  project.tracks[0].style = json(data.style);
+  project.tracks[1].style = { style_id: 'shared' };
+  const before = json(project);
+  const imported = model.importProject(project).project;
+  assert.deepEqual(imported, before);
+  imported.styles[0].vendor.zero = 2;
+  assert.deepEqual(project, before);
+  for (const item of data.invalid) {
+    const invalid = json(before);
+    if (Object.hasOwn(item, 'styles')) invalid.styles = json(item.styles);
+    if (item.delete_styles) delete invalid.styles;
+    if (Object.hasOwn(item, 'style')) invalid.tracks[0].style = json(item.style);
+    const original = json(invalid);
+    const result = model.validateTracksProject(invalid);
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.errors, [{ path: item.path, message: item.message }]);
+    assert.deepEqual(invalid, original);
+  }
+  const tooLong = json(before); tooLong.styles[0].id = 'x'.repeat(161);
+  assert.deepEqual(model.validateTracksProject(tooLong).errors, [{ path: '$.styles[0].id', message: 'must be a non-empty string of at most 160 characters' }]);
+});

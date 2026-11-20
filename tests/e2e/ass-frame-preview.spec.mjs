@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   makeTempDir, startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 
 let tempDir;
 let server;
@@ -27,11 +28,13 @@ test.afterAll(async () => { await server?.stop(); if (tempDir) cleanupTempDir(te
 
 async function enableAss(page) {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
   await openSettingsPage(page, 'subtitle-style');
   await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
+  await waitForAssFonts(page);
   await closeSettingsPanels(page);
 }
 

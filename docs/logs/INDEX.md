@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.2 之后；2.0dev | 2026-11-20 | [PR 349 合并前复核](release1.11.2/261120_PR349合并前核验/REVIEW_FINDINGS.md) / [人工验收](release1.11.2/261120_PR349合并前核验/工程样式与字体.checklist.md) | 轨道样式、字体覆盖及烧录验证 |
 | 1.11.2 之后；2.0dev | 2026-11-18 | [集中报错审阅](release1.11.2/261118_集中报错/REVIEW_FINDINGS.md) | 独立组继续、准备范围复核及失败证据 |
 | 1.11.2 之后；2.0dev | 2026-11-18 | [模块依赖选测审阅](release1.11.2/261118_模块依赖选测/REVIEW_FINDINGS.md) | 共享影响计划、有限准入兼容、按需辅助消费者与过度选择清理；真实失败和后续集中报错边界单列 |
 | 1.11.2 之后；2.0dev | 2026-11-17 | [CI 门禁纠偏实施](release1.11.2/261117_2devCI门禁纠偏/实施记录.md) / [审查边界](release1.11.2/261117_2devCI门禁纠偏/REVIEW_FINDINGS.md) / [远端核验](release1.11.2/261117_2devCI门禁纠偏/CI准入.checklist.md) | 有限契约准入、范围预览、旧完整能力仅手动；未变更正式发布，独立审查及远端状态迁移待协调会话 |
@@ -49,6 +50,7 @@
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [波形字幕快速编辑气泡](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/REVIEW_FINDINGS.md) / [PR 354 复核](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354_REVIEW.md) / [人工核验](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354.checklist.md) | 原位快速编辑气泡与快捷拆分、帮助和图片尺寸改进；三轨联动与滚动定位自动化通过，人工验收待完成 |
 | 1.10.0-beta.2 之后 | 2026-11-07 | [烧录导出 network 错误反馈](release1.10.0-beta.2/261107_烧录导出network错误/TEST_FEEDBACK_烧录导出.md) / [提交前自审](release1.10.0-beta.2/261107_烧录导出network错误/REVIEW_FINDINGS.md) | 条目1「network error」= 下载连接 2s socket 超时被慢盘写停顿触发断流（Chromium 原文透传）；条目2 ffmpeg stderr 无任何出口。修复：写超时提为常量 10s 且 close() 预算跟随、友好文案+i18n、failed 态 console.error errorDetails、服务端 stdout 失败诊断；自动化全绿，独立审查无 blocker/major，待人工验收 |
+| 1.10.0-beta.2 之后 | 2026-11-07 | [轨道样式真实基线适配](release1.10.0-beta.2/261107_轨道样式基线适配/REVIEW_FINDINGS.md) | 样式快照回收与单句样式断言复核 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [FCP 7 图片字幕实施与验证](release1.10.0-beta.2/261106_FCP7图片字幕/IMPLEMENTATION.md) / [独立审查](release1.10.0-beta.2/261106_FCP7图片字幕/REVIEW_FINDINGS.md) / [目标应用核验](release1.10.0-beta.2/261106_FCP7图片字幕/FCP7图片字幕.checklist.md) | 动静分段、透明渲染、多轨 XML；VEGAS 14 原生导入与像素验证通过，缺图文件选择窗口待人工确认 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [G08-b 重放与验证](release1.10.0-beta.2/261106_G08字幕域ESM/G08_B_REBASE.md) / [独立自审](release1.10.0-beta.2/261106_G08字幕域ESM/REVIEW_FINDINGS.md) / [人工核验清单](release1.10.0-beta.2/261106_G08字幕域ESM/G08字幕域ESM.checklist.md) | G08-a 合入后的重放、文本预设消费边补齐与分层验证 |

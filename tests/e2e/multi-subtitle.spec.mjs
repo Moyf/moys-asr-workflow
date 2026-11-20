@@ -1,5 +1,6 @@
 // 多重字幕 MVP 的浏览器回归：导入/匹配、列表开关、联动拆分和双 lane 操作。
 import { expect, test } from '@playwright/test';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -4515,6 +4516,7 @@ test('Z/X adjust one main or extension cue at the pointer and ignore multi-selec
 });
 
 test('ASS mode previews and exports extension cues with the shared extension style', async ({ page }) => {
+  await stubAssFontCoverage(page);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
@@ -4543,6 +4545,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   }]);
   await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
 
+  await waitForAssFonts(page);
   const result = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
@@ -4755,6 +4758,7 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
 });
 
 test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap-removed ASS three-track', async ({ page }) => {
+  await stubAssFontCoverage(page);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
@@ -4802,6 +4806,7 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   await page.evaluate(() => {
     ASS_STYLE_LIBRARY.assProfiles.find(profile => profile.id === 'ass').animations.fad.enabled = true;
   });
+  await waitForAssFonts(page);
   const disabled = await page.evaluate(() => ({
     ass: MaweExportSrt.buildAss(),
     gapRemoved: MaweExportSrt.buildGapRemovedAss(),
