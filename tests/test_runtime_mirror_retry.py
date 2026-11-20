@@ -509,6 +509,51 @@ class RuntimeMirrorRetryTests(unittest.TestCase):
 
                 self.assertEqual(tried, [FALLBACK_SOURCE])
 
+    def test_frozen_pip_extra_lookup_hint_requires_matching_cuda_pin_and_failed_page(self) -> None:
+        extra = f"https://{PYTORCH_HOST}/whl/cu130"
+        cases = (
+            ("torch==2.9.1+cu130", "torch", "403", True),
+            ("torchaudio==2.10.0+cu128", "torchaudio", "403", True),
+            ("funasr==1.4.2", "funasr", "403", False),
+            ("torch==2.9.1", "torch", "403", False),
+            ("torch==2.9.1+cpu", "torch", "403", False),
+            ("torch==2.9.1+cu130", "torchaudio", "403", False),
+            ("torch==2.9.1+cu130", "torch", "recovered", False),
+        )
+        for requirement, failed_project, lookup, expects_extra_hint in cases:
+            with self.subTest(requirement=requirement, failed_project=failed_project, lookup=lookup):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    root, requirements_txt = self._setup(temp_dir)
+                    requirements_txt.write_text(requirement + "\n", encoding="utf-8")
+                    tried: list[str] = []
+                    project = requirement.split("==")[0]
+                    main_404 = _pip_missing_tail(FALLBACK_SOURCE, lookup="404").splitlines()[1]
+                    output = main_404.replace("funasr/", f"{project}/") + "\n" + (
+                        _pip_missing_tail(extra, lookup=lookup)
+                        .replace("funasr/", f"{failed_project}/")
+                        .replace("funasr==1.4.2", requirement)
+                    )
+
+                    def fake_run(command: list[str], **kwargs: object) -> int:
+                        if "install" in command:
+                            tried.append(_index_of(command))
+                            self.assertIn("-vv", command)
+                            self.assertEqual(command[command.index("--extra-index-url") + 1], extra)
+                            return _run_with_failed_output(command, output, **kwargs)
+                        return 0
+
+                    with self.assertRaises(LocalRuntimeError) as caught:
+                        self._install(root, requirements_txt, fake_run=fake_run, mirrors=[FALLBACK_SOURCE, MIRROR_B])
+
+                    self.assertEqual(tried, [FALLBACK_SOURCE])
+                    message = str(caught.exception)
+                    if expects_extra_hint:
+                        self.assertIn("MAW_PYTORCH_INDEX", message)
+                        self.assertNotIn("请确认 MAW 为最新版本", message)
+                    else:
+                        self.assertNotIn("MAW_PYTORCH_INDEX", message)
+                        self.assertIn("请确认 MAW 为最新版本", message)
+
     def test_official_non_network_or_cancellation_does_not_resume_shortlist(self) -> None:
         for official_failure, expected in (
             (_deterministic_error(), LocalRuntimeError),

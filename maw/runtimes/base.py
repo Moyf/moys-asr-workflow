@@ -697,6 +697,7 @@ class ManagedRuntime:
             in_hard_error = False
             streamed_extra_failure = False
             pip_lookup = _PipIndexLookup(index_url) if frozen else None
+            pip_extra_lookup = _PipIndexLookup(extra_index) if frozen and extra_index else None
 
             def on_install_line(line: str) -> None:
                 # 最终八行可能截掉 pip 哈希标题或 uv 的错误链。仅从最后一个
@@ -713,6 +714,8 @@ class ManagedRuntime:
                     streamed_extra_failure |= _failure_blames_extra_index(line, extra_index)
                 if pip_lookup is not None:
                     pip_lookup.observe(line)
+                if pip_extra_lookup is not None:
+                    pip_extra_lookup.observe(line)
                 if pip_lookup is None or in_hard_error or _PIP_PROGRESS_PATTERN.match(line):
                     report(_redact_install_output(line))
 
@@ -738,14 +741,20 @@ class ManagedRuntime:
                 extra_detail = terminal if pip_lookup is None else "\n".join(
                     line for line in terminal.splitlines() if not _PIP_LOOKUP_TRACE_PATTERN.search(line)
                 )
+                content_failure = _dependency_content_failure(terminal) or (None if blames_primary else content_failure)
                 blames_extra = _failure_blames_extra_index(extra_detail, extra_index) or (
                     streamed_extra_failure and not blames_primary
+                ) or (
+                    # pip 会把 CUDA wheel 索引的查询失败降级成「找不到版本」。
+                    # 普通包也会查询这个索引，但失败不代表主源无法提供它们。
+                    pip_extra_lookup is not None and pip_extra_lookup.cuda_pinned
+                    and pip_extra_lookup.network_summary is not None
+                    and content_failure is not None and content_failure != _HASH_MISMATCH_REASON
                 )
                 if blames_extra:
                     raise self._error(
                         f"{detail}\n请检查 PyTorch 源或代理；也可设置 MAW_PYTORCH_INDEX 指向可达的 PyTorch 镜像后重试。"
                     ) from None
-                content_failure = _dependency_content_failure(terminal) or (None if blames_primary else content_failure)
                 pip_network_summary = (
                     pip_lookup.network_summary
                     if pip_lookup is not None and content_failure and content_failure != _HASH_MISMATCH_REASON
@@ -1262,8 +1271,9 @@ _PIP_LOOKUP_TRACE_PATTERN = re.compile(
 )
 _PIP_MISSING_PATTERN = re.compile(
     r"^ERROR: (?:Could not find a version that satisfies the requirement|No matching distribution found for) "
-    r"([A-Za-z0-9_.-]+)(?=[<>=!~\[\s(]|$)",
+    r"([A-Za-z0-9_.-]+)(==[^\s(;]+)?(?=[<>=!~\[\s(;]|$)",
 )
+_PIP_CUDA_PIN_PATTERN = re.compile(r"==[0-9][A-Za-z0-9.!_-]*\+cu[0-9]+", re.IGNORECASE)
 _PIP_LOOKUP_HTTP_FAILURE_PATTERN = re.compile(r"^:\s*(?:403|429) Client Error:")
 _PIP_PROGRESS_PATTERN = re.compile(
     r"^\s*(?:WARNING:|ERROR:|Looking in indexes:|Collecting |Downloading |Using cached |"
@@ -1279,15 +1289,20 @@ class _PipIndexLookup:
         self.failures: dict[str, str] = {}
         self.fetched: set[str] = set()
         self.missing: str | None = None
+        self.cuda_pinned = False
 
     def observe(self, line: str) -> None:
         if match := _PIP_MISSING_PATTERN.match(line):
             self.missing = re.sub(r"[-_.]+", "-", match[1]).lower()
+            self.cuda_pinned = self.missing in {"torch", "torchaudio"} and bool(
+                _PIP_CUDA_PIN_PATTERN.fullmatch(match[2] or "")
+            )
             # (from versions: ...) aggregates every index and cannot establish
             # that this specific index answered for the project.
             return
         if _INSTALL_HARD_ERROR_PATTERN.match(line):
             self.missing = None
+            self.cuda_pinned = False
         if not (match := _PIP_LOOKUP_PATTERN.match(line)):
             return
         operation, url, detail = match.groups()
