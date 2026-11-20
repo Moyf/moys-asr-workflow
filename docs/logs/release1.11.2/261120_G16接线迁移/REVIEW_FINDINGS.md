@@ -6,3 +6,5 @@
 - 生产源码已无 `MaweKeyboardGuards` 消费者。贴纸、去空隙导出和烧录门面均有活跃消费者。独立 Node 用例 11/11（`.artifacts/checks/20261120T115628Z-9990422a/result.json`）。
 - 副字幕文件解析等待中切换工程时，旧字幕可在新工程弹出导入确认，用户仍需确认才会写入。入口见 [媒体输入接线](../../../../web/editor/media/editor-wiring-media-inputs.js#L31)，读当前副轨见 [多字幕导入](../../../../web/editor/io/editor-multi-import.js#L76)。用实际接线源码控制解析 Promise 并推进工程 generation，基线和当前都复现（`.artifacts/checks/20261120T115756Z-ae45f73f/result.json`）。迁移保留原有行为，此竞态尚待单独修复。
 - 主任务的负向验证覆盖提前捕获播放器、错误保留观察目标和绕过烧录绑定检查。变更恢复后的验证及既存失败见 [实施记录](IMPLEMENTATION.md)。
+
+PR 415 的辅助 CI 修复另经独立审查。v2 校验要求 `items` 为数组，保留合并已生成的空数组符合该约束。点击和字幕分组用例继续检查焦点、滚动定位、历史、保存重开和导出。无新增 blocker、major 或 nit。
