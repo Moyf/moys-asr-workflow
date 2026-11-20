@@ -64,6 +64,7 @@ test('point markers and drag previews stay 8px across zoom; regions stop auditio
     await expect(page.locator('.waveform-marker-item.point[data-marker-id="point"]').first()).toHaveCSS('width', '8px');
   }
   const point = page.locator('.waveform-marker-item.point[data-marker-id="point"]').first();
+  await point.hover();
   const box = await point.boundingBox();
   await page.mouse.move(box.x + 4, box.y + box.height / 2);
   await page.mouse.down();
@@ -86,7 +87,7 @@ test(`single-row ${thumbnailMode} thumbnails fit the viewport and bilingual sett
     // Isolate layout from cache/server state; thumbnail lifecycle is tested by its module.
     editor.thumbnailController.close();
     editor.thumbnailController = { visible: true, enabled: true, mode, decodeEnabled: true, interval: 1000, state: 'ready',
-      setView() {}, picture() { return null; }, keyframesInRange() { return []; },
+      setBinding() {}, setView() {}, picture() { return null; }, keyframesInRange() { return []; },
       setPlayhead() {}, setPlaying() {}, close() {} };
     editor.render();
   }, thumbnailMode);
@@ -105,9 +106,16 @@ test(`single-row ${thumbnailMode} thumbnails fit the viewport and bilingual sett
   expect(geometry.bottom).toBeGreaterThanOrEqual(8);
   expect(geometry.subtitleBottom).toBeGreaterThanOrEqual(8);
   await page.locator('.waveform-pane').screenshot({ path: test.info().outputPath('single-filmstrip.png') });
+  await page.evaluate(() => MaweProjectLoad.applyCanonicalProject({
+    segments: [],
+    multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: true, tracks: [{
+      id: 'translation', role: 'extension', segments: [{ id: 'translated', start: 1000, end: 2000, text: 'translation' }],
+    }] },
+  }, 'bilingual-spacing.mosp'));
   await openSettingsPage(page, 'multi-subtitle');
   const toggle = page.locator('#editor-settings-page-multi-subtitle #multi-subtitle-toggle');
-  await expect(toggle).toHaveCount(1);
+  await expect(toggle).toBeChecked();
+  await expect(page.locator('#multi-subtitle-display-section')).toBeVisible();
   const spacing = await page.evaluate(() => {
     const controls = document.querySelector('.multi-subtitle-mode-controls');
     return controls.nextElementSibling.getBoundingClientRect().top - controls.getBoundingClientRect().bottom;

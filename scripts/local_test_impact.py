@@ -1,6 +1,7 @@
 """Select test consumers for local feedback and the finite CI gate."""
 from __future__ import annotations
 
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
@@ -26,6 +27,60 @@ DEV_PYTHON = ('tests.test_project_contract', 'tests.test_project_io', 'tests.tes
 DEV_NODE = ('test_editor_runtime.mjs', 'test_editor_state.mjs', 'test_editor_commands.mjs',
             'test_editor_host.mjs', 'test_editor_history_gestures.mjs')
 ALL_MERGE = {'common', 'browser', 'smoke', 'media', 'long-media', 'lifecycle', 'tools', 'editor-e2e', 'website'}
+MARKER_RUNTIME_SPECS = (
+    'marker-editing-gate', 'marker-feedback', 'markers-batch',
+    'ai-cleanup-marker-restore', 'ai-cleanup-local-review-fallback',
+    'ai-cleanup-local-punctuation',
+)
+# Pin the source pairs reviewed for G12 against 2.0dev at 4fd058e0.
+# This exception expires automatically when either side changes. A textual
+# rewrite of JavaScript cannot distinguish calls from strings or shadowed names.
+MARKER_MIGRATION_FILES = {
+    'web/editor/io/editor-project-load.js': (
+        '3154cab3d8d9a8e67182057eb64dd98ef49357c700865d33a3bdf605745d7609',
+        'f20a17551985c736f48c7db3040bd62b1482fe108af6a1625d52270328208987',
+    ),
+    'web/editor/markers/editor-marker-editing.js': (
+        'e7270b3e8d3e6f00e52c0f7a82a54c3e2d48a9b5fd97da047c3d997a531f4d11',
+        'b2d6937077db673ce943482dd30124b5156682f0f28d98a5e77193e845d655aa',
+    ),
+    'web/editor/markers/editor-markers-panel.js': (
+        '1a52f3f9522b410c9e9126b92d7f117b925171468e3e84ef69dd74e5cf088ca3',
+        '6595260e64b0e26f4bedc17e63a7b28306ec47dad801545624d01eefc08c4a84',
+    ),
+    'web/editor/media/editor-waveform-init.js': (
+        '514ae260fe15edad4720c8a968afb00a6a3ffa7fa5fea975f8b9c18b39b7ad24',
+        '4920df727e924715075934af9a4bbb57f6e0e11412012a018f4d4bd258d103e2',
+    ),
+    'web/editor/state/editor-history.js': (
+        'b39fd2f7057dea3dd5ee58be19df1f42b2b69a1e531bac72b6f5ba4bcc711ae8',
+        '0d2e6a3b6d624530e2a51ac83f222db2132a1bb2bd87fa81f102228b84faf82f',
+    ),
+    'web/editor/ui/editor-gap-remove-ui.js': (
+        '97392ff4a69d7394bf0a35f72bf1e0d4d7babcc67c8c6881eb9749e734455d4c',
+        '5b85cf104a42a2dc8af5baaac84cf3ce710fd6b8567ceecf174fce8b6f4db352',
+    ),
+    'web/editor/ui/editor-settings-panels.js': (
+        'f429fc15cd21d03e90408a23d0dff57a34c09b9d66dc9cfb5ede2bfeb26c068e',
+        '7c599450712783e88a1ff12afdc853188192e33876f735b3bd2c016b9c049dcf',
+    ),
+}
+MARKER_MODULES = {
+    'web/editor/markers/editor-marker-editing.js',
+    'web/editor/markers/editor-markers-panel.js',
+}
+
+
+def marker_migration_only(path: str, base_ref: str | None) -> bool:
+    pair = MARKER_MIGRATION_FILES.get(path)
+    if not base_ref or pair is None:
+        return False
+    try:
+        before = subprocess.check_output(['git', 'show', f'{base_ref}:{path}'], cwd=ROOT, stderr=subprocess.DEVNULL)
+        after = (ROOT / path).read_bytes().replace(b'\r\n', b'\n')
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return (sha256(before).hexdigest(), sha256(after).hexdigest()) == pair
 
 
 def node_pack(filename: str) -> str:
@@ -147,12 +202,20 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             fallback = True
             reasons.append('unparseable Python input: finite contract checks need review')
     if inputs:
+        web = [p for p in inputs if p.startswith('web/') and p.endswith(('.js', '.mjs'))]
+        marker_migrations = {p for p in web if marker_migration_only(p, base_ref)}
         for path, consumers in file_consumers(ROOT, inputs).items():
             add_consumers(path, consumers)
-        web = [p for p in inputs if p.startswith('web/') and p.endswith(('.js', '.mjs'))]
         if web:
-            for path, consumers in web_behavior_consumers(ROOT, web).items():
+            for path, consumers in web_behavior_consumers(
+                    ROOT, [p for p in web if p not in marker_migrations or p in MARKER_MODULES]).items():
                 add_consumers(path, consumers)
+            for path in marker_migrations:
+                add_consumers(path, [f'tests/e2e/{name}.spec.mjs' for name in MARKER_RUNTIME_SPECS
+                                     if (ROOT / f'tests/e2e/{name}.spec.mjs').is_file()])
+                if path in MARKER_MODULES:
+                    add_consumers(path, [p for p in ('tests/test_editor_marker_esm.mjs',
+                                                    'tests/test_editor_marker_preferences.mjs') if (ROOT / p).is_file()])
         for path in web:
             if path.startswith(('web/editor/', 'web/shared/')):
                 add_consumers(path, [p for p in (

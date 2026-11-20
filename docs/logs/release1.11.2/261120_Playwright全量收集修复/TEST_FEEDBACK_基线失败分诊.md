@@ -78,7 +78,7 @@
   - **#30 waveform-history::manual text split**（通过，20261120T065137Z-61ac7af1）：两个根因——① undo 后段的 `_dirty` 是会话高亮有意重新应用（editor-session-state test 3 验证的语义），比较剥离该标志；② restore 用 `testSegments()`（无 id）直接注入主轨，v2 保存校验要求段 id 必填 → Ctrl+s 校验失败不发 POST。restore 段补 `restore-cue-N` id。
   - **#31 waveform-history::C merge 列表位置**（通过）：40 条假段无 id，2.0 选择状态按段 id 锚定 → 点击选中失败（hint「请选择至少两个」）。假段补 `merge-cue-N` id 后合并/位置断言全过。DOM 里 '2' 是 charcount 徽章（曾误读为合并文本）。
   - **#35 waveform-history::extends selected subtitles**（通过）：undo 比较剥 `_dirty`（同 #30）。
-  - **#38 waveform-history::sticker Resolve schema**（通过，20261120T063728Z-cf763f74）：v1 `sticker` 字段导入即迁移为 subtitle group，导出走 v2 schema（分组区间含 disabled 成员、`enabled`=组内有非 disabled 成员，subtitle-groups.js L17-33 有意设计）。断言重铸为组区间语义（`stickers:[[1000,6000,...]]`、成员组 id、dangling 无组、OTIO clip [[1000,6000]]），测试名同步更新。
+  - **#38 waveform-history::sticker Resolve schema**（通过，20261120T063728Z-cf763f74）：v1 `sticker` 字段导入即迁移为 subtitle group，导出走 v2 schema（分组区间含 disabled 成员、`enabled`=组内有非 disabled 成员，subtitle-groups.js L17-33 有意设计）。断言重铸为组区间语义（`stickers:[[1000,6000,...]]`、成员组 id、dangling 无组、OTIO 片段区间 1000–6000 ms），测试名同步更新。
   - **#39 waveform-history::server media 绝对路径**（通过）：2.0 分层契约——`DATA.media` 保持工程名，绝对路径在 `SERVER_CONFIG.autoLoadedMediaPath`（serve.py L1760），保存/导出时 rebase（json-repair L46-48）。断言改分层验证；OTIO file:/// URL 走 boundMedia 不变。
   - **#32 waveform-history::help reflects split key**（通过，20261120T065249Z-925b04af）：双语操作说明迁入独立「双语字幕」面板 + 新文案（G/Shift+G/H 键）。断言切到该 tab 并按新文案验证。
   - **#33 waveform-history::contextual help links**（通过，20261120T065616Z-48cde697）：产品有意行为「帮助是非模态浮窗：从设置弹窗打开帮助时保持弹窗，两者并存」（wiring-settings-help.js 注释）。三处「面板应关闭」断言翻转为「面板保持打开」，测试自身补工具窗关闭步骤。

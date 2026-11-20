@@ -59,11 +59,15 @@ jobs:
           if-no-files-found: error
 
   auxiliary:
-    name: Targeted auxiliary tests
+    name: Targeted auxiliary tests (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: selection
     if: ${{ needs.selection.outputs.aux_selected == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.selection.outputs.aux_browser == 'true' && '[1,2]' || '[1]') }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -140,12 +144,12 @@ jobs:
         if: ${{ !cancelled() && steps.website_install.outcome == 'success' && steps.website_docs.outcome == 'success' && steps.website_releases.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 300 -- pnpm --dir website run build
       - name: Selected additional Python tests
-        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_python == 'true' }}
+        if: ${{ !cancelled() && matrix.shard == 1 && steps.plan.outcome == 'success' && needs.selection.outputs.aux_python == 'true' }}
         env:
           CI_PREPARATION: ${{ toJSON(steps) }}
         run: python scripts/ci_run_layer.py --layer python --report-dir .artifacts/auxiliary-python
       - name: Selected additional Node tests
-        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_node == 'true' }}
+        if: ${{ !cancelled() && matrix.shard == 1 && steps.plan.outcome == 'success' && needs.selection.outputs.aux_node == 'true' }}
         env:
           CI_PREPARATION: ${{ toJSON(steps) }}
         run: python scripts/ci_run_layer.py --layer node --report-dir .artifacts/auxiliary-node
@@ -153,12 +157,12 @@ jobs:
         if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_browser == 'true' }}
         env:
           CI_PREPARATION: ${{ toJSON(steps) }}
-        run: python scripts/ci_run_layer.py --layer browser --report-dir .artifacts/auxiliary-browser
+        run: python scripts/ci_run_layer.py --layer browser --shard ${{ matrix.shard }}/${{ strategy.job-total }} --report-dir .artifacts/auxiliary-browser
       - name: Preserve auxiliary results
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
-          name: targeted-auxiliary-results
+          name: targeted-auxiliary-results-${{ matrix.shard }}
           path: |
             .artifacts/auxiliary*/
             .artifacts/checks/
