@@ -41,10 +41,11 @@ async function downloadText(page) {
   return readFileSync(await download.path(),'utf8');
 }
 
-function writeEvidenceFrame(testInfo,destination) {
-  const script=testInfo.outputPath('generate-frame.py');
-  writeFileSync(script,'import sys\nfrom PIL import Image\nImage.new("RGB", (20, 20), (80, 120, 160)).save(sys.argv[1], "JPEG")\n');
-  execFileSync(process.env.MAW_E2E_PYTHON||'python',[script,destination],{timeout:15000});
+function writeEvidenceFrame(destination) {
+  execFileSync(process.env.MAW_E2E_PYTHON||'python',[
+    '-c','import sys\nfrom PIL import Image\nImage.new("RGB", (20, 20), (80, 120, 160)).save(sys.argv[1], "JPEG")',
+    destination,
+  ],{timeout:15000});
 }
 
 function evidenceFixture(testInfo) {
@@ -178,7 +179,7 @@ test('report thumbnails and overlay resolve the same independent evidence genera
   })],{framesBaseDir});
   const directory=fixture.outputPath(framesBaseDir);
   mkdirSync(directory,{recursive:true});
-  writeEvidenceFrame(fixture,resolve(directory,frame));
+  writeEvidenceFrame(resolve(directory,frame));
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(file);
   await expect(page.locator('.thumb img')).toHaveAttribute('src',framesBaseDir+'/'+frame);

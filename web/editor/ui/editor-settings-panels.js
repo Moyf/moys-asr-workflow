@@ -1,3 +1,4 @@
+import { isEditingEnabled } from '../markers/editor-marker-editing.js';
 // 设置面板群：各设置面板的定位/开关、编辑器设置窗口（main 新增）与面板归属管理。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSettingsPanels 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -34,7 +35,7 @@ export function initMaweSettingsPanels() {
       const wordMirror = document.getElementById('project-word-timing-toggle');
       if (wordMirror) wordMirror.checked = window.MaweWordTiming?.enabled === true;
       const markerMirror = document.getElementById('project-marker-track-toggle');
-      if (markerMirror) markerMirror.checked = window.MaweMarkerEditing?.isEditingEnabled?.()
+      if (markerMirror) markerMirror.checked = isEditingEnabled()
         ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
       window.MaweSpeakerManager?.sync?.();
     },

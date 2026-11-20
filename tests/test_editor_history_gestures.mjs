@@ -25,6 +25,7 @@ function fixture() {
   MaweWordTiming: { clearSelection() {} },
   MaweMarkerEditing: { afterExternalMarkersChange() {} },
   });
+  context.afterExternalMarkersChange = (...args) => context.MaweMarkerEditing.afterExternalMarkersChange(...args);
   vm.runInContext(invokedInitModuleSource('editor/state/editor-history.js', 'initMaweHistory'), context);
   // Exercise the production cancellation path, including releasing the drag
   // and its transaction, rather than replacing cancelCueDrag with a spy.

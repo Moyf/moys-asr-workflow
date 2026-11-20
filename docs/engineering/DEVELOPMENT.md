@@ -57,7 +57,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 151 个条目，`web/editor-modules.json` 标出其中 92 个 ESM 模块与外部桥，其余 59 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 156 个条目，`web/editor-modules.json` 标出其中 122 个 ESM 模块与外部桥，其余 34 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
 
 编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](../logs/unversioned/undated/ESM_MIGRATION.md)。
 
@@ -96,7 +96,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 开发检查
 
-Agent 调试与测试使用[有界输出与分层调试](DEBUG_WORKFLOW.md)中的 `scripts/run_check.py`：完整日志落盘，只回显有限摘要并保留退出码。该文档也说明 worktree 环境复用、生成物搜索边界、超时清理限制与按变化选择验证范围。
+Agent 调试与测试使用[有界输出与分层调试](DEBUG_WORKFLOW.md)中的入口：默认按模块依赖与功能选择消费者，完整日志落盘并保留退出码。维护目标和验收准则见[测试治理](TEST_GOVERNANCE.md)。
 
 开发者手动维护环境：`uv sync --group dev --group test`；`test` 组只为真实媒体夹具补充 NumPy，不需要为此安装 OCR 或本地模型组。前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
@@ -115,13 +115,19 @@ git diff --check
 
 ### PR 提交前检查
 
-提交 PR 前，先将最新的 `main` 合并到当前分支，并解决所有合并冲突。
+提交前先确认 PR 的目标分支（base branch），fetch 后合并最新目标分支并解决冲突：目标为 `2.0dev` 就同步 `origin/2.0dev`，目标为 `main` 就同步 `origin/main`。不得固定合并 main 或擅自更改目标；执行合并、提交和推送仍需明确授权。
 
-### PR 的文档与网站检查
+### 日常变更准入与手动辅助检查（2.0dev）
 
-`scripts/ci_impact.py` 只在 PR 合并结果与事件基线一致时识别普通用户指南、README 和网站内容变更。只包含这些路径时，文档检查照常运行，编辑器门禁同步文档并构建网站，Windows 预览不生成测试包。官网生成页面和资源、应用代码、混合或未知路径、无法确认差异的情况，以及 push 和手动运行，均继续完整门禁。具体可识别范围以脚本为准。
+`scripts/ci_impact.py` 对 PR 使用事件目标 base 到合并结果的整个 diff（要求第一父提交与事件 base 一致），对 `main` / `2.0dev` push 使用事件 before/after。不只看最后一个提交；重命名同时审查旧/新路径。无法确认的 diff、shared 或未知代码只扩大到有限准入集合，不触发全量 Node/Python、浏览器或真实 FFmpeg。
 
-已有门禁名称不变：选测任务失败或没有有效结论时，编辑器与 Windows 门禁显式失败。发布工作流不使用此选测。分支保护要求和 GitHub 上的实际工作流行为仍需在目标仓库确认。
+普通工程说明、计划、日志只做文档检查；真实官网源文档以 `website/scripts/sync-maw-docs.mjs` 的 curated map 为准（其中部分工程说明仍是网站消费者），用户指南/网站、发布正文、工具说明/核对清单分别选择对应消费者。夹具、data 目录及非说明程序输入不因 `.md` 扩展名降级；离线 FAQ 是安装包输入。网站同步后验证已跟踪副本未被悄悄覆盖，再做 check/build。
+
+唯一汇总门禁为 **Change acceptance**，仅依赖 selection 与所选 checks。`scripts/ci_acceptance.py` 是明确的文件/测试 ID 准入清单，不等于整个 Node 集合或 Python common：数据契约、序列化、v2 独占写入失败保护；保存/状态/命令 VM 单测；打包路径安全及 schema 写入拒绝等低成本已有契约优先。Node 文件和静态名称清单在 `scripts/ci-node-admission.json`，每组只执行一次 JUnit，不用名称过滤伪装成无执行发现。Python 与 Node 报告、集合、命令结果及日志按摘要绑定到 receipt；运输后 gate 实际重读，Python 重新发现 ID，Node 对照静态名称，拒绝漏报告、篡改、错 SHA、取消、异常 skip、失败及不一致计划。直接保存相关组和 gate 仅安装锁定哈希的 Send2Trash，不同步整个应用环境。清单没有宣称历史稳定率，也不覆盖完整 Host/Origin/HTTP 路由、真实磁盘恢复、浏览器交互或媒体行为。
+
+既有完整 Editor Node/E2E/媒体与 Windows Python/E2E/缓存/打包检查分别保留在 `full-checks-manual.yml` 与 `windows-full-manual.yml`，**仅 workflow_dispatch**，没有新增每周频率或平台矩阵。它们与 `Windows release preview (advisory)` 不传播到 Change acceptance；失败仍红灯并需分诊，不能当作全部测试通过。Windows 预览只为打包/启动/runtime 输入或手动运行申请 Windows runner；坏 diff 只告警并扩大有限 checks，不额外启动 Windows 包。预览保留构建、真实 exe 启动 smoke 与归档上传，不再附带完整 Python/E2E。Ruff 保留独立检查，但只安装 Ruff，不同步应用环境。
+
+GitHub 分支保护必须人工将必需结论迁移到 Change acceptance，移除旧 Editor/Windows 必需状态（未修改远端规则）。发布 `release.yml` 完全不使用此调度，保持本分支原有发布与 2.0 独立 HTML 停止生成边界。执行证据和未测范围见[本分支实施记录](../logs/release1.11.2/261117_2devCI门禁纠偏/实施记录.md)。
 
 ### 浏览器回归
 
