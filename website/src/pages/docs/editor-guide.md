@@ -11,6 +11,10 @@ MAWE 是 MAW 的字幕编辑器，日常使用本地应用或本机 Server。从
 
 源码启动见 [Server README](https://github.com/Moyf/moys-asr-workflow/blob/main/server-editor/README.md)，首次转写见 [工作流](../workflow/)。
 
+## 搜索命令
+
+点击工具栏的「搜索命令」，或按 `Ctrl+K`（macOS：`Cmd+K`）。输入中文、英文或快捷键查找操作，用 `↑` / `↓` 选中命令，按 `Enter` 执行，或按 `Esc` 关闭并回到原来的控件。清空搜索后，最近使用的命令排在前面。面板只显示当前可用的命令，例如未加载媒体时不显示播放和跳转；正在处理模态弹窗时，先完成或关闭弹窗。
+
 ## 1. 打开或新建工程
 
 在 Launcher 中打开生成的工程，或从空白编辑器拖入工程、媒体、SRT。已有主字幕时导入第二条字幕，可以替换主轨或作为副轨。
