@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 import { disableOnboarding, findFreePort, generateWav, startServer } from './helpers.mjs';
 
 test('generated punctuation survives Server open, split, merge, save and reopen', async ({ page }) => {
@@ -28,6 +29,8 @@ assert [segment['text'] for segment in segments] == texts
 Path(sys.argv[1]).write_text(json.dumps({'media': 'synthetic.wav', 'segments': segments}, ensure_ascii=False), encoding='utf-8')
 `, project], { encoding: 'utf8', timeout: 30_000 });
   const generated = JSON.parse(readFileSync(project, 'utf8'));
+  const tracks = createProjectTracks();
+  writeFileSync(project, JSON.stringify(tracks.importProject(generated).project), 'utf8');
   let server;
   try {
     server = await startServer(project, media, await findFreePort());
@@ -35,7 +38,7 @@ Path(sys.argv[1]).write_text(json.dumps({'media': 'synthetic.wav', 'segments': s
     await page.goto(server.url);
     await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(generated.segments[0].text);
     // Compare source text and millisecond item data. Loading may add frame caches.
-    const content = () => page.evaluate(() => MaweBoot.DATA.segments.map(({ text, items }) => ({
+    const content = () => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ text, items }) => ({
       text, items: items.map(({ text, start, end }) => ({ text, start, end })),
     })));
     const expected = generated.segments.map(({ text, items }) => ({ text, items }));
@@ -55,7 +58,7 @@ Path(sys.argv[1]).write_text(json.dumps({'media': 'synthetic.wav', 'segments': s
     const save = page.waitForResponse((response) => response.url().endsWith('/api/project') && response.request().method() === 'POST');
     await page.locator('#save-project').click();
     expect((await save).ok()).toBe(true);
-    expect(JSON.parse(readFileSync(project, 'utf8')).segments.map(({ text, items }) => ({
+    expect(tracks.getMainTrack(JSON.parse(readFileSync(project, 'utf8'))).segments.map(({ text, items }) => ({
       text, items: items.map(({ text, start, end }) => ({ text, start, end })),
     }))).toEqual(expected);
     await page.reload();

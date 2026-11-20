@@ -1,5 +1,6 @@
 ---
 task: g16-bgd-editor-esm
+pr: 415
 date: 2026-11-20
 status: pending
 ---
@@ -23,6 +24,7 @@ B 的字幕行、文本清理、字幕面板和波形通过 ESM 读取播放状�
 
 - 构建、bundle 新鲜度、TypeScript 和 diff 空白检查已验证。日志保留每组命令、退出码和证据位置。
 - A 使用真实 Server 页面和 headed Chromium 验证。B 验证播放、暂停点击、试听和 JKL。G/D 使用 Chromium 定向验证工程生命周期和导出任务，基线失败见实施记录。
+- PR 415 的 Chromium 复验另覆盖键盘调时、双轨快捷编辑、颜色组、ASS 对齐，以及 Server 保存时继续编辑和标点重开。各组结果见同目录实施记录。
 
 ## 人工核验
 <!-- id: manual -->

@@ -46,9 +46,13 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   await page.waitForTimeout(300);
 
   const original = await visual(page, index, kind);
+  const next = await visual(page, index + 1, kind);
   await page.keyboard.press('c');
   const merged = await stable(page, original, index, 'extension merge', info, kind);
-  expect(merged.id).not.toBe(original.id);
+  expect(merged.id).toBe(original.id);
+  expect(merged.start).toBe(original.start);
+  expect(merged.end).toBe(next.end);
+  expect(merged.text).toContain(next.text);
   await page.keyboard.press(undoKey);
   await stable(page, merged, index, 'extension undo merge', info, kind);
   expect((await visual(page, index, kind)).id).toBe(original.id);
@@ -70,7 +74,7 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
     await page.locator('#multi-subtitle-split-confirm').click();
   }
   const left = await stable(page, beforeSplit, index, 'extension split after resize', info, kind);
-  expect(left.id).not.toBe(beforeSplit.id);
+  expect(left.id).toBe(beforeSplit.id);
   expect(left.start).toBe(beforeSplit.start);
   expect(left.end).toBeLessThan(beforeSplit.end);
   await page.keyboard.press(undoKey);
