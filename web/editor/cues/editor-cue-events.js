@@ -1,3 +1,4 @@
+import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { selectCueByClick } from './editor-binding-align.js';
 import { restoreCueListVisualAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
 import { setCurrentCuePanelIndex } from './editor-cue-panel.js';
@@ -129,7 +130,7 @@ export function initMaweCueEvents() {
       scrollCueToCenter(el);
     }
     MaweCoreState.waveformEditor?.revealTime(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start, true);
-    const wasPlaying = window.MaweKeyboardGuards.isPlaybackActive();
+    const wasPlaying = isPlaybackActive();
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
       const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
