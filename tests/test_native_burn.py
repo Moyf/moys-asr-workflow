@@ -14,7 +14,8 @@ from contextlib import ExitStack
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from unittest import mock
 
 if __name__ == "__main__":
@@ -367,15 +368,21 @@ class NativeBurnSystemOpenTests(unittest.TestCase):
         from maw.native_burn_output import _system_open
 
         popen = subprocess.Popen
+        native_os_name = os.name
+        path = PurePosixPath("/fixture/burn.mp4")
 
         def spawn(command, **options):
             self.assertEqual(command, ["xdg-open", "/fixture/burn.mp4"])
+            self.assertEqual(os.name, native_os_name)
+            Path.cwd()  # The real platform's pathlib must remain usable.
             return popen([sys.executable, "-Bc", "raise SystemExit(4)"], **options)
 
-        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(os, "name", "posix"), \
+        linux_os = SimpleNamespace(name="posix", environ=os.environ)
+        with mock.patch("maw.native_burn_output.sys", SimpleNamespace(platform="linux")), \
+                mock.patch("maw.native_burn_output.os", linux_os), \
                 mock.patch("maw.native_burn_output.subprocess.Popen", side_effect=spawn):
             with self.assertRaises(subprocess.CalledProcessError) as error:
-                _system_open(Path("/fixture/burn.mp4"))
+                _system_open(path)
         self.assertEqual(error.exception.returncode, 4)
 
     def test_foreground_xdg_handler_is_left_running_and_reaped(self):
@@ -391,12 +398,23 @@ class NativeBurnSystemOpenTests(unittest.TestCase):
             return 0
 
         process.wait.side_effect = wait
-        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(os, "name", "posix"), \
+        linux_os = SimpleNamespace(name="posix", environ=os.environ)
+        with mock.patch("maw.native_burn_output.sys", SimpleNamespace(platform="linux")), \
+                mock.patch("maw.native_burn_output.os", linux_os), \
                 mock.patch("maw.native_burn_output.subprocess.Popen", return_value=process):
-            _system_open(Path("/fixture/burn.mp4"))
+            _system_open(PurePosixPath("/fixture/burn.mp4"))
             self.assertTrue(reaped.wait(2))
         process.kill.assert_not_called()
         process.terminate.assert_not_called()
+
+    def test_windows_open_uses_native_path(self):
+        from maw.native_burn_output import _system_open
+
+        path = Path("fixture") / "burn.mp4"
+        startfile = mock.Mock()
+        with mock.patch("maw.native_burn_output.os", SimpleNamespace(name="nt", startfile=startfile)):
+            _system_open(path)
+        startfile.assert_called_once_with(str(path), "open")
 
 
 class NativeBurnLauncherStopTests(unittest.TestCase):

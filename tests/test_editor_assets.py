@@ -396,8 +396,9 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_hint_stack_stays_above_floating_surfaces(self) -> None:
         styles = edit.read_web_asset("editor.css")
-        hint_stack = styles[styles.index("#hint-stack {"):styles.index("  .hint-card {", styles.index("#hint-stack {"))]
-        self.assertIn("z-index: 490", hint_stack)
+        hint_stacks = re.search(r"(?m)^\s*#hint-stack\s*,\s*#hint-stack-bottom-right\s*\{([^}]*)\}", styles)
+        self.assertIsNotNone(hint_stacks)
+        self.assertRegex(hint_stacks.group(1), r"\bz-index\s*:\s*490\s*;")
 
     def test_server_onboarding_uses_user_settings_across_random_ports(self) -> None:
         script = edit.read_web_asset("editor/boot/editor-onboarding.js")
