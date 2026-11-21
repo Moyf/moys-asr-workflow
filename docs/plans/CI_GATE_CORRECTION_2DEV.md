@@ -13,6 +13,6 @@
 
 本地正向、旧工作流负对照、报告注入和未测层记在[实施记录](../logs/release1.11.2/261117_2devCI门禁纠偏/实施记录.md)。准入清单不是“全部 Node/common 稳定”的标签；历史可靠率与完整产品行为没有本次证据。
 
-协调会话独立审查后决定提交。提交前仅同步实际目标 `origin/2.0dev`，不合并 main。远端必需状态迁移与首次 Actions / 工件上传验证仍由维护者确认；不自动合并 PR。
+本方案已随 [#398](https://github.com/Moyf/moys-asr-workflow/pull/398) 合入 `2.0dev@d52eb45e`。最终 PR head `23e6b625` 的 [Change checks](https://github.com/Moyf/moys-asr-workflow/actions/runs/44070885519) 通过并上传准入计划与回执。分支保护必需状态是否迁移仍由维护者核对。后续选测与报告状态见[当前交接](../logs/CURRENT.md)。
 
 后续集中报错沿用有限准入与手动巡检边界。验收用小型多组失败和前置失败场景，核对独立组实际执行、错误与退出码齐全、最终失败。报告和重跑入口见[调试工作流](../engineering/DEBUG_WORKFLOW.md#ci-范围与重跑)。

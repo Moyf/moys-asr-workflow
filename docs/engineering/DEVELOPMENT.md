@@ -12,7 +12,7 @@
 | `maw/local_asr.py` | 实验本地模型与统一字幕输出。 |
 | `maw/gui_web.py`、`maw/gui_workflow.py`、`web/launcher/` | 图形桥接、任务快照、单文件及批量任务。 |
 | `maw/runtimes/`、`maw/local_models.py` | 独立运行环境与模型准备；MOSS 依赖单独声明。 |
-| `edit.py`、`web/` | 唯一编辑器前端源码及便携 HTML 渲染。 |
+| `edit.py`、`web/` | 本地编辑器页面渲染、共享前端源码与 1.x 的历史便携入口。 |
 | `maw/waveform.py`、`maw/quapeaks.py`、`maw/mopeaks.py`、`maw/media_cache.py` | 波形提取、容器与缓存编排。 |
 | `server-editor/serve.py` | 仅 loopback 的媒体 Range、受限保存、最近工程与本机设置。 |
 | `desktop/` | Electron MOSE 桌面壳；Tauri 实验已移除，决策见 [desktop README](../../desktop/README.md)。 |
@@ -35,7 +35,7 @@
 
 | 数据 | 真源 / 位置 | 边界 |
 | --- | --- | --- |
-| 字幕 `segments` 与可选轨道 | `.mosp` / 兼容 `.json` | UTF-8 JSON，字幕及 items 时间为整数毫秒。 |
+| v2 字幕及轨道 | `.mosp` / 兼容 `.json` 的 `tracks[*].segments` | 旧格式顶层 `segments` 从导入边界转换。字幕及字词时间为源媒体整数毫秒。 |
 | 波形、频谱 | `.quapeaks` / `.mopeaks` 等缓存 | 可重建，当前工程落盘剥离内联缓存；仍兼容旧内嵌工程。 |
 | `workspace` | 可选工程字段 | 随工程携带的布局。 |
 | 最近工程与命名工作区 | 用户级 `server-editor-settings.json` | Server 本机状态，活动工作区可覆盖页面布局。 |
@@ -57,9 +57,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 156 个条目，`web/editor-modules.json` 按相同顺序登记其中 133 个 ESM 模块，其余 23 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
+`web/editor-scripts.txt` 定义源码执行顺序，`web/editor-modules.json` 登记 ESM 模块。其余接线保留 classic 共享作用域，目录位置不决定执行顺序。实际模块和源码数量读 `pnpm run build:editor` 输出。Server 和 Electron 使用装配后的 `web/editor/boot/editor-bundle.js`，1.x 便携入口也使用该产物。发布包自带 bundle，运行无需 Node。
 
-编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](../logs/unversioned/undated/ESM_MIGRATION.md)。
+编辑器或 Launcher 的 JS、清单或构建配置变化后，先重建对应 bundle，再运行 `pnpm run check:editor` 或 `pnpm run check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。开发命令见[开发入口与 bundle](DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](../logs/unversioned/undated/ESM_MIGRATION.md)。
 
 字幕域同域函数通过静态 import 接通；现阶段具名函数仍在调用时转发既有浏览器单例门面，不代表这些模块已能独立实例化。初始化只在清单原位执行一次，import 求值不注册。可变状态、常量与 DOM 句柄继续由既有门面按值访问，不应包装成可调用的函数导出。
 
@@ -96,9 +96,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 开发检查
 
-Agent 调试与测试使用[有界输出与分层调试](DEBUG_WORKFLOW.md)中的入口：默认按模块依赖与功能选择消费者，完整日志落盘并保留退出码。维护目标和验收准则见[测试治理](TEST_GOVERNANCE.md)。
+Agent 调试与测试使用[有界输出与分层调试](DEBUG_WORKFLOW.md)中的入口：默认按模块依赖与功能选择消费者，完整日志落盘并保留退出码。维护目标和验收准则见[2.0dev 测试治理](https://github.com/Moyf/moys-asr-workflow/blob/2.0dev/docs/engineering/TEST_GOVERNANCE.md)。
 
-开发者手动维护环境：`uv sync --group dev --group test`；`test` 组只为真实媒体夹具补充 NumPy，不需要为此安装 OCR 或本地模型组。前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
+环境准备以当前分支的 [Node 和 pnpm 配置](../../package.json)与锁文件为准，使用 `pnpm install --frozen-lockfile`。开发者用 `uv sync --group dev` 准备 Python 开发依赖。涉及真实媒体夹具时加 `--group test` 准备 NumPy。Agent 使用已准备环境并给 `uv run` 加 `--no-sync`。下面是各层常用入口，按改动选择。
 
 ```sh
 uv run --no-sync ruff check
@@ -115,7 +115,7 @@ git diff --check
 
 ### PR 提交前检查
 
-提交前先确认 PR 的目标分支（base branch），fetch 后合并最新目标分支并解决冲突：目标为 `2.0dev` 就同步 `origin/2.0dev`，目标为 `main` 就同步 `origin/main`。不得固定合并 main 或擅自更改目标；执行合并、提交和推送仍需明确授权。
+按[根 AGENTS 的 PR 规则](../../AGENTS.md)同步实际目标仓库与分支，并确认本次 Git 操作的授权。
 
 ### 日常变更准入与手动辅助检查（2.0dev）
 
@@ -127,13 +127,13 @@ git diff --check
 
 既有完整 Editor Node/E2E/媒体与 Windows Python/E2E/缓存/打包检查分别保留在 `full-checks-manual.yml` 与 `windows-full-manual.yml`，**仅 workflow_dispatch**，没有新增每周频率或平台矩阵。它们与 `Windows release preview (advisory)` 不传播到 Change acceptance；失败仍红灯并需分诊，不能当作全部测试通过。Windows 预览只为打包/启动/runtime 输入或手动运行申请 Windows runner；坏 diff 只告警并扩大有限 checks，不额外启动 Windows 包。预览保留构建、真实 exe 启动 smoke 与归档上传，不再附带完整 Python/E2E。Ruff 保留独立检查，但只安装 Ruff，不同步应用环境。
 
-GitHub 分支保护必须人工将必需结论迁移到 Change acceptance，移除旧 Editor/Windows 必需状态（未修改远端规则）。发布 `release.yml` 完全不使用此调度，保持本分支原有发布与 2.0 独立 HTML 停止生成边界。执行证据和未测范围见[本分支实施记录](../logs/release1.11.2/261117_2devCI门禁纠偏/实施记录.md)。
+由维护者核对 GitHub 分支保护的必需检查是否包含 `Change acceptance`，并按需移除旧 Editor / Windows 必需状态。发布 `release.yml` 完全不使用此调度，保持本分支原有发布与 2.0 独立 HTML 停止生成边界。执行证据和未测范围见[本分支实施记录](../logs/release1.11.2/261117_2devCI门禁纠偏/实施记录.md)。
 
 ### 浏览器回归
 
-`tests/e2e/helpers.mjs` 默认以 `uv run --frozen python` 启动服务并清理继承的 PYTHONPATH；明确设置 `MAW_E2E_PYTHON` 时用指定解释器。Agent 已有环境时可设置该变量避免测试 helper 再同步依赖。
+`tests/e2e/helpers.mjs` 默认用 `uv run --no-sync python` 启动服务并清理继承的 `PYTHONPATH`。用 `MAW_E2E_PYTHON` 指定已准备的解释器时沿用显式解释器的环境。不同 spec 的夹具可能有自己的启动方式，排障时以对应入口为准。
 
-独立的 cue-scroll 源码夹具复用已准备环境，默认入口使用 `uv run --no-sync python`；Windows supervisor 与应用环境分开传递，测试进程仍归属于同一 Job，保留退出、超时及旁观进程保护契约。
+通用 helpers 与 cue-scroll 的进程边界见 [E2E 服务排障](E2E_SERVER_HANG.md)。
 
 Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时按 lockfile 准备临时隔离环境。浏览器受限时可设置 `MAW_E2E_CHROMIUM_PATH` 指向已安装的 Chromium 系浏览器。
 
@@ -160,12 +160,6 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](JSON_SCHEMA.md)。反馈和开发进度写任务账本。官网文档由 [同步脚本](../../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。仅 1.x 过渡版本在发布前或维护者明确要求时生成内联副本，并在相应 PR 描述注明“内联副本待发布前统一重生成”：
-
-```sh
-uv run --no-sync python edit.py --blank
-```
-
-2.0（含预发布版）起不执行此命令，不要求重生成内联副本；只构建和验证本地应用共用资源。
+2.0 发布核对本地应用、打包与 Pages 的[独立编辑入口版本边界](#独立编辑入口的版本边界)。1.x 便携副本例外及 PR 备注见[根 AGENTS](../../AGENTS.md)。发布正文生成与上线验收见[发布管线](../releases/README.md)。
 
 发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../INDEX.md#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
