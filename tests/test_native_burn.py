@@ -47,6 +47,23 @@ def retain_then_create(path: Path, retained: Path, contents: bytes) -> None:
         output.write(contents)
 
 
+# GitHub Windows runners occasionally abort established loopback sockets mid-request
+# (WinError 10053) with no server-side fault. Idempotent GET polls retry once to absorb
+# that noise; state-changing POSTs stay fail-closed and surface the original error.
+TRANSIENT_CONNECTION_ERRORS = (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)
+
+
+def send_with_transient_retry(send, *, retry_transient_get, attempts=2, delay=0.1):
+    """Perform one HTTP exchange, retrying transient loopback aborts for idempotent GETs."""
+    for attempt in range(attempts):
+        try:
+            return send()
+        except TRANSIENT_CONNECTION_ERRORS:
+            if not retry_transient_get or attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
 class NativeBurnHostTests(unittest.TestCase):
     def test_confirmation_language_follows_each_editor_request(self):
         from maw.gui_web import _pick_burn_target
@@ -542,14 +559,18 @@ class NativeBurnHTTPTests(unittest.TestCase):
                     if fields is not None:
                         method, body = "POST", json.dumps({"requestToken": token, **fields})
                         headers["Content-Type"] = "application/json"
-                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=12)
-                    try:
-                        conn.request(method, full_path or (BURN_JOBS + suffix), body, headers)
-                        reply = conn.getresponse()
-                        data = reply.read()
-                        return reply.status, data if reply.headers.get_content_type() == "video/mp4" else json.loads(data)
-                    finally:
-                        conn.close()
+
+                    def send():
+                        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=12)
+                        try:
+                            conn.request(method, full_path or (BURN_JOBS + suffix), body, headers)
+                            reply = conn.getresponse()
+                            data = reply.read()
+                            return reply.status, data if reply.headers.get_content_type() == "video/mp4" else json.loads(data)
+                        finally:
+                            conn.close()
+
+                    return send_with_transient_retry(send, retry_transient_get=(method == "GET"))
 
                 def wait_ready(path, session):
                     for _ in range(200):
@@ -752,6 +773,56 @@ class NativeBurnHTTPTests(unittest.TestCase):
                 if process.poll() is None:
                     process.terminate()
                     process.wait(timeout=5)
+
+
+class TransientRetryTests(unittest.TestCase):
+    """send_with_transient_retry absorbs runner-level loopback aborts without masking real faults."""
+
+    def test_get_poll_retries_a_transient_abort(self):
+        calls = []
+
+        def send():
+            calls.append(1)
+            if len(calls) == 1:
+                raise ConnectionAbortedError(10053, "aborted by host software")
+            return 200, {"state": "ready"}
+
+        self.assertEqual(send_with_transient_retry(send, retry_transient_get=True),
+                         (200, {"state": "ready"}))
+        self.assertEqual(len(calls), 2)
+
+    def test_post_is_never_retried(self):
+        calls = []
+
+        def send():
+            calls.append(1)
+            raise ConnectionAbortedError(10053, "aborted by host software")
+
+        with self.assertRaises(ConnectionAbortedError):
+            send_with_transient_retry(send, retry_transient_get=False)
+        self.assertEqual(len(calls), 1)
+
+    def test_retries_are_exhausted_for_persistent_aborts(self):
+        calls = []
+
+        def send():
+            calls.append(1)
+            raise ConnectionResetError(10054, "reset")
+
+        with self.assertRaises(ConnectionResetError):
+            send_with_transient_retry(send, retry_transient_get=True)
+        self.assertEqual(len(calls), 2)
+
+    def test_non_transient_errors_propagate_without_retry(self):
+        calls = []
+
+        def send():
+            calls.append(1)
+            raise TimeoutError("request timed out")
+
+        with self.assertRaises(TimeoutError):
+            send_with_transient_retry(send, retry_transient_get=True)
+        self.assertEqual(len(calls), 1)
 
 
 def _editor_process(root: Path) -> None:
