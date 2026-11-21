@@ -55,6 +55,13 @@ class ScopeTests(CompactContainerAssertions, unittest.TestCase):
         for path in actual:
             self.assertEqual(ci_impact.checks_for([path]), ['docs', 'website'])
         self.assertEqual(ci_impact.checks_for(['docs/engineering/unpublished.md']), ['docs'])
+
+    def test_document_images_select_website_check(self):
+        self.assertEqual(ci_impact.checks_for(['docs/assets/readme/overview.webp']), ['docs', 'website'])
+        # Root assets are not website document inputs; unclassified code/assets
+        # still conservatively select the existing full set of blocking checks.
+        self.assertEqual(ci_impact.checks_for(['assets/example.png']), list(ci_impact.CHECKS))
+
     def test_preview_is_runtime_specific_and_manual_is_job_level(self):
         for path in ('maw_gui.py', 'maw/runtimes/base.py', 'scripts/build-windows.ps1',
                      'web/launcher/boot/launcher.js', 'web/editor/boot/editor.js', 'pyproject.toml',

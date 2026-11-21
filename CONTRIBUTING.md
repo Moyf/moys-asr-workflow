@@ -19,7 +19,7 @@
 
 ## 代码风格
 
-文档分类、稳定入口、临时输出与退役遵循[文档约定](docs/README.md#doc-policy)。文档变更在根目录运行 `python scripts/check_docs.py`；新增检查的回归使用 `python scripts/run_tests.py tests/test_docs_check.py`。Agent 执行时按根规则用 `scripts/run_check.py` 包装命令。
+文档分类、稳定入口、临时输出与退役遵循[文档约定](docs/README.md#doc-policy)。同步到官网的源文档，其本地配图须放在 `docs/assets/`；适用范围和构建方法见[官网文档同步](website/docs/CONTENT_SYNC.md)。文档变更在根目录运行 `python scripts/check_docs.py`；新增检查的回归使用 `python scripts/run_tests.py tests/test_docs_check.py`。Agent 执行时按根规则用 `scripts/run_check.py` 包装命令。
 
 - Python：遵循现有代码风格；安装环境后使用 `uv run --no-sync python scripts/run_tests.py`。
 - 前端（web/）：LF 换行，保持既有缩进风格

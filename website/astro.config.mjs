@@ -7,5 +7,6 @@ export default defineConfig({
   site: siteUrl,
   base: basePath,
   output: 'static',
+  outDir: process.env.MAW_SITE_OUTPUT_DIR || './dist',
   compressHTML: true,
 });
