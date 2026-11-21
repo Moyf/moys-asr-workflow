@@ -101,6 +101,7 @@
     "ambiguous upload jobs or unsuccessful archive cannot claim a package"
   ],
   "tests/test_docs_sync_check.mjs": [
+    "punctuation guidance covers new defaults and legacy project behavior",
     "clean checkout generates then checks local documents and preserves unrelated pages",
     "new source images do not require mirrors and obsolete mirrors are preserved",
     "edited sources and stale mirrors regenerate from the checkout",
