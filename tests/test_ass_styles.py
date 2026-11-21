@@ -85,6 +85,7 @@ class AssStyleLibraryTests(unittest.TestCase):
             animations = find_ass_profile(library, "ass")["animations"]
             self.assertFalse(animations["fad"]["enabled"])
             self.assertFalse(animations["pop"]["enabled"])
+            self.assertFalse(animations["karaoke"]["enabled"])
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "ass-styles.json"
             for fad_enabled in (True, False):
@@ -97,6 +98,27 @@ class AssStyleLibraryTests(unittest.TestCase):
                         self.assertEqual(normalize_ass_style_library(library), library)
                         self.assertEqual(save_ass_style_library(library, path), library)
                         self.assertEqual(load_ass_style_library(path), library)
+
+    def test_karaoke_group_normalizes_enabled_and_backfills_legacy_libraries(self) -> None:
+        # 旧库没有 karaoke 组：归一化补默认值；开关状态与布尔归一化一致。
+        legacy = normalize_ass_style_library({})
+        self.assertEqual(legacy["assProfiles"][0]["animations"]["karaoke"], {"enabled": False})
+        enabled = normalize_ass_style_library({"assProfiles": [{"id": "ass", "animations": {
+            "karaoke": {"enabled": True},
+        }}]})
+        self.assertEqual(enabled["assProfiles"][0]["animations"]["karaoke"], {"enabled": True})
+        # 非法值（字符串/缺失/多余字段）回落默认，不抛异常。
+        broken = normalize_ass_style_library({"assProfiles": [{"id": "ass", "animations": {
+            "karaoke": {"enabled": "yes", "mode": "kf"},
+        }}]})
+        self.assertEqual(broken["assProfiles"][0]["animations"]["karaoke"], {"enabled": False})
+        saved = default_ass_style_library()
+        saved["assProfiles"][0]["animations"]["karaoke"] = {"enabled": True}
+        self.assertEqual(normalize_ass_style_library(saved), saved)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            self.assertEqual(save_ass_style_library(saved, path), saved)
+            self.assertEqual(load_ass_style_library(path), saved)
 
     def test_pop_animation_normalization_clamps_and_keeps_roundtrip(self) -> None:
         # 旧库没有 pop 组：归一化补默认值；非法值按边界收敛。
