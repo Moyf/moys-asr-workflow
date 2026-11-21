@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { collectImageSources, readDocument, readImage } from '../website/scripts/sync-maw-docs.mjs';
@@ -23,6 +23,7 @@ async function fixture({ missing = '' } = {}) {
     await writeFile(dest, await readDocument(relative, { root }));
   };
   await copy(script);
+  await copy('tools/shared/vendor/marked-18.1.3/marked.umd.js');
   for (const registry of ['website/scripts/legacy-doc-assets.json', 'website/scripts/authored-doc-assets.json']) await copy(registry);
   for (const config of ['website/package.json', 'website/astro.config.mjs', 'website/tsconfig.json']) await copy(config);
   for (const source of sources) await copy(source);
@@ -122,6 +123,8 @@ test('website entry points and acceptance build through isolated staging', async
   const acceptance = await readFile(path.join(root, 'scripts/ci_acceptance.py'), 'utf8');
   const part = acceptance.slice(acceptance.indexOf("        'website': [["), acceptance.indexOf("        'build': [["));
   assert(part.includes("'build'"));
+  assert.equal((part.match(/\['pnpm', '--dir', 'website', 'run', 'build'\]/g) || []).length, 1,
+    'CI runs one website build');
   const deploy = await readFile(path.join(root, '.github/workflows/deploy-editor-pages.yml'), 'utf8');
   assert(deploy.includes('pnpm run build'));
 });
@@ -131,7 +134,9 @@ test('isolated site stage excludes obsolete generated inputs but preserves autho
   const docs = path.join(target, 'website/src/pages/docs');
   await writeFile(path.join(docs, 'faq.md'), 'DAMAGED STALE MIRROR WITHOUT MARKER');
   await writeFile(path.join(docs, 'obsolete.md'), '<!-- Generated from old.md. Run pnpm run sync:docs to refresh. -->\n');
-  await writeFile(path.join(docs, 'authored.md'), '# authored page\n');
+  await writeFile(path.join(docs, 'authored.md'), '# authored page\n\n<img src="/custom.txt">\n');
+  await mkdir(path.join(target, 'docs/engineering'), { recursive: true });
+  await writeFile(path.join(target, 'docs/engineering/unpublished.md'), '![local](../../assets/not-synced.png)\n');
   await mkdir(path.join(target, 'website/public/docs-assets'), { recursive: true });
   const oldAsset = path.join(target, 'website/public/docs-assets/docs/assets/1.6.0/overlay-track.webp');
   await mkdir(path.dirname(oldAsset), { recursive: true });
@@ -147,7 +152,7 @@ test('isolated site stage excludes obsolete generated inputs but preserves autho
   await prepareSite(path.join(target, 'website'), stage);
   assert.equal(await stat(path.join(stage, 'src/pages/docs/obsolete.md')).then(() => true, () => false), false);
   assert.equal(await stat(path.join(stage, 'public/docs-assets/docs/assets/1.6.0/overlay-track.webp')).then(() => true, () => false), false);
-  assert.equal(await readFile(path.join(stage, 'src/pages/docs/authored.md'), 'utf8'), '# authored page\n');
+  assert.equal(await readFile(path.join(stage, 'src/pages/docs/authored.md'), 'utf8'), '# authored page\n\n<img src="/custom.txt">\n');
   assert.doesNotMatch(await readFile(path.join(stage, 'src/pages/docs/faq.md'), 'utf8'), /DAMAGED STALE/);
   assert.equal(await readFile(path.join(stage, 'public/custom.txt'), 'utf8'), 'authored asset');
   assert.equal(await readFile(path.join(stage, 'public/docs-assets/custom.txt'), 'utf8'), 'authored nested asset');
@@ -203,6 +208,83 @@ test('development entry rejects a custom host before starting a server', async (
   assert.match(result.stderr, /只监听 127\.0\.0\.1/);
 });
 
+test('staging lifecycle cleans only its own directory on completion, failure and interruption', async () => {
+  const failures = [];
+  for (const mode of ['check', 'prepare-failure', 'build-failure', 'dev-exit', 'dev-SIGINT', 'dev-SIGTERM']) {
+    if (process.platform === 'win32' && mode.startsWith('dev-SIG')) continue;
+    try {
+    const target = await fixture({ missing: mode === 'prepare-failure' ? 'docs/user/FAQ.md' : '' });
+    const site = path.join(target, 'website');
+    const scriptFile = process.env.MAW_TEST_STAGE_SCRIPT || path.join(root, 'website/scripts/stage-site.mjs');
+    await writeFile(path.join(site, 'scripts/stage-site.mjs'), await readFile(scriptFile));
+    await mkdir(path.join(target, 'assets'), { recursive: true });
+    await mkdir(path.join(site, 'public'), { recursive: true });
+    const astro = path.join(site, 'node_modules/astro/bin');
+    await mkdir(astro, { recursive: true });
+    await writeFile(path.join(astro, 'astro.mjs'), `
+      console.log('FAKE_ASTRO_READY');
+      if (process.env.FAKE_MODE === 'build-failure') process.exit(7);
+      if (process.env.FAKE_MODE.startsWith('dev-SIG')) {
+        process.on('SIGINT', () => process.exit(0));
+        process.on('SIGTERM', () => process.exit(0));
+        setInterval(() => {}, 1000);
+      }
+    `);
+    const temp = path.join(target, 'tmp');
+    const prior = path.join(temp, 'maw-website-stage-existing');
+    await mkdir(prior, { recursive: true });
+    await writeFile(path.join(prior, 'user.txt'), 'keep');
+    await writeFile(path.join(site, 'node_modules', 'external.txt'), 'keep dependency');
+    const command = mode.startsWith('dev-') ? 'dev' : mode === 'build-failure' ? 'build' : 'check';
+    const child = spawn(process.execPath, [path.join(site, 'scripts/stage-site.mjs'), command], {
+      env: { ...process.env, TMPDIR: temp, TMP: temp, TEMP: temp, FAKE_MODE: mode }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', (data) => {
+      output += data;
+      if (mode.startsWith('dev-SIG') && output.includes('FAKE_ASTRO_READY')) child.kill(mode.slice(4));
+    });
+    child.stderr.on('data', (data) => { output += data; });
+    const [code, signal] = await new Promise((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', (status, sig) => resolve([status, sig]));
+    });
+    if (mode === 'prepare-failure' || mode === 'build-failure') assert.notEqual(code, 0, `${mode}: ${output}`);
+    else if (mode.startsWith('dev-SIG')) assert.ok(code !== 0 || signal, `${mode}: ${output}`);
+    else assert.equal(code, 0, `${mode}: ${output}`);
+    assert.deepEqual(await readdir(temp), ['maw-website-stage-existing'], `${mode}: staging leaked`);
+    assert.equal(await readFile(path.join(prior, 'user.txt'), 'utf8'), 'keep');
+    assert.equal(await readFile(path.join(site, 'node_modules', 'external.txt'), 'utf8'), 'keep dependency');
+    } catch (error) {
+      failures.push(`${mode}: ${error.message}`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('consecutive builds replace stale default output', async () => {
+  const target = await fixture();
+  const site = path.join(target, 'website');
+  const scriptFile = process.env.MAW_TEST_STAGE_SCRIPT || path.join(root, 'website/scripts/stage-site.mjs');
+  await writeFile(path.join(site, 'scripts/stage-site.mjs'), await readFile(scriptFile));
+  const astro = path.join(site, 'node_modules/astro/bin');
+  await mkdir(astro, { recursive: true });
+  await writeFile(path.join(astro, 'astro.mjs'), `
+    import { mkdir, writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    await mkdir(process.env.MAW_SITE_OUTPUT_DIR, { recursive: true });
+    await writeFile(path.join(process.env.MAW_SITE_OUTPUT_DIR, 'index.html'), 'built');
+  `);
+  const build = () => spawnSync(process.execPath, [path.join(site, 'scripts/stage-site.mjs'), 'build'], { encoding: 'utf8' });
+  const first = build();
+  assert.equal(first.status, 0, first.stderr);
+  await writeFile(path.join(site, 'dist/stale.html'), 'stale');
+  const second = build();
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(await readFile(path.join(site, 'dist/index.html'), 'utf8'), 'built');
+  assert.equal(await stat(path.join(site, 'dist/stale.html')).then(() => true, () => false), false);
+});
+
 test('build refuses an existing output directory without changing it', async () => {
   const target = await mkdtemp(path.join(os.tmpdir(), 'maw-output-preserved-'));
   const sentinel = path.join(target, 'sentinel.txt');
@@ -235,7 +317,7 @@ test('document images cannot read environment files or follow symlinks', async (
     }
     const result = run(target);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /禁止|符号链接/);
+    assert.match(result.stderr, /禁止|符号链接|docs\/assets\//);
   }
 });
 
@@ -244,15 +326,96 @@ test('image syntax examples in code are not treated as document images', async (
   assert.deepEqual(collectImageSources('![remote](//example.org/a.png) <img src="//example.org/a.png">', 'docs/user/FAQ.md'), []);
 });
 
-test('publishing a build copies files into a new directory without replacing an existing one', async () => {
-  const { publishBuild } = await import('../website/scripts/stage-site.mjs');
-  const target = await mkdtemp(path.join(os.tmpdir(), 'maw-publish-preserved-'));
-  const source = path.join(target, 'source');
-  await mkdir(path.join(source, 'nested'), { recursive: true });
-  await writeFile(path.join(source, 'nested/index.html'), 'new page');
-  const output = path.join(target, 'output');
-  await publishBuild(source, output);
-  assert.equal(await readFile(path.join(output, 'nested/index.html'), 'utf8'), 'new page');
-  await assert.rejects(publishBuild(source, output), /EEXIST/);
-  assert.equal(await readFile(path.join(output, 'nested/index.html'), 'utf8'), 'new page');
+test('CommonMark indented code is protected without hiding paragraph or list images', () => {
+  const source = 'docs/user/FAQ.md';
+  for (const markdown of [
+    '    ![example](missing.png)\n',
+    '\t![example][id]\n',
+    '>     ![example][id]\n',
+    '- item\n\n      ![example](missing.png)\n',
+    '- item\n\n\t    ![example][id]\n',
+    '>\t     ![example][id]\n',
+    '-\t    ![example][id]\n',
+    '- item\n\n  >     ![example][id]\n',
+    '> ```md\n> ![example][id]\n> ```\n',
+    '- ```md\n  ![example][id]\n  ```\n',
+  ]) assert.deepEqual(collectImageSources(markdown, source), [], markdown);
+  for (const markdown of ['> text\tmore\n', '- text\tmore\n']) {
+    assert.deepEqual(collectImageSources(markdown, source), [], markdown);
+  }
+  for (const markdown of ['> \t![real](../assets/real.png)\n', '>\t![real](../assets/real.png)\n', '> \ttext\t![real](../assets/real.png)\n']) {
+    assert.deepEqual(collectImageSources(markdown, source), ['docs/assets/real.png'], markdown);
+  }
+  assert.deepEqual(collectImageSources('paragraph\n    ![real](../assets/real.png)\n', source), ['docs/assets/real.png']);
+  assert.deepEqual(collectImageSources('- item\n  ![real](../assets/real.png)\n', source), ['docs/assets/real.png']);
+});
+
+test('generated documents preserve indented code and rewrite real images and navigation', async () => {
+  const target = await fixture();
+  const source = path.join(target, 'docs/user/FAQ.md');
+  const example = '    ![example][undefined-reference]';
+  const nested = '> ```md\n> ![nested][undefined-reference]\n> ```';
+  await writeFile(source, `${await readFile(source, 'utf8')}\n\n${example}\n\n${nested}\n\n![workflow](../assets/guides/workflow.svg)\n\n[guide](WORKFLOW.md)\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  assert.ok(page.includes(example));
+  assert.ok(page.includes(nested));
+  assert.doesNotMatch(page, /MAW_CODE_\d+/);
+  assert.match(page, /<img src="\.\.\/\.\.\/docs-assets\/docs\/assets\/guides\/workflow\.svg"/);
+  assert.ok(page.includes('[guide](../workflow/)'));
+  assert.deepEqual(await readFile(path.join(target, 'website/public/docs-assets/docs/assets/guides/workflow.svg')),
+    await readFile(path.join(target, 'docs/assets/guides/workflow.svg')));
+});
+
+test('source document images outside docs assets fail clearly', async () => {
+  const source = 'docs/user/FAQ.md';
+  for (const syntax of ['![root](../../assets/example.png)', '<img src="../user/example.svg">', '![encoded](../%75ser/example.png)', '[download](../../other/image.webp)']) {
+    assert.throws(() => collectImageSources(syntax, source), /docs\/assets\//, syntax);
+  }
+  const target = await fixture();
+  await writeFile(path.join(target, source), `${await readFile(path.join(target, source), 'utf8')}\n![bad](../../assets/image.png)\n`);
+  for (const args of [[], ['--check'], ['--validate']]) {
+    const result = run(target, ...args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /docs\/assets\/.*assets\/image\.png/);
+  }
+});
+
+test('Pages push paths cover deployment inputs and skip unrelated changes', async () => {
+  const deploy = await readFile(path.join(root, '.github/workflows/deploy-editor-pages.yml'), 'utf8');
+  const push = deploy.split('  push:\n')[1].split('  workflow_dispatch:', 1)[0];
+  assert.match(push, /branches:\s*\[main\]/);
+  assert.match(push, /\bpaths:/);
+  const patterns = [...push.matchAll(/^\s+- ["']([^"']+)["']/gm)].map((match) => match[1]);
+  const matches = (file) => patterns.some((pattern) => pattern.endsWith('/**') ? file.startsWith(pattern.slice(0, -2)) : file === pattern);
+  for (const file of ['website/src/pages/index.astro', 'README.md', 'CHANGELOG.md', 'docs/assets/readme/overview.webp', 'docs/user/FAQ.md', 'docs/releases/1.11.4.md', 'edit.py', 'maw/project.py', 'web/editor-scripts.txt', 'scripts/build-editor.mjs', 'scripts/run_check.py', 'scripts/prepare_release_notes.py', 'scripts/build_release_site.py', 'scripts/verify_release_site.py', 'tools/shared/vendor/marked-18.1.3/marked.umd.js', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'pyproject.toml', 'uv.lock', '.github/workflows/deploy-editor-pages.yml']) assert.ok(matches(file), file);
+  for (const file of ['tests/test_unrelated.py', 'unrelated.txt', 'assets/example.png']) assert.equal(matches(file), false, file);
+  const result = spawnSync(process.execPath, [path.join(root, script), '--validate'], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const images = JSON.parse(result.stdout.match(/^MAW_IMAGES=(.*)$/m)[1]);
+  assert.ok(images.length > 0);
+  assert.ok(images.every((image) => image.startsWith('docs/assets/')));
+  assert.ok(images.includes('docs/assets/readme/overview.webp'));
+});
+
+test('default output accepts an existing directory but protects custom outputs and symlinks', async () => {
+  const { buildOutput } = await import('../website/scripts/stage-site.mjs');
+  const site = await mkdtemp(path.join(os.tmpdir(), 'maw-output-policy-'));
+  const output = path.join(site, 'dist');
+  await mkdir(output);
+  await writeFile(path.join(output, 'stale.html'), 'old');
+  assert.equal(await buildOutput(site), output);
+  const custom = path.join(site, 'custom');
+  await mkdir(custom);
+  await assert.rejects(buildOutput(site, custom), /输出目录已存在/);
+  assert.equal(await readFile(path.join(output, 'stale.html'), 'utf8'), 'old');
+  await symlink(custom, path.join(output, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(buildOutput(site), /符号链接/);
+  const otherSite = await mkdtemp(path.join(os.tmpdir(), 'maw-output-link-'));
+  await symlink(custom, path.join(otherSite, 'dist'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(buildOutput(otherSite), /符号链接/);
+  const gitSite = await mkdtemp(path.join(os.tmpdir(), 'maw-output-git-'));
+  await mkdir(path.join(gitSite, 'dist', '.git'), { recursive: true });
+  await assert.rejects(buildOutput(gitSite), /不能包含 \.git/);
 });

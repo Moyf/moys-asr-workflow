@@ -113,10 +113,16 @@
     "isolated site staging rejects authored routes that collide with generated documents",
     "encoded local image paths resolve to the actual source image",
     "development entry rejects a custom host before starting a server",
+    "staging lifecycle cleans only its own directory on completion, failure and interruption",
+    "consecutive builds replace stale default output",
     "build refuses an existing output directory without changing it",
     "build rejects arguments that override the isolated Astro root or output",
     "document images cannot read environment files or follow symlinks",
     "image syntax examples in code are not treated as document images",
-    "publishing a build copies files into a new directory without replacing an existing one"
+    "CommonMark indented code is protected without hiding paragraph or list images",
+    "generated documents preserve indented code and rewrite real images and navigation",
+    "source document images outside docs assets fail clearly",
+    "Pages push paths cover deployment inputs and skip unrelated changes",
+    "default output accepts an existing directory but protects custom outputs and symlinks"
   ]
 }

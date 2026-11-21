@@ -1,6 +1,11 @@
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+// Use the repository's existing Markdown lexer to identify block structure;
+// indentation alone cannot distinguish a code block from a paragraph continuation.
+const { marked } = createRequire(import.meta.url)('../../tools/shared/vendor/marked-18.1.3/marked.umd.js');
 
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = path.resolve(siteRoot, '..');
@@ -168,6 +173,9 @@ function rewriteTarget(target, currentSource, forceImage = false) {
     if (sourcePath === '..' || sourcePath.startsWith('../')) {
       throw new Error(`图片路径超出源仓库：${target}`);
     }
+    if (!sourcePath.startsWith('docs/assets/')) {
+      throw new Error(`官网源文档的本地配图必须位于 docs/assets/：${currentSource} → ${sourcePath}`);
+    }
     imageSources.add(sourcePath);
     // Relative URLs also work when Astro is deployed under BASE_PATH.
     const assetRoute = `/docs-assets/${sourcePath.split('/').map(encodeURIComponent).join('/')}`;
@@ -176,9 +184,80 @@ function rewriteTarget(target, currentSource, forceImage = false) {
   return externalUrl(sourcePath, suffix);
 }
 
+function blockCodeOffsets(markdown) {
+  const offsets = new Set();
+  // Map a container's de-indented lines back to their original characters.
+  function childMap(raw, mapping, content) {
+    const rawLines = raw.split('\n');
+    const lines = content.split('\n');
+    const result = [];
+    let position = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = rawLines[i] ?? '';
+      let expanded = '';
+      const expandedMap = [];
+      // Containers can consume only part of a tab. Expand tabs before the
+      // line's content, including tabs after a list or blockquote marker, but
+      // retain literal tabs inside the content itself.
+      const contentText = lines[i].replace(/^[ \t]*/, '');
+      const contentStart = contentText ? line.lastIndexOf(contentText) : line.length;
+      if (contentStart < 0) throw new Error('无法定位 Markdown 容器中的代码块');
+      for (let j = 0; j < line.length; j++) {
+        const expand = j < contentStart && line[j] === '\t';
+        const count = expand ? 4 - expanded.length % 4 : 1;
+        expanded += expand ? ' '.repeat(count) : line[j];
+        for (let k = 0; k < count; k++) expandedMap.push(mapping[position + j]);
+      }
+      const start = lines[i] ? expanded.lastIndexOf(lines[i]) : expanded.length;
+      if (start < 0) throw new Error('无法定位 Markdown 容器中的代码块');
+      for (let j = 0; j < lines[i].length; j++) result.push(expandedMap[start + j]);
+      position += line.length;
+      if (i < lines.length - 1) result.push(mapping[position++]);
+    }
+    return result;
+  }
+  function visit(text, mapping, tokens) {
+    let cursor = 0;
+    for (const token of tokens) {
+      const start = text.indexOf(token.raw, cursor);
+      if (start < 0) throw new Error('无法定位 Markdown 代码块');
+      cursor = start + token.raw.length;
+      const map = mapping.slice(start, cursor);
+      if (token.type === 'code') {
+        for (const index of map) if (index !== undefined) offsets.add(index);
+      } else if (token.type === 'blockquote') {
+        visit(token.text, childMap(token.raw, map, token.text), token.tokens);
+      } else if (token.type === 'list') {
+        let itemCursor = 0;
+        for (const item of token.items) {
+          const itemStart = token.raw.indexOf(item.raw, itemCursor);
+          if (itemStart < 0) throw new Error('无法定位 Markdown 列表');
+          itemCursor = itemStart + item.raw.length;
+          const itemMap = map.slice(itemStart, itemCursor);
+          visit(item.text, childMap(item.raw, itemMap, item.text), item.tokens);
+        }
+      }
+    }
+  }
+  visit(markdown, Array.from({ length: markdown.length }, (_, index) => index), marked.lexer(markdown, { gfm: false }));
+  return offsets;
+}
+
 function rewriteLinks(markdown, currentSource) {
   const code = [];
   const protect = (value) => { const key = `\u0000MAW_CODE_${code.length}\u0000`; code.push(value); return key; };
+  const indented = blockCodeOffsets(markdown);
+  markdown = markdown.replace(/[^\n]+/g, (line, start) => {
+    let result = '';
+    for (let i = 0; i < line.length;) {
+      let end = i + 1;
+      while (end < line.length && indented.has(start + end) === indented.has(start + i)) end++;
+      const part = line.slice(i, end);
+      result += indented.has(start + i) ? protect(part) : part;
+      i = end;
+    }
+    return result;
+  });
   let fence = null;
   let fenced = '';
   let text = '';

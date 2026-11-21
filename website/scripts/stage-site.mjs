@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, symlink } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, rmdir, symlink, unlink } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -82,11 +82,58 @@ async function copyAuthoredAssets(site, stage, images) {
   }
 }
 
-export async function publishBuild(source, output) {
-  await mkdir(output); // exclusive: never replace an existing output directory
-  for (const entry of await readdir(source)) {
-    await cp(path.join(source, entry), path.join(output, entry), { recursive: true, force: false, errorOnExist: true });
+// Only the project's dist directory may be reused. Reject links within it so
+// Astro's output cleanup cannot cross into another directory.
+export async function buildOutput(site, requested = '') {
+  const standard = path.join(site, 'dist');
+  const output = path.resolve(requested || standard);
+  const existing = await lstat(output).catch((error) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (output !== standard) {
+    if (existing) throw new Error('构建输出目录已存在；请指定一个不存在的 MAW_SITE_OUTPUT_DIR');
+    return output;
   }
+  async function inspect(directory, entry) {
+    if (entry.isSymbolicLink()) throw new Error('构建输出目录不能包含符号链接');
+    if (!entry.isDirectory()) throw new Error('构建输出目录不是目录');
+    for (const name of await readdir(directory)) {
+      if (name === '.git') throw new Error('构建输出目录不能包含 .git');
+      const child = path.join(directory, name);
+      const info = await lstat(child);
+      if (info.isSymbolicLink()) throw new Error('构建输出目录不能包含符号链接');
+      if (info.isDirectory()) await inspect(child, info);
+    }
+  }
+  if (existing) await inspect(output, existing);
+  return output;
+}
+
+// Astro may suppress output cleanup errors; fail instead of publishing stale files.
+export async function clearBuildOutput(site, output) {
+  if (output !== path.join(site, 'dist')) return;
+  const removeContents = async (directory) => {
+    for (const name of await readdir(directory)) {
+      if (name === '.git') throw new Error('构建输出目录不能包含 .git');
+      const child = path.join(directory, name);
+      const info = await lstat(child);
+      if (info.isSymbolicLink()) throw new Error('构建输出目录不能包含符号链接');
+      if (info.isDirectory()) {
+        await removeContents(child);
+        await rmdir(child);
+      } else {
+        await unlink(child);
+      }
+    }
+  };
+  const info = await lstat(output).catch((error) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (info?.isSymbolicLink()) throw new Error('构建输出目录不能包含符号链接');
+  if (info && !info.isDirectory()) throw new Error('构建输出目录不是目录');
+  if (info) await removeContents(output);
 }
 
 export async function prepareSite(site, stage) {
@@ -132,100 +179,122 @@ async function main() {
     }
   }
   const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), 'maw-website-stage-')));
+  const identity = await lstat(parent);
   const stage = path.join(parent, 'site');
-  let images = await prepareSite(ownSite, stage);
-  console.log(`已生成 ${documents.length} 篇文档和 ${images.length} 张配图`);
-  const astro = path.join(ownSite, 'node_modules/astro/bin/astro.mjs');
-  const output = path.resolve(process.env.MAW_SITE_OUTPUT_DIR || path.join(ownSite, 'dist'));
-  if (command === 'build' && await lstat(output).then(() => true, (error) => {
-    if (error.code === 'ENOENT') return false;
-    throw error;
-  })) throw new Error('构建输出目录已存在；请指定一个不存在的 MAW_SITE_OUTPUT_DIR');
-  const env = { ...process.env, MAW_SITE_OUTPUT_DIR: path.join(stage, 'dist') };
   const watchers = [];
   let child;
   let timer;
-  if (command === 'dev') {
-    const changed = new Set();
-    const root = path.dirname(ownSite);
-    const onChange = (file) => {
-      if (!(file === 'README.md' || file.startsWith('docs/') || file.startsWith('assets/') ||
-          file.startsWith('website/src/') || file.startsWith('website/public/') ||
-          file === 'website/scripts/sync-maw-docs.mjs' || file === 'website/scripts/legacy-doc-assets.json' ||
-          file === 'website/scripts/authored-doc-assets.json')) return;
-      if (file.split('/').some(isEnvFile)) return;
-      changed.add(file);
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try {
-          const batch = [...changed];
-          changed.clear();
-          if (batch.some((file) => file === 'website/scripts/sync-maw-docs.mjs' ||
-              file === 'website/scripts/legacy-doc-assets.json' || file === 'website/scripts/authored-doc-assets.json' ||
-              file.startsWith('website/public/docs-assets/'))) throw new Error('文档或配图清单已改变，请重新启动开发服务器');
-          for (const file of batch.filter((value) => value.startsWith('website/src/') || value.startsWith('website/public/'))) {
-            const relative = file.slice('website/'.length);
-            const source = path.join(ownSite, relative);
-            const target = path.join(stage, relative);
-            const entry = await lstat(source);
-            if (entry.isDirectory()) continue;
-            if (entry.isSymbolicLink()) throw new Error(`开发输入包含符号链接，请重新启动：${relative}`);
-            const existing = await lstat(target).catch((error) => {
-              if (error.code === 'ENOENT') return null;
-              throw error;
-            });
-            if (existing?.isSymbolicLink()) throw new Error(`隔离输入包含符号链接：${relative}`);
-            if (relative.startsWith('src/pages/docs/') && relative.endsWith('.md') &&
-                generatedMarker.test(await readFile(source, 'utf8'))) continue;
-            if (relative.startsWith('src/pages/docs/')) {
-              const entry = relative.slice('src/pages/docs/'.length).split('/')[0];
-              if (reservedNames.has(entry)) continue;
-              if (reservedSlugs.has(entry.replace(/\.(?:astro|md|mdx|html)$/i, ''))) throw new Error(`手写页面与文档路由冲突：${relative}`);
-            }
-            await mkdir(path.dirname(target), { recursive: true });
-            await cp(source, target);
-          }
-          const nextImages = generate(ownSite, stage, true);
-          if (images.length !== nextImages.length || images.some((image) => !nextImages.includes(image))) throw new Error('文档配图清单已改变，请重新启动开发服务器');
-          generate(ownSite, stage);
-          images = nextImages;
-        } catch (error) {
-          console.error(`开发服务器停止：${error.message}`);
-          child?.kill('SIGTERM');
-        }
-      }, 150);
-    };
-    try {
-      for (const [directory, prefix, recursive] of [
-        [root, '', false], [path.join(root, 'docs'), 'docs/', true],
-        [path.join(root, 'assets'), 'assets/', true], [path.join(ownSite, 'src'), 'website/src/', true],
-        [path.join(ownSite, 'public'), 'website/public/', true],
-        [path.join(ownSite, 'scripts'), 'website/scripts/', false],
-      ]) {
-        const watcher = watch(directory, { recursive }, (_event, name) => onChange(prefix + String(name || '').replaceAll('\\', '/')));
-        watcher.on('error', (error) => { console.error(`开发监听失败：${error.message}`); child?.kill('SIGTERM'); });
-        watchers.push(watcher);
-      }
-    } catch (error) {
-      for (const watcher of watchers) watcher.close();
-      throw error;
-    }
-  }
+  const pendingUpdates = new Set();
+  let interrupted;
+  const onSignal = (signal) => {
+    interrupted ||= signal;
+    child?.kill(signal);
+  };
+  const onInterrupt = () => onSignal('SIGINT');
+  const onTerminate = () => onSignal('SIGTERM');
+  process.on('SIGINT', onInterrupt);
+  process.on('SIGTERM', onTerminate);
   try {
+    let images = await prepareSite(ownSite, stage);
+    if (interrupted) throw new Error(`收到 ${interrupted}，停止构建`);
+    console.log(`已生成 ${documents.length} 篇文档和 ${images.length} 张配图`);
+    const astro = path.join(ownSite, 'node_modules/astro/bin/astro.mjs');
+    const output = command === 'build' ? await buildOutput(ownSite, process.env.MAW_SITE_OUTPUT_DIR) : '';
+    if (command === 'build') await clearBuildOutput(ownSite, output);
+    const env = { ...process.env, MAW_SITE_OUTPUT_DIR: output || path.join(stage, 'dist') };
+    if (command === 'dev') {
+      const changed = new Set();
+      const root = path.dirname(ownSite);
+      const onChange = (file) => {
+        if (!(file === 'README.md' || file.startsWith('docs/') || file.startsWith('assets/') ||
+            file.startsWith('website/src/') || file.startsWith('website/public/') ||
+            file === 'website/scripts/sync-maw-docs.mjs' || file === 'website/scripts/legacy-doc-assets.json' ||
+            file === 'website/scripts/authored-doc-assets.json')) return;
+        if (file.split('/').some(isEnvFile)) return;
+        changed.add(file);
+        clearTimeout(timer);
+        timer = setTimeout(() => { const update = (async () => {
+          try {
+            const batch = [...changed];
+            changed.clear();
+            if (batch.some((file) => file === 'website/scripts/sync-maw-docs.mjs' ||
+                file === 'website/scripts/legacy-doc-assets.json' || file === 'website/scripts/authored-doc-assets.json' ||
+                file.startsWith('website/public/docs-assets/'))) throw new Error('文档或配图清单已改变，请重新启动开发服务器');
+            for (const file of batch.filter((value) => value.startsWith('website/src/') || value.startsWith('website/public/'))) {
+              const relative = file.slice('website/'.length);
+              const source = path.join(ownSite, relative);
+              const target = path.join(stage, relative);
+              const entry = await lstat(source);
+              if (entry.isDirectory()) continue;
+              if (entry.isSymbolicLink()) throw new Error(`开发输入包含符号链接，请重新启动：${relative}`);
+              const existing = await lstat(target).catch((error) => {
+                if (error.code === 'ENOENT') return null;
+                throw error;
+              });
+              if (existing?.isSymbolicLink()) throw new Error(`隔离输入包含符号链接：${relative}`);
+              if (relative.startsWith('src/pages/docs/') && relative.endsWith('.md') &&
+                  generatedMarker.test(await readFile(source, 'utf8'))) continue;
+              if (relative.startsWith('src/pages/docs/')) {
+                const entry = relative.slice('src/pages/docs/'.length).split('/')[0];
+                if (reservedNames.has(entry)) continue;
+                if (reservedSlugs.has(entry.replace(/\.(?:astro|md|mdx|html)$/i, ''))) throw new Error(`手写页面与文档路由冲突：${relative}`);
+              }
+              await mkdir(path.dirname(target), { recursive: true });
+              await cp(source, target);
+            }
+            const nextImages = generate(ownSite, stage, true);
+            if (images.length !== nextImages.length || images.some((image) => !nextImages.includes(image))) throw new Error('文档配图清单已改变，请重新启动开发服务器');
+            generate(ownSite, stage);
+            images = nextImages;
+          } catch (error) {
+            console.error(`开发服务器停止：${error.message}`);
+            child?.kill('SIGTERM');
+          }
+        })(); pendingUpdates.add(update); update.finally(() => pendingUpdates.delete(update)); }, 150);
+      };
+      try {
+        for (const [directory, prefix, recursive] of [
+          [root, '', false], [path.join(root, 'docs'), 'docs/', true],
+          [path.join(root, 'assets'), 'assets/', true], [path.join(ownSite, 'src'), 'website/src/', true],
+          [path.join(ownSite, 'public'), 'website/public/', true],
+          [path.join(ownSite, 'scripts'), 'website/scripts/', false],
+        ]) {
+          const watcher = watch(directory, { recursive }, (_event, name) => onChange(prefix + String(name || '').replaceAll('\\', '/')));
+          watcher.on('error', (error) => { console.error(`开发监听失败：${error.message}`); child?.kill('SIGTERM'); });
+          watchers.push(watcher);
+        }
+      } catch (error) {
+        for (const watcher of watchers) watcher.close();
+        throw error;
+      }
+    }
+    if (interrupted) throw new Error(`收到 ${interrupted}，停止构建`);
     child = spawn(process.execPath, [astro, command, '--root', stage, ...(command === 'dev' ? ['--ignore-lock', '--host', '127.0.0.1'] : []), ...args], { cwd: ownSite, env, stdio: 'inherit' });
-    for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
     const code = await new Promise((resolve, reject) => {
       child.on('error', reject);
       child.on('exit', (status, signal) => resolve(signal ? 1 : status));
     });
-    if (code !== 0) { process.exitCode = code || 1; return; }
+    if (interrupted || code !== 0) { process.exitCode = code || 1; return; }
     if (command === 'build') {
-      await publishBuild(path.join(stage, 'dist'), output);
       console.log(`站点构建完成：${output}`);
     }
   } finally {
     clearTimeout(timer);
     for (const watcher of watchers) watcher.close();
+    await Promise.all(pendingUpdates);
+    try {
+      const current = await lstat(parent);
+      if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) {
+        throw new Error('临时目录身份已改变，拒绝清理');
+      }
+      await rm(parent, { recursive: true });
+    } catch (error) {
+      console.error(`临时目录清理失败：${error.message}`);
+      process.exitCode = 1;
+    } finally {
+      process.off('SIGINT', onInterrupt);
+      process.off('SIGTERM', onTerminate);
+    }
   }
 }
 
