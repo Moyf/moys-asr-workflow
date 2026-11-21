@@ -53,11 +53,18 @@ def python_fixture(*, full=False):
 
 
 class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
-    def test_browser_failure_evidence_moves_to_auxiliary_not_blocking(self):
+    def test_browser_work_stays_auxiliary_except_scoped_recovery_admission(self):
         workflow = (ROOT / ".github/workflows/editor-checks.yml").read_text(encoding="utf-8")
         self.assertNotIn('pnpm run test:unit', workflow)
-        self.assertNotIn('playwright install', workflow)
         self.assertNotIn('continue-on-error', workflow)
+        # Browser work in the blocking workflow is admitted only behind the
+        # save/recovery path predicate; there is exactly one guarded install.
+        self.assertEqual(workflow.count('pnpm exec playwright install --with-deps chromium'), 1)
+        chromium = workflow.split('- name: Install Chromium for scoped recovery journeys', 1)[1].split('- name:', 1)[0]
+        self.assertIn("if: matrix.check == 'editor' && steps.recovery.outputs.needed == 'true'", chromium)
+        self.assertIn('playwright install --with-deps chromium', chromium)
+        self.assertEqual(workflow.count("steps.recovery.outputs.needed == 'true'"), 2)
+        self.assertIn('MAW_E2E_PYTHON', workflow)
         auxiliary = (ROOT / '.github/workflows/test-matrix.yml').read_text(encoding='utf-8')
         step = auxiliary.split('- name: List, execute and validate selected Chromium shard', 1)[1].split('- name:', 1)[0]
         self.assertNotIn('continue-on-error', step)

@@ -26,6 +26,19 @@ DOMAIN_PATHS = {
 }
 SHA = re.compile(r"[0-9a-f]{40}")
 
+# Scoped browser admission: real autosave/recovery journeys block only when
+# the storage-save implementation or the journey spec itself changes. This is
+# deliberately narrower than DOMAIN_PATHS; unrelated editor leaves never pay
+# the browser cost, and untrusted/unknown diffs stay browser-free.
+RECOVERY_E2E_SOURCES = frozenset({
+    'web/editor/io/editor-project-save.js',
+    'tests/e2e/editor-save-recovery.spec.mjs',
+})
+
+
+def recovery_e2e_for(paths: list[str]) -> bool:
+    return any(path in RECOVERY_E2E_SOURCES for path in paths)
+
 
 def valid_paths(paths: list[str]) -> bool:
     return bool(paths) and all(isinstance(p, str) and p and not p.startswith("/")

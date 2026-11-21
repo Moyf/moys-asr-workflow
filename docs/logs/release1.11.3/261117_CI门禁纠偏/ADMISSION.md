@@ -30,6 +30,12 @@ Python静态AST集合必须与实际运行报告一致，动态load_tests/继承
 
 每个回执绑定报告文件、SHA256与集合/结果摘要；下载后gate重新读取实际报告和消费者命令记录，再核对来源与集合。丢文件、改字节、改计数/集合、假成功命令及receipt-only均必须失败，而不只在产出阶段验证。
 
+## Scoped 浏览器准入（保存恢复旅程）
+
+首个条件性浏览器阻塞准入：`web/editor/io/editor-project-save.js` 或 `tests/e2e/editor-save-recovery.spec.mjs` 变更时，`Blocking / editor` 在同一任务内安装 uv 服务端依赖与 Chromium，真实运行两条自动保存/恢复旅程（重启恢复、失败后手动下载），以 listing+执行 1/1 分片对复用 `browser_results.validate` 做 fail-closed 校验；运输后 gate 重读双报告、复核 SHA256 与集合。其余改动（含不可信差异与未知代码）不运行浏览器，不因本准入扩大稳定全集。
+
+稳定性依据：#392 引入至本准入落地前，该 spec 在全部已有全量矩阵轮次（含两次手动派发巡检 44116919137、44233349069）双平台零失败；同批其余浏览器用例曾出现的失败均与本 spec 无关。准入后波动即按观察/退出规则处理。
+
 ## 分类边界
 
 PR使用可信整个差异；push验证before/after、实际HEAD、祖先关系和历史。未知/坏/空/缺历史差异扩大至准入全集并告警，不变为docs，也不自动启动完整Windows预览。
