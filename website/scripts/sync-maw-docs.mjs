@@ -184,7 +184,7 @@ function rewriteTarget(target, currentSource, forceImage = false) {
   return externalUrl(sourcePath, suffix);
 }
 
-function protectedOffsets(markdown, onLink = () => {}) {
+function protectedOffsets(markdown, onLink = () => {}, onImage = () => {}) {
   const offsets = new Set();
   // Map a container's de-indented lines back to their original characters.
   function childMap(raw, mapping, content) {
@@ -216,7 +216,7 @@ function protectedOffsets(markdown, onLink = () => {}) {
     }
     return result;
   }
-  function visit(text, mapping, tokens, links = true) {
+  function visit(text, mapping, tokens, links = true, images = true) {
     let cursor = 0;
     for (const token of tokens) {
       const start = text.indexOf(token.raw, cursor);
@@ -250,6 +250,10 @@ function protectedOffsets(markdown, onLink = () => {}) {
             i = start + 1;
           }
         }
+      } else if (token.type === 'image') {
+        if (images) onImage(token, map);
+        // Comments in alt text still need protection before HTML rewriting.
+        if (token.tokens) visit(token.raw, map, token.tokens, links, false);
       } else if (token.type === 'link') {
         if (links) onLink(token, map);
         // Re-lex the raw label: Marked's child tokens can contain unescaped
@@ -257,10 +261,10 @@ function protectedOffsets(markdown, onLink = () => {}) {
         const end = linkLabelEnd(token.raw);
         if (end !== null) {
           const label = token.raw.slice(1, end - 1);
-          visit(label, map.slice(1, end - 1), marked.Lexer.lexInline(label, { gfm: false }), false);
+          visit(label, map.slice(1, end - 1), marked.Lexer.lexInline(label, { gfm: false }), false, images);
         }
       } else if (token.type === 'blockquote') {
-        visit(token.text, childMap(token.raw, map, token.text), token.tokens);
+        visit(token.text, childMap(token.raw, map, token.text), token.tokens, links, images);
       } else if (token.type === 'list') {
         let itemCursor = 0;
         for (const item of token.items) {
@@ -268,12 +272,12 @@ function protectedOffsets(markdown, onLink = () => {}) {
           if (itemStart < 0) throw new Error('无法定位 Markdown 列表');
           itemCursor = itemStart + item.raw.length;
           const itemMap = map.slice(itemStart, itemCursor);
-          visit(item.text, childMap(item.raw, itemMap, item.text), item.tokens);
+          visit(item.text, childMap(item.raw, itemMap, item.text), item.tokens, links, images);
         }
       } else if (token.tokens) {
         // Inline tokens use raw slices, so nested comments can be mapped back
         // without mistaking comment-like text in a code span for a comment.
-        visit(token.raw, map, token.tokens, links);
+        visit(token.raw, map, token.tokens, links, images);
       }
     }
   }
@@ -347,6 +351,23 @@ function rewriteMarkdownLinks(markdown, currentSource) {
 }
 
 function rewriteLinks(markdown, currentSource) {
+  // A shortcut such as ![example] is an image only if its reference resolves.
+  // Inspect the original token tree before replacing protected source spans.
+  marked.walkTokens(marked.lexer(markdown, { gfm: false }), (token) => {
+    if (token.type !== 'image') return;
+    if (!inlineDestination(token.raw.slice(1))) {
+      throw new Error(`暂不支持引用式图片，请改用内联图片：${currentSource}`);
+    }
+    const titleTokens = marked.Lexer.lexInline(token.title || '', { gfm: false });
+    marked.walkTokens(token.tokens || [], (child) => {
+      if (child.type === 'html' && !child.raw.startsWith('<!--')) {
+        throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
+      }
+    });
+    marked.walkTokens(titleTokens, (child) => {
+      if (child.type === 'html') throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
+    });
+  });
   markdown = rewriteMarkdownLinks(markdown, currentSource);
   const code = [];
   const protect = (value) => { const key = `\u0000MAW_CODE_${code.length}\u0000`; code.push(value); return key; };
@@ -380,15 +401,23 @@ function rewriteLinks(markdown, currentSource) {
   }
   if (fenced) text += protect(fenced);
   markdown = text;
+  // HTML attribute rewriting must not inspect the contents of a Markdown
+  // image's alt text or title, including escaped tag-like text.
+  const markdownImages = [];
+  const imageSpans = [];
+  protectedOffsets(markdown, () => {}, (token, map) => {
+    if (map.some((index, i) => index !== map[0] + i)) throw new Error('无法定位 Markdown 图片');
+    const key = `\u0000MAW_MARKDOWN_IMAGE_${markdownImages.length}\u0000`;
+    markdownImages.push(token.raw);
+    imageSpans.push({ start: map[0], end: map.at(-1) + 1, key });
+  });
+  for (const span of imageSpans.reverse()) markdown = markdown.slice(0, span.start) + span.key + markdown.slice(span.end);
   for (const [tag] of markdown.matchAll(/<source\b[^>]*>/gi)) {
     if (/\sdata-srcset\s*=/i.test(tag)) throw new Error(`暂不支持图片 source srcset：${currentSource}`);
     const attr = tag.match(/\ssrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
     if (attr && !/^https?:\/\/[^\s,]+$/i.test(attr[1] ?? attr[2] ?? attr[3])) {
       throw new Error(`暂不支持图片 source srcset：${currentSource}`);
     }
-  }
-  if (/!\[[^\]\n]*\](?!\()/.test(markdown)) {
-    throw new Error(`暂不支持引用式图片，请改用内联图片：${currentSource}`);
   }
   const htmlImages = [];
   // Protect HTML images from the general link rewrite and validate every src.
@@ -407,21 +436,30 @@ function rewriteLinks(markdown, currentSource) {
   result = result.replace(/((?:src|href)=)(["'])([^"'\s]+)\2/gi, (_, attribute, quote, target) => {
     return `${attribute}${quote}${rewriteTarget(target, currentSource)}${quote}`;
   });
+  result = result.replace(/\u0000MAW_MARKDOWN_IMAGE_(\d+)\u0000/g, (_, index) => markdownImages[Number(index)]);
 
   // Astro treats relative Markdown images as source imports. Public assets need
   // HTML image tags so these URLs resolve from the deployed page instead.
-  result = result.replace(/!\[([^\]]*)\]\(([^\s)]+)(?:\s+(["'])(.*?)\3)?\)/g, (original, alt, target, _quote, title) => {
+  const imageEdits = [];
+  protectedOffsets(result, () => {}, (token, map) => {
+    const original = token.raw;
+    const match = original.match(/^!\[([^\]]*)\]\(([^\s)]+)(?:\s+(["'])(.*?)\3)?\)$/);
+    if (!match || match[2].startsWith('<')) {
+      if (/^(?:[a-z]+:|\/\/)/i.test(token.href)) return;
+      throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
+    }
+    const [, alt, target, , title] = match;
     if (/^(?:\/(?!\/)|#)/.test(target)) throw new Error(`暂不支持站点根路径图片：${currentSource}`);
-    if (/^(?:[a-z]+:|\/\/)/i.test(target)) return original;
+    if (/^(?:[a-z]+:|\/\/)/i.test(target)) return;
     const url = rewriteTarget(target, currentSource, true);
     const escape = (value) => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    const titleAttribute = title === undefined ? '' : ` title="${escape(title)}"`;
-    return `<img src="${escape(url)}" alt="${escape(alt)}"${titleAttribute} loading="lazy" decoding="async" />`;
+    const restore = (value) => value.replace(/\u0000MAW_CODE_(\d+)\u0000/g, (_, index) => code[Number(index)]);
+    const titleAttribute = title === undefined ? '' : ` title="${escape(restore(title))}"`;
+    if (map.some((index, i) => index !== map[0] + i)) throw new Error('无法定位 Markdown 图片');
+    imageEdits.push({ start: map[0], end: map.at(-1) + 1,
+      value: `<img src="${escape(url)}" alt="${escape(restore(alt))}"${titleAttribute} loading="lazy" decoding="async" />` });
   });
-
-  if (/!\[[^\]\n]*\]\((?![a-z]+:|\/|#)/i.test(result)) {
-    throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
-  }
+  for (const edit of imageEdits.reverse()) result = result.slice(0, edit.start) + edit.value + result.slice(edit.end);
 
   return result.replace(/\u0000MAW_IMAGE_(\d+)\u0000/g, (_, index) => htmlImages[Number(index)])
     .replace(/\u0000MAW_CODE_(\d+)\u0000/g, (_, index) => code[Number(index)]);

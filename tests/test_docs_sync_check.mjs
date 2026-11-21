@@ -109,7 +109,7 @@ test('sync and check fail offline when a source or image is missing', async () =
 });
 
 test('missing images with titles or single-quoted HTML cannot fall back to the network', async () => {
-  for (const syntax of ['![alt](../assets/missing.webp "caption")', "<img src='../assets/missing.webp'>", '<img src = "../assets/missing">', '<img src=../assets/missing>', '<img srcset="../assets/missing.webp 1x">', '![missing]', '<img data-src="https://example.org/a.png" src="../assets/missing.png">', '<img src="/missing.png">', '![missing](/missing.png)', '<picture><source srcset="../assets/missing.webp 1x"><img src="https://example.org/a.png"></picture>']) {
+  for (const syntax of ['![alt](../assets/missing.webp "caption")', "<img src='../assets/missing.webp'>", '<img src = "../assets/missing">', '<img src=../assets/missing>', '<img srcset="../assets/missing.webp 1x">', '![missing]\n\n[missing]: ../assets/missing.webp', '<img data-src="https://example.org/a.png" src="../assets/missing.png">', '<img src="/missing.png">', '![missing](/missing.png)', '<picture><source srcset="../assets/missing.webp 1x"><img src="https://example.org/a.png"></picture>']) {
     const target = await fixture();
     const source = path.join(target, 'docs/user/FAQ.md');
     await writeFile(source, (await readFile(source, 'utf8')) + `\n${syntax}\n`);
@@ -326,6 +326,37 @@ test('document images cannot read environment files or follow symlinks', async (
 test('image syntax examples in code are not treated as document images', async () => {
   assert.deepEqual(collectImageSources('`![example][id]`\n```md\n![example][id]\n```\n', 'docs/user/FAQ.md'), []);
   assert.deepEqual(collectImageSources('![remote](//example.org/a.png) <img src="//example.org/a.png">', 'docs/user/FAQ.md'), []);
+});
+
+test('only resolved Markdown reference images are rejected', async () => {
+  const source = 'docs/user/FAQ.md';
+  const ordinary = [
+    '提示中的 ![示例] 是普通文本。',
+    '![missing][unknown] and ![missing][]',
+    '![示例](普通文字 and ![示例](普通文字 无效)',
+    '\\![example](../../outside.png)',
+    '<span title="![example](../../outside.png)">ordinary attribute</span>',
+    '\\![defined] and `![defined]`',
+    '<!-- ![defined] -->',
+    '    ![defined]',
+  ].join('\n\n') + '\n\n[defined]: ../assets/fixture.webp\n';
+  assert.deepEqual(collectImageSources(ordinary, source), []);
+  assert.deepEqual(collectImageSources('![<!-- <img src="../../outside.png"> -->](../assets/fixture.webp)', source), ['docs/assets/fixture.webp']);
+  assert.deepEqual(collectImageSources('![\\<img src="../assets/fake.png">](../assets/fixture.webp)', source), ['docs/assets/fixture.webp']);
+  for (const image of ['![complex](<../assets/fixture.webp>)', '![a [nested]](../assets/fixture.webp)', '![alt](../assets/a(b).png)', '![<img src="../assets/fake.png">](../assets/fixture.webp)', '![alt](../assets/fixture.webp \'<img src="../assets/fake.png">\')', '![alt](../assets/fixture.webp \'<!-- <img src="../assets/fake.png"> -->\')']) {
+    assert.throws(() => collectImageSources(image, source), /暂不支持此图片语法/, image);
+  }
+  for (const image of ['![alt][defined]', '![defined][]', '![defined]', '> ![alt][defined]', '- ![alt][defined]', '[![alt][defined]](WORKFLOW.md)']) {
+    assert.throws(() => collectImageSources(`${image}\n\n[defined]: ../assets/fixture.webp\n`, source), /暂不支持引用式图片/, image);
+  }
+  const target = await fixture();
+  const file = path.join(target, source);
+  await writeFile(file, `${await readFile(file, 'utf8')}\n\n${ordinary}\n![<!-- <img src="../../outside.png"> -->](../assets/fixture.webp)\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  assert.ok(page.includes('提示中的 ![示例] 是普通文本。'));
+  assert.ok(page.includes('alt="&lt;!-- &lt;img src=&quot;../../outside.png&quot;&gt; --&gt;"'));
 });
 
 test('CommonMark indented code is protected without hiding paragraph or list images', () => {
