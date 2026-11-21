@@ -269,7 +269,7 @@ test('keeps the quick-import prompt when enabling an empty secondary track', asy
   const chooser = await chooserPromise;
   expect(prompt).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  await openSettingsPage(page, 'multi-subtitle');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
@@ -2494,27 +2494,18 @@ async function importColoredPair(page) {
   // 红色组横跨将被合并的副轨段（head@0 + 成员 1/2），绿色组整体位于合并点之后。
   await page.evaluate(() => {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const segments = structuredClone(track.segments);
-    segments.forEach((segment, index) => {
-      if (index === 0) segment.color = { name: 'red', value: '#e74c3c', start: segment.start, end: segment.end };
-      if (index === 1 || index === 2) segment.color_ref = { name: 'red', headIdx: 0 };
-      if (index === 3) segment.color = { name: 'green', value: '#2ecc71', start: segment.start, end: segment.end };
-      if (index === 4) segment.color_ref = { name: 'green', headIdx: 3 };
-    });
-    const imported = AsrEditorUtils.importProject({ segments: [], multi_subtitle: {
-      enabled: true, tracks: [{ id: track.id, segments }], bindings: [],
-    } }).project;
-    MaweBoot.DATA.subtitle_groups = imported.subtitle_groups;
-    const colored = AsrEditorUtils.getExtensionTrack(imported).segments;
-    track.segments.forEach((segment, index) => { segment.color_group_id = colored[index].color_group_id; });
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments, [0, 1, 2], 'color',
+      { name: 'red', value: '#e74c3c' });
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments, [3, 4], 'color',
+      { name: 'green', value: '#2ecc71' });
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
   });
 }
 
 function inspectExtensionColorRefs() {
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const invalid = [];
   const segments = AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, track.id);
+  const invalid = [];
   segments.forEach((segment, index) => {
     const ref = segment.color_ref;
     if (!ref) return;
@@ -2526,7 +2517,7 @@ function inspectExtensionColorRefs() {
   });
   return {
     invalid,
-    count: track.segments.length,
+    count: segments.length,
     refs: segments.map((segment) => segment.color_ref?.headIdx ?? null),
     colors: segments.map((segment) => segment.color?.name ?? null),
   };
@@ -4590,7 +4581,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   // 底部对齐时主文本块在锚点上方：副字幕锚点低于主字幕锚点即为主下方。
   expect(result.extensionAnchor.y).toBeGreaterThan(result.mainAnchor.y);
   expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
-  // 叠加字幕固定锚定在主字幕上方。
+  // 叠加字幕固定锚定在主字幕上方（180 + round(1.2 * 86) = 283）。
   expect(result.overlayAnchor.y).toBeLessThan(result.mainAnchor.y - result.mainHeight);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
   // 主样式 marginV 180 + 1.2 × 字号 86 = 283 的 Overlay 样式。
@@ -4728,7 +4719,7 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
   await page.locator('#ass-color-style').selectOption('speaker');
   await expect(page.locator('#ass-color-speaker-hint')).toBeVisible();
-  await expect(page.locator('#ass-color-speaker-hint')).toContainText('先分配说话人');
+  await expect(page.locator('#ass-color-speaker-hint')).toContainText('先分配说话人，并勾选');
   await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出带上说话人');
   await page.locator('#ass-color-speaker-export-link').click();
   await expect(page.locator('#editor-settings-page-project-color')).toBeVisible();

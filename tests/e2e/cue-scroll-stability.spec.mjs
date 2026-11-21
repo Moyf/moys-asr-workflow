@@ -54,7 +54,9 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   const merged = await stable(page, original, index, 'extension merge', info, kind);
   // The merged cue keeps the first cue's ID and extends to the second cue.
   expect(merged.id).toBe(original.id);
+  expect(merged.start).toBe(original.start);
   expect(merged.end).toBe(following.end);
+  expect(merged.text).toContain(following.text);
   expect(await followingCueExists()).toBe(false);
   await page.keyboard.press(undoKey);
   const restored = await stable(page, merged, index, 'extension undo merge', info, kind);

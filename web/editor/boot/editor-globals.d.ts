@@ -227,7 +227,6 @@ interface Window {
   MaweOverlaySplitMerge: any;
   MaweAssStorageWiring: any;
   MaweAssManagerWiring: any;
-  MaweKeyboardGuards: any;
   MaweStickerPreviewWiring: any;
   MaweInitialConfigWiring: any;
   MaweAssPreview: any;

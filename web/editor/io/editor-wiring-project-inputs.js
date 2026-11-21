@@ -1,4 +1,4 @@
-
+export function initMaweProjectInputsWiring() {
 // === 打开工程 ===
 
 
@@ -118,3 +118,4 @@ MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e)
   }
   await MaweMultiImport.openProjectFile(file);
 });
+}

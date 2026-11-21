@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload,
   makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir;
@@ -154,6 +154,80 @@ test('failed cross-type media import restores observation of the original video'
   });
   expect(result).toEqual({ imported: false, restored: true, attached: true,
     observed: true, detachedTargets: 0 });
+});
+
+test('paused viewport resize and video replacement retain one ASS observer and one queued refresh', async ({ page }) => {
+  await page.addInitScript(() => {
+    const BrowserResizeObserver = window.ResizeObserver;
+    window.__videoObservation = new Map();
+    window.ResizeObserver = class extends BrowserResizeObserver {
+      observe(target, options) {
+        if (target instanceof HTMLVideoElement) {
+          const targets = window.__videoObservation.get(this) || new Set();
+          targets.add(target);
+          window.__videoObservation.set(this, targets);
+        }
+        super.observe(target, options);
+      }
+      unobserve(target) {
+        window.__videoObservation.get(this)?.delete(target);
+        super.unobserve(target);
+      }
+    };
+  });
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.MaweCoreState?.player?.videoWidth === 640);
+  const assToggle = page.locator('#ass-mode-quick-toggle');
+  await assToggle.click();
+  await expect(assToggle).toHaveAttribute('aria-pressed', 'true');
+  const overlay = page.locator('#overlay');
+  const originalWidth = await overlay.evaluate(el => el.getBoundingClientRect().width);
+  await page.setViewportSize({ width: 850, height: 680 });
+  await expect.poll(() => overlay.evaluate(el => el.getBoundingClientRect().width)).not.toBe(originalWidth);
+  await expect.poll(() => page.evaluate(() => {
+    const stage = MaweDom.playerStage.getBoundingClientRect();
+    return Math.abs(MaweDom.overlayEl.getBoundingClientRect().width - Math.min(stage.width, stage.height * 16 / 9));
+  })).toBeLessThan(1);
+
+  const queued = await page.evaluate(() => {
+    const frame = window.requestAnimationFrame;
+    const timer = window.setTimeout;
+    let frames = 0;
+    let timers = 0;
+    window.requestAnimationFrame = callback => { frames++; return frame(callback); };
+    window.setTimeout = (callback, delay) => { if (delay === 100) timers++; return timer(callback, delay); };
+    try {
+      for (let i = 0; i < 10; i++) MaweAssPreviewRefresh.scheduleAssSubtitlePreviewRefresh();
+      return { frames, timers };
+    } finally {
+      window.requestAnimationFrame = frame;
+      window.setTimeout = timer;
+    }
+  });
+  expect(queued.frames).toBeLessThanOrEqual(1);
+  expect(queued.timers).toBeLessThanOrEqual(1);
+
+  await page.evaluate(() => {
+    window.__initialPlayer = MaweCoreState.player;
+    window.__assObserver = [...window.__videoObservation].find(([, targets]) => targets.has(window.__initialPlayer))[0];
+  });
+  const audio = join(tempDir, 'interim.wav');
+  generateWav(audio, 4);
+  const mediaInput = page.locator('#load-media-file');
+  await mediaInput.setInputFiles(audio);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.tagName)).toBe('AUDIO');
+  await mediaInput.setInputFiles(join(tempDir, 'portrait.mp4'));
+  await expect.poll(() => page.evaluate(() => ({
+    width: MaweCoreState.player.videoWidth,
+    paused: MaweCoreState.player.paused,
+    attached: MaweCoreState.player !== window.__initialPlayer && MaweCoreState.player.isConnected,
+    targets: [...window.__videoObservation.get(window.__assObserver)].map(target => target === MaweCoreState.player),
+    observers: [...window.__videoObservation.values()].filter(targets => targets.has(MaweCoreState.player)).length,
+  }))).toEqual({ width: 360, paused: true, attached: true, targets: [true], observers: 1 });
+  await assToggle.click();
+  await expect.poll(() => page.evaluate(() => MaweSettings.EDITOR_SETTINGS.assMode)).toBe(false);
+  await expect(page.locator('.ass-preview-canvas')).toBeHidden();
 });
 
 test('real resize observers never replace the ASS Canvas box with CSS subtitle geometry', async ({ page }) => {

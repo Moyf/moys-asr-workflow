@@ -1,16 +1,4 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function initMaweMediaControlsWiring() {
 window.MaweAudioProcessing?.init();
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
 MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
@@ -169,3 +157,4 @@ document.addEventListener('keydown', (e) => {
 
 // 鼠标点击按钮后不保留按钮焦点，否则下一次空格会触发按钮自身的 click。
 // 键盘触发的 click detail 为 0，保留焦点以维持原生键盘可访问性。
+}

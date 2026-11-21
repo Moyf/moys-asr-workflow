@@ -642,6 +642,12 @@
       "exportName": "initAppearanceSettingsWiring"
     },
     {
+      "file": "editor/markers/editor-wiring-markers.js",
+      "kind": "init",
+      "name": "markers-wiring-init",
+      "exportName": "initMaweMarkersWiring"
+    },
+    {
       "file": "editor/cues/editor-wiring-cue-panel.js",
       "kind": "init",
       "name": "cue-panel-wiring-init",
@@ -658,6 +664,12 @@
       "kind": "init",
       "name": "ass-preview-refresh-init",
       "exportName": "initMaweAssPreviewRefresh"
+    },
+    {
+      "file": "editor/media/editor-wiring-media-controls.js",
+      "kind": "init",
+      "name": "media-controls-wiring-init",
+      "exportName": "initMaweMediaControlsWiring"
     },
     {
       "file": "editor/cues/editor-wiring-edit-shortcuts.js",
@@ -702,6 +714,42 @@
       "exportName": "initMaweExportContextWiring"
     },
     {
+      "file": "editor/media/editor-wiring-sticker-preview.js",
+      "kind": "init",
+      "name": "sticker-preview-wiring-init",
+      "exportName": "initMaweStickerPreviewWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-export-actions.js",
+      "kind": "init",
+      "name": "export-actions-wiring-init",
+      "exportName": "initMaweExportActionsWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-burn-video.js",
+      "kind": "init",
+      "name": "burn-video-wiring-init",
+      "exportName": "initMaweBurnVideoWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-project-inputs.js",
+      "kind": "init",
+      "name": "project-inputs-wiring-init",
+      "exportName": "initMaweProjectInputsWiring"
+    },
+    {
+      "file": "editor/media/editor-wiring-media-inputs.js",
+      "kind": "init",
+      "name": "media-inputs-wiring-init",
+      "exportName": "initMaweMediaInputsWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-sticker-root.js",
+      "kind": "init",
+      "name": "sticker-root-wiring-init",
+      "exportName": "initMaweStickerRootWiring"
+    },
+    {
       "file": "editor/cues/editor-wiring-overlay-actions.js",
       "kind": "init",
       "name": "overlay-actions-wiring-init",
@@ -712,6 +760,24 @@
       "kind": "init",
       "name": "context-menus-wiring-init",
       "exportName": "initMaweContextMenusWiring"
+    },
+    {
+      "file": "editor/media/editor-wiring-waveform-hints.js",
+      "kind": "init",
+      "name": "waveform-hints-wiring-init",
+      "exportName": "initMaweWaveformHintsWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-server-events.js",
+      "kind": "init",
+      "name": "server-events-wiring-init",
+      "exportName": "initMaweServerEventsWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-file-drop.js",
+      "kind": "init",
+      "name": "file-drop-wiring-init",
+      "exportName": "initMaweFileDropWiring"
     }
   ],
   "externalBridges": []
