@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 // Use the repository's existing Markdown lexer to identify block structure;
 // indentation alone cannot distinguish a code block from a paragraph continuation.
 const { marked } = createRequire(import.meta.url)('../../tools/shared/vendor/marked-18.1.3/marked.umd.js');
+const { decodeHTMLAttribute } = createRequire(import.meta.url)('entities');
 
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = path.resolve(siteRoot, '..');
@@ -424,7 +425,7 @@ function rewriteLinks(markdown, currentSource) {
   let result = markdown.replace(/<img\b[^>]*>/gi, (tag) => {
     if (/\s(?:srcset|data-src|data-srcset)\s*=/i.test(tag)) throw new Error(`暂不支持图片 srcset 或 data-src：${currentSource}`);
     const rewritten = tag.replace(/(\s+src\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i, (_match, attribute, double, single, bare) => {
-      const target = double ?? single ?? bare;
+      const target = decodeHTMLAttribute(double ?? single ?? bare);
       if (/^(?:\/(?!\/)|#)/.test(target)) throw new Error(`暂不支持站点根路径图片：${currentSource}`);
       const url = rewriteTarget(target, currentSource, true).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
       return `${attribute}"${url}"`;

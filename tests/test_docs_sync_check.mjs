@@ -26,6 +26,9 @@ async function fixture({ missing = '' } = {}) {
   };
   await copy(script);
   await copy('tools/shared/vendor/marked-18.1.3/marked.umd.js');
+  const entitiesEntry = createRequire(path.join(root, 'website/package.json')).resolve('entities');
+  await mkdir(path.join(target, 'website/node_modules'), { recursive: true });
+  await symlink(path.dirname(path.dirname(entitiesEntry)), path.join(target, 'website/node_modules/entities'), 'junction');
   for (const registry of ['website/scripts/legacy-doc-assets.json', 'website/scripts/authored-doc-assets.json']) await copy(registry);
   for (const config of ['website/package.json', 'website/astro.config.mjs', 'website/tsconfig.json']) await copy(config);
   for (const source of sources) {
@@ -202,6 +205,27 @@ test('encoded local image paths resolve to the actual source image', async () =>
   const result = run(target);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(await readFile(path.join(target, 'website/public/docs-assets/docs/assets/my image.webp'), 'utf8'), 'IMAGE_BYTES');
+});
+
+test('HTML image attributes decode entities before rewriting and escape once', async () => {
+  const target = await fixture();
+  const source = path.join(target, 'docs/user/FAQ.md');
+  const examples = [
+    ['<img src="../assets/fixture.webp?x=1&amp;y=2">', '<img src="../../docs-assets/docs/assets/fixture.webp?x=1&amp;y=2">'],
+    ["<img src='../assets/fixture.webp?x=&#38;y=&copy;&quot;&apos;'>", '<img src="../../docs-assets/docs/assets/fixture.webp?x=&amp;y=©&quot;\'">'],
+    ['<img src="../assets/fixture.webp?x=&amp;amp;&unknown;">', '<img src="../../docs-assets/docs/assets/fixture.webp?x=&amp;amp;&amp;unknown;">'],
+    ['<img src="https://example.org/a.png?x=1&amp;y=2">', '<img src="https://example.org/a.png?x=1&amp;y=2">'],
+  ];
+  await writeFile(source, `# FAQ fixture\n\n${examples.map(([input]) => input).join('\n\n')}\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  for (const [, expected] of examples) assert.ok(page.includes(expected), expected);
+  assert.deepEqual(collectImageSources(examples.map(([input]) => input).join('\n'), 'docs/user/FAQ.md'), ['docs/assets/fixture.webp']);
+  assert.deepEqual(collectImageSources('<img src="../assets/fi&#x78;ture.webp">', 'docs/user/FAQ.md'), ['docs/assets/fixture.webp']);
+  for (const input of ['<img src="&#47;missing.png">', '<img src="&#46;&#46;/&#46;&#46;/outside.png">']) {
+    assert.throws(() => collectImageSources(input, 'docs/user/FAQ.md'), /暂不支持站点根路径图片|docs\/assets\//, input);
+  }
 });
 
 test('development entry rejects a custom host before starting a server', async () => {

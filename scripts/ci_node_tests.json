@@ -112,6 +112,7 @@
     "isolated site staging fails when a source document or image is missing",
     "isolated site staging rejects authored routes that collide with generated documents",
     "encoded local image paths resolve to the actual source image",
+    "HTML image attributes decode entities before rewriting and escape once",
     "development entry rejects a custom host before starting a server",
     "staging lifecycle cleans only its own directory on completion, failure and interruption",
     "consecutive builds replace stale default output",
