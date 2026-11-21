@@ -17,6 +17,27 @@ test('historical libraries migrate without discarding supplied settings', () => 
   }
 });
 
+for (const [variant, enabled] of [['default', false], ['karaoke', true]]) {
+  test(`actual 1.x ${variant} export preserves the entire library`, () => {
+    const file = new URL(`./fixtures/ass-styles/main-f345a896-${variant}.json`, import.meta.url);
+    const input = JSON.parse(readFileSync(file, 'utf8'));
+    const { library, warnings } = transfer.validate(input);
+    const assigned = library.assProfiles.find(profile => profile.id === library.assignments.assExportProfileId);
+    assert.equal(assigned.animations.karaoke.enabled, enabled);
+    assert.deepEqual(library, input.library);
+    assert.equal(warnings.some(warning => warning.includes('逐字换色设置')), enabled);
+    assert.deepEqual(transfer.validate({ ...input, library }).library, library);
+  });
+}
+
+test('a supported karaoke group does not allow unknown or invalid fields', () => {
+  const input = utils.defaultAssStyleLibrary();
+  input.assProfiles[0].animations.karaoke = { enabled: 'true' };
+  assert.throws(() => transfer.validate(input), /karaoke\.enabled/u);
+  input.assProfiles[0].animations.karaoke = { enabled: true, unknown: 'value' };
+  assert.throws(() => transfer.validate(input), /karaoke\.unknown/u);
+});
+
 test('missing dependencies and future versions are rejected', () => {
   const input = utils.defaultAssStyleLibrary();
   input.assProfiles[0].styleId = 'absent';

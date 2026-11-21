@@ -201,6 +201,7 @@ def _animation_defaults() -> dict[str, object]:
         # 全局自动应用，与 UI 参数编辑解耦（同 fad）。fromScale < 1 为
         # 「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
         "pop": {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1},
+        "karaoke": {"enabled": False},
         # These fields are intentionally part of v1 so newer clients can add
         # tags without changing the on-disk shape.  The first UI exposes fad.
         "fade": {
@@ -312,6 +313,8 @@ def _normalize_animation(raw: object) -> dict[str, object]:
         "inMs": _number(pop.get("inMs"), 120, 0, 60000),
         "accel": _number(pop.get("accel"), 1, 0.01, 100, integer=False),
     }
+    karaoke = source.get("karaoke") if isinstance(source.get("karaoke"), Mapping) else {}
+    defaults["karaoke"] = {"enabled": _bool(karaoke.get("enabled"), False)}
     fade_t1 = _number(fade.get("t1"), 0, 0, 60000)
     fade_t2 = max(fade_t1, _number(fade.get("t2"), 250, 0, 60000))
     fade_t3 = max(fade_t2, _number(fade.get("t3"), 750, 0, 60000))
