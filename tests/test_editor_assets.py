@@ -36,6 +36,13 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(json.loads(encoded), data)
         self.assertNotIn("<", encoded)
 
+    def test_generated_html_does_not_implicitly_clean_project_punctuation(self) -> None:
+        # Generated 1.x HTML embeds the same startup as Server mode. Do not
+        # regenerate the tracked release snapshot to verify this contract.
+        page = edit.build_blank_html()
+        self.assertNotIn("MaweTextCleanup.cleanPunctuation();", page)
+        self.assertIn("cleanPunctuation", page)  # explicit cleanup stays available
+
     def test_portable_about_gif_is_self_contained(self) -> None:
         page = edit.build_blank_html()
         match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)

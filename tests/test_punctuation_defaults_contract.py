@@ -86,10 +86,10 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
             self.assertEqual(loaded["steps"][0]["extraSplitPunctuation"], ["、"])
 
     def test_canonical_defaults_keep_expected_semantics(self) -> None:
-        # 断句清单 = 完整默认；保留 = ？！；剥尾 = 断句 − 保留（单字符）。
+        # 切句与删除解耦：完整断句清单保持，默认全部保留。
         self.assertEqual(EXPECTED_BREAK, "，。？！；,.;")
-        self.assertEqual(EXPECTED_KEEP, "？！")
-        self.assertEqual(EXPECTED_STRIP, "，。；,.;")
+        self.assertEqual(EXPECTED_KEEP, EXPECTED_BREAK)
+        self.assertEqual(EXPECTED_STRIP, "")
         # CLI 默认值的规范声明常量与派生值一致。
         self.assertEqual(DEFAULT_STRONG_PUNCT, EXPECTED_BREAK)
         self.assertEqual(DEFAULT_STRIP_TAIL_PUNCT, EXPECTED_STRIP)
