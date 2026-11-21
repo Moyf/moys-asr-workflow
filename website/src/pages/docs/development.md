@@ -64,7 +64,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 156 个条目，`web/editor-modules.json` 标出其中 122 个 ESM 模块与外部桥，其余 34 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 156 个条目，`web/editor-modules.json` 按相同顺序登记其中 133 个 ESM 模块，其余 23 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
 
 编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
@@ -85,7 +85,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 | `web/editor/ui/` | DOM、浮窗、帮助、菜单、工作区布局、提示与设置面板 |
 | `web/launcher/`、`web/sfx/` | 独立 Launcher 与原位静态音效 |
 
-领域模块主要发布已有命名空间；`editor-wiring-*.js` 保留原接线与剩余声明的全局作用域，不能视为可独立加载的 ES module。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块，不扩大 `boot/editor.js`。
+领域模块主要发布已有命名空间。已登记的 `editor-wiring-*.js` 由装配器在原位置调用 init，事件监听和会话状态在此时创建。其余接线仍共享 classic 作用域。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块。
 
 `shared/editor-utils.js` 与 `media/waveform.js` 只初始化领域工厂并重建原有 `AsrEditorUtils` / `AsrWaveform` 出口。跨领域依赖由装配门面显式传入，工厂内部不去查其他领域的命名空间。工厂的可变状态只属于该次实例，应用只装配一次；拆分符号与调色板的后续更新通过同一实例的函数共享。
 

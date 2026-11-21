@@ -1,10 +1,4 @@
-
-
-
-
-
-
-
+export function initMaweFileDropWiring() {
 // === Drag & Drop：拖入视频/音频/JSON/SRT/LRC 自动加载 ===
 
 
@@ -32,3 +26,4 @@ window.addEventListener('drop', (e) => {
   MaweDragDrop.dragOverlay.classList.remove('show');
   void MaweDragDrop.handleDroppedFiles(Array.from(e.dataTransfer.files));
 });
+}

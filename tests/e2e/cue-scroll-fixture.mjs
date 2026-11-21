@@ -5,6 +5,7 @@ import { createOutputTail } from './output-tail.mjs';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 
 export function syntheticScrollProject(count = 107, mode = 'main', paired = false) {
@@ -34,7 +35,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   const directory = mkdtempSync(join(evidenceRoot, 'fixture-'));
   const settings = join(directory, 'settings');
   mkdirSync(settings);
-  const project = syntheticScrollProject(count, mode, paired);
+  const project = createProjectTracks().importProject(syntheticScrollProject(count, mode, paired)).project;
   const projectPath = join(directory, 'synthetic.mosp');
   const mediaPath = join(directory, 'synthetic.wav');
   writeFileSync(projectPath, JSON.stringify(project));

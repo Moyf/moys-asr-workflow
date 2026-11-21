@@ -45,9 +45,9 @@ async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
-      { start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
-      { start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
-      { start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
+      { id: 'timing-first', start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
+      { id: 'timing-second', start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
+      { id: 'timing-third', start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
     );
     MaweCuePanel.renderAll();
   });
@@ -522,11 +522,14 @@ async function seedFrameOffsetRanges(page, { fps, mainFrames, target = 0, extens
   }, { fps, mainFrames, target, extensionFrames, follower });
 }
 
-function readOffsetProject(page) {
-  return page.evaluate(() => JSON.parse(JSON.stringify({ segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
-    multi: { tracks: AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary'),
-      bindings: MaweBoot.DATA.bindings, bilingual: MaweBoot.DATA.bilingual },
-    undo: MaweHistory.editorHistory.undoLength() })));
+function readOffsetProject(page, { includeDirtyFlags = false } = {}) {
+  return page.evaluate(includeDirtyFlags => {
+    const project = includeDirtyFlags ? MaweBoot.DATA : AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
+    return { segments: AsrEditorUtils.getMainTrack(project).segments,
+      multi: { tracks: AsrEditorUtils.getTracksByRole(project, 'secondary'),
+        bindings: project.bindings, bilingual: project.bilingual },
+      undo: MaweHistory.editorHistory.undoLength() };
+  }, includeDirtyFlags);
 }
 
 for (const fps of [30, 29.97]) {
@@ -581,10 +584,10 @@ for (const fps of [30, 29.97]) {
     ]) {
       await seedFrameOffsetRanges(page, { fps, mainFrames: [[30, 40], [60, 70]], extensionFrames });
       await page.locator('.cue[data-idx="0"]').click();
-      const before = await readOffsetProject(page);
+      const before = await readOffsetProject(page, { includeDirtyFlags: true });
       await openTimeOffsetForCue(page, 0, offset);
       await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('绑定的副字幕空间受阻');
-      expect(await readOffsetProject(page)).toEqual(before);
+      expect(await readOffsetProject(page, { includeDirtyFlags: true })).toEqual(before);
     }
   });
 }
@@ -989,11 +992,11 @@ test('selected cue group reflows fragments into the next waveform row while drag
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
-      { start: 21000, end: 25000, text: 'A', items: [] },
-      { start: 25000, end: 28000, text: 'B', items: [] },
-      { start: 28000, end: 29000, text: 'C', items: [] },
-      { start: 29000, end: 33000, text: 'D', items: [] },
-      { start: 33000, end: 35000, text: 'E', items: [] },
+      { id: 'timing-a', start: 21000, end: 25000, text: 'A', items: [] },
+      { id: 'timing-b', start: 25000, end: 28000, text: 'B', items: [] },
+      { id: 'timing-c', start: 28000, end: 29000, text: 'C', items: [] },
+      { id: 'timing-d', start: 29000, end: 33000, text: 'D', items: [] },
+      { id: 'timing-e', start: 33000, end: 35000, text: 'E', items: [] },
     );
     MaweCuePanel.renderAll();
     MaweSelection.selectOnly(2);
@@ -1320,11 +1323,8 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
   ]);
 
   // 新模式（中缝联动）下，按住中缝拖动区再按 D：共享边界联动移动。
-  const boundary = page.locator('.waveform-cue-boundary').first();
-  await expect(boundary).toBeVisible();
-  const boundaryBox = await boundary.boundingBox();
-  expect(boundaryBox).not.toBeNull();
-  await page.mouse.move(boundaryBox.x + boundaryBox.width / 2, boundaryBox.y + boundaryBox.height / 2);
+  const boundary = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  await boundary.hover();
   await page.mouse.down();
   await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.keyboard.press('d');
