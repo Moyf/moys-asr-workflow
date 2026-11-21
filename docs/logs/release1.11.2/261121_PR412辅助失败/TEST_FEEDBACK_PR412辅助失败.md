@@ -11,6 +11,8 @@
 | 5 | 同 spec：同名分组的素材与结束边界 | 已修复 | 用主轨及 v2 分组 API，保留两个素材 URL 与精确结束边界断言。 |
 | 6 | `editor-text-tools`：添加步骤时替换未编辑的初始步骤 | 已修复 | 可控延迟复现：预设响应在「查找」获焦后替换输入节点，随后输入丢失，导致仅有一行。刷新时保留已获焦的步骤控件；常规路径等预设就绪，另保留延迟回归。远端原失败没有独立时序证据。 |
 | 7 | `multi-subtitle-metadata`：同人物跨轨合并、撤销、保存 | 已修复 | 分开验证混合主轨拒绝且不改数据／历史、未绑定副轨仍拒绝混合身份、主轨同人时允许合并并统一副轨。保留字词时间、分组、撤销、写回、重开及交换验证；身份归字幕而非字词。 |
+| 8 | `subtitle-preview-geometry`：保存后读旧顶层 `segments` | 已修复 | 用 `getMainTrack(onDisk).segments` 取 v2 主轨，原保存、重开和时间断言不变；定向 Chromium 通过（`20261121T115521Z-b6b1d6d4`）。 |
+| 9 | `ass-export`：Linux runner 加载本机 `Arial` 报 `NetworkError` | 已修复 | 使用内嵌合成 WOFF，不依赖系统字体；验证两组字体加载和字宽，再执行原有度量与 `\fs` 动画断言。Windows Chromium 通过，Linux CI 待复验。 |
 
 ## 阶段汇总
 
@@ -23,3 +25,5 @@
 - 首轮合并验证包含三份受影响 spec 及清理预览，54/54 通过（`20261121T101140Z-0dbbf4cd`）；此轮在独立自审整改前执行。
 - 额外的 `subtitle-preview-geometry` 保存重开用例在干净 `2.0dev@e7c92910` 同样因旧 `onDisk.segments` 读取失败（`20261121T101519Z-70bd270e`），不归入这七项。
 - 独立自审整改后，`pnpm test issue234-review-regressions.spec.mjs editor-text-tools.spec.mjs multi-subtitle-metadata.spec.mjs ai-cleanup-scope-integration.spec.mjs` 全部 56 条通过（`20261121T101817Z-09196218`）；bundle 新鲜度与类型检查通过（`20261121T101817Z-6451d62f`、`20261121T101819Z-9dab2c4c`）。人工验收与远端 CI 尚未执行。
+- `ea6da117` 的 [远端 CI](https://github.com/Moyf/moys-asr-workflow/actions/runs/44897268325)：前七项均通过；辅助 Chromium 742 通过、2 失败，补记条目 8–9。此次跟进基于干净的 `test/2dev-playwright-discovery@ea6da117`。
+- 条目 8–9 仅修改两个测试 spec。Windows Chromium 执行 `pnpm test ass-export.spec.mjs subtitle-preview-geometry.spec.mjs`，28/28 通过（`20261121T115846Z-d3046850`）；独立自审无阻断项，Linux CI 待推送后验证。
