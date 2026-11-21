@@ -81,6 +81,9 @@ class MediaJob:
         self.abort_download = None
         self.disposed_event = threading.Event()
         self.no_output = False
+        self.native_burn = None
+        self.native_burn_output = None
+        self.native_burn_save_done: threading.Event | None = None
 
     def check_cancelled(self):
         if self.cancelled.is_set():
@@ -234,7 +237,7 @@ class MediaJobManager:
         if len(self.admissions) >= MAX_MEDIA_JOB_ADMISSIONS:
             raise MediaJobBusy("媒体任务取消记录已满，请稍后重试")
 
-    def cancel_admission(self, token):
+    def cancel_admission(self, token, *, authorize=None):
         """Cancel an admitted job or remember cancellation before admission."""
         self.validate_admission_token(token)
         with self.lock:
@@ -243,6 +246,10 @@ class MediaJobManager:
             if record is not None and record[1] is not None:
                 job = self.jobs.get(record[1])
                 if job is not None:
+                    if job.native_burn is not None and authorize is None:
+                        raise PermissionError("烧录任务取消请求无效")
+                    if authorize is not None:
+                        authorize(job)
                     return self.cancel(job.id)
             if record is None:
                 self._require_admission_capacity()
@@ -346,6 +353,8 @@ class MediaJobManager:
                 if not job.disposed:
                     self._dispose(job)
                 return job.snapshot()
+            if job.native_burn_output is not None:
+                return job.snapshot()  # Already published; saving still owns stage cleanup.
             job.cancelled.set()
             if job.state == "ready":
                 job.state = "cancelled"
@@ -405,8 +414,13 @@ class MediaJobManager:
         with self.lock:
             self.closed = True
             job = self.active
+            native_save_done = job.native_burn_save_done if job else None
             if job:
                 self.cancel(job.id)
+        # Native saves have no socket to abort. A filesystem write, fsync or
+        # stage cleanup may block longer than the browser download timeout.
+        if native_save_done is not None:
+            native_save_done.wait()
         if job and job.thread:
             job.thread.join(timeout=MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S + 2)
         if job and not job.disposed_event.wait(timeout=MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S + 2):

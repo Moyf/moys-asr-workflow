@@ -12,6 +12,49 @@ const BURN_VIDEO_STAGES = {
   preparing: '正在读取源视频信息…',
   burning: '正在烧录字幕…',
 };
+const BURN_SESSION_KEY = 'maw-native-burn-session';
+let nativeBurnPicking = false;
+
+async function nativeBurnPost(url, requestToken, fields) {
+  const response = await MaweHost.server.fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestToken, ...fields }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw Object.assign(new Error(data.error || `服务器返回 ${response.status}`), { code: data.code });
+  }
+  return data;
+}
+
+function connectNativeBurn() {
+  const config = MaweBoot.SERVER_CONFIG;
+  if (config?.nativeBurnAvailable !== true) return null;
+  const { hash, pathname, search } = window.location;
+  const fragmentPrefix = '#maw-burn-host=';
+  let grant = '';
+  if (hash.startsWith(fragmentPrefix)) {
+    grant = hash.slice(fragmentPrefix.length);
+    window.history.replaceState(window.history.state, '', pathname + search);
+  }
+  let stored = null;
+  try { stored = window.sessionStorage.getItem(BURN_SESSION_KEY); }
+  catch (_) { /* A new Launcher grant still works without session storage. */ }
+  if (!grant && !stored) return null;
+  return nativeBurnPost(`${config.burnVideoJobsUrl}/native-session`, config.requestToken,
+    grant ? { launchGrant: grant } : { nativeSession: stored })
+    .then(({ nativeSession }) => {
+      if (typeof nativeSession !== 'string' || !nativeSession) throw new Error('Invalid native session');
+      try { window.sessionStorage.setItem(BURN_SESSION_KEY, nativeSession); }
+      catch (_) { /* Session storage is only for refreshes. */ }
+      return nativeSession;
+    }).catch(() => {
+      try { window.sessionStorage.removeItem(BURN_SESSION_KEY); }
+      catch (_) { /* Storage is unavailable. */ }
+      if (grant) MaweHint.flashHint(burnVideoText('启动器编辑器会话无效，请从启动器重新打开'), 'warning');
+      return null;
+    });
+}
 
 function burnVideoText(text) {
   return window.MAWE_I18N?.translateText?.(text) || text;
@@ -52,6 +95,69 @@ function burnVideoSafeError(error, fallback) {
   return burnVideoText(message);
 }
 
+function showBurnVideoSuccess(message, name, open = null, syncWarning = false) {
+  const tr = burnVideoText;
+  MaweHint.flashHint(message, 'success', {
+    durationMs: 0,
+    position: 'bottom-right',
+    contentBuilder(card) {
+      const title = document.createElement('div');
+      title.textContent = `${message}：${name}`;
+      card.append(title);
+      const actions = document.createElement('div');
+      actions.className = 'hint-burn-actions';
+      if (open) {
+        const openActions = [];
+        let expired = false;
+        for (const [text, folder] of [['打开文件', false], ['打开文件夹', true]]) {
+          const action = document.createElement('button');
+          action.type = 'button';
+          action.className = 'hint-burn-open';
+          action.textContent = tr(text);
+          action.addEventListener('click', async () => {
+            action.disabled = true;
+            try {
+              const result = await open(folder);
+              if (result.openRequested !== true) throw new Error(tr('无法打开已保存的烧录视频'));
+              if (!expired) MaweHint.flashHint(tr('已向系统发出打开请求'), 'info');
+            } catch (error) {
+              if (error?.code === 'burn_open_expired') {
+                if (!expired) {
+                  const detail = tr('打开操作已过期，请从保存位置手动打开');
+                  title.textContent += ` · ${detail}`;
+                  MaweHint.flashHint(detail, 'warning');
+                }
+                expired = true;
+                openActions.forEach(button => { button.disabled = true; });
+              } else if (!expired) {
+                MaweHint.flashHint(burnVideoSafeError(error, '无法打开已保存的烧录视频'), 'warning', { error });
+              }
+            } finally {
+              action.disabled = expired;
+            }
+          });
+          openActions.push(action);
+          actions.append(action);
+        }
+      }
+      if (!open || syncWarning) {
+        const detail = document.createElement('div');
+        detail.className = 'hint-burn-detail';
+        detail.textContent = tr(syncWarning
+          ? '无法确认保存位置的更新已同步到磁盘。'
+          : '当前环境无法直接打开已保存的文件或文件夹，请在保存位置手动打开。');
+        card.append(detail);
+      }
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = tr('关闭');
+      close.addEventListener('click', () => MaweHint.dismissHintCard(card));
+      actions.appendChild(close);
+      card.append(actions);
+    },
+  });
+}
+
 async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText, greenScreen = false }) {
   const tr = burnVideoText;
   const config = MaweBoot.SERVER_CONFIG;
@@ -64,7 +170,9 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     MaweHint.flashHint(tr('请从启动器打开关联源媒体的工程，再烧录视频'), 'warning');
     return;
   }
-  if (!MaweHost.files.hasSavePicker()) {
+  const nativeSession = nativeBurnConnection ? await nativeBurnConnection : null;
+  if (window.__maweBurnVideoTask || nativeBurnPicking) return;
+  if (!nativeSession && !MaweHost.files.hasSavePicker()) {
     MaweHint.flashHint(tr('当前浏览器或环境不支持烧录视频保存'), 'warning');
     return;
   }
@@ -76,6 +184,12 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const bindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
   const snapshot = { jobsUrl, requestToken, bindingGeneration, sourceMediaId, sourceName, bindingEpoch, greenScreen };
   const isBindingCurrent = () => burnVideoBindingCurrent(config, snapshot);
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const admissionToken = Array.from(random, value => value.toString(16).padStart(2, '0')).join('');
+  const sessionFields = nativeSession ? { nativeSession } : {};
+  const statusHeaders = {
+    'X-MAW-Request-Token': requestToken, ...(nativeSession ? { 'X-MAW-Burn-Session': nativeSession } : {}),
+  };
 
   // Start lazily, but keep the save picker inside the original user gesture.
   // Only defer building ASS when inventory is still pending.
@@ -91,7 +205,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   if (!deferRequest) {
     try { prepareRequest(); }
     catch (error) {
-      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error });
+      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
       return;
     }
     if (!request) return;
@@ -100,14 +214,29 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   MaweHint.flashHint(tr(startHint), 'info');
   let handle;
   try {
-    handle = await MaweHost.files.pickSaveFile({
-      suggestedName,
-      types: [{ description: tr(label), accept: { [BURN_VIDEO_MIME]: ['.mp4'] } }],
-    });
+    if (nativeSession) {
+      nativeBurnPicking = true;
+      const basename = suggestedName.slice(0, -4).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 220);
+      handle = await nativeBurnPost(`${jobsUrl}/native-target`, requestToken, {
+        nativeSession, admissionToken, bindingGeneration, sourceMediaId, suggestedName: `${basename || 'export'}.mp4`,
+        language: window.MAWE_I18N?.language === 'en' ? 'en' : 'zh',
+      });
+      if (handle.cancelled) return;
+      if (typeof handle.nativeTarget !== 'string' || typeof handle.name !== 'string') {
+        throw new Error(tr('导出状态异常，请重试'));
+      }
+    } else {
+      handle = await MaweHost.files.pickSaveFile({
+        suggestedName,
+        types: [{ description: tr(label), accept: { [BURN_VIDEO_MIME]: ['.mp4'] } }],
+      });
+    }
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${burnVideoSafeError(error, '请检查保存位置权限后重试')}`, 'warning', { error });
+    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${burnVideoSafeError(error, '请检查保存位置权限后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
     return;
+  } finally {
+    if (nativeSession) nativeBurnPicking = false;
   }
   if (deferRequest) {
     await fontsReady;
@@ -118,7 +247,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     }
     try { prepareRequest(); }
     catch (error) {
-      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error });
+      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
       return;
     }
     if (!request) return;
@@ -128,7 +257,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频烧录'), 'warning');
     return;
   }
-  if (handle.name.toLowerCase() === sourceName.toLowerCase()) {
+  if (!nativeSession && handle.name.toLowerCase() === sourceName.toLowerCase()) {
     MaweHint.flashHint(tr('保存目标不能与源视频同名'), 'warning');
     return;
   }
@@ -182,7 +311,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
           const reply = await MaweHost.server.fetch(cancelUrl, {
             method: 'POST', keepalive: true, signal: controller.signal,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestToken, admissionToken: task.admissionToken }),
+            body: JSON.stringify({ requestToken, admissionToken, ...sessionFields }),
           });
           const state = await reply.json();
           if (!reply.ok) throw new Error(state.error || tr('无法确认导出已停止，请重试'));
@@ -217,7 +346,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
       await Promise.race([(async () => {
         while (true) {
           const reply = await MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
-            headers: { 'X-MAW-Request-Token': requestToken }, signal: controller.signal,
+            headers: statusHeaders, signal: controller.signal,
           });
           const state = await reply.json();
           if (!reply.ok) throw new Error(tr('文件已保存，但无法确认临时文件已清理，请重试'));
@@ -234,9 +363,11 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     }
   };
   const requestStop = () => {
-    if (!task || task.stopRequested || committing) return;
+    if (!task || task.stopRequested || committing || transferComplete) return;
     task.stopRequested = true;
-    task.controller.abort();
+    // If publication already won the server's race with cancel, keep its
+    // response so the file still gets a success card.
+    if (!task.nativeSaving) task.controller.abort();
     const error = new Error(tr('视频烧录已停止'));
     error.name = 'AbortError';
     rejectStop(error);
@@ -258,9 +389,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   try {
     // 选择器等待期间另一个入口可能已经开始任务；二次确认避免并发。
     if (window.__maweBurnVideoTask) return;
-    const random = crypto.getRandomValues(new Uint8Array(32));
-    const admissionToken = Array.from(random, value => value.toString(16).padStart(2, '0')).join('');
-    task = { id: null, admissionToken, controller: new AbortController(), stopRequested: false, cancelRequest: null, requestStop };
+    task = { id: null, controller: new AbortController(), stopRequested: false, cancelRequest: null, requestStop };
     window.__maweBurnVideoTask = task;
     button.disabled = true;
     panel = document.createElement('div');
@@ -284,7 +413,8 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     const admission = await raceStop(MaweHost.server.fetch(jobsUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requestToken, bindingGeneration, sourceMediaId, ...request,
+        requestToken, bindingGeneration, sourceMediaId, ...request, ...sessionFields,
+        ...(nativeSession ? { nativeTarget: handle.nativeTarget } : {}),
         admissionToken, admissionDeadline: Date.now() + 60000,
       }),
       signal: task.controller.signal,
@@ -310,12 +440,31 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
         + (percent === null ? '' : ` ${Math.round(percent * 100)}%`), percent);
       await raceStop(pause());
       const poll = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
-        headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
+        headers: statusHeaders, signal: task.controller.signal,
       }));
       state = await raceStop(poll.json());
       if (!poll.ok) throw new Error(state.error || `服务器返回 ${poll.status}`);
     }
     ensureCurrent();
+    if (nativeSession) {
+      const jobUrl = `${jobsUrl}/${encodeURIComponent(task.id)}`;
+      task.nativeSaving = true;
+      setProgress(tr('正在写入烧录视频…'));
+      let saved;
+      try {
+        saved = await nativeBurnPost(`${jobUrl}/native-save`, requestToken, sessionFields);
+      } catch (error) {
+        if (task.stopRequested) throw Object.assign(new Error(tr('视频烧录已停止')), { name: 'AbortError' });
+        throw error;
+      }
+      transferComplete = true;
+      if (stopButton) stopButton.disabled = true;
+      showBurnVideoSuccess(tr(successText), saved.name,
+        folder => nativeBurnPost(`${jobUrl}/native-open`, requestToken, { nativeSession, folder }), saved.syncWarning === true);
+      try { await confirmBackendCleanup(); }
+      catch (error) { warnCleanup(error); }
+      return;
+    }
     setProgress(tr('正在下载并写入视频…'), 0);
     response = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
       headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
@@ -361,7 +510,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     await writable.close();
     writable = null;
     transferComplete = true;
-    MaweHint.flashHint(tr(successText), 'success');
+    showBurnVideoSuccess(tr(successText), handle.name);
     try { await confirmBackendCleanup(); }
     catch (error) { warnCleanup(error); }
   } catch (error) {
@@ -373,7 +522,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
         warnCleanup(cleanupError);
       }
     } else {
-      MaweHint.flashHint(`${tr('烧录视频导出失败')}：${burnVideoSafeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning', { error });
+      MaweHint.flashHint(`${tr('烧录视频导出失败')}：${burnVideoSafeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
     }
   } finally {
     if (!transferComplete && response?.body) {
@@ -502,5 +651,6 @@ function invalidateBurnVideoBinding() {
   // Cancel through the task's captured URL/token, not the invalidated config.
   window.__maweBurnVideoTask?.requestStop?.();
 }
+const nativeBurnConnection = connectNativeBurn();
 updateBurnVideoButton();
 window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });

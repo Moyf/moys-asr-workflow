@@ -13,12 +13,14 @@ import tempfile
 import time
 import webbrowser
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from threading import Event, Lock
-from typing import BinaryIO, Final, final
+from typing import TYPE_CHECKING, BinaryIO, Final, final
 
 from send2trash import send2trash
 
@@ -94,6 +96,8 @@ from maw.local_models import (
     prepare_local_model as prepare_model,
 )
 from maw.media import probe_audio_tracks, resolve_project_media
+from maw.native_burn_host import BurnDialogBusy, BurnHost
+from maw.native_burn_output import BurnDestination
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
@@ -145,10 +149,14 @@ from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
+if TYPE_CHECKING:
+    from webview import Window
+
 
 OPEN_DIALOG = 10
 SAVE_DIALOG = 30
 FOLDER_DIALOG = 20
+_FILE_DIALOG_LOCK = Lock()
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
@@ -214,6 +222,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "alignment_server_start_failed": "Speech-alignment server failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
+    "server_stop_pending": "The editor has not finished shutting down. Wait a moment and retry.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
     "burn_settings_invalid": "压制参数无效：CRF 需为 0–51 整数，预设与音频码率需从列表中选择。",
@@ -511,7 +520,11 @@ class LauncherApi:
         self.ocr_runtime_cancel_event: Event | None = None
         self.ocr_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
+        self._stop_server_lock = Lock()
         self.server_log_file: BinaryIO | None = None
+        self._native_burn_picker: Callable[[str, Path, str], BurnDestination | None] | None = None
+        self._native_burn_host: BurnHost | None = None
+        self._native_burn_port: int | None = None
         self._recording_preparation = None
         self.alignment_process: subprocess.Popen[str] | None = None
         self.alignment_log_file: BinaryIO | None = None
@@ -2121,6 +2134,17 @@ class LauncherApi:
         url = str(payload.get("url") or "").strip()
         if not url.startswith(("https://", "http://")):
             return {"ok": False, "error": "Invalid URL."}
+        host, port, process = self._native_burn_host, self._native_burn_port, self.server_process
+        if payload.get("editor") is True and host and port and process and process.poll() is None:
+            parts = urlsplit(url)
+            if (parts.scheme, parts.netloc, parts.path, parts.fragment) == ("http", f"127.0.0.1:{port}", "/", ""):
+                if not host.owns_editor(port):
+                    return _error_result("port", "server_no_response", url)
+                try:
+                    grant = host.launch_grant()
+                except PermissionError:
+                    return _error_result("port", "server_stop_pending")
+                url = parts._replace(fragment=f"maw-burn-host={grant}").geturl()
         _open_external(url)
         return {"ok": True}
 
@@ -2168,20 +2192,35 @@ class LauncherApi:
                 return _error_result("serverMediaPath", "server_media_missing", str(media_state.get("mediaPath") or ""))
             command = build_serve_command(json_path, media_path, port, remember_media=payload.get("rememberMedia") is True)
         command.append("--no-open")
-        _ = self._stop_owned_server()
+        if self._stop_owned_server() is None:
+            return _error_result("port", "server_stop_pending")
         self.server_log_file = tempfile.TemporaryFile(mode="w+b")
         try:
+            environment = _independent_app_child_environment()
+            picker = self._native_burn_picker
+            if picker is not None:
+                self._native_burn_host = BurnHost(picker)
+                self._native_burn_port = port
+                environment.update(self._native_burn_host.environment())
             self.server_process = popen_process_tree(
                 command,
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_independent_app_child_environment(),
+                env=environment,
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
+            if self._native_burn_host is not None:
+                process, host = self.server_process, self._native_burn_host
+
+                def close_burn_host_after_exit() -> None:
+                    process.wait()
+                    host.close()
+
+                threading.Thread(target=close_burn_host_after_exit, name="maw-burn-host-watch", daemon=True).start()
         except OSError as error:
-            self._close_server_log()
+            _ = self._stop_owned_server()
             detail = f"{url} | {error}"
             context = self._persist_start_failure("server_start_failed", detail)
             return _error_result("port", "server_start_failed", detail, context=context)
@@ -2405,20 +2444,38 @@ class LauncherApi:
             "detail": resolution.message,
         }
 
-    def _stop_owned_server(self, *, close_log: bool = True) -> bool:
-        process = self.server_process
-        self.server_process = None
-        stopped = False
-        try:
-            if process and process.poll() is None:
-                terminate_process_tree(process)
-                stopped = True
-            return stopped
-        finally:
-            if process is not None:
-                release_process_tree(process)
-            if close_log:
-                self._close_server_log()
+    def _stop_owned_server(self, *, close_log: bool = True) -> bool | None:
+        """Stop an owned editor, or return None while native cleanup may still be running."""
+        with self._stop_server_lock:
+            process, host, port = self.server_process, self._native_burn_host, self._native_burn_port
+            stopped = process is not None and process.poll() is None
+            stopped_gracefully = False
+            if stopped and host is not None:
+                may_be_saving = host.stop_issuing_grants()
+                acknowledged = port is not None and host.request_editor_shutdown(port)
+                if acknowledged or may_be_saving:
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        # Receipt (or a lost ACK) cannot confirm save cleanup.
+                        if may_be_saving:
+                            return None
+                    else:
+                        stopped_gracefully = True
+            self.server_process = None
+            self._native_burn_host = None
+            self._native_burn_port = None
+            try:
+                if stopped and not stopped_gracefully:
+                    terminate_process_tree(process)
+                return stopped
+            finally:
+                if process is not None:
+                    release_process_tree(process)
+                if host is not None:
+                    host.close()
+                if close_log:
+                    self._close_server_log()
 
     def _read_server_log(self) -> str:
         log_file = self.server_log_file
@@ -2510,7 +2567,10 @@ class LauncherApi:
                 pass
 
     def stop_server(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
-        if self._stop_owned_server():
+        stopped = self._stop_owned_server()
+        if stopped is None:
+            return _error_result("port", "server_stop_pending")
+        if stopped:
             return {"ok": True, "stopped": True}
         port = _port(payload or {})
         url = f"http://127.0.0.1:{port}/"
@@ -3225,7 +3285,13 @@ class LauncherApi:
             return _error_result("", "sticker_dir_invalid", str(directory))
         return _open_existing_path(directory.resolve())
 
-    def shutdown(self) -> None:
+    def shutdown(self) -> bool | None:
+        native_editor = self._native_burn_host is not None
+        if native_editor and self._stop_owned_server() is None:
+            # pywebview treats False as a veto. Exiting now would close the
+            # Windows Job handle and kill the editor before its save unwinds.
+            self._emit({"type": "editorShutdownPending"})
+            return False
         # closing runs on the GUI thread. Stop UI delivery before cancellation
         # wakes workers. Joining a worker here could block the GUI thread.
         self.pump.shutdown()
@@ -3241,7 +3307,8 @@ class LauncherApi:
             self.local_runtime_cancel_event.set()
         if self.ocr_runtime_cancel_event:
             self.ocr_runtime_cancel_event.set()
-        _ = self.stop_server()
+        if not native_editor:
+            _ = self.stop_server()
         _ = self.stop_alignment_server()
         if self._log_sink is not None:
             for stream in (sys.stdout, sys.stderr):
@@ -3888,6 +3955,30 @@ class LauncherApi:
                 self.pump.flush()
 
 
+def _pick_burn_target(window: Window, name: str, source: Path, lang: str) -> BurnDestination | None:
+    if not _FILE_DIALOG_LOCK.acquire(blocking=False):
+        raise BurnDialogBusy
+    try:
+        window.show()
+        selected = window.create_file_dialog(SAVE_DIALOG, directory=str(source.parent),
+                                             save_filename=name, file_types=("MP4 (*.mp4)",))
+        if not selected:
+            return None
+        target = BurnDestination.capture(Path(selected[0]), source)
+        if target.original is not None:
+            # The picker reports a path, with no identity or overwrite decision.
+            # Confirm the captured file explicitly, including on GTK backends.
+            title = "Overwrite video?" if lang == "en" else "覆盖视频？"
+            message = (f"Overwrite the existing file {str(target.path)!r}?" if lang == "en"
+                       else f"是否覆盖已有文件 {str(target.path)!r}？")
+            if window.create_confirmation_dialog(title, message) is not True:
+                return None
+            target.validate()
+        return target
+    finally:
+        _FILE_DIALOG_LOCK.release()
+
+
 def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
     import webview
 
@@ -3921,6 +4012,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
         text_select=True,
     )
     if window is not None:
+        api._native_burn_picker = partial(_pick_burn_target, window)
         window.events.closing += lambda: api.shutdown()
         # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
         window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)
@@ -4361,7 +4453,8 @@ def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filenam
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
     extra = {"directory": directory} if directory else {}
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
+    with _FILE_DIALOG_LOCK:
+        selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
     return tuple(selected) if selected else None
 
 
@@ -4370,7 +4463,8 @@ def _folder_dialog() -> tuple[str, ...] | None:
 
     if not webview.windows:
         return None
-    selected = webview.windows[0].create_file_dialog(FOLDER_DIALOG)
+    with _FILE_DIALOG_LOCK:
+        selected = webview.windows[0].create_file_dialog(FOLDER_DIALOG)
     return tuple(selected) if selected else None
 
 
