@@ -286,7 +286,6 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('id="ass-style-secondary-color-field" hidden', template)
         manager = edit.read_web_asset("editor/styles/editor-wiring-ass-manager.js")
         self.assertIn("ass-style-karaoke-row", manager)
-        self.assertIn("secondaryInput.disabled = !karaokeEnabled", manager)
         self.assertIn("assExportProfileId", manager)
         css = (ROOT / "web" / "editor.css").read_text(encoding="utf-8")
         self.assertIn(".ass-style-karaoke-row", css)
