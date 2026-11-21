@@ -65,10 +65,13 @@ Path(sys.argv[1]).write_text(json.dumps({'media': 'synthetic.wav', 'segments': s
     await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(expected[0].text);
     expect(await content()).toEqual(expected);
     // The legacy opt-out flag no longer controls opening; false also preserves text.
-    await page.evaluate(async () => {
-      MaweBoot.DATA.preserve_punctuation = false;
-      await MaweProjectSave.saveProjectToServer({ silent: true });
+    const savedWithOptOut = await page.evaluate(() => {
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).preserve_punctuation = false;
+      return MaweProjectSave.saveProjectToServer({ silent: true });
     });
+    expect(savedWithOptOut).toBe(true);
+    const savedProject = JSON.parse(readFileSync(project, 'utf8'));
+    expect(tracks.getMainTrack(savedProject).preserve_punctuation).toBe(false);
     await page.reload();
     await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(expected[0].text);
     expect(await content()).toEqual(expected);
