@@ -184,7 +184,7 @@ function rewriteTarget(target, currentSource, forceImage = false) {
   return externalUrl(sourcePath, suffix);
 }
 
-function protectedOffsets(markdown) {
+function protectedOffsets(markdown, onLink = () => {}) {
   const offsets = new Set();
   // Map a container's de-indented lines back to their original characters.
   function childMap(raw, mapping, content) {
@@ -216,7 +216,7 @@ function protectedOffsets(markdown) {
     }
     return result;
   }
-  function visit(text, mapping, tokens) {
+  function visit(text, mapping, tokens, links = true) {
     let cursor = 0;
     for (const token of tokens) {
       const start = text.indexOf(token.raw, cursor);
@@ -250,6 +250,15 @@ function protectedOffsets(markdown) {
             i = start + 1;
           }
         }
+      } else if (token.type === 'link') {
+        if (links) onLink(token, map);
+        // Re-lex the raw label: Marked's child tokens can contain unescaped
+        // text and therefore cannot always be mapped to source positions.
+        const end = linkLabelEnd(token.raw);
+        if (end !== null) {
+          const label = token.raw.slice(1, end - 1);
+          visit(label, map.slice(1, end - 1), marked.Lexer.lexInline(label, { gfm: false }), false);
+        }
       } else if (token.type === 'blockquote') {
         visit(token.text, childMap(token.raw, map, token.text), token.tokens);
       } else if (token.type === 'list') {
@@ -264,7 +273,7 @@ function protectedOffsets(markdown) {
       } else if (token.tokens) {
         // Inline tokens use raw slices, so nested comments can be mapped back
         // without mistaking comment-like text in a code span for a comment.
-        visit(token.raw, map, token.tokens);
+        visit(token.raw, map, token.tokens, links);
       }
     }
   }
@@ -272,7 +281,73 @@ function protectedOffsets(markdown) {
   return offsets;
 }
 
+function linkLabelEnd(raw) {
+  if (!raw.startsWith('[')) return null;
+  let depth = 1;
+  let i = 1;
+  let firstEnd = null;
+  for (; i < raw.length && depth; i++) {
+    if (raw[i] === '\\') { i++; continue; }
+    if (raw[i] === '`') {
+      const ticks = raw.slice(i).match(/^`+/)[0];
+      const end = raw.indexOf(ticks, i + ticks.length);
+      if (end >= 0) { i = end + ticks.length - 1; continue; }
+    }
+    if (raw[i] === '[') depth++;
+    if (raw[i] === ']') {
+      if (depth > 1) depth--;
+      else {
+        firstEnd ??= i + 1;
+        if (raw[i + 1] === '(') return i + 1;
+      }
+    }
+  }
+  return firstEnd;
+}
+
+// Locate the destination in an inline link already recognized by Marked.
+// Reference links and autolinks have no inline destination to replace.
+function inlineDestination(raw) {
+  let i = linkLabelEnd(raw);
+  if (i === null || raw[i] !== '(') return null;
+  i++;
+  while (/\s/.test(raw[i] || '')) i++;
+  const angle = raw[i] === '<';
+  if (angle) i++;
+  const start = i;
+  let parentheses = 0;
+  for (; i < raw.length; i++) {
+    const char = raw[i];
+    if (char === '\\') { i++; continue; }
+    if (angle ? char === '>' : /\s/.test(char) || char === ')' && !parentheses) break;
+    if (!angle && char === '(') parentheses++;
+    if (!angle && char === ')') parentheses--;
+  }
+  return { start, end: i, angle };
+}
+
+function rewriteMarkdownLinks(markdown, currentSource) {
+  const edits = [];
+  protectedOffsets(markdown, (token, map) => {
+    const destination = inlineDestination(token.raw);
+    if (!destination || destination.start === destination.end) return;
+    const indices = map.slice(destination.start, destination.end);
+    if (indices.some((index, i) => index !== indices[0] + i)) {
+      throw new Error('无法定位 Markdown 链接目标');
+    }
+    const rewritten = rewriteTarget(token.href, currentSource);
+    if (rewritten !== token.href) {
+      // Bare Markdown destinations cannot contain unmatched parentheses.
+      const value = destination.angle ? rewritten : rewritten.replaceAll('(', '%28').replaceAll(')', '%29');
+      edits.push({ start: indices[0], end: indices.at(-1) + 1, value });
+    }
+  });
+  for (const edit of edits.reverse()) markdown = markdown.slice(0, edit.start) + edit.value + markdown.slice(edit.end);
+  return markdown;
+}
+
 function rewriteLinks(markdown, currentSource) {
+  markdown = rewriteMarkdownLinks(markdown, currentSource);
   const code = [];
   const protect = (value) => { const key = `\u0000MAW_CODE_${code.length}\u0000`; code.push(value); return key; };
   const indented = protectedOffsets(markdown);
@@ -347,10 +422,6 @@ function rewriteLinks(markdown, currentSource) {
   if (/!\[[^\]\n]*\]\((?![a-z]+:|\/|#)/i.test(result)) {
     throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
   }
-
-  result = result.replace(/(\]\()([^\s)]+)(\s+(?:"[^"]*"|'[^']*'|\((?:\\[^\n]|[^\\()])*\)))?(\))/g, (_, open, target, title = '', close) => {
-    return `${open}${rewriteTarget(target, currentSource)}${title}${close}`;
-  });
 
   return result.replace(/\u0000MAW_IMAGE_(\d+)\u0000/g, (_, index) => htmlImages[Number(index)])
     .replace(/\u0000MAW_CODE_(\d+)\u0000/g, (_, index) => code[Number(index)]);

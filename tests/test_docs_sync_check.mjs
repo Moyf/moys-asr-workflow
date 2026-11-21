@@ -4,12 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import { collectImageSources, readDocument } from '../website/scripts/sync-maw-docs.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = 'website/scripts/sync-maw-docs.mjs';
 const marker = 'LOCAL-SOURCE-SINGLE-TRUTH-TEST';
+const { marked } = createRequire(import.meta.url)('../tools/shared/vendor/marked-18.1.3/marked.umd.js');
 
 // These fixtures are deliberately retained: no test cleanup removes user files.
 async function fixture({ missing = '' } = {}) {
@@ -429,6 +431,57 @@ test('inline link titles preserve their syntax while destinations are rewritten'
   assert.equal(result.status, 0, result.stderr);
   const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
   for (const [, expected] of examples) assert.ok(page.includes(expected), expected);
+});
+
+test('only real inline links rewrite their destinations with angle brackets and escapes', async () => {
+  const target = await fixture();
+  const source = path.join(target, 'docs/user/FAQ.md');
+  const examples = [
+    ['[guide](<WORKFLOW.md> (指南))', '[guide](<../workflow/> (指南))'],
+    ['\\[guide](WORKFLOW.md (指南))', '\\[guide](WORKFLOW.md (指南))'],
+    ['[guide](<WORKFLOW.md#start> "guide")', '[guide](<../workflow/#start> "guide")'],
+    ["[guide](WORKFLOW%2Emd#start 'guide')", "[guide](../workflow/#start 'guide')"],
+    ['[file](<../files/my%20notes.pdf?download=1#part> (下载))', '[file](<https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/my%20notes.pdf?download=1#part> (下载))'],
+    ['[file](../files/name\\(draft\\).pdf "download")', '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/name%28draft%29.pdf "download")'],
+    ['[file](../files/name\\).pdf)', '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/name%29.pdf)'],
+    ['[file](../files/name\\(.pdf)', '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/name%28.pdf)'],
+    ['[file](../files/name%29.pdf)', '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/name%29.pdf)'],
+    ['[file](../files/name%28.pdf)', '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/name%28.pdf)'],
+    ['[a \\] label](WORKFLOW.md)', '[a \\] label](../workflow/)'],
+    ['[a `](` label](WORKFLOW.md)', '[a `](` label](../workflow/)'],
+    ['[``a` ``] ``](WORKFLOW.md)', '[``a` ``] ``](../workflow/)'],
+    ['[x <!-- ![fake](../../outside.png) -->](WORKFLOW.md)', '[x <!-- ![fake](../../outside.png) -->](../workflow/)'],
+    ['[x <!-- ![fake][ref] -->](WORKFLOW.md)', '[x <!-- ![fake][ref] -->](../workflow/)'],
+    ['[x <!-- <img src="../assets/fake.png"> -->](WORKFLOW.md)', '[x <!-- <img src="../assets/fake.png"> -->](../workflow/)'],
+    ['> [guide](<WORKFLOW.md> (指南))', '> [guide](<../workflow/> (指南))'],
+    ['- [guide](WORKFLOW.md#start)', '- [guide](../workflow/#start)'],
+    ['![image](../assets/fixture.webp)', '<img src="../../docs-assets/docs/assets/fixture.webp" alt="image" loading="lazy" decoding="async" />'],
+    ['ordinary ](WORKFLOW.md (指南))', 'ordinary ](WORKFLOW.md (指南))'],
+    ['`[guide](WORKFLOW.md)`', '`[guide](WORKFLOW.md)`'],
+    ['<!-- [guide](WORKFLOW.md) -->', '<!-- [guide](WORKFLOW.md) -->'],
+  ];
+  await writeFile(source, `# FAQ fixture\n\n${examples.map(([input]) => input).join('\n\n')}\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  for (const [, expected] of examples) assert.ok(page.includes(expected), expected);
+  for (const [, expected] of examples.filter(([input]) => input.startsWith('[file](../files/name'))) {
+    const tokens = marked.lexer(expected, { gfm: false })[0].tokens;
+    assert.equal(tokens.length, 1, expected);
+    assert.equal(tokens[0].type, 'link', expected);
+    assert.ok(tokens[0].href.endsWith('.pdf'), expected);
+  }
+  assert.deepEqual(collectImageSources(examples.map(([input]) => input).join('\n\n'), 'docs/user/FAQ.md'), ['docs/assets/fixture.webp']);
+});
+
+test('escaped link openers remain ordinary text', async () => {
+  const target = await fixture();
+  const literal = '\\[guide](WORKFLOW.md (指南))';
+  await writeFile(path.join(target, 'docs/user/FAQ.md'), `# FAQ fixture\n\n${literal}\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  assert.ok(page.includes(literal), page);
 });
 
 test('comments preserve image examples while adjacent real images are synchronized', async () => {
