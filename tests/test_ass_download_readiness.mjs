@@ -7,11 +7,12 @@ import { initModuleSource } from './helpers/init-module-source.mjs';
 const source = initModuleSource('editor/io/editor-wiring-export-actions.js');
 const fn = parse(source, { ecmaVersion: 'latest' }).body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'downloadPreparedAss');
 const code = source.slice(fn.start, fn.end);
-function fixture({ pickerError, writeError } = {}) {
+function fixture({ trackError, pickerError, writeError } = {}) {
   const calls = [];
   let release, reject;
   const ready = new Promise((resolve, fail) => { release = resolve; reject = fail; });
-  const context = { Blob, window: { MaweAssFontAliases: {
+  const context = { Blob, MaweBoot: { DATA: {} }, window: {
+    AsrEditorUtils: { TrackPolicy: { assertExportable() { if (trackError) throw trackError; } } }, MaweAssFontAliases: {
     ensureCoverage: () => ready, pending: () => true, whenReady: () => ready,
   } }, MaweHost: { files: { hasSavePicker: () => true,
     pickSaveFile: async () => { calls.push('picker'); if (pickerError) throw pickerError; return { name: 'captions.ass' }; },
@@ -21,6 +22,13 @@ function fixture({ pickerError, writeError } = {}) {
   vm.runInNewContext(code, context);
   return { calls, release, reject, context, run: () => context.downloadPreparedAss(() => { calls.push('build'); return 'original ASS'; }, 'captions.ass', 'ASS') };
 }
+
+test('an unsupported overlay is reported before opening the picker', async () => {
+  const h = fixture({ trackError: new Error('unsupported overlay') });
+  await assert.rejects(h.run(), /unsupported overlay/);
+  assert.deepEqual(h.calls, []);
+  h.release();
+});
 
 test('cold ASS download acquires handle synchronously and writes only after coverage readiness', async () => {
   const h = fixture(); const pending = h.run();

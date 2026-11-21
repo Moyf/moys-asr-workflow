@@ -4885,7 +4885,7 @@
 /* Non-modal project font check: editing remains available while it is open. */
 .project-font-check {
   position: fixed;
-  z-index: 1100;
+  z-index: 329;
   right: 16px;
   bottom: 16px;
   width: min(420px, calc(100vw - 32px));

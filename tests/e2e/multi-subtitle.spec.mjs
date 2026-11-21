@@ -4519,7 +4519,7 @@ test('Z/X adjust one main or extension cue at the pointer and ignore multi-selec
   });
 });
 
-test('ASS mode previews and exports extension cues with the shared extension style', async ({ page }) => {
+test('ASS mode previews and exports extension cues with their track style', async ({ page }) => {
   await stubAssFontCoverage(page);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
@@ -4602,13 +4602,16 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(overlayStyleLine).toMatch(/,10,10,283,1$/);
 
   const variants = await page.evaluate(() => {
-    const main = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass');
-    const extension = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass-extension');
+    const mainStyle = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass');
+    const extensionStyle = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass-extension');
+    const mainTrack = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const extensionTrack = AsrEditorUtils.getExtensionTrack(MaweBoot.DATA);
     const results = [];
     for (const mainAlignment of [2, 5, 8]) {
       for (const extensionAlignment of [1, 6, 9]) {
-        Object.assign(main, { alignment: mainAlignment, marginV: 160 });
-        Object.assign(extension, { alignment: extensionAlignment, marginL: 40, marginR: 50 });
+        AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, mainTrack, { ...mainStyle, alignment: mainAlignment, marginV: 160 });
+        AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, extensionTrack,
+          { ...extensionStyle, alignment: extensionAlignment, marginL: 40, marginR: 50 });
         MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
         const tracks = window.MaweAssCanvas.lastRender.tracks;
         results.push({ mainAlignment, extensionAlignment,
@@ -4651,7 +4654,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
-test('ASS mode swaps subtitle style controls for library selectors and syncs assignments', async ({ page }) => {
+test('ASS mode uses track selectors that leave library defaults independent', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
@@ -4731,33 +4734,40 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#ass-color-style')).toHaveValue('stroke');
   await openSettingsPage(page, 'subtitle-style');
 
-  // 主字幕选择同步到当前 ASS 输出方案关联的样式。
+  // 选择样式写入各自的轨道快照。用户级方案仍提供新工程的默认值。
   await page.locator('#main-ass-style-select').selectOption('default');
-  const profileStyleId = await page.evaluate(() => {
+  await page.locator('#extension-ass-style-select').selectOption('default');
+  const savedStyles = await page.evaluate(() => {
     const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
     const profile = window.AsrEditorUtils.assProfileForId(
       library, library.assignments.assExportProfileId,
     );
-    return profile.styleId;
+    const project = JSON.parse(MaweJsonRepair.buildJson({ forFileExport: true }));
+    const main = AsrEditorUtils.getMainTrack(project);
+    const secondary = AsrEditorUtils.getExtensionTrack(project);
+    return {
+      profileStyleId: profile.styleId,
+      libraryExtensionStyleId: library.assignments.assExtensionStyleId,
+      main: AsrEditorUtils.resolveTrackStyle(project, main, library).libraryStyle?.id,
+      secondary: AsrEditorUtils.resolveTrackStyle(project, secondary, library).libraryStyle?.id,
+    };
   });
-  expect(profileStyleId).toBe('default');
+  expect(savedStyles).toEqual({ profileStyleId: 'ass', libraryExtensionStyleId: 'ass-extension',
+    main: 'default', secondary: 'default' });
 
-  // 副字幕选择同步到库的副字幕槽位；样式库窗口的方案表单（多重字幕模式下
-  // 可见）同步显示同一值。
-  await page.locator('#extension-ass-style-select').selectOption('default');
   await expect(page.locator('#ass-style-manager-open')).toBeVisible();
   await page.locator('#ass-style-manager-open').click();
   await page.locator('#ass-profile-list [data-ass-selection-kind="profile"]').first().click();
   await expect(page.locator('#ass-profile-form')).toBeVisible();
   await expect(page.locator('#ass-profile-extension-style-field')).toBeVisible();
-  await expect(page.locator('#ass-profile-extension-style')).toHaveValue('default');
+  await expect(page.locator('#ass-profile-extension-style')).toHaveValue('ass-extension');
 
-  // 从样式库窗口改回内置副字幕样式：设置页下拉同步；恢复默认，避免
-  // localStorage 里的选择影响后续测试。
-  await page.locator('#ass-profile-extension-style').selectOption('ass-extension');
+  await page.locator('#ass-style-window-close').click();
+  await expect(page.locator('#extension-ass-style-select')).toHaveValue('default');
+  await page.locator('#extension-ass-style-select').selectOption('ass-extension');
   await expect(page.locator('#extension-ass-style-select')).toHaveValue('ass-extension');
   await page.locator('#main-ass-style-select').selectOption('ass');
-  await expect(page.locator('#ass-profile-style-id')).toHaveValue('ass');
+  await expect(page.locator('#main-ass-style-select')).toHaveValue('ass');
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 

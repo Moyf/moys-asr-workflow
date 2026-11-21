@@ -230,6 +230,32 @@ test('actual import repairs remain unsaved until successful save acknowledgement
   assert.equal(state.hasProjectChanges(), false);
 });
 
+test('late track style defaults keep the sent checkpoint and later edits distinct', () => {
+  const project = runtimeProject([{ id: 'cue', text: 'original' }]);
+  const state = loadState(project);
+  const track = projectModel.getMainTrack(project);
+  const addDefaults = snapshot => {
+    const main = projectModel.getMainTrack(snapshot);
+    if (main.style) return false;
+    snapshot.styles = [{ id: 'initial-ass', fontSize: 86 }];
+    main.style = { style_id: 'initial-ass' };
+    return true;
+  };
+  track.segments[0].text = 'sent to disk';
+  const written = state.projectFingerprint();
+  track.segments[0].text = 'later edit';
+  addDefaults(project);
+  state.includeProjectStyleDefaults(addDefaults);
+  assert.equal(state.hasProjectChanges(), true);
+  state.noteSavedSegments(written);
+  state.markSaved();
+  assert.equal(state.hasProjectChanges(), true);
+  track.segments[0].text = 'sent to disk';
+  assert.equal(state.hasProjectChanges(), false);
+  project.styles[0].fontSize = 110;
+  assert.equal(state.hasProjectChanges(), true);
+});
+
 test('markProjectDirty increments the epoch and notifies registered listeners exactly once', () => {
   const state = loadState();
   assert.equal(state.getProjectDirtyEpoch(), 0);

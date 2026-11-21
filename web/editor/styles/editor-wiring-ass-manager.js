@@ -8,7 +8,7 @@ const managerService = {};
 export function assStyleLibraryUsesServerStorage() { return managerService.usesServerStorage(); }
 export function setAssStyleLibraryStatus(text, state) { managerService.setStatus(text, state); }
 export function syncAssStyleManager(options) { managerService.sync(options); }
-export function initializeProjectStyles() { return managerService.initializeProjectStyles(); }
+export function initializeProjectStyles(options) { return managerService.initializeProjectStyles(options); }
 
 export function initAssManagerWiring() {
 const {
@@ -609,21 +609,28 @@ function projectStyleTrack(role) {
   return (MaweBoot.DATA.tracks || []).find(track => track.role === role) || null;
 }
 
-function initializeProjectStyles() {
+function initializeProjectStyles({ includeInCheckpoint = false } = {}) {
   if (!hasAssStyleLibraryLoaded()) return false;
+  const trackIds = new Set((MaweBoot.DATA.tracks || []).filter(track => !track.style).map(track => track.id));
+  if (!trackIds.size) return false;
   const profile = window.AsrEditorUtils.assProfileForId(getAssStyleLibrary(), getAssStyleLibrary().assignments?.assExportProfileId || 'ass');
   const main = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), profile.styleId);
   const secondary = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), getAssStyleLibrary().assignments?.assExtensionStyleId || 'ass-extension');
-  let changed = false;
-  for (const track of MaweBoot.DATA.tracks || []) {
-    const source = track.role === 'secondary' ? secondary : main;
-    if (!track.style && window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, source)) {
-      // The library can contain a user-selected font even when the track is
-      // initialized automatically; only the built-in system font is implicit.
-      if (source.fontName === window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName) track.style.font_default = true;
-      changed = true;
+  const applyDefaults = project => {
+    let changed = false;
+    for (const track of project.tracks || []) {
+      if (track.style || !trackIds.has(track.id)) continue;
+      const source = track.role === 'secondary' ? secondary : main;
+      if (window.AsrEditorUtils.applyTrackStyle(project, track, source)) {
+        // Only the built-in system font is implicit, including in default styles.
+        if (source.fontName === window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName) track.style.font_default = true;
+        changed = true;
+      }
     }
-  }
+    return changed;
+  };
+  const changed = applyDefaults(MaweBoot.DATA);
+  if (changed && includeInCheckpoint) MaweState.includeProjectStyleDefaults(applyDefaults);
   return changed;
 }
 
@@ -797,9 +804,7 @@ assProfileForm?.addEventListener('change', (event) => {
 });
 
 function syncSubtitleStyleAssControls() {
-  // ASS 字幕模式接管预览样式后，「字幕样式」页的主/副字幕 CSS 控件换成
-  // 样式库选择器；主字幕选择即当前 ASS 输出方案关联的样式，与样式库窗口
-  // 中的选择同步，副字幕选择对应库中的「副字幕样式」槽位。
+  // ASS 模式用工程轨道样式替换主、副字幕原有的 CSS 控件。
   const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
   if (assInlineTextSettings) assInlineTextSettings.hidden = !assMode;
   if (assInlineTextTitle) assInlineTextTitle.hidden = !assMode;
@@ -812,6 +817,8 @@ function syncSubtitleStyleAssControls() {
   if (extensionSubtitleCssFields) extensionSubtitleCssFields.hidden = assMode;
   // 副字幕 ASS 样式只在 ASS 模式 + 双语字幕（多重字幕）启用时才有意义。
   if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode || !MaweMultiSubtitleCore.multiSubtitleVisible();
+  const overlayAssStyleFields = document.getElementById('overlay-ass-style-fields');
+  if (overlayAssStyleFields) overlayAssStyleFields.hidden = !assMode || !projectStyleTrack('overlay');
   const library = window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
   const styles = library.styles || [];
   const syncTrack = (role, select, prefix) => {

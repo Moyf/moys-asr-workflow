@@ -319,7 +319,7 @@ for (const language of ['zh', 'en']) for (const origin of ['global', 'project'])
     const exportTab = language === 'zh' ? '字幕导出' : 'Subtitle export';
     const globalScope = language === 'zh' ? '全局设置' : 'Global settings';
     const projectScope = language === 'zh' ? '工程设置' : 'Project settings';
-    const byLabel = text => results.locator('button').filter({ has: page.getByText(text, { exact: true }) });
+    const byLabel = text => results.locator('button').filter({ has: page.locator('span').and(page.getByText(text, { exact: true })) });
     await search.fill('ASS');
     const mode = byLabel(modeLabel);
     const exported = byLabel(exportLabel);

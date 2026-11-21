@@ -17,6 +17,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('stale project style target cannot write the library after track creation is undone', async ({ page }) => {
+  await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style'));
+  await page.locator('#ass-mode-toggle').check();
   await page.evaluate(() => { MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'overlay'); MaweHistory.editorHistory.clear(); });
   await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-project-tracks'));
   await page.locator('[data-track-role="overlay"] [data-track-field="enabled"]').check();

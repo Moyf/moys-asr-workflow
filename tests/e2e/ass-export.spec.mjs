@@ -381,8 +381,9 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
     updateAssStyleManagerLibrary(library => {
       const main = library.styles.find(entry => entry.id === 'ass');
       const extension = library.styles.find(entry => entry.id === 'ass-extension');
-      Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
-      Object.assign(extension, { primaryColor: '#f1d24c', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+      const stroke = { borderStyle: 1, outline: 4, emphasisStyle: 'stroke', emphasisColor: '#ff0000' };
+      Object.assign(main, stroke, { primaryColor: '#22cc55' });
+      Object.assign(extension, stroke, { primaryColor: '#f1d24c' });
     }, { persist: false });
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both',
       assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true });

@@ -294,6 +294,7 @@ function announceAssFontAliasReplacements() {
 // A cold coverage request may outlive browser transient activation. Acquire
 // the handle on the original click, not after awaiting the font inventory.
 async function downloadPreparedAss(build, filename, desc) {
+  window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
   const bindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
   const fonts = window.MaweAssFontAliases;
   const loading = fonts?.ensureCoverage?.();

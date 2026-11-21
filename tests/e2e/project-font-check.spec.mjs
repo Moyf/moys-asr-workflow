@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { findFreePort, makeTempDir, cleanupTempDir, startBlankServer, startServer, generateWav } from './helpers.mjs';
+import { findFreePort, makeTempDir, cleanupTempDir, startBlankServer, startServer, generateWav,
+  closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let server;
 let temp;
@@ -51,6 +52,16 @@ test('confirmation, cancel, replacement, undo and save/reopen', async ({ page })
   });
   expect(spacing.horizontal).toBeGreaterThanOrEqual(8);
   expect(spacing.vertical).toBeGreaterThanOrEqual(8);
+  await openSettingsPage(page, 'subtitle-style');
+  await expect(page.locator('#overlay-ass-style-fields')).toBeHidden();
+  const layer = await page.evaluate(() => ({
+    settings: Number(getComputedStyle(document.getElementById('project-settings-panel')).zIndex),
+    fontCheck: Number(getComputedStyle(document.querySelector('.project-font-check')).zIndex),
+  }));
+  expect(layer.settings).toBeGreaterThan(layer.fontCheck);
+  await page.screenshot({ path: test.info().outputPath('font-notice-and-project-settings.png') });
+  await closeSettingsPanels(page);
+  await expect(box).toBeVisible();
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(box).toContainText('Project font check');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));

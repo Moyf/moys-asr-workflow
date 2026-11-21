@@ -122,7 +122,7 @@ function scheduleCurrentProjectStyleInit() {
         scheduleCurrentProjectStyleInit();
         return;
       }
-      if (initializeProjectStyles()) {
+      if (initializeProjectStyles({ includeInCheckpoint: true })) {
         MaweState.markProjectDirty();
         syncAssStyleManager?.();
         MawePlaybackLoop.refreshSubtitlePreview?.();
@@ -275,7 +275,7 @@ async function loadAssStyleLibrary({ force = false } = {}) {
         MaweState.markProjectDirty();
       }
     }
-    if (initializeProjectStyles()) {
+    if (initializeProjectStyles({ includeInCheckpoint: true })) {
       MaweState.markProjectDirty();
       if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
     }

@@ -326,6 +326,7 @@ interface MaweStateApi {
   setSnapshotReader(reader: () => any): void;
   beginProjectSession(): void;
   establishProjectCheckpoint(options?: { repaired?: boolean }): void;
+  includeProjectStyleDefaults(applyDefaults: (project: any) => boolean): void;
   rememberSessionHighlights(): void;
   restoreSessionHighlights(): void;
   segmentsFingerprint(): string;
