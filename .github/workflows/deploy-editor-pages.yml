@@ -3,6 +3,7 @@ name: Deploy MAW website to GitHub Pages
 on:
   push:
     branches: [main]
+    # Include website sources, release generation and portable editor inputs.
     paths:
       - "website/**"
       - "README.md"
@@ -10,14 +11,14 @@ on:
       - "docs/**"
       - "edit.py"
       - "web/**"
-      - "scripts/build-*.mjs"
-      - "scripts/build_release_site.py"
-      - "scripts/prepare_release_notes.py"
-      - "scripts/verify_release_site.py"
+      - "maw/**"
+      - "scripts/**"
+      - "tools/**"
       - "package.json"
       - "pnpm-lock.yaml"
-      - "maw/quapeaks.py"
-      - "maw/**"
+      - "pnpm-workspace.yaml"
+      - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/deploy-editor-pages.yml"
   workflow_dispatch:
     inputs:
@@ -93,10 +94,6 @@ jobs:
       - name: Install website dependencies
         working-directory: website
         run: pnpm install --frozen-lockfile
-
-      - name: Sync MAW documentation
-        working-directory: website
-        run: pnpm run sync:docs
 
       - name: Verify archives and build published releases
         env:

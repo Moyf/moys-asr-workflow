@@ -20,6 +20,9 @@ importers:
       astro:
         specifier: 7.3.7
         version: 7.3.7(@types/node@22.20.5)(yaml@2.9.1)
+      entities:
+        specifier: 4.5.0
+        version: 4.5.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
