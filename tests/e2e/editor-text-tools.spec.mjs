@@ -739,6 +739,8 @@ test('empty custom steps prefill one replace step without fighting the user', as
 test('adding a step replaces the untouched starter and preserves an edited replacement', async ({ page }) => {
   await seed(page, { text: '  甲乙  ', timed: false });
   await openTextProcess(page);
+  const status = page.locator('#text-preset-status');
+  await expect(status).toHaveAttribute('data-state', 'success');
   const rows = page.locator('#text-preset-rules > li');
   const preview = page.locator('#text-process-preview');
   await expect(rows).toHaveCount(1);
@@ -751,11 +753,88 @@ test('adding a step replaces the untouched starter and preserves an edited repla
 
   await page.locator('#text-process-cancel').click();
   await openTextProcess(page);
+  await expect(status).toHaveAttribute('data-state', 'success');
   await rows.first().getByRole('textbox', { name: '查找', exact: true }).fill('甲');
   await addTextProcessStep(page, 'trim');
   await expect(rows).toHaveCount(2);
   await expect(preview.locator('.text-process-result-snippet')).toHaveText('乙');
 });
+
+test('a preset refresh does not interrupt typing in the focused starter step', async ({ page }) => {
+  await seed(page, { text: '  甲乙  ', timed: false });
+  let releaseRead;
+  const pendingRead = new Promise(resolve => { releaseRead = resolve; });
+  await page.route('**/api/text-processing-presets', async route => {
+    await pendingRead;
+    await route.fulfill({ json: {
+      schema: 'moy.asr.text_processing_presets.v2', revision: 1, presets: [], defaultPresetId: null,
+    } });
+  });
+  const status = page.locator('#text-preset-status');
+  const rows = page.locator('#text-preset-rules > li');
+  const find = rows.first().getByRole('textbox', { name: '查找', exact: true });
+  try {
+    await openTextProcess(page);
+    await expect(status).toHaveAttribute('data-state', 'pending');
+    await find.click();
+    await expect(find).toBeFocused();
+  } finally {
+    releaseRead();
+  }
+  await expect(status).toHaveAttribute('data-state', 'success');
+  // Type at the current focus, as a user would: using fill() here would refocus the field.
+  await page.keyboard.insertText('甲');
+  await addTextProcessStep(page, 'trim');
+  await expect(rows).toHaveCount(2);
+  await expect(find).toHaveValue('甲');
+  await expect(page.locator('#text-process-preview .text-process-result-snippet')).toHaveText('乙');
+});
+
+for (const changed of [true, false]) {
+  test(`a focused draft ${changed ? 'detaches from a changed' : 'stays attached to an unchanged'} same-ID preset`, async ({ page }) => {
+    const preset = { id: 'default', name: '替换预设', scope: 'all', steps: [
+      { type: 'replace', find: '甲', replacement: '', regex: false, caseSensitive: false },
+    ] };
+    let library = { schema: 'moy.asr.text_processing_presets.v2', revision: 1,
+      defaultPresetId: preset.id, presets: [preset] };
+    let pendingRead = Promise.resolve();
+    await page.route('**/api/text-processing-presets', async route => {
+      await pendingRead;
+      await route.fulfill({ json: library });
+    });
+    const status = page.locator('#text-preset-status');
+    const select = page.locator('#text-preset-select');
+    const find = page.locator('#text-preset-rules').getByRole('textbox', { name: '查找', exact: true });
+    await openTextProcess(page);
+    await expect(status).toHaveAttribute('data-state', 'success');
+    await expect(select).toHaveValue(preset.id);
+    await expect(find).toHaveValue('甲');
+    await page.locator('#text-process-cancel').click();
+
+    library = { ...library, revision: 2, presets: [{ ...preset, steps: [
+      { ...preset.steps[0], enabled: true, find: changed ? '丙' : '甲' },
+    ] }] };
+    let releaseRead;
+    pendingRead = new Promise(resolve => { releaseRead = resolve; });
+    try {
+      await openTextProcess(page);
+      await expect(status).toHaveAttribute('data-state', 'pending');
+      await find.click();
+      await expect(find).toBeFocused();
+    } finally {
+      releaseRead();
+    }
+    await expect(status).toHaveAttribute('data-state', 'success');
+    await expect(select).toHaveValue(changed ? '' : preset.id);
+    await expect(find).toBeFocused();
+    await expect(find).toHaveValue('甲');
+    if (changed) {
+      await expect(page.locator('#text-preset-save')).toBeDisabled();
+      await select.selectOption(preset.id);
+      await expect(find).toHaveValue('丙');
+    }
+  });
+}
 
 test('arrow keys inside the text process modal never move cues or seek media', async ({ page }) => {
   await seed(page);
