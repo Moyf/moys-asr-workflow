@@ -1754,6 +1754,45 @@ class FireRedAsrEngine:
         return result
 
 
+# CTranslate2 用 LoadLibrary/dlopen 惰性装载 CUDA 运行库，装载失败统一抛
+# 「Library <name> is not found or cannot be loaded」；未装载完成就调用对应
+# 函数时抛「cuBLAS/cuDNN is not loaded」。只把这些文案识别为「缺运行库」，
+# 显存不足、模型损坏等其他 CUDA RuntimeError 不属于此类，不触发 CPU 回退。
+_CUDA_LIBRARY_LOAD_FAILURE = re.compile(
+    r"library\s+\S*(?:cublas|cudnn|cuda)\S*\s+is not found or cannot be loaded",
+    re.IGNORECASE,
+)
+_CUDA_STUB_NOT_LOADED = re.compile(
+    r"cu(?:blas|dnn) is not loaded",
+    re.IGNORECASE,
+)
+
+
+def _is_missing_cuda_runtime_error(error: BaseException) -> bool:
+    """识别 CTranslate2 无法装载 CUDA/cuBLAS/cuDNN 运行库的错误。"""
+    text = str(error)
+    return bool(
+        _CUDA_LIBRARY_LOAD_FAILURE.search(text) or _CUDA_STUB_NOT_LOADED.search(text)
+    )
+
+
+# 缺 CUDA 运行库时的可操作指引：改选 CPU，或安装与 CTranslate2 版本匹配的
+# CUDA 12 cuBLAS / cuDNN 9 并确保 DLL 及传递依赖可被进程搜索到。不说缺整个
+# CUDA Toolkit，也不建议改名单个 DLL 或整体重装环境。
+_CUDA_RUNTIME_LIBRARY_GUIDANCE = (
+    "Faster-Whisper（CTranslate2）无法加载与自身匹配的 CUDA 12 cuBLAS 或 "
+    "CUDA 12 对应的 cuDNN 9 运行库。可把设备明确设为 CPU 继续转写；如需 GPU，"
+    "请安装与 CTranslate2 版本匹配的运行库，并确保其 DLL 及传递依赖位于进程"
+    "搜索路径（不要把 CUDA 13 的库改名使用，也不要从不可信来源下载单个 DLL）。"
+)
+
+_WHISPER_CPU_FALLBACK_EVENT = (
+    "[local] faster-whisper CUDA 运行库缺失或无法加载，自动回退到 CPU"
+    "（速度可能变慢；如需 GPU，请安装与 CTranslate2 匹配的 CUDA 12 cuBLAS "
+    "与 cuDNN 9 运行库）"
+)
+
+
 class WhisperEngine:
     """Lazy faster-whisper (CTranslate2) adapter.
 
@@ -1776,28 +1815,23 @@ class WhisperEngine:
         self.device = device
         self.debug_writer = debug_writer
         self._runtime: Any = None
+        # 实际构造 runtime 的设备（不是请求设备）：auto 的 Torch CUDA 可用
+        # 不代表 CTranslate2 的 CUDA 运行库可装载，恢复决策以实际设备为准。
+        self._runtime_device: str | None = None
+        self._model_source: str | Path | None = None
 
-    def _load(self, on_event: ProgressCallback | None = None) -> Any:
-        if self._runtime is not None:
-            return self._runtime
-        try:
-            from faster_whisper import WhisperModel  # type: ignore[import-not-found]
-        except ImportError as error:
-            raise _missing_dependency("faster-whisper", cause=error) from error
+    def _loading_event(self, device: str) -> str:
+        compute_type = "float16" if device == "cuda" else "int8"
+        return (
+            f"[local] loading faster-whisper: {self.model_path}"
+            f" ({device}, compute_type={compute_type})"
+        )
 
-        resolved_device = resolve_device(self.device)
-        compute_type = "float16" if resolved_device == "cuda" else "int8"
-        if on_event:
-            on_event(
-                f"[local] loading faster-whisper: {self.model_path}"
-                f" ({resolved_device}, compute_type={compute_type})"
-            )
-        # 仓库 ID 先解析为本地快照（HF 失败回退 ModelScope）；短别名
-        # （large-v3 等）与显式目录原样透传，由上游加载器处理。
-        model_source = resolve_engine_model_source(self.model_path, emit=on_event)
+    def _model_kwargs(self, device: str) -> dict[str, Any]:
+        """构造 WhisperModel 参数；CUDA 用 float16，其余设备用 int8。"""
         kwargs: dict[str, Any] = {
-            "device": resolved_device,
-            "compute_type": compute_type,
+            "device": device,
+            "compute_type": "float16" if device == "cuda" else "int8",
         }
         # 仅当按模型 ID（HF Hub）加载时才应用统一的模型缓存目录；显式本地
         # 目录是已转换好的 CTranslate2 工程，不涉及下载。faster-whisper 的
@@ -1813,35 +1847,61 @@ class WhisperEngine:
             cache_root = os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
             if cache_root:
                 hub_cache = str(Path(cache_root) / "huggingface" / "hub")
-        if hub_cache and not Path(str(model_source)).is_dir():
+        if hub_cache and not Path(str(self._model_source)).is_dir():
             kwargs["download_root"] = hub_cache
+        return kwargs
+
+    def _construct_runtime(self, whisper_model: Any, device: str) -> Any:
+        """按指定设备构造 WhisperModel，并记录当前 runtime 的实际设备。"""
+        runtime = whisper_model(self._model_source, **self._model_kwargs(device))
+        self._runtime_device = device
+        return runtime
+
+    def _load(self, on_event: ProgressCallback | None = None) -> Any:
+        if self._runtime is not None:
+            return self._runtime
+        try:
+            from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+        except ImportError as error:
+            raise _missing_dependency("faster-whisper", cause=error) from error
+
+        resolved_device = resolve_device(self.device)
+        if on_event:
+            on_event(self._loading_event(resolved_device))
+        # 仓库 ID 先解析为本地快照（HF 失败回退 ModelScope）；短别名
+        # （large-v3 等）与显式目录原样透传，由上游加载器处理。
+        self._model_source = resolve_engine_model_source(self.model_path, emit=on_event)
         requested_device = self.device.strip().lower()
         try:
-            self._runtime = WhisperModel(model_source, **kwargs)
+            self._runtime = self._construct_runtime(WhisperModel, resolved_device)
         except RuntimeError as error:
-            # ``auto`` 可能只验证了 Torch 的 CUDA，而 CTranslate2 还需要
-            # 自己的 CUDA 12/cuDNN 9 DLL。遇到这类 CUDA 初始化错误时回退
-            # CPU；显式选择 ``cuda`` 时保留原错误，避免隐藏用户的配置问题。
-            error_text = str(error).lower()
-            is_cuda_error = any(
-                marker in error_text
-                for marker in ("cuda", "cublas", "cudnn")
+            missing_library = (
+                resolved_device == "cuda" and _is_missing_cuda_runtime_error(error)
             )
-            if requested_device != "auto" or resolved_device != "cuda" or not is_cuda_error:
-                raise LocalAsrError(f"faster-whisper 模型加载失败: {error}") from error
-            if on_event:
-                on_event(
-                    "[local] faster-whisper CUDA 不可用，自动回退到 CPU "
-                    "（如需 GPU，请安装 CUDA 12 和 cuDNN 9）"
-                )
-            fallback_kwargs = {**kwargs, "device": "cpu", "compute_type": "int8"}
-            try:
-                self._runtime = WhisperModel(model_source, **fallback_kwargs)
-            except (TypeError, ValueError, RuntimeError) as fallback_error:
+            if requested_device == "auto" and missing_library:
+                # ``auto`` 只验证了 Torch 的 CUDA，而 CTranslate2 还需要自己的
+                # CUDA 12/cuDNN 9 运行库；确认缺库时回退 CPU。显存不足、模型
+                # 损坏等其他 CUDA 错误不在此列，避免掩盖真实问题。
+                if on_event:
+                    on_event(_WHISPER_CPU_FALLBACK_EVENT)
+                    on_event(self._loading_event("cpu"))
+                try:
+                    self._runtime = self._construct_runtime(WhisperModel, "cpu")
+                except Exception as fallback_error:  # noqa: BLE001 - 保留双错误
+                    raise LocalAsrError(
+                        "faster-whisper 模型加载失败；CUDA 错误："
+                        f"{error}；自动回退 CPU 也失败：{fallback_error}。"
+                        + _CUDA_RUNTIME_LIBRARY_GUIDANCE
+                    ) from fallback_error
+            elif missing_library:
+                # 显式选择 ``cuda`` 时不静默降级：保留原错误并给出可操作指引。
                 raise LocalAsrError(
-                    "faster-whisper 模型加载失败；CUDA 错误："
-                    f"{error}；自动回退 CPU 也失败：{fallback_error}"
-                ) from fallback_error
+                    "faster-whisper 模型加载失败："
+                    + _CUDA_RUNTIME_LIBRARY_GUIDANCE
+                    + f"原始错误：{error}"
+                ) from error
+            else:
+                raise LocalAsrError(f"faster-whisper 模型加载失败: {error}") from error
         except (TypeError, ValueError) as error:
             raise LocalAsrError(f"faster-whisper 模型加载失败: {error}") from error
         if on_event:
@@ -1861,6 +1921,92 @@ class WhisperEngine:
     ) -> LocalTranscription:
         del batch_size_s  # 上游自行处理长音频，MAW 无需再分块
         runtime = self._load(on_event)
+        try:
+            return self._run_transcription(
+                runtime,
+                audio_path,
+                language=language,
+                hotwords=hotwords,
+                on_event=on_event,
+            )
+        except RuntimeError as error:
+            # ``transcribe()`` 调用与生成器迭代都可能首次触发 CUDA 运行库装载
+            # （语言检测也可能在调用期用 GPU），模型 loaded 不代表推理依赖可用。
+            # 只有当前 runtime 确实运行在 CUDA 上且错误确认为缺库时才恢复，
+            # 其余错误原样抛出。
+            is_cuda_runtime = self._runtime_device == "cuda"
+            if not is_cuda_runtime or not _is_missing_cuda_runtime_error(error):
+                raise
+            return self._recover_from_cuda_library_error(
+                error,
+                audio_path,
+                language=language,
+                hotwords=hotwords,
+                on_event=on_event,
+            )
+
+    def _recover_from_cuda_library_error(
+        self,
+        error: RuntimeError,
+        audio_path: Path,
+        *,
+        language: str | None,
+        hotwords: Sequence[str],
+        on_event: ProgressCallback | None,
+    ) -> LocalTranscription:
+        """推理阶段缺 CUDA 运行库的恢复：auto 用 CPU/int8 从头重试一次。
+
+        调用前提：当前 runtime 实际运行在 CUDA 上且 ``error`` 确认为缺运行库。
+        显式 CUDA 不自动降级，保留原错误并给出可操作指引；``auto`` 则丢弃
+        失败的 GPU runtime 与半段累积结果后用 CPU 从头重试一次。重试失败时
+        同时保留 GPU 与 CPU 两个错误，防止无限重试。
+        """
+        if self.device.strip().lower() != "auto":
+            raise LocalAsrError(
+                "faster-whisper 转写失败："
+                + _CUDA_RUNTIME_LIBRARY_GUIDANCE
+                + f"原始错误：{error}"
+            ) from error
+        if on_event:
+            on_event(_WHISPER_CPU_FALLBACK_EVENT)
+        self._runtime = None
+        self._runtime_device = None
+        try:
+            from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+            if on_event:
+                on_event(self._loading_event("cpu"))
+            self._runtime = self._construct_runtime(WhisperModel, "cpu")
+        except Exception as fallback_error:  # noqa: BLE001 - 保留双错误
+            raise LocalAsrError(
+                "faster-whisper 自动回退 CPU 失败。CUDA 错误："
+                f"{error}；CPU 错误：{fallback_error}。"
+                + _CUDA_RUNTIME_LIBRARY_GUIDANCE
+            ) from fallback_error
+        if on_event:
+            on_event("[local] faster-whisper loaded")
+        try:
+            return self._run_transcription(
+                self._runtime,
+                audio_path,
+                language=language,
+                hotwords=hotwords,
+                on_event=on_event,
+            )
+        except Exception as cpu_error:  # noqa: BLE001 - 保留双错误
+            raise LocalAsrError(
+                "faster-whisper 自动回退 CPU 后转写仍失败。CUDA 错误："
+                f"{error}；CPU 错误：{cpu_error}。" + _CUDA_RUNTIME_LIBRARY_GUIDANCE
+            ) from cpu_error
+
+    def _run_transcription(
+        self,
+        runtime: Any,
+        audio_path: Path,
+        *,
+        language: str | None,
+        hotwords: Sequence[str],
+        on_event: ProgressCallback | None,
+    ) -> LocalTranscription:
         if on_event:
             on_event(f"[local] transcribing: {audio_path.name}")
         kwargs: dict[str, Any] = {
