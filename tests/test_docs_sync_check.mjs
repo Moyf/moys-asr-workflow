@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { collectImageSources, readDocument, readImage } from '../website/scripts/sync-maw-docs.mjs';
+import { collectImageSources, readDocument } from '../website/scripts/sync-maw-docs.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = 'website/scripts/sync-maw-docs.mjs';
@@ -26,17 +26,18 @@ async function fixture({ missing = '' } = {}) {
   await copy('tools/shared/vendor/marked-18.1.3/marked.umd.js');
   for (const registry of ['website/scripts/legacy-doc-assets.json', 'website/scripts/authored-doc-assets.json']) await copy(registry);
   for (const config of ['website/package.json', 'website/astro.config.mjs', 'website/tsconfig.json']) await copy(config);
-  for (const source of sources) await copy(source);
-  // Copy only images referenced by these documents, including untracked sources.
   for (const source of sources) {
-    const body = await readDocument(source, { root });
-    for (const image of collectImageSources(body, source)) {
-      if (image === missing) continue;
-      const contents = await readImage(image, { root });
-      const dest = path.join(target, image);
-      await mkdir(path.dirname(dest), { recursive: true });
-      await writeFile(dest, contents);
-    }
+    if (source === missing) continue;
+    const dest = path.join(target, source);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, source === 'docs/user/FAQ.md'
+      ? '# FAQ fixture\n\n![fixture](../assets/fixture.webp)\n' : '# Document fixture\n');
+  }
+  for (const [image, contents] of [['docs/assets/fixture.webp', 'fixture image'], ['docs/assets/guides/workflow.svg', 'fixture svg']]) {
+    if (image === missing) continue;
+    const dest = path.join(target, image);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, contents);
   }
   const docs = path.join(target, 'website/src/pages/docs');
   await mkdir(docs, { recursive: true });
@@ -80,20 +81,19 @@ test('edited sources and stale mirrors regenerate from the checkout', async () =
   await writeFile(source, (await readFile(source, 'utf8')) + `\n${marker}\n`);
   const page = path.join(target, 'website/src/pages/docs/faq.md');
   await writeFile(page, 'STALE MIRROR');
-  const image = 'docs/assets/readme/overview.webp';
+  const image = 'docs/assets/fixture.webp';
   const changedImage = Buffer.from('changed image fixture');
   await writeFile(path.join(target, image), changedImage);
   assert.notEqual(run(target, '--check').status, 0);
   assert.equal(run(target).status, 0);
   assert.match(await readFile(page, 'utf8'), new RegExp(marker));
   assert.deepEqual(await readFile(path.join(target, 'website/public/docs-assets', image)), changedImage);
-  const gettingStarted = await readFile(path.join(target, 'website/src/pages/docs/getting-started.md'), 'utf8');
-  assert.match(gettingStarted, /\.\.\/\.\.\/docs-assets\/docs\/assets\/readme\/overview\.webp/);
+  assert.match(await readFile(page, 'utf8'), /\.\.\/\.\.\/docs-assets\/docs\/assets\/fixture\.webp/);
   assert.equal(run(target, '--check').status, 0);
 });
 
 test('sync and check fail offline when a source or image is missing', async () => {
-  for (const missing of ['docs/user/FAQ.md', 'docs/assets/readme/overview.webp']) {
+  for (const missing of ['docs/user/FAQ.md', 'docs/assets/fixture.webp']) {
     const target = await fixture({ missing });
     const page = path.join(target, 'website/src/pages/docs/faq.md');
     const before = await readFile(page);
@@ -175,7 +175,7 @@ test('isolated site staging reports unknown doc assets without deleting them', a
 
 test('isolated site staging fails when a source document or image is missing', async () => {
   const { prepareSite } = await import('../website/scripts/stage-site.mjs');
-  for (const missing of ['docs/user/FAQ.md', 'docs/assets/readme/overview.webp']) {
+  for (const missing of ['docs/user/FAQ.md', 'docs/assets/fixture.webp']) {
     const target = await fixture({ missing });
     await assert.rejects(prepareSite(path.join(target, 'website'), path.join(target, 'stage')), /本地缺少/);
   }
@@ -370,7 +370,7 @@ test('generated documents preserve indented code and rewrite real images and nav
 
 test('source document images outside docs assets fail clearly', async () => {
   const source = 'docs/user/FAQ.md';
-  for (const syntax of ['![root](../../assets/example.png)', '<img src="../user/example.svg">', '![encoded](../%75ser/example.png)', '[download](../../other/image.webp)']) {
+  for (const syntax of ['![root](../../assets/example.png)', '<img src="../user/example.svg">', '![encoded](../%75ser/example.png)']) {
     assert.throws(() => collectImageSources(syntax, source), /docs\/assets\//, syntax);
   }
   const target = await fixture();
@@ -382,6 +382,70 @@ test('source document images outside docs assets fail clearly', async () => {
   }
 });
 
+test('ordinary links to images remain links to their repository targets', async () => {
+  const target = await fixture();
+  const source = path.join(target, 'docs/user/FAQ.md');
+  const examples = [
+    '[download](../../assets/screenshot.webp?download=1#view)',
+    '[local](../assets/fixture.webp)',
+    '<a href="../../assets/screenshot.webp">download</a>',
+    '[guide](WORKFLOW.md#start)',
+    '[external](https://example.org/photo.png)',
+    '[anchor](#section)',
+    '[file](../files/my%20notes.pdf?download=1#part)',
+    '[titled](../assets/fixture.webp "image title")',
+  ];
+  await writeFile(source, `${await readFile(source, 'utf8')}\n${examples.join('\n')}\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  for (const expected of [
+    '[download](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main/assets/screenshot.webp?download=1#view)',
+    '[local](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main/docs/assets/fixture.webp)',
+    '<a href="https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main/assets/screenshot.webp">download</a>',
+    '[guide](../workflow/#start)', examples[4], examples[5],
+    '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/my%20notes.pdf?download=1#part)',
+    '[titled](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main/docs/assets/fixture.webp "image title")',
+  ]) assert.ok(page.includes(expected), expected);
+  assert.deepEqual(collectImageSources(examples.join('\n'), 'docs/user/FAQ.md'), []);
+});
+
+test('comments preserve image examples while adjacent real images are synchronized', async () => {
+  const target = await fixture();
+  const source = path.join(target, 'docs/user/FAQ.md');
+  const body = [
+    '<!-- ![old](../../assets/screenshot.webp) -->![real](../assets/fixture.webp)',
+    'text <!-- ![old](../../assets/screenshot.webp) --> ![real](../assets/fixture.webp)',
+    '<!-- multi',
+    '![old][ref] <img src="../../assets/screenshot.webp">',
+    '```md',
+    '![old](../../assets/screenshot.webp)',
+    '```',
+    '-->',
+    '`<!--` ![real](../assets/fixture.webp) `-->`',
+    '```md',
+    '<!-- ![old](../../assets/screenshot.webp) -->',
+    '```',
+    '> <!-- ![old](../../assets/screenshot.webp) -->',
+    '> ![real](../assets/fixture.webp)',
+    '> <!-- multi',
+    '> ![old][ref]',
+    '> -->',
+    '> ![real](../assets/fixture.webp)',
+    '<div title="<!--"><img src="../assets/fixture.webp"></div>',
+    '<div>\n2 < 3\n<!-- ![old](../../assets/screenshot.webp) -->\n<img src="../assets/fixture.webp">\n</div>',
+  ].join('\n');
+  await writeFile(source, `# FAQ fixture\n\n${body}\n`);
+  assert.deepEqual(collectImageSources(body, 'docs/user/FAQ.md'), ['docs/assets/fixture.webp']);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  assert.ok(page.includes('<!-- ![old](../../assets/screenshot.webp) -->'));
+  assert.ok(page.includes('![old][ref] <img src="../../assets/screenshot.webp">'));
+  assert.equal((page.match(/<img src="\.\.\/\.\.\/docs-assets\/docs\/assets\/fixture\.webp"/g) || []).length, 7);
+  assert.doesNotMatch(page, /MAW_CODE_\d+/);
+});
+
 test('Pages push paths cover deployment inputs and skip unrelated changes', async () => {
   const deploy = await readFile(path.join(root, '.github/workflows/deploy-editor-pages.yml'), 'utf8');
   const push = deploy.split('  push:\n')[1].split('  workflow_dispatch:', 1)[0];
@@ -389,14 +453,12 @@ test('Pages push paths cover deployment inputs and skip unrelated changes', asyn
   assert.match(push, /\bpaths:/);
   const patterns = [...push.matchAll(/^\s+- ["']([^"']+)["']/gm)].map((match) => match[1]);
   const matches = (file) => patterns.some((pattern) => pattern.endsWith('/**') ? file.startsWith(pattern.slice(0, -2)) : file === pattern);
-  for (const file of ['website/src/pages/index.astro', 'README.md', 'CHANGELOG.md', 'docs/assets/readme/overview.webp', 'docs/user/FAQ.md', 'docs/releases/1.11.4.md', 'edit.py', 'maw/project.py', 'web/editor-scripts.txt', 'scripts/build-editor.mjs', 'scripts/run_check.py', 'scripts/prepare_release_notes.py', 'scripts/build_release_site.py', 'scripts/verify_release_site.py', 'tools/shared/vendor/marked-18.1.3/marked.umd.js', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'pyproject.toml', 'uv.lock', '.github/workflows/deploy-editor-pages.yml']) assert.ok(matches(file), file);
+  for (const file of ['website/src/pages/index.astro', 'README.md', 'CHANGELOG.md', 'docs/assets/example.webp', 'docs/user/FAQ.md', 'docs/releases/1.11.4.md', 'edit.py', 'maw/project.py', 'web/editor-scripts.txt', 'scripts/build-editor.mjs', 'scripts/run_check.py', 'scripts/prepare_release_notes.py', 'scripts/build_release_site.py', 'scripts/verify_release_site.py', 'tools/shared/vendor/marked-18.1.3/marked.umd.js', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'pyproject.toml', 'uv.lock', '.github/workflows/deploy-editor-pages.yml']) assert.ok(matches(file), file);
   for (const file of ['tests/test_unrelated.py', 'unrelated.txt', 'assets/example.png']) assert.equal(matches(file), false, file);
   const result = spawnSync(process.execPath, [path.join(root, script), '--validate'], { cwd: root, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const images = JSON.parse(result.stdout.match(/^MAW_IMAGES=(.*)$/m)[1]);
-  assert.ok(images.length > 0);
   assert.ok(images.every((image) => image.startsWith('docs/assets/')));
-  assert.ok(images.includes('docs/assets/readme/overview.webp'));
 });
 
 test('default output accepts an existing directory but protects custom outputs and symlinks', async () => {

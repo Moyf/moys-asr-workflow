@@ -152,7 +152,7 @@ function normalizeSourcePath(value) {
 function externalUrl(sourcePath, suffix = '') {
   const normalized = normalizeSourcePath(sourcePath);
   const isImage = /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(normalized);
-  return `${isImage ? rawRoot : githubRoot}/${normalized}${suffix}`;
+  return `${isImage ? rawRoot : githubRoot}/${normalized.split('/').map(encodeURIComponent).join('/')}${suffix}`;
 }
 
 function rewriteTarget(target, currentSource, forceImage = false) {
@@ -169,7 +169,7 @@ function rewriteTarget(target, currentSource, forceImage = false) {
   const sourcePath = normalizeSourcePath(path.posix.join(currentDirectory, destination));
   const route = routeBySource.get(sourcePath);
   if (route && !forceImage) return `${siteRoute(route, currentSource)}${suffix}`;
-  if (forceImage || /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(sourcePath)) {
+  if (forceImage) {
     if (sourcePath === '..' || sourcePath.startsWith('../')) {
       throw new Error(`图片路径超出源仓库：${target}`);
     }
@@ -184,7 +184,7 @@ function rewriteTarget(target, currentSource, forceImage = false) {
   return externalUrl(sourcePath, suffix);
 }
 
-function blockCodeOffsets(markdown) {
+function protectedOffsets(markdown) {
   const offsets = new Set();
   // Map a container's de-indented lines back to their original characters.
   function childMap(raw, mapping, content) {
@@ -225,6 +225,31 @@ function blockCodeOffsets(markdown) {
       const map = mapping.slice(start, cursor);
       if (token.type === 'code') {
         for (const index of map) if (index !== undefined) offsets.add(index);
+      } else if (token.type === 'html') {
+        // HTML blocks can contain several tags and comments. Skip quoted tag
+        // attributes so a literal "<!--" there is not mistaken for a comment.
+        for (let i = 0; i < token.raw.length;) {
+          const start = token.raw.indexOf('<', i);
+          if (start < 0) break;
+          if (token.raw.startsWith('<!--', start)) {
+            const close = token.raw.indexOf('-->', start + 4);
+            const end = close < 0 ? token.raw.length : close + 3;
+            for (const index of map.slice(start, end)) if (index !== undefined) offsets.add(index);
+            i = end;
+          } else if (/^<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s|\/?>)/.test(token.raw.slice(start)) ||
+                     token.raw.startsWith('<!', start) || token.raw.startsWith('<?', start)) {
+            let quote = '';
+            i = start + 1;
+            while (i < token.raw.length) {
+              const char = token.raw[i++];
+              if (quote && char === quote) quote = '';
+              else if (!quote && (char === '"' || char === "'")) quote = char;
+              else if (!quote && char === '>') break;
+            }
+          } else {
+            i = start + 1;
+          }
+        }
       } else if (token.type === 'blockquote') {
         visit(token.text, childMap(token.raw, map, token.text), token.tokens);
       } else if (token.type === 'list') {
@@ -236,6 +261,10 @@ function blockCodeOffsets(markdown) {
           const itemMap = map.slice(itemStart, itemCursor);
           visit(item.text, childMap(item.raw, itemMap, item.text), item.tokens);
         }
+      } else if (token.tokens) {
+        // Inline tokens use raw slices, so nested comments can be mapped back
+        // without mistaking comment-like text in a code span for a comment.
+        visit(token.raw, map, token.tokens);
       }
     }
   }
@@ -246,7 +275,7 @@ function blockCodeOffsets(markdown) {
 function rewriteLinks(markdown, currentSource) {
   const code = [];
   const protect = (value) => { const key = `\u0000MAW_CODE_${code.length}\u0000`; code.push(value); return key; };
-  const indented = blockCodeOffsets(markdown);
+  const indented = protectedOffsets(markdown);
   markdown = markdown.replace(/[^\n]+/g, (line, start) => {
     let result = '';
     for (let i = 0; i < line.length;) {
@@ -319,8 +348,8 @@ function rewriteLinks(markdown, currentSource) {
     throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
   }
 
-  result = result.replace(/(\]\()([^\s][^)]*?)(\))/g, (_, open, target, close) => {
-    return `${open}${rewriteTarget(target, currentSource)}${close}`;
+  result = result.replace(/(\]\()([^\s)]+)(\s+(?:"[^"]*"|'[^']*'))?(\))/g, (_, open, target, title = '', close) => {
+    return `${open}${rewriteTarget(target, currentSource)}${title}${close}`;
   });
 
   return result.replace(/\u0000MAW_IMAGE_(\d+)\u0000/g, (_, index) => htmlImages[Number(index)])

@@ -122,6 +122,8 @@
     "CommonMark indented code is protected without hiding paragraph or list images",
     "generated documents preserve indented code and rewrite real images and navigation",
     "source document images outside docs assets fail clearly",
+    "ordinary links to images remain links to their repository targets",
+    "comments preserve image examples while adjacent real images are synchronized",
     "Pages push paths cover deployment inputs and skip unrelated changes",
     "default output accepts an existing directory but protects custom outputs and symlinks"
   ]
