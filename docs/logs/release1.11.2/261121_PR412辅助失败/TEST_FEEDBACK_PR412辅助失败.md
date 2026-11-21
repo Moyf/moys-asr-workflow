@@ -13,6 +13,7 @@
 | 7 | `multi-subtitle-metadata`：同人物跨轨合并、撤销、保存 | 已修复 | 分开验证混合主轨拒绝且不改数据／历史、未绑定副轨仍拒绝混合身份、主轨同人时允许合并并统一副轨。保留字词时间、分组、撤销、写回、重开及交换验证；身份归字幕而非字词。 |
 | 8 | `subtitle-preview-geometry`：保存后读旧顶层 `segments` | 已修复 | 用 `getMainTrack(onDisk).segments` 取 v2 主轨，原保存、重开和时间断言不变；定向 Chromium 通过（`20261121T115521Z-b6b1d6d4`）。 |
 | 9 | `ass-export`：Linux runner 加载本机 `Arial` 报 `NetworkError` | 已修复 | 使用内嵌合成 WOFF，不依赖系统字体；验证两组字体加载和字宽，再执行原有度量与 `\fs` 动画断言。Windows Chromium 通过，Linux CI 待复验。 |
+| 10 | `keyboard-timing`：按住共享边界再按 D，CI 中第二条结束时间由 18000 变成 18100 ms | 已修复 | 时序触发的产品缺陷：拖动期间静默保存把面板旧时长当编辑写回。修复：波形拖动期间静默保存延后（拖动提交经命令层刷新重新武装防抖保存），保存与另存为的路径跳过拖动中的面板旧值提交、只序列化实时模型。补两条确定性回归（静默延后、显式保存不腐蚀），均先在旧代码上失败复现 `end:18100`。 |
 
 ## 阶段汇总
 
@@ -27,3 +28,9 @@
 - 独立自审整改后，`pnpm test issue234-review-regressions.spec.mjs editor-text-tools.spec.mjs multi-subtitle-metadata.spec.mjs ai-cleanup-scope-integration.spec.mjs` 全部 56 条通过（`20261121T101817Z-09196218`）；bundle 新鲜度与类型检查通过（`20261121T101817Z-6451d62f`、`20261121T101819Z-9dab2c4c`）。人工验收与远端 CI 尚未执行。
 - `ea6da117` 的 [远端 CI](https://github.com/Moyf/moys-asr-workflow/actions/runs/44897268325)：前七项均通过；辅助 Chromium 742 通过、2 失败，补记条目 8–9。此次跟进基于干净的 `test/2dev-playwright-discovery@ea6da117`。
 - 条目 8–9 仅修改两个测试 spec。Windows Chromium 执行 `pnpm test ass-export.spec.mjs subtitle-preview-geometry.spec.mjs`，28/28 通过（`20261121T115846Z-d3046850`）；独立自审无阻断项，Linux CI 待推送后验证。
+- 本轮调查基于干净工作树 `test/2dev-playwright-discovery@e38ea111`。[远端 CI](https://github.com/Moyf/moys-asr-workflow/actions/runs/44902046766) 已验证条目 8–9 通过，分片合计 743 通过、1 失败（条目 10）；`Change acceptance` 通过。
+- 条目 10 原用例本地定向 8/8（`20261121T125658Z-cc7c3f19`）。整份 `keyboard-timing.spec.mjs` 为 40 通过、1 失败（`20261121T130042Z-c4bd21e8`）；目标用例通过，失败为另一条 `dual mode links both edges via the seam zone while side handles trim independently`，是否同因未确认。
+- 失败 CI trace 证明命中共享中缝，松手前仍是正确的 `10200–18000` 波形预览，松手过程中的 `/api/project` POST 已是 `10200–18100`。本地用 `.artifacts/pr412-held-save-probe/` 关闭背景自动保存、指定生产静默保存的调用时点：两组按 D 后均为 `10200–18000`；松手前保存把内存、POST 和最终结果改为 `10200–18100`，松手后保存则保持 `10200–18000`（对照 2/2，`20261121T130255Z-25b53fcf`）。面板仍显示旧起点 `10100`、旧时长 `7900`，保存提交面板时把起点钳到左邻的新结束 `10200`，再加旧时长。`editor-server-save.js` 的防抖与定时保存均调用同一静默入口；未单独控制验证 CI 中具体由哪个计时器触发。
+- 实施修复：`web/editor/io/editor-project-save.js` 新增 `waveformCueDragActive()`，波形拖动期间静默保存直接延后（对齐既有 ASS 定位拖动的处理），`flushInlineEditsForSave` 与另存为路径跳过面板旧值提交。`tests/e2e/keyboard-timing.spec.mjs` 在 A/D 长按用例后新增两条回归。注意 e2e 的 serve.py 每次渲染前 `ensure_bundle` 自动重建：fail-first 需先暂存源码修复、以 HEAD 源码对应的旧 bundle 运行——两条回归分别失败于 `deferred` 为 `true`（`20261121T131212Z-1cf6e223`）与 POST `end:18100`（`20261121T131200Z-cc4dfdd3`）。
+- 修复后整份 `keyboard-timing.spec.mjs` 43/43 通过（`20261121T131234Z-c16ba17e`，含上轮本地偶发失败的 `dual mode` 用例与 CI 原 `A/D` 用例）；bundle 新鲜度、类型检查、个人路径与 `git diff --check` 均通过。远端 CI 与人工验收待验证。
+- 独立自审无 blocker / major，4 条 nit 已逐条处置并记入 `REVIEW_FINDINGS.md`；未验证项（面板失焦提交）已复核存在。`origin/2.0dev` 未前进（e7c92910 已在 HEAD 内），无需再合并。

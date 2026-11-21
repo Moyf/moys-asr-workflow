@@ -1336,6 +1336,110 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
   ]);
 });
 
+// 松手前字幕面板仍是按下瞬间的旧起点/旧时长；保存路径在拖动期间提交
+// 面板旧值曾把结束时间从 18000 改成 18100（CI 偶发红）。两条回归分别
+// 锁定静默保存延后与显式保存序列化实时模型，不依赖计时碰运气。
+test('silent autosave waits while a shared boundary drag is held', async ({ page }) => {
+  await loadAttachedCues(page, true);
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ autoSaveProject: false }));
+  const requests = [];
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !new URL(request.url()).pathname.endsWith('/api/project')) return;
+    const queue = [request.postDataJSON()];
+    while (queue.length) {
+      const node = queue.shift();
+      if (node?.id === 'timing-second') { requests.push({ start: node.start, end: node.end }); break; }
+      if (node && typeof node === 'object') queue.push(...Object.values(node));
+    }
+  });
+
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'special-edit');
+  const step = page.locator('#cue-move-step');
+  await step.fill('100');
+  await step.press('Tab');
+  await page.keyboard.press('Escape');
+
+  const block = page.locator('.waveform-cue-block[data-idx="0"]').first();
+  await expect(block).toBeVisible();
+  const blockBox = await stableVisibleBoundingBox(page, block);
+  await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.keyboard.press('d');
+  await page.mouse.up();
+
+  const boundary = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  await boundary.hover();
+  await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/shared-boundary-drag-active/);
+  await page.keyboard.press('d');
+  // 拖动未提交：静默保存必须等待，不发请求，也不改写拖动中的边界。
+  const deferred = await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }));
+  expect(deferred).toBe(false);
+  expect(requests).toEqual([]);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5100, end: 10200 },
+    { start: 10200, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await page.mouse.up();
+  const saved = await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }));
+  expect(saved).toBe(true);
+  expect(requests.length).toBeGreaterThanOrEqual(1);
+  expect(new Set(requests)).toEqual(new Set([{ start: 10200, end: 18000 }]));
+});
+
+test('explicit save during a held boundary drag keeps live drag timing', async ({ page }) => {
+  await loadAttachedCues(page, true);
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ autoSaveProject: false }));
+  const requests = [];
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !new URL(request.url()).pathname.endsWith('/api/project')) return;
+    const queue = [request.postDataJSON()];
+    while (queue.length) {
+      const node = queue.shift();
+      if (node?.id === 'timing-second') { requests.push({ start: node.start, end: node.end }); break; }
+      if (node && typeof node === 'object') queue.push(...Object.values(node));
+    }
+  });
+
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'special-edit');
+  const step = page.locator('#cue-move-step');
+  await step.fill('100');
+  await step.press('Tab');
+  await page.keyboard.press('Escape');
+
+  const block = page.locator('.waveform-cue-block[data-idx="0"]').first();
+  await expect(block).toBeVisible();
+  const blockBox = await stableVisibleBoundingBox(page, block);
+  await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.keyboard.press('d');
+  await page.mouse.up();
+
+  const boundary = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
+  await boundary.hover();
+  await page.mouse.down();
+  await expect(page.locator('#waveform-pane')).toHaveClass(/shared-boundary-drag-active/);
+  await page.keyboard.press('d');
+  // 显式保存不整体推迟：跳过面板旧值提交，序列化拖动中的实时模型。
+  const saved = await page.evaluate(() => MaweProjectSave.saveCurrentProject());
+  expect(saved).toBe(true);
+  expect(requests).toEqual([{ start: 10200, end: 18000 }]);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5100, end: 10200 },
+    { start: 10200, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await page.mouse.up();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5100, end: 10200 },
+    { start: 10200, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
 test('A also compresses an attached preceding cue', async ({ page }) => {
   await loadAttachedCues(page, true);
   await toggleGlobalSettings(page);
