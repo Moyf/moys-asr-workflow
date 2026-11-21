@@ -17,6 +17,14 @@ const segment = MaweInlineEdit.editingState ? window.AsrEditorUtils.getMainTrack
 return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd() !== segment.text);
 }
 
+// 波形字幕拖动（移动/边界/中缝）期间，字幕面板的时间字段仍是按下瞬间的旧值，
+// 此时提交面板会把旧起点/旧时长当作新编辑写回，覆盖拖动中的实时边界（共享边界
+// 拖动曾被改出 100ms 偏差）。拖动本身拥有时间真源；保存只序列化当前模型，
+// 面板留待拖动提交后按模型重渲染。
+function waveformCueDragActive() {
+return Boolean(MaweCoreState.waveformEditor?.drag);
+}
+
 // 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
 function flushInlineEditsForSave() {
 // 波形快速编辑气泡的待提交文字先落盘提交（幂等：内容没变不进命令层），
@@ -24,6 +32,7 @@ function flushInlineEditsForSave() {
 MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) {
+if (waveformCueDragActive()) return;
 if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
 else {
 // Live panel text is already in the project, but timed labels are deferred until
@@ -218,6 +227,10 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
       if (silent) return false;
       global.MaweAssCuePosition.commitDrag();
     }
+    // 波形拖动同理：静默保存等拖动提交后再保存（提交路径经命令层刷新重新
+    // 武装防抖保存）；显式保存不整体推迟，由 flushInlineEditsForSave 的
+    // 护栏跳过拖动中的面板旧值提交，序列化实时模型。
+    if (silent && waveformCueDragActive()) return false;
     if (MaweServerSave.projectFileHandle) return saveProjectToHandle({ silent });
     return saveProjectToServer({ silent });
   }
@@ -237,7 +250,8 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     if (MaweState.projectLoadPending) return false;
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
+    // 拖动中的另存为同样不提交面板旧时间值，只序列化当前模型。
+    if (!waveformCueDragActive()) MaweCuePanel.commitCuePanelEdit();
     // 波形快速编辑气泡的待提交文字先落盘提交（幂等）；原生保存路径的
     // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
     MaweCoreState.waveformEditor?.commitCueQuickEdit?.();

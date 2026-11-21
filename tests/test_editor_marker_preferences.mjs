@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
@@ -25,12 +24,11 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
   MaweDom: { markersManageButton: { hidden: true } },
   document: { getElementById: id => elements[id], addEventListener() {} },
   };
-  const evaluate = file => vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
   vm.runInNewContext(invokedInitModuleSource('editor/state/editor-settings.js', 'initMaweSettings'), context);
   context.MaweSettings = context.window.MaweSettings;
   vm.runInNewContext(invokedInitModuleSource('editor/markers/editor-marker-editing.js', 'initMaweMarkerEditing'), context);
   context.MaweMarkerEditing = context.window.MaweMarkerEditing;
-  evaluate('editor/markers/editor-wiring-markers.js');
+  vm.runInNewContext(invokedInitModuleSource('editor/markers/editor-wiring-markers.js', 'initMaweMarkersWiring'), context);
   return { storage, settings: context.MaweSettings, markers: context.MaweMarkerEditing, elements,
     saved: () => JSON.parse(storage.get(key)),
   };

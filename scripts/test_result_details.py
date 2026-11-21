@@ -7,9 +7,9 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 if __package__:
-    from .browser_results import PORTABLE_SKIPS, collection
+    from .browser_results import collection
 else:
-    from browser_results import PORTABLE_SKIPS, collection
+    from browser_results import collection
 
 
 def _python(report, required):
@@ -52,9 +52,6 @@ def _browser(report, listing):
                   for error in attempt.get("errors", []) or ([attempt["error"]] if attempt.get("error") else [])]
         if statuses == ["skipped"]:
             reasons = [a.get("description", "") for a in annotations if a["type"] == "skip"]
-            allowed = PORTABLE_SKIPS.get(key[:2])
-            if allowed and reasons == [allowed] and test["status"] == test["expectedStatus"] == "skipped":
-                continue
             yield identity, "skip", reasons
         elif (statuses != ["passed"] or errors or test["status"] != "expected"
                 or test["expectedStatus"] != "passed" or any(attempt["retry"] for attempt in attempts)

@@ -201,7 +201,9 @@ test('detach clears all capabilities and label follows media and language change
   await fixture(page, 'save', async () => {
     await page.addScriptTag({ content: projectLoad });
     await page.addScriptTag({ content: i18n });
+    const bindingEpoch = await page.evaluate(() => MaweProjectLoad.projectBindingEpoch);
     await page.evaluate(() => MaweProjectLoad.detachServerProjectSaving());
+    expect(await page.evaluate(() => MaweProjectLoad.projectBindingEpoch)).toBe(bindingEpoch + 1);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport, MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport])).toEqual([false, false]);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.gapRemovedMediaKind, MaweBoot.SERVER_CONFIG.gapRemovedMediaSourceName,
       MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension, MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime,

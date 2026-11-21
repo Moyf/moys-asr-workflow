@@ -1,20 +1,32 @@
 import { expect, test } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { buildPortableBlankEditor, disableOnboarding, generateWav } from './helpers.mjs';
+import {
+  buildBrowserEditorFixture,
+  cleanupTempDir,
+  disableOnboarding,
+  findFreePort,
+  generateWav,
+  makeTempDir,
+  startStaticServer,
+} from './helpers.mjs';
 
-// Static current-source fixture: no persistent server, no root portable rewrite.
-let pageUrl, mediaPath;
-test.beforeAll(() => {
-  const directory = join(process.cwd(), '.artifacts', 'editor-menu-focus', 'fixture');
-  mkdirSync(directory, { recursive: true });
-  mediaPath = generateWav(join(directory, 'test.wav'), 20);
-  pageUrl = pathToFileURL(buildPortableBlankEditor(join(directory, 'editor.html'))).href;
+// Static browser-contract fixture: no persistent app server, no file:// entry.
+let dir;
+let server;
+let mediaPath;
+test.beforeAll(async () => {
+  dir = makeTempDir('editor-menu-focus');
+  mediaPath = generateWav(join(dir, 'test.wav'), 20);
+  server = await startStaticServer(buildBrowserEditorFixture(join(dir, 'editor.html')), await findFreePort());
+});
+test.afterAll(async () => {
+  await server?.stop();
+  cleanupTempDir(dir);
 });
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
-  await page.goto(pageUrl);
+  await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
 });
 
@@ -106,6 +118,10 @@ test('OTIO menu keyboard navigation works but Escape does not restore its toolba
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#download-fcp7-export')).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#download-otio')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[aria-controls="extra-otio-menu"]')).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#download-otio')).toBeFocused();
   await page.keyboard.press('Escape');

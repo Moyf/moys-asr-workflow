@@ -12,8 +12,8 @@ const importPaths = changes => changes.map(change => change.path);
 const dirty = page => page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges());
 const readState = page => page.evaluate(() => ({
   dirty: MaweServerSave.hasUnsavedProjectChanges(),
-  highlighted: Boolean(MaweBoot.DATA.segments[0]?._dirty),
-  end: MaweBoot.DATA.segments[0]?.end,
+  highlighted: Boolean(MaweBoot.DATA.tracks.find(t => t.role === 'main').segments[0]?._dirty),
+  end: MaweBoot.DATA.tracks.find(t => t.role === 'main').segments[0]?.end,
   changes: MaweJsonRepair.lastImportReport,
 }));
 async function openBrowserFile(page, value, filename = 'legacy.mosp') {
@@ -38,49 +38,70 @@ test.beforeEach(async ({ page }) => {
     JSON.stringify({ autoSaveProject: false })));
 });
 
-test('browser File import: legacy defaults and _dirty are clean; timing repair survives failed save', async ({ page }) => {
+async function installMigrationPicker(page) {
+  await page.evaluate(() => {
+    window.migrationWrites = [];
+    window.migrationNames = [];
+    window.migrationFailWrite = false;
+    window.showSaveFilePicker = async options => {
+      window.migrationNames.push(options.suggestedName);
+      return { name: options.suggestedName, getFile: async () => ({ size: 0 }),
+        createWritable: async () => {
+          if (window.migrationFailWrite) throw new Error('synthetic write failure');
+          return { write: async blob => window.migrationWrites.push(await blob.text()), close: async () => {} };
+        } };
+    };
+  });
+}
+async function expectMigrationPending(page) {
+  expect(await dirty(page)).toBe(true);
+  expect(await page.evaluate(() => MaweServerSave.requiresMigrationSaveAs)).toBe(true);
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(false);
+  expect(await page.evaluate(() => ({ names: migrationNames, writes: migrationWrites }))).toEqual({ names: [], writes: [] });
+}
+async function saveMigration(page) {
+  await page.evaluate(() => MaweProjectSave.saveCurrentProject());
+  const result = await page.evaluate(() => ({ names: migrationNames, writes: migrationWrites.map(JSON.parse),
+    pending: MaweServerSave.requiresMigrationSaveAs }));
+  expect(result.writes).toHaveLength(1);
+  expect(result.pending).toBe(false);
+  expect(result.writes[0].schema).toBe('moy.asr.project.v2');
+  expect(await dirty(page)).toBe(false);
+  return result;
+}
+
+test('browser File import: legacy migration preserves timing repair through failed and successful Save As', async ({ page }) => {
   await page.goto(blank.url);
   await page.waitForFunction(() => typeof window.MaweMultiImport?.openProjectFile === 'function');
-
+  await installMigrationPicker(page);
   expect(await openBrowserFile(page, source(200), 'clean.mosp')).toBe(true);
   let state = await readState(page);
-  expect(state.dirty).toBe(false);
   expect(state.highlighted).toBe(false);
-  expect(importPaths(state.changes)).toEqual(['$.schema', '$.segments[0].id']);
+  expect(importPaths(state.changes)).toEqual(expect.arrayContaining(['$.schema', '$.segments', '$.tracks']));
+  await expectMigrationPending(page);
 
   expect(await openBrowserFile(page, source(100), 'repaired.mosp')).toBe(true);
   state = await readState(page);
-  expect(state.end).toBe(200); // C repairs invalid cue duration to at least 100 ms.
-  expect(state.highlighted).toBe(false); // Old file flags are session-only.
-  expect(state.dirty).toBe(true);
-  expect(state.changes).toContainEqual({ path: '$.segments[0].end', kind: 'replace', before: 100, after: 200 });
-
-  // Real handle write path, with a deliberately failed createWritable first.
-  await page.evaluate(() => {
-    MaweServerSave.projectFileHandle = { name: 'repaired.mosp',
-      createWritable: async () => { throw new Error('synthetic write failure'); } };
-  });
-  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(false);
+  expect(state.end).toBe(200);
+  expect(state.highlighted).toBe(false);
+  expect(importPaths(state.changes)).toEqual(expect.arrayContaining(['$.segments', '$.tracks']));
+  await expectMigrationPending(page);
+  await page.evaluate(() => { migrationFailWrite = true; });
+  await page.evaluate(() => MaweProjectSave.saveCurrentProject());
+  expect(await page.evaluate(() => migrationWrites)).toEqual([]);
   expect(await dirty(page)).toBe(true);
-
-  await page.evaluate(() => {
-    window.importStateSavedJson = null;
-    MaweServerSave.projectFileHandle = { name: 'repaired.mosp', createWritable: async () => ({
-      write: async blob => { window.importStateSavedJson = await blob.text(); },
-      close: async () => {},
-    }) };
-  });
-  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(true);
-  expect(await dirty(page)).toBe(false);
-  const saved = await page.evaluate(() => JSON.parse(window.importStateSavedJson));
-  expect(saved.segments[0].end).toBe(200);
-  expect(JSON.stringify(saved)).not.toContain('"_dirty"');
+  expect(await page.evaluate(() => MaweServerSave.requiresMigrationSaveAs)).toBe(true);
+  await page.evaluate(() => { migrationFailWrite = false; });
+  const result = await saveMigration(page);
+  expect(result.names).toEqual(['repaired_v2.mosp', 'repaired_v2.mosp']);
+  expect(result.writes[0].tracks.find(t => t.role === 'main').segments[0].end).toBe(200);
+  expect(JSON.stringify(result.writes[0])).not.toContain('"_dirty"');
 });
 
-test('Server startup: defaults stay clean; actual repair is reported and needs successful disk save', async ({ page }) => {
+test('Server startup: legacy source stays untouched while repairs are saved to a new v2 file', async ({ page }) => {
   const media = join(temp, 'synthetic.wav');
   generateWav(media, 2);
-  for (const [label, end, shouldBeDirty] of [['clean', 200, false], ['repaired', 100, true]]) {
+  for (const [label, end] of [['clean', 200], ['repaired', 100]]) {
     const project = join(temp, `${label}.mosp`);
     const raw = JSON.stringify(source(end, true));
     writeFileSync(project, raw);
@@ -88,57 +109,42 @@ test('Server startup: defaults stay clean; actual repair is reported and needs s
     try {
       await page.goto(bound.url);
       await page.waitForFunction(() => typeof window.MaweProjectSave?.saveProjectToServer === 'function');
+      await installMigrationPicker(page);
       const state = await readState(page);
-      expect(state.dirty, label).toBe(shouldBeDirty);
       expect(state.highlighted, label).toBe(false);
       expect(state.end, label).toBe(200);
       expect(importPaths(state.changes), label).toContain('$.schema');
-      expect(importPaths(state.changes), label).toContain('$.segments[0].id');
-      expect(importPaths(state.changes).includes('$.segments[0].end'), label).toBe(shouldBeDirty);
+      expect(importPaths(state.changes), label).toEqual(expect.arrayContaining(['$.segments', '$.tracks']));
+      await expectMigrationPending(page);
       expect(readFileSync(project, 'utf8')).toBe(raw);
-      if (!shouldBeDirty) continue;
-
-      await page.route('**/api/project', route => route.fulfill({
-        status: 500, json: { ok: false, error: 'synthetic write failure' },
-      }));
-      expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer({ silent: true }))).toBe(false);
-      expect(await dirty(page)).toBe(true);
+      const result = await saveMigration(page);
+      expect(result.names).toEqual([`${label}_v2.mosp`]);
+      expect(result.writes[0].tracks.find(t => t.role === 'main').segments[0].end).toBe(200);
+      expect(JSON.stringify(result.writes[0])).not.toContain('"_dirty"');
       expect(readFileSync(project, 'utf8')).toBe(raw);
-      await page.unroute('**/api/project');
-
-      expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer({ silent: true }))).toBe(true);
-      expect(await dirty(page)).toBe(false);
-      const saved = JSON.parse(readFileSync(project, 'utf8'));
-      expect(saved.segments[0].end).toBe(200);
-      expect(JSON.stringify(saved)).not.toContain('"_dirty"');
-      await page.reload();
-      await page.waitForFunction(() => typeof window.MaweJsonRepair?.lastImportReport !== 'undefined');
-      expect((await readState(page)).changes).toEqual([]);
-      expect(await dirty(page)).toBe(false);
     } finally {
       await bound.stop();
     }
   }
 });
 
-test('D/E follow-on: FPS intent and v1.5 group membership share the persistence checkpoint', async ({ page }) => {
+test('D/E follow-on: FPS intent and v1.5 group membership survive migration and checkpoints', async ({ page }) => {
   await page.goto(blank.url);
   await page.waitForFunction(() => typeof window.MaweMultiImport?.openProjectFile === 'function');
-  const supportsV15 = await page.evaluate(() => window.AsrEditorUtils.supportsProjectSchema({ schema: 'moy.asr.project.v1.5' }));
-  expect(supportsV15).toBe(true);
+  expect(await page.evaluate(() => window.AsrEditorUtils.supportsProjectSchema({ schema: 'moy.asr.project.v1.5' }))).toBe(true);
   const input = {
     schema: 'moy.asr.project.v1.5',
     timebase: { unit: 'milliseconds', fps: 30, fps_source: 'auto' },
     subtitle_groups: { color: [{ id: 'color-1', value: { name: 'blue' } }], sticker: [] },
     segments: [{ id: 'main-1', start: 100, end: 200, text: 'Grouped', items: [], color_group_id: 'color-1' }],
   };
+  await installMigrationPicker(page);
   expect(await openBrowserFile(page, input, 'grouped.mosp')).toBe(true);
-  expect(await dirty(page)).toBe(false);
-  let saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.schema).toBe('moy.asr.project.v1.5');
+  await expectMigrationPending(page);
+  let saved = (await saveMigration(page)).writes[0];
   expect(saved.timebase.fps_source).toBe('auto');
   expect(saved.subtitle_groups.color[0].id).toBe('color-1');
-  expect(saved.segments[0].color_group_id).toBe('color-1');
+  expect(saved.tracks.find(t => t.role === 'main').segments[0].color_group_id).toBe('color-1');
   await page.evaluate(() => { MaweBoot.DATA.timebase.fps_source = 'user'; });
   expect(await dirty(page)).toBe(true);
   await page.evaluate(() => {
@@ -188,7 +194,7 @@ test('picker replaces an existing group head without splitting its members', asy
     MaweStickerPicker.assignColor([0], 'red');
     MaweStickerPicker.stickerTargetIdxs = [0];
     MaweStickerPicker.assignSticker({ name: 'replacement', filename: 'replacement.png' });
-    return { groups: MaweBoot.DATA.subtitle_groups, cues: MaweBoot.DATA.segments,
+    return { groups: MaweBoot.DATA.subtitle_groups, cues: MaweBoot.DATA.tracks.find(t => t.role === 'main').segments,
       range: window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA).map(r => [r.start, r.end]) };
   });
   expect(result.cues.map(c => c.color_group_id)).toEqual(['color-1', 'color-1']);

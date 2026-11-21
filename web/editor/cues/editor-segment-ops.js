@@ -135,7 +135,6 @@ export function initMaweSegmentOps() {
     if (!merged.sticker_group_id) delete merged.sticker_group_id;
     if (!colorGroup.groupInherited) delete merged.color_group_metadata;
     clearInconsistentSpeaker(merged, segs);
-    if (merged.items.length === 0) merged.items = null;
 
     let mergedExtension = null;
     if (extensionTrack && extensionMergeSegments.length) {

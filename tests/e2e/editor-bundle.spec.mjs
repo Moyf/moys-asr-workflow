@@ -1,93 +1,50 @@
 import {expect, test} from '@playwright/test';
-import {readFileSync, realpathSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
-import {buildBrowserEditorFixture, cleanupTempDir, disableOnboarding,
-  findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
+import {cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
 import {readSources} from '../../scripts/build-editor.mjs';
 
-let directory, portable, injected, server;
+let directory, server;
 const sources = readSources();
 const identity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
 test.beforeAll(async () => {
   directory = makeTempDir('editor-bundle');
-  portable = buildBrowserEditorFixture(join(directory, 'current.edit.html'));
-  injected = join(directory, 'injected.edit.html');
-  const python = process.env.MAW_E2E_PYTHON || 'uv';
-  const prefix = process.env.MAW_E2E_PYTHON ? [] : ['run', '--no-sync', 'python'];
-  execFileSync(python, [...prefix, '-c', `import edit, json, pathlib, sys
-from maw.project import normalize_project
-original = edit.render_editor_page
-def render(**context):
-    context.update(data_json=json.dumps(normalize_project(json.loads('{"segments":[{"id":"injected","start":0,"end":1000,"text":"Injected cue"}]}'))),
-                   filename_base_json='"injected project"', stickers_json='[]',
-                   sticker_root_json='"portable-root"', sticker_url_prefix_json='"fixture-stickers/"',
-                   ninja_sfx_base_url_json='"fixture-sfx/"', ui_language_json='"en"')
-    return original(**context)
-edit.render_editor_page = render
-pathlib.Path(sys.argv[1]).write_text(edit.render_empty_editor_page(), encoding='utf-8', newline='\\n')
-`, injected], {windowsHide:true});
   server = await startBlankServer(await findFreePort(), join(directory, 'settings'));
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 
-test('minified portable bundle preserves non-default data, paths and generated language', async ({page}) => {
-  // 便携单 HTML 的注入与 file:// 运行契约随 2.0 移除；HTTP bundle 覆盖保留。
-  test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
+test('HTTP executes every source and preserves project/export/undo behavior', async ({page}) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await disableOnboarding(page);
-  await page.goto(pathToFileURL(injected).href);
+  await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
-  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  expect(await page.evaluate(() => ({text:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]?.text,
-    filename:MaweBoot.FILENAME_BASE, stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
-    prefix:MaweBoot.STICKER_URL_PREFIX, sfx:MaweBoot.NINJA_SFX_BASE_URL, server:MaweBoot.SERVER_CONFIG})))
-    .toEqual({text:'Injected cue',filename:'injected project',stickers:[],root:'portable-root',
-      prefix:'fixture-stickers/',sfx:'fixture-sfx/',server:null});
+  expect(await page.content()).toContain(identity);
+  expect(await page.evaluate(() => window.__mawEsmInitializationTrace)).toEqual(sources);
+  const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
+    server:MaweBoot.SERVER_CONFIG, sfx:MaweBoot.NINJA_SFX_BASE_URL}));
+  expect(boot.stickers).toEqual([]);
+  expect(boot.root).toBe('');
+  expect(boot.server).not.toBeNull();
+  expect(boot.sfx).toBe('/sfx/');
+  const result = await page.evaluate(() => {
+    const project = {schema:'moy.asr.project.v1', media:'',
+      segments:[{id:'a',start:0,end:1000,text:'First'}, {id:'b',start:1100,end:2100,text:'Second'}],
+      extension_fixture:{preserved:true}};
+    MaweProjectLoad.applyCanonicalProject(project, 'synthetic.mosp');
+    const serialized = JSON.parse(MaweJsonRepair.buildJson());
+    const srt = MaweExportSrt.buildSrt();
+    const before = AsrEditorUtils.getMainTrack(AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA)).segments;
+    MaweSegmentOps.mergeSegments([0,1]);
+    const merged = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 1;
+    MaweHistory.performUndo();
+    return {preserved:serialized.extension_fixture?.preserved, srt, merged,
+      restored:JSON.stringify(AsrEditorUtils.getMainTrack(AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA)).segments) === JSON.stringify(before),
+      integerTiming:AsrEditorUtils.getMainTrack(serialized).segments.every(cue => Number.isInteger(cue.start) && Number.isInteger(cue.end))};
+  });
+  expect(result.preserved).toBe(true);
+  expect(result.srt).toContain('00:00:00,000 --> 00:00:01,000');
+  expect(result.srt).toContain('Second');
+  expect(result.merged && result.restored && result.integerTiming).toBe(true);
   expect(errors).toEqual([]);
 });
-
-for (const transport of ['file', 'HTTP']) {
-  test(`${transport} executes every source and preserves project/export/undo behavior`, async ({page}) => {
-    // 仅 file:// 传输属于弃维护的便携单 HTML；HTTP 传输仍测试共用编辑器代码。
-    test.skip(transport === 'file', '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
-    const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    await disableOnboarding(page);
-    await page.goto(transport === 'file' ? pathToFileURL(portable).href : server.url);
-    await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
-    expect(await page.content()).toContain(identity);
-    expect(await page.evaluate(() => window.__mawEsmInitializationTrace)).toEqual(sources);
-    const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
-      server:MaweBoot.SERVER_CONFIG, sfx:MaweBoot.NINJA_SFX_BASE_URL}));
-    expect(boot.stickers).toEqual([]);
-    expect(boot.root).toBe('');
-    expect(boot.server === null).toBe(transport === 'file');
-    if (transport === 'file') {
-      expect(realpathSync(fileURLToPath(new URL(boot.sfx, pathToFileURL(portable)))))
-        .toBe(realpathSync(join(process.cwd(), 'web/sfx')));
-    } else expect(boot.sfx).toBe('/sfx/');
-    const result = await page.evaluate(() => {
-      const project = {schema:'moy.asr.project.v1', media:'',
-        segments:[{id:'a',start:0,end:1000,text:'First'}, {id:'b',start:1100,end:2100,text:'Second'}],
-        extension_fixture:{preserved:true}};
-      MaweProjectLoad.applyCanonicalProject(project, 'synthetic.mosp');
-      const serialized = JSON.parse(MaweJsonRepair.buildJson());
-      const srt = MaweExportSrt.buildSrt();
-      const before = AsrEditorUtils.getMainTrack(AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA)).segments;
-      MaweSegmentOps.mergeSegments([0,1]);
-      const merged = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 1;
-      MaweHistory.performUndo();
-      return {preserved:serialized.extension_fixture?.preserved, srt, merged,
-        restored:JSON.stringify(AsrEditorUtils.getMainTrack(AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA)).segments) === JSON.stringify(before),
-        integerTiming:AsrEditorUtils.getMainTrack(serialized).segments.every(cue => Number.isInteger(cue.start) && Number.isInteger(cue.end))};
-    });
-    expect(result.preserved).toBe(true);
-    expect(result.srt).toContain('00:00:00,000 --> 00:00:01,000');
-    expect(result.srt).toContain('Second');
-    expect(result.merged && result.restored && result.integerTiming).toBe(true);
-    expect(errors).toEqual([]);
-  });
-}

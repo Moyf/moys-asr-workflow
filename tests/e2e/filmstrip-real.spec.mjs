@@ -78,8 +78,14 @@ test('real video frames stay cached during playback, stop decoding and resume th
   await expect.poll(()=>states.slice(resumeAt).some(state=>state.samples?.some(sample=>sample.status==='target'&&sample.requested_ms%1000!==0)),{timeout:20000}).toBe(true,'pause completes fine-grid targets in the current view');
   await page.waitForFunction(()=>MaweCoreState.waveformEditor.thumbnailController.bytes>0);
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-paused.png'});
-  const beforeHide=await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes);
-  await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.setEnabled(false));
+  // A frame can finish decoding between separate browser calls.
+  const beforeHide=await page.evaluate(()=>{
+    const controller=MaweCoreState.waveformEditor.thumbnailController;
+    const bytes=controller.bytes;
+    controller.setEnabled(false);
+    return bytes;
+  });
+  expect(beforeHide).toBeGreaterThan(0);
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
   await expect.poll(()=>requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length).toBeGreaterThan(0);
   expect(await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes)).toBe(beforeHide);

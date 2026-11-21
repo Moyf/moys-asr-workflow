@@ -1,3 +1,4 @@
+import { isPlaybackActive } from './editor-media-playback.js';
 import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
 import * as markerEditing from '../markers/editor-marker-editing.js';
 
@@ -249,7 +250,7 @@ export function initMaweWaveformInit() {
       MaweTextCleanup.seekFromWaveform(timeSec, options);
       if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
     },
-    isPlaybackActive: () => window.MaweKeyboardGuards.isPlaybackActive(),
+    isPlaybackActive,
     onPlayheadDragStateChange: (active) => {
       MawePlaybackLoop.waveformPlayheadDragging = active === true;
       if (!active) MaweCueListAnchor.resumeCueListFollowing();

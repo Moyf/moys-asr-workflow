@@ -56,6 +56,10 @@ export function initMaweJsonRepair() {
   // source metadata and extension fields on every role; runtime views stay out.
   function projectSnapshot() {
     const out = window.AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
+    // rows is the legacy default view; omit it so switching the timed-text
+    // view back to rows leaves the project byte-identical (and not dirty),
+    // exactly like the pre-v2 serializer did.
+    if (out.timed_text_edit_view === 'rows') delete out.timed_text_edit_view;
     // Use the same effective project gain in saved bytes and content checkpoints.
     // The reader is pure; retain extension fields beside the known gain settings.
     out.audio_processing = {

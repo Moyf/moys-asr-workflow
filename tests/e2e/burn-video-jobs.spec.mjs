@@ -8,10 +8,6 @@ import { fileURLToPath } from 'node:url';
 import { compileSources, readSources, readModules } from '../../scripts/build-editor.mjs';
 import { makeTempDir, cleanupTempDir } from './helpers.mjs';
 
-const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-burn-video.js', import.meta.url), 'utf8');
-// 整个模块可安全注入：初始化只读取 SERVER_CONFIG 并绑定按钮，业务入口都是点击回调。
-const handler = source;
-
 // Compile the real DOM-free shared modules through the production translator,
 // as tests/helpers/editor-module-loader.mjs does for Node fixtures.
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -26,6 +22,10 @@ const utilitySource = (await compileSources(root, utilityFiles,
 const projectLoadFile = 'editor/io/editor-project-load.js';
 const projectLoadSource = (await compileSources(root, [projectLoadFile],
   readModules(root).filter(module => module.file === projectLoadFile),
+  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
+const burnWiringFile = 'editor/io/editor-wiring-burn-video.js';
+const handler = (await compileSources(root, [burnWiringFile],
+  readModules(root).filter(module => module.file === burnWiringFile),
   file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
 const stickerPlanSource = fs.readFileSync(new URL('../../web/editor/io/editor-sticker-burn-plan.js', import.meta.url), 'utf8');
 

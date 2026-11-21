@@ -9,13 +9,13 @@ import unittest
 from scripts import browser_results
 
 
-def fixture(file="example.spec.mjs", title="passes", *, skip=False):
+def fixture(file="example.spec.mjs", title="passes", *, skip_reason=None):
+    skip = skip_reason is not None
     test = {"projectName": "chromium", "expectedStatus": "skipped" if skip else "passed",
             "status": "skipped" if skip else "expected", "annotations": [],
             "results": [{"retry": 0, "status": "skipped" if skip else "passed"}]}
     if skip:
-        reason = browser_results.PORTABLE_SKIPS.get((file, (title,)), browser_results.PORTABLE_REASON)
-        test["annotations"] = [{"type": "skip", "description": reason}]
+        test["annotations"] = [{"type": "skip", "description": skip_reason}]
     actual = {"config": {"version": "1.62.0", "shard": {"current": 1, "total": 4}}, "errors": [],
               "suites": [{"title": file, "line": 0, "specs": [{"file": file, "title": title, "tests": [test]}]}],
               "stats": {"expected": int(not skip), "skipped": int(skip), "unexpected": 0, "flaky": 0}}
@@ -39,12 +39,15 @@ class BrowserResultsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing from shard discovery"):
             browser_results.validate_shard_partition(full, [sibling, empty], 2)
 
-    def test_same_job_collection_and_exact_four_portable_skips(self):
-        self.assertEqual(browser_results.validate(*fixture(), 1, 4)["passed"], 1)
-        self.assertEqual(len(browser_results.PORTABLE_SKIPS), 4)
-        for file, title in browser_results.PORTABLE_SKIPS:
-            result = browser_results.validate(*fixture(file, title[0], skip=True), 1, 4)
-            self.assertEqual(len(result["skips"]), 1)
+    def test_same_job_collection_passes_and_retired_portable_skip_is_rejected(self):
+        result = browser_results.validate(*fixture(), 1, 4)
+        self.assertEqual(result["passed"], 1)
+        self.assertEqual(result["skips"], [])
+        with self.assertRaisesRegex(ValueError, "unsupported skip"):
+            browser_results.validate(*fixture(
+                "editor-bundle.spec.mjs", "file executes every source and preserves project/export/undo behavior",
+                skip_reason="便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析",
+            ), 1, 4)
 
     def test_positive_stats_cannot_hide_semantically_bad_outcomes(self):
         mutations = {
@@ -73,16 +76,6 @@ class BrowserResultsTests(unittest.TestCase):
                 mutate(actual, actual["suites"][0]["specs"][0]["tests"][0])
                 with self.assertRaises(ValueError):
                     browser_results.validate(listed, actual, 1, 4)
-
-    def test_portable_exemption_is_not_a_file_title_or_reason_wildcard(self):
-        file, title = next(iter(browser_results.PORTABLE_SKIPS))
-        for f, t in (("other.spec.mjs", title[0]), (file, "nested " + title[0])):
-            with self.assertRaises(ValueError):
-                browser_results.validate(*fixture(f, t, skip=True), 1, 4)
-        listed, actual = fixture(file, title[0], skip=True)
-        actual["suites"][0]["specs"][0]["tests"][0]["annotations"][0]["description"] += " extra"
-        with self.assertRaises(ValueError):
-            browser_results.validate(listed, actual, 1, 4)
 
     def test_runtime_ci_and_worker_metadata_does_not_change_resolved_config(self):
         listed, actual = fixture()

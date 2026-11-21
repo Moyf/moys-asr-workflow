@@ -1,4 +1,4 @@
-
+export function initMaweWaveformHintsWiring() {
 // === Hint ===
 // 右上角提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。
 // 最多同时显示 3 条，新提示追加在下方。
@@ -27,3 +27,4 @@ document.addEventListener('asr:waveform-scale-limit', (event) => {
 document.addEventListener('asr:waveform-loudness-unavailable', () => {
   MaweHint.flashHint('当前媒体没有响度缓存，无法按响度适配', 'warning');
 });
+}
