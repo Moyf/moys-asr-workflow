@@ -205,7 +205,7 @@ test('geometry persists through a server save and reload, segments untouched', a
   expect(onDisk.preview.subtitle.height).toBeCloseTo(saved.height, 4);
   // buildJson normalizes segment shape (adds null sticker/color fields); assert only
   // that timing and text — the fields preview geometry must never touch — are intact.
-  expect(onDiskSegmentTiming(onDisk.segments)).toEqual(EXPECTED_SEGMENTS);
+  expect(onDiskSegmentTiming(getMainTrack(onDisk).segments)).toEqual(EXPECTED_SEGMENTS);
 
   // Reload the page: the server re-renders from disk, so geometry survives.
   await page.reload();

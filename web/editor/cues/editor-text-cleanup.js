@@ -1,3 +1,4 @@
+import { pausePlaybackAfterMouseClick } from '../media/editor-media-playback.js';
 export function initMaweTextCleanup() {
 'use strict';
 
@@ -60,7 +61,7 @@ export function initMaweTextCleanup() {
   }
   try {
     MaweMediaPlayback.setPlayerCurrentTime(Math.max(0, timeSec));
-    if (mouseClick) window.MaweKeyboardGuards.pausePlaybackAfterMouseClick();
+    if (mouseClick) pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       MawePlaybackLoop.update();
       // currentTime 的 seeked/timeupdate 事件是异步触发的；先同步刷新波形，

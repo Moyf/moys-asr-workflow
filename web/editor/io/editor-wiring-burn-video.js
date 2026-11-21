@@ -1,3 +1,4 @@
+export function initMaweBurnVideoWiring() {
 // === 编辑器「烧录视频」：当前 ASS 或按库样式转换的 SRT，复用同一媒体任务 ===
 // 与「去空隙导出 → 重组后视频」同一套媒体任务生命周期（准入令牌 / 轮询 / 流式下载 /
 // 取消与临时文件确认），但只支持 jobs API：烧录总是重新编码并输出 MP4。
@@ -480,3 +481,4 @@ function invalidateBurnVideoBinding() {
 }
 updateBurnVideoButton();
 window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });
+}
