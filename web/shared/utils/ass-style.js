@@ -460,7 +460,9 @@ export function createUtilsModule(dependencies) {
         styleMap.set(id, normalized);
       });
     }
-    const styles = [...styleMap.values()].slice(0, 64);
+    // A legacy full library can contain 65 styles after the extension built-in
+    // is added. Keep it intact, matching the Python library normalization.
+    const styles = [...styleMap.values()].slice(0, 65);
     // v1 used 1.0 as the built-in emphasis default. Migrate only that old
     // built-in value so custom styles and explicit v2 values remain intact.
     if (previousVersion < 2) {

@@ -8,6 +8,7 @@ be selected before a project is opened and can be reused by FFmpeg burn-in.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 import os
@@ -500,12 +501,103 @@ def save_ass_style_library(payload: object, path: Path | None = None) -> dict[st
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
             json.dump(normalized, output, ensure_ascii=False, indent=2)
             output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
         os.replace(temporary_name, target)
     except Exception:
         # Keep the temporary file for post-mortem recovery, matching the
         # server-settings persistence contract.
         raise
     return normalized
+
+
+class AssStyleConflict(ValueError):
+    """The library changed after it was read by the editor."""
+
+
+def _read_ass_style_state(path: Path) -> tuple[dict[str, object], str]:
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return default_ass_style_library(), "missing"
+    # Do not turn a damaged library into defaults before a subsequent save.
+    payload = json.loads(data.decode("utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError("ASS 样式库格式无效，请先恢复原文件。")
+    if payload.get("schema", ASS_STYLE_LIBRARY_SCHEMA) != ASS_STYLE_LIBRARY_SCHEMA:
+        raise ValueError("ASS 样式库格式不受支持，原文件未更改。")
+    version = payload.get("version", 1)
+    if type(version) is not int or version > 2 or version < 1:
+        raise ValueError("ASS 样式库版本不受支持，原文件未更改。")
+    return normalize_ass_style_library(payload), hashlib.sha256(data).hexdigest()
+
+
+def read_ass_style_state(path: Path | None = None) -> dict[str, object]:
+    from maw.text_processing_presets import _lock_library
+
+    target = path or default_ass_styles_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with _lock_library(target):
+        library, revision = _read_ass_style_state(target)
+    return {**library, "_revision": revision}
+
+
+def read_ass_style_backup(path: Path | None = None) -> dict[str, object]:
+    from maw.text_processing_presets import _lock_library
+
+    target = path or default_ass_styles_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with _lock_library(target):
+        backup_path = target.with_suffix(".json.backup")
+        if not backup_path.exists():
+            raise FileNotFoundError("没有找到导入前的样式库副本。")
+        library, _ = _read_ass_style_state(backup_path)
+    return library
+
+
+def save_ass_style_state(payload: object, revision: object, *, backup: bool = False,
+                         path: Path | None = None) -> dict[str, object]:
+    from maw.text_processing_presets import _lock_library
+
+    target = path or default_ass_styles_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not isinstance(revision, str) or not revision:
+        raise ValueError("缺少样式库版本，请刷新后重试。")
+    with _lock_library(target):
+        current, current_revision = _read_ass_style_state(target)
+        if revision != current_revision:
+            raise AssStyleConflict("样式库已被其他窗口修改，请重新加载后再保存。")
+        temporary_name: str | None = None
+        try:
+            if backup:
+                backup_path = target.with_suffix(".json.backup")
+                fd, temporary_name = tempfile.mkstemp(prefix=".ass-styles-backup.", suffix=".tmp", dir=target.parent)
+                with os.fdopen(fd, "wb") as output:
+                    output.write(target.read_bytes() if target.exists() else
+                                 (json.dumps(current, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+                    output.flush()
+                    os.fsync(output.fileno())
+            # Do not replace an older recovery copy until the new library has
+            # actually been saved. A failed import must not consume the backup.
+            saved = save_ass_style_library(payload, target)
+            if temporary_name is not None:
+                try:
+                    os.replace(temporary_name, backup_path)
+                except OSError as backup_error:
+                    # Saving succeeded but committing the backup did not.
+                    # Restore the original before reporting failure.
+                    try:
+                        os.replace(temporary_name, target)
+                    except OSError as restore_error:
+                        recovery_path = temporary_name
+                        temporary_name = None  # Preserve the recovery file.
+                        raise OSError(f"保存恢复副本和还原样式库均失败；原文件副本保存在 {recovery_path}") from restore_error
+                    raise backup_error
+            _, new_revision = _read_ass_style_state(target)
+        finally:
+            if temporary_name is not None:
+                Path(temporary_name).unlink(missing_ok=True)
+    return {**saved, "_revision": new_revision}
 
 
 def find_ass_style(library: Mapping[str, object], style_id: object) -> dict[str, object]:

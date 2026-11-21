@@ -2071,9 +2071,32 @@ __WAVEFORM_CSS__
       <span id="ass-style-library-path-hint">样式库将根据打开方式保存。</span>
       <span id="ass-style-project-hint" role="status" hidden>工程内修改，未同步到用户级配置</span>
     </div>
-    <div class="ass-style-library-actions"><button type="button" id="ass-style-save" class="primary">保存样式库</button><button type="button" id="ass-style-window-close-footer">完成</button></div>
+    <div class="ass-style-library-actions">
+      <button type="button" id="ass-style-export-library">导出样式库</button>
+      <button type="button" id="ass-style-import-library">导入样式库</button>
+      <details class="ass-style-more-actions">
+        <summary>更多</summary>
+        <div class="ass-style-more-menu">
+          <button type="button" id="ass-style-restore-backup">恢复导入前副本</button>
+          <button type="button" id="ass-style-reload-library">重新加载</button>
+        </div>
+      </details>
+      <button type="button" id="ass-style-save" class="primary">保存样式库</button>
+      <button type="button" id="ass-style-window-close-footer">完成</button>
+    </div>
+    <input type="file" id="ass-style-import-file" accept=".json,application/json" hidden>
   </footer>
 </aside>
+
+<dialog class="modal ass-style-transfer-dialog" id="ass-style-import-dialog" aria-labelledby="ass-style-import-title">
+  <h3 id="ass-style-import-title">导入 ASS 样式库</h3>
+  <p class="modal-hint">样式库不包含字体文件、工程或特殊文本解析开关。请在目标电脑检查字体和实际效果。</p>
+  <label><input type="radio" name="ass-style-import-mode" value="merge" checked> 合并到当前库，保留当前默认设置</label>
+  <label><input type="radio" name="ass-style-import-mode" value="restore"> 恢复整个库，替换当前样式、方案和默认设置</label>
+  <p id="ass-style-import-summary" class="ass-style-import-summary" aria-live="polite"></p>
+  <pre id="ass-style-import-preview" class="ass-style-import-preview" aria-live="polite"></pre>
+  <div class="actions"><button type="button" id="ass-style-import-cancel">取消</button><button type="button" id="ass-style-import-confirm" class="primary">确认导入</button></div>
+</dialog>
 
 <aside class="editor-settings-window ass-frame-window" id="ass-frame-window" role="dialog" aria-modal="false" aria-label="ASS 实际画面预览" aria-hidden="true">
   <header class="editor-settings-window-header" id="ass-frame-drag-handle">

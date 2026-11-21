@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -451,6 +452,79 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         self.assertEqual([seg["text"] for seg in loose], [text])
         self.assertGreater(len(strict), 1)
         self.assertTrue(all(len(seg["text"]) <= 8 for seg in strict))
+
+
+# CTranslate2 装载 CUDA 运行库失败时的上游报错原文（Windows cuBLAS 12）。
+_CUDA_LIBRARY_LOAD_MESSAGE = "Library cublas64_12.dll is not found or cannot be loaded"
+
+
+class _ScriptedWhisperRuntime:
+    """WhisperModel 运行时替身：按脚本复现缺库失败与分段产出。
+
+    ``call_error`` 在 ``transcribe()`` 调用时抛出；``iteration_error`` 配合
+    ``fail_after`` 让生成器在产出指定数量的段之后抛出，模拟真实 faster-whisper
+    只有迭代生成器时才触发 CUDA 推理（进而才暴露缺库）的语义。
+    """
+
+    def __init__(
+        self,
+        *,
+        segments: Sequence[SimpleNamespace] = (),
+        language: str = "zh",
+        call_error: Exception | None = None,
+        iteration_error: Exception | None = None,
+        fail_after: int | None = None,
+    ) -> None:
+        self.segments = list(segments)
+        self.language = language
+        self.call_error = call_error
+        self.iteration_error = iteration_error
+        self.fail_after = fail_after
+        self.transcribe_calls: list[dict[str, object]] = []
+
+    def transcribe(self, audio: str, **kwargs: object):
+        self.transcribe_calls.append(dict(kwargs))
+        if self.call_error is not None:
+            raise self.call_error
+
+        def generate():
+            for index, segment in enumerate(self.segments):
+                if self.iteration_error is not None and index >= self.fail_after:
+                    raise self.iteration_error
+                yield segment
+
+        return generate(), SimpleNamespace(language=self.language)
+
+
+def _whisper_word_segment(text: str, start: float, end: float) -> SimpleNamespace:
+    """构造带逐字时间戳的段，字符均分整段时长。"""
+    span = (end - start) / max(len(text), 1)
+    words = [
+        SimpleNamespace(
+            word=char,
+            start=start + index * span,
+            end=start + (index + 1) * span,
+        )
+        for index, char in enumerate(text)
+    ]
+    return SimpleNamespace(start=start, end=end, text=f" {text}", words=words)
+
+
+def _fake_whisper_module(
+    scripts: dict[str, object],
+) -> tuple[list[dict[str, object]], SimpleNamespace]:
+    """构造 faster_whisper 替身模块；``scripts`` 按设备给出异常或运行时替身。"""
+    calls: list[dict[str, object]] = []
+
+    def factory(model_ref: str, **kwargs: object) -> object:
+        del model_ref
+        calls.append(dict(kwargs))
+        script = scripts[kwargs["device"]]
+        if isinstance(script, Exception):
+            raise script
+        return script
+
+    return calls, SimpleNamespace(WhisperModel=factory)
 
 
 class LocalAsrFlowTests(unittest.TestCase):
@@ -919,10 +993,311 @@ class LocalAsrFlowTests(unittest.TestCase):
         faster_whisper_module = SimpleNamespace(WhisperModel=fake_whisper_model)
         with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
             with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
-                with self.assertRaisesRegex(LocalAsrError, "模型加载失败"):
+                with self.assertRaisesRegex(LocalAsrError, "模型加载失败") as ctx:
                     create_local_engine("whisper", device="cuda")._load()
 
+        message = str(ctx.exception)
+        # 保留原始报错并给出可操作指引（改选 CPU / 安装匹配运行库），而不是只报加载失败。
+        self.assertIn("cublas64_12.dll", message)
+        self.assertIn("明确设为 CPU", message)
+        self.assertIn("CUDA 12", message)
+        self.assertIn("cuDNN 9", message)
         self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_cuda_library_error_classification(self) -> None:
+        from maw.local_asr import _is_missing_cuda_runtime_error
+
+        missing = (
+            "Library cublas64_12.dll is not found or cannot be loaded",
+            "Library libcublas.so.12 is not found or cannot be loaded",
+            "Library cublasLt64_12.dll is not found or cannot be loaded",
+            "Library cudnn64_9.dll is not found or cannot be loaded",
+            "Library libcudnn.so.9 is not found or cannot be loaded",
+            "cuDNN is not loaded",
+            "cuBLAS is not loaded",
+        )
+        for message in missing:
+            with self.subTest(error=message):
+                self.assertTrue(_is_missing_cuda_runtime_error(RuntimeError(message)))
+
+        unrelated = (
+            "CUDA out of memory. Tried to allocate 2.00 GiB",
+            "CUDA error: invalid device function",
+            "Unable to open file 'model.bin'",
+            "Library foo.dll is not found or cannot be loaded",
+            "Could not load model",
+        )
+        for message in unrelated:
+            with self.subTest(error=message, expected=False):
+                self.assertFalse(_is_missing_cuda_runtime_error(RuntimeError(message)))
+
+    def test_whisper_auto_retries_on_cpu_when_transcribe_call_misses_cuda_library(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+            _whisper_word_segment("世界。", 1.2, 2.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        events: list[str] = []
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                result = engine.transcribe(
+                    Path("sample.wav"),
+                    language="zh",
+                    hotwords=["MAW"],
+                    on_event=events.append,
+                )
+
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual([call["compute_type"] for call in calls], ["float16", "int8"])
+        self.assertEqual(result.text, "你好。世界。")
+        # CPU 重试沿用相同的语言与热词参数。
+        self.assertEqual(cuda_runtime.transcribe_calls, cpu_runtime.transcribe_calls)
+        self.assertEqual(cpu_runtime.transcribe_calls[0]["language"], "zh")
+        self.assertEqual(cpu_runtime.transcribe_calls[0]["hotwords"], "MAW")
+        self.assertTrue(any(
+            "自动回退到 CPU" in event and "速度可能变慢" in event
+            for event in events
+        ))
+        self.assertEqual(events.count("[local] transcribing: sample.wav"), 2)
+
+    def test_whisper_auto_retries_on_cpu_when_first_iteration_misses_cuda_library(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            segments=[_whisper_word_segment("你好。", 0.0, 1.0)],
+            iteration_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            fail_after=0,
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+            _whisper_word_segment("世界。", 1.2, 2.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual(result.text, "你好。世界。")
+        self.assertEqual(
+            [item["text"] for item in result.items],
+            ["你", "好", "。", "世", "界", "。"],
+        )
+
+    def test_whisper_auto_cpu_retry_discards_partial_gpu_segments(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            segments=[
+                _whisper_word_segment("GPU半段。", 0.0, 1.0),
+                _whisper_word_segment("不会到达。", 1.2, 2.0),
+            ],
+            iteration_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            fail_after=1,
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+            _whisper_word_segment("世界。", 1.2, 2.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        # 从头重试：结果只来自 CPU，不混入 GPU 已产出的半段，也不重复。
+        self.assertEqual(result.text, "你好。世界。")
+        self.assertNotIn("GPU半段", result.text)
+        self.assertEqual(
+            [item["text"] for item in result.items],
+            ["你", "好", "。", "世", "界", "。"],
+        )
+
+    def test_whisper_auto_cpu_retry_failure_reports_both_errors(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(call_error=RuntimeError("cpu int8 boom"))
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(LocalAsrError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        message = str(ctx.exception)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, message)
+        self.assertIn("cpu int8 boom", message)
+        # 只重试一次：没有第三次构造，防止无限重试。
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+
+    def test_whisper_explicit_cuda_transcribe_library_error_is_actionable(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime()
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="cuda")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(LocalAsrError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        message = str(ctx.exception)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, message)
+        self.assertIn("明确设为 CPU", message)
+        self.assertIn("CUDA 12", message)
+        self.assertIn("cuDNN 9", message)
+        self.assertIn("进程搜索路径", message)
+        # 显式 CUDA 不自动降级。
+        self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_auto_keeps_non_library_errors_at_transcribe(self) -> None:
+        for message in (
+            "CUDA out of memory. Tried to allocate 2.00 GiB",
+            "Unable to open file 'model.bin'",
+        ):
+            with self.subTest(error=message):
+                cuda_runtime = _ScriptedWhisperRuntime(call_error=RuntimeError(message))
+                cpu_runtime = _ScriptedWhisperRuntime()
+                calls, faster_whisper_module = _fake_whisper_module({
+                    "cuda": cuda_runtime,
+                    "cpu": cpu_runtime,
+                })
+                engine = create_local_engine("whisper", device="auto")
+
+                with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+                    with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                        with self.assertRaises(RuntimeError) as ctx:
+                            engine.transcribe(Path("sample.wav"))
+
+                self.assertNotIsInstance(ctx.exception, LocalAsrError)
+                self.assertIn(message, str(ctx.exception))
+                self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_constructor_non_library_errors_do_not_fall_back(self) -> None:
+        for message in (
+            "CUDA out of memory. Tried to allocate 2.00 GiB",
+            "Unable to open file 'model.bin'",
+        ):
+            with self.subTest(error=message):
+                calls, faster_whisper_module = _fake_whisper_module({
+                    "cuda": RuntimeError(message),
+                    "cpu": _ScriptedWhisperRuntime(),
+                })
+                engine = create_local_engine("whisper", device="auto")
+
+                with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+                    with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                        with self.assertRaisesRegex(LocalAsrError, "模型加载失败") as ctx:
+                            engine._load()
+
+                self.assertIn(message, str(ctx.exception))
+                # 显存不足 / 模型损坏不是缺运行库：不自动回退 CPU。
+                self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_explicit_cpu_does_not_retry(self) -> None:
+        cpu_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": _ScriptedWhisperRuntime(),
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="cpu")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        self.assertNotIsInstance(ctx.exception, LocalAsrError)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, str(ctx.exception))
+        self.assertEqual([call["device"] for call in calls], ["cpu"])
+
+    def test_whisper_reuses_cpu_runtime_after_inference_fallback(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                first = engine.transcribe(Path("sample.wav"))
+                second = engine.transcribe(Path("sample.wav"))
+
+        # 回退成功后缓存 CPU runtime：第二次调用不再构造模型。
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual(len(cpu_runtime.transcribe_calls), 2)
+        self.assertEqual(first.text, second.text)
+
+    def test_whisper_constructor_cpu_fallback_failure_reports_both_errors(self) -> None:
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            "cpu": RuntimeError("cpu int8 construct boom"),
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(LocalAsrError) as ctx:
+                    engine._load()
+
+        message = str(ctx.exception)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, message)
+        self.assertIn("cpu int8 construct boom", message)
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+
+    def test_whisper_after_constructor_fallback_transcribe_error_stays_raw(self) -> None:
+        # 构造期已回退到 CPU 后，转写阶段再遇到缺库文案也不再触发第二次恢复。
+        cpu_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        self.assertNotIsInstance(ctx.exception, LocalAsrError)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, str(ctx.exception))
+        # 构造期一次 CUDA + 一次 CPU；转写失败后不再有第二次 CPU 重试。
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+
 
     def test_whisper_word_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeRuntime:

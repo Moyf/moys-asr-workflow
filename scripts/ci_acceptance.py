@@ -18,9 +18,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 if __package__:
-    from . import ci_impact
+    from . import browser_results, ci_impact
     from .ci_matrix import validate_python_report
 else:
+    import browser_results
     import ci_impact
     from ci_matrix import validate_python_report
 
@@ -212,9 +213,8 @@ def commands_for(check, plan):
         'tools': [['node', 'scripts/build-tool-docs.mjs', '--check']],
         'release': [['python', 'scripts/prepare_release_notes.py', '--check-all'],
                     ['python', 'scripts/build_release_site.py', '--preview']],
-        'website': [['pnpm', '--dir', 'website', 'run', 'check:docs'],
-                    ['pnpm', '--dir', 'website', 'run', 'sync:docs'],
-                    ['python', 'scripts/build_release_site.py', '--preview'],
+        'website': [['python', 'scripts/build_release_site.py', '--preview'],
+                    ['pnpm', '--dir', 'website', 'run', 'check'],
                     ['pnpm', '--dir', 'website', 'run', 'build']],
         'build': [['pnpm', 'run', 'build'], ['pnpm', 'run', 'check:editor'],
                   ['pnpm', 'run', 'check:launcher'], ['pnpm', 'run', 'typecheck']],
@@ -226,6 +226,35 @@ def commands_for(check, plan):
     return result
 
 
+RECOVERY_SPEC = 'tests/e2e/editor-save-recovery.spec.mjs'
+RECOVERY_PLAYWRIGHT = ['node', 'node_modules/@playwright/test/cli.js', 'test',
+                       '--config=tests/config/playwright.config.mjs', '--project=chromium',
+                       '--workers=1', '--retries=0', '--forbid-only', '--shard=1/1',
+                       '--reporter=line,json']
+
+
+def run_recovery_e2e(root: Path) -> None:
+    """Scoped admission: real autosave/recovery journeys, validated fail-closed.
+
+    The listing/execution pair is checked exactly like an auxiliary browser
+    shard (single 1/1 shard, zero retries, no unsupported skips), so a missing,
+    tampered, flaky or skipped journey can never yield a green receipt.
+    """
+    listing, results = root / 'browser-list.json', root / 'browser-results.json'
+    command = [*RECOVERY_PLAYWRIGHT, RECOVERY_SPEC]
+
+    def journey(arguments, *, report, timeout):
+        env = {**os.environ, 'PLAYWRIGHT_JSON_OUTPUT_FILE': str(report.resolve())}
+        subprocess.run([sys.executable, 'scripts/run_check.py', '--timeout', str(timeout), '--', *arguments],
+                       env=env, check=True)
+
+    journey([*command, '--list'], report=listing, timeout=600)
+    journey(command, report=results, timeout=900)
+    write(root / 'browser-validated.json',
+          browser_results.validate(json.loads(listing.read_text(encoding='utf-8')),
+                                   json.loads(results.read_text(encoding='utf-8')), 1, 1))
+
+
 def report_evidence(plan, check, root):
     """Re-read required transported bytes; never trust receipt-only validation."""
     root = Path(root)
@@ -234,13 +263,23 @@ def report_evidence(plan, check, root):
         names.append('python.json')
     if check in NODE:
         names.append('node.xml')
+    if check == 'editor' and ci_impact.recovery_e2e_for(plan['paths']):
+        names += ['browser-list.json', 'browser-results.json']
     if check == 'ci':
         names.append('inventory.json')
     result = {}
     for name in names:
+        if name == 'browser-results.json':
+            # Sealed together with its listing in the browser-list.json branch.
+            continue
         path = root / name
         if path.is_symlink() or path.resolve().parent != root.resolve():
             raise ValueError('unsafe blocking report path')
+        if name == 'browser-list.json':
+            results_path = root / 'browser-results.json'
+            for required in (path, results_path):
+                if not required.is_file():
+                    raise ValueError('missing scoped recovery journey report')
         raw = path.read_bytes()
         summary = {'sha256': hashlib.sha256(raw).hexdigest()}
         if name == 'python.json':
@@ -254,6 +293,12 @@ def report_evidence(plan, check, root):
         elif name == 'node.xml':
             count = validate_node_report(node_names(check), ET.fromstring(raw))
             summary.update(selected=count, run=count)
+        elif name == 'browser-list.json':
+            validated = browser_results.validate(json.loads(raw), json.loads(results_path.read_bytes()), 1, 1)
+            summary.update(selected=validated['selected'], run=validated['selected'])
+            result['browser-results.json'] = {
+                'sha256': hashlib.sha256(results_path.read_bytes()).hexdigest(),
+                'selected': validated['selected'], 'run': validated['selected']}
         elif name == 'commands.json':
             commands = commands_for(check, plan)
             expected = {'check': check, 'head': plan['head'], 'fingerprint': fingerprint(plan),
@@ -289,6 +334,8 @@ def run_check(plan, check, root):
         # --test-name-pattern listing (which ran bodies on Node 22.23.2).
         run(['node', '--test', '--test-reporter=spec', '--test-reporter-destination=stdout',
              '--test-reporter=junit', f'--test-reporter-destination={report}', *NODE[check]])
+    if check == 'editor' and ci_impact.recovery_e2e_for(plan['paths']):
+        run_recovery_e2e(root)
     if check == 'ci':
         write(root / 'inventory.json', inventory())
     commands = commands_for(check, plan)
