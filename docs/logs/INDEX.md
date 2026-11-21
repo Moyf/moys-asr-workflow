@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.4 之后 | 2026-11-20 | [ASS 逐字换色独立审查](release1.11.4/261120_ASS逐字换色KTV/REVIEW_FINDINGS.md) / [方案](../plans/ASS_KTV_KARAOKE.md) | `\k` 卡拉 OK 全链路的提交前自审：无 blocker/major，libass 语义与分片重定基独立像素级复证，关闭态零回归 |
 | 1.11.4 之后 | 2026-11-21 | [官网单一真源](release1.11.4/261121_官网单一真源/实施与验证.md) / [独立审查](release1.11.4/261121_官网单一真源/REVIEW_FINDINGS.md) / [候选复核与授权](release1.11.4/261121_官网单一真源/候选复核与后续授权.md) / [增量盲审修复](release1.11.4/261121_官网单一真源/增量盲审修复与验证.md) | 官网从工作树隔离生成；候选修复、staging 授权与验证边界见后续记录 |
 | 1.11.4 之后 | 2026-11-20 | [faster-whisper 缺 CUDA 库反馈](release1.11.4/261120_faster-whisper缺CUDA库/TEST_FEEDBACK_faster-whisper.md) / [独立审查](release1.11.4/261120_faster-whisper缺CUDA库/REVIEW_FINDINGS.md) | cuBLAS 12 DLL 加载错误与运行环境/回退责任核对及实施；推理期缺库 auto 单次 CPU 回退与显式 CUDA 可操作报错，含红绿证据与审查处置 |
 | 1.11.4 之后 | 2026-11-19 | [Issue 408 本地运行环境安装](release1.11.4/261119_Issue408/TEST_FEEDBACK_Issue408.md) / [独立审查](release1.11.4/261119_Issue408/REVIEW_FINDINGS.md) | 锁定依赖的镜像回退与设置内错误提示 |

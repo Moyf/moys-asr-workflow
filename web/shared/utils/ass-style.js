@@ -232,6 +232,9 @@ export function createUtilsModule(dependencies) {
     // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
     // fromScale < 1 为「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
     pop: Object.freeze({ enabled: false, fromScale: 0.7, inMs: 120, accel: 1 }),
+    // 卡拉 OK（\k 整词跳变）：开启后对带字词时间码的主字幕逐字词上色，
+    // 无时间码或文本失配的句子静默回落普通输出。首期仅 enabled 一个开关。
+    karaoke: Object.freeze({ enabled: false }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -355,6 +358,7 @@ export function createUtilsModule(dependencies) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
     const pop = source.pop && typeof source.pop === 'object' ? source.pop : {};
+    const karaoke = source.karaoke && typeof source.karaoke === 'object' ? source.karaoke : {};
     const fade = source.fade && typeof source.fade === 'object' ? source.fade : {};
     const move = source.move && typeof source.move === 'object' ? source.move : {};
     const transform = source.t && typeof source.t === 'object' ? source.t : {};
@@ -371,6 +375,10 @@ export function createUtilsModule(dependencies) {
         fromScale: normalizeAssLibraryNumber(pop.fromScale, 0.7, 0.3, 10, false),
         inMs: normalizeAssLibraryNumber(pop.inMs, 120, 0, 60000),
         accel: normalizeAssLibraryNumber(pop.accel, 1, 0.01, 100, false),
+      },
+      // 卡拉 OK 仅一个开关；数值参数等将来扩展 \kf/\ko 时再补（先例同 pop 后加）。
+      karaoke: {
+        enabled: normalizeAssLibraryBoolean(karaoke.enabled),
       },
       fade: (() => {
         const t1 = normalizeAssLibraryNumber(fade.t1, 0, 0, 60000);
