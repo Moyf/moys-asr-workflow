@@ -1,5 +1,5 @@
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
-import { getAssStyleLibrary, isAssStyleLibraryReady, incrementAssStyleLibraryRevision,
+import { getAssStyleLibrary, isAssStyleLibraryReady, canEditAssStyleLibrary, incrementAssStyleLibraryRevision,
   setAssStyleLibrary, updateAssStyleLibrarySummary, scheduleAssStyleLibrarySave,
   loadAssStyleLibrary, persistAssStyleLibrary } from './editor-wiring-ass-storage.js';
 
@@ -38,6 +38,7 @@ const {
   assStyleDragHandle,
   assStyleDuplicateButton,
   assStyleEditorEmpty,
+  assStyleFontToggle,
   assStyleForm,
   assStyleFormTitle,
   assStyleLibraryPathHint,
@@ -108,11 +109,14 @@ function updateAssStyleLibraryStatus() {
   assStyleLibraryStatus.dataset.state = !usesServerStorage && assStyleLibraryStatusState === 'success'
     ? 'local' : assStyleLibraryStatusState;
   if (assStyleLibraryPathHint) {
-    const pathHint = !usesServerStorage
-      ? '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。'
-      : isAssStyleLibraryReady()
-        ? '已保存到本机用户级配置；Launcher 与 Editor 共享。'
-        : '当前使用本地副本；服务器恢复后可再次点击保存同步。';
+    let pathHint = '尚未与服务器同步；请检查当前样式并重试保存。';
+    if (!usesServerStorage) {
+      pathHint = '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。';
+    } else if (isAssStyleLibraryReady()) {
+      pathHint = '已保存到本机用户级配置；Launcher 与 Editor 共享。';
+    } else if (!canEditAssStyleLibrary()) {
+      pathHint = assStyleLibraryStatusState === 'pending' ? '' : '尚未读取本机样式库，请重新加载';
+    }
     assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
   }
   updateAssStyleProjectHint();
@@ -226,6 +230,7 @@ function assStyleFormValue(field) {
 }
 
 function updateAssStyleManagerLibrary(mutator, { persist = true } = {}) {
+  if (!canEditAssStyleLibrary()) return;
   const next = assStyleManagerClone(getAssStyleLibrary());
   if (!next) return;
   mutator(next);
@@ -267,6 +272,7 @@ function updateAssProfileField(path, value) {
 
 function syncAssStyleForm(style) {
   if (!assStyleForm) return;
+  const canEdit = canEditAssStyleLibrary();
   const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
   const borderBox = Number(safeStyle.borderStyle) === 3;
   for (const [id, text] of [
@@ -277,30 +283,31 @@ function syncAssStyleForm(style) {
     const label = document.getElementById(id);
     if (label) label.textContent = window.MAWE_I18N?.translateText?.(text) || text;
   }
-  // 次色只被「\k 逐字换色（卡拉OK）」消费：当前导出方案未开启时禁用输入，
-  // 提示保留（说明去哪开启）。方案开关变化经 syncAssStyleManager 重新同步。
-  const secondaryInput = /** @type {HTMLInputElement | null} */ (document.getElementById('ass-style-secondary-color'));
-  const secondaryRow = document.getElementById('ass-style-karaoke-row');
-  if (secondaryInput && secondaryRow) {
-    const library = getAssStyleLibrary();
-    const profileId = library.assignments?.assExportProfileId || 'ass';
-    const profile = (library.assProfiles || []).find(item => item?.id === profileId);
-    const karaokeEnabled = profile?.animations?.karaoke?.enabled === true;
-    secondaryInput.disabled = !karaokeEnabled;
-    secondaryRow.classList.toggle('is-disabled', !karaokeEnabled);
-  }
   if (assStyleFormTitle) assStyleFormTitle.textContent = safeStyle.name;
   if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
   const isSrtDefault = safeStyle.id === 'default';
   if (assStyleSrtHint) assStyleSrtHint.hidden = !isSrtDefault;
   if (assStylePreviewModeHint) assStylePreviewModeHint.hidden = isSrtDefault;
   assStyleForm.querySelectorAll('[data-ass-style-field]').forEach((field) => {
+    field.disabled = !canEdit;
     if (document.activeElement === field) return;
     const value = safeStyle[field.dataset.assStyleField];
     if (field.type === 'checkbox') field.checked = value === true;
     else if (field.type === 'radio') field.checked = String(value) === field.value;
     else if (value !== undefined && value !== null) field.value = String(value);
   });
+  // 次色需要同时满足样式库可编辑和当前导出方案开启逐字换色。
+  // 放在通用字段同步之后，避免通用的 disabled 状态覆盖此门控。
+  const secondaryInput = /** @type {HTMLInputElement | null} */ (document.getElementById('ass-style-secondary-color'));
+  const secondaryRow = document.getElementById('ass-style-karaoke-row');
+  if (secondaryInput && secondaryRow) {
+    const library = getAssStyleLibrary();
+    const profileId = library.assignments?.assExportProfileId || 'ass';
+    const profile = (library.assProfiles || []).find(item => item?.id === profileId);
+    const disabled = !canEdit || profile?.animations?.karaoke?.enabled !== true;
+    secondaryInput.disabled = disabled;
+    secondaryRow.classList.toggle('is-disabled', disabled);
+  }
   const emphasisSection = document.getElementById('ass-style-emphasis-section');
   if (emphasisSection) emphasisSection.hidden = MaweSettings.EDITOR_SETTINGS.assMode !== true;
   const emphasisOptions = document.getElementById('ass-style-emphasis-options');
@@ -319,10 +326,12 @@ function syncAssStyleForm(style) {
 
 function syncAssProfileForm(profile) {
   if (!assProfileForm) return;
+  const canEdit = canEditAssStyleLibrary();
   const safeProfile = window.AsrEditorUtils.normalizeAssProfile(profile);
   if (assProfileFormTitle) assProfileFormTitle.textContent = safeProfile.name;
   if (assProfileBuiltinBadge) assProfileBuiltinBadge.hidden = !safeProfile.builtin;
   assProfileForm.querySelectorAll('[data-ass-profile-field]').forEach((field) => {
+    field.disabled = !canEdit;
     if (document.activeElement === field) return;
     const value = safeProfile[field.dataset.assProfileField];
     if (value !== undefined && value !== null) field.value = String(value);
@@ -337,8 +346,8 @@ function syncAssProfileForm(profile) {
     }
     // fad / pop 的数值参数供单句标记（`>>…<<`、`{{…}}`）在全局开关关闭时
     // 复用，不随 enabled 联动禁用；fade / move / t 保持开关联动。
-    field.disabled = key !== 'enabled' && group !== 'fad' && group !== 'pop'
-      && safeProfile.animations?.[group]?.enabled !== true;
+    field.disabled = !canEdit || (key !== 'enabled' && group !== 'fad' && group !== 'pop'
+      && safeProfile.animations?.[group]?.enabled !== true);
   });
   if (assProfilePreviewSummary) {
     const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
@@ -356,6 +365,11 @@ function syncAssProfileForm(profile) {
 
 function syncAssStyleManager({ force = false } = {}) {
   if (!assStyleWindow) return;
+  const canEdit = canEditAssStyleLibrary();
+  for (const control of [assStyleNewButton, assStyleDuplicateButton, assProfileNewButton, assStyleResetButton, assStyleFontToggle,
+    assStyleSaveButton, assSrtDefaultStyleSelect, assDefaultProfileSelect, assProfileExtensionStyleSelect]) {
+    if (control) control.disabled = !canEdit;
+  }
   setAssStyleLibrary(window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()));
   const styles = getAssStyleLibrary().styles || [];
   const profiles = getAssStyleLibrary().assProfiles || [];
@@ -410,7 +424,7 @@ function syncAssStyleManager({ force = false } = {}) {
     // 内置条目右上角显示「重置」（恢复默认值）；「删除当前」只对自定义条目生效。
     const builtin = selected?.builtin === true;
     assStyleDeleteButton.hidden = builtin;
-    assStyleDeleteButton.disabled = !selected;
+    assStyleDeleteButton.disabled = !canEdit || !selected;
     assStyleDeleteButton.title = '删除当前条目';
     if (assStyleResetButton) {
       assStyleResetButton.hidden = !builtin;
@@ -426,8 +440,8 @@ function syncAssStyleManager({ force = false } = {}) {
 }
 
 function createAssStyle() {
-  if ((getAssStyleLibrary().styles || []).length >= 64) {
-    MaweHint.flashHint('样式数量已达到上限（64 个）', 'warning');
+  if ((getAssStyleLibrary().styles || []).length >= 65) {
+    MaweHint.flashHint('样式数量已达到上限（65 个）', 'warning');
     return;
   }
   const id = assStyleManagerId('style', getAssStyleLibrary().styles);
@@ -444,7 +458,7 @@ function createAssStyle() {
 
 function duplicateAssStyle() {
   const source = selectedAssStyle();
-  if (!source || (getAssStyleLibrary().styles || []).length >= 64) {
+  if (!source || (getAssStyleLibrary().styles || []).length >= 65) {
     MaweHint.flashHint('无法复制样式：已达到数量上限', 'warning');
     return;
   }
@@ -643,6 +657,7 @@ function showAssListContextMenu(event, kind) {
   // 阻止冒泡：document 级 contextmenu 监听会关闭非 cue 上的菜单，
   // 不拦截的话刚显示的菜单会立即被吞掉。
   event.preventDefault();
+  if (!canEditAssStyleLibrary()) return;
   event.stopPropagation();
   assStyleManagerSetSelection(kind, button.dataset.assSelectionId);
   const collection = kind === 'profile' ? getAssStyleLibrary().assProfiles : getAssStyleLibrary().styles;
@@ -742,7 +757,9 @@ function syncSubtitleStyleAssControls() {
   if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode || !MaweMultiSubtitleCore.multiSubtitleVisible();
   const library = window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
   const styles = library.styles || [];
+  const canEdit = canEditAssStyleLibrary();
   if (mainAssStyleSelect) {
+    mainAssStyleSelect.disabled = !canEdit;
     mainAssStyleSelect.replaceChildren();
     styles.forEach((style) => appendAssStyleOption(mainAssStyleSelect, style.id, style.name));
     const profile = window.AsrEditorUtils.assProfileForId(
@@ -751,6 +768,7 @@ function syncSubtitleStyleAssControls() {
     mainAssStyleSelect.value = profile.styleId;
   }
   if (extensionAssStyleSelect) {
+    extensionAssStyleSelect.disabled = !canEdit;
     extensionAssStyleSelect.replaceChildren();
     styles.forEach((style) => appendAssStyleOption(extensionAssStyleSelect, style.id, style.name));
     extensionAssStyleSelect.value = library.assignments?.assExtensionStyleId || 'ass-extension';

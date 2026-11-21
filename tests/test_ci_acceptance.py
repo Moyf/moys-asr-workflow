@@ -18,6 +18,19 @@ from scripts import ci_impact
 from tests.compact_assertions import CompactContainerAssertions
 
 
+def browser_journey_report(status='passed'):
+    """Minimal valid Playwright JSON pair member for the scoped recovery spec."""
+    result_status = 'passed' if status == 'passed' else status
+    spec = {'file': 'tests/e2e/editor-save-recovery.spec.mjs',
+            'title': 'autosave recovers edited cues after a server restart',
+            'tests': [{'projectName': 'chromium', 'expectedStatus': 'passed', 'status': 'expected',
+                       'results': [{'status': result_status, 'retry': 0}]}]}
+    return {'errors': [], 'config': {'shard': {'current': 1, 'total': 1}},
+            'suites': [{'title': 'editor-save-recovery.spec.mjs', 'line': 0, 'specs': [spec]}],
+            'stats': {'expected': 1 if status == 'passed' else 0, 'skipped': 0,
+                      'unexpected': 0, 'flaky': 0}}
+
+
 def success_evidence(plan, check, root):
     """Synthetic unit fixture only; public transport test below uses real output."""
     from scripts import ci_acceptance as acceptance
@@ -35,6 +48,10 @@ def success_evidence(plan, check, root):
         (root / 'node.xml').write_bytes(ET.tostring(xml))
     if check == 'ci':
         acceptance.write(root / 'inventory.json', acceptance.inventory())
+    if check == 'editor' and ci_impact.recovery_e2e_for(plan['paths']):
+        journey = browser_journey_report()
+        acceptance.write(root / 'browser-list.json', journey)
+        acceptance.write(root / 'browser-results.json', journey)
     return {'namespace': 'blocking-v2', 'check': check, 'head': plan['head'],
             'fingerprint': acceptance.fingerprint(plan), 'status': 'success',
             'reports': acceptance.report_evidence(plan, check, root)}
@@ -223,6 +240,83 @@ with mock.patch.object(ci_acceptance.subprocess, 'run', side_effect=command):
                     with self.assertRaises(subprocess.CalledProcessError):
                         ci_acceptance.run_check(plan, 'launcher', output)
                 self.assertFalse((output / 'receipt.json').exists())
+
+    def test_scoped_recovery_journeys_are_required_and_fail_closed_at_the_gate(self):
+        from scripts import ci_acceptance as acceptance
+        save_paths = ['web/editor/io/editor-project-save.js']
+        save_plan = ci_impact.plan('stable', 'save module change', base='a' * 40, head='b' * 40,
+                                   trusted=True, checks=ci_impact.checks_for(save_paths), paths=save_paths)
+        def needs_for(plan):
+            return {'selection': {'result': 'success', 'outputs': {'plan': json.dumps(plan)}},
+                    'checks': {'result': 'success'}}
+
+        def build(plan, base):
+            receipts = [success_evidence(plan, check, base / check) for check in plan['checks']]
+            return receipts, {check: base / check for check in plan['checks']}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            receipts, roots = build(save_plan, Path(temporary))
+            acceptance.gate(save_plan, needs_for(save_plan), receipts, 'b' * 40, roots=roots)
+        for damage in ('missing-list', 'missing-results', 'tampered-results', 'failed-journey', 'skipped-journey'):
+            with tempfile.TemporaryDirectory() as temporary, self.subTest(damage=damage):
+                base = Path(temporary)
+                receipts, roots = build(save_plan, base)
+                editor = base / 'editor'
+                if damage == 'missing-list':
+                    (editor / 'browser-list.json').unlink()
+                elif damage == 'missing-results':
+                    (editor / 'browser-results.json').unlink()
+                elif damage == 'tampered-results':
+                    (editor / 'browser-results.json').write_bytes(
+                        (editor / 'browser-results.json').read_bytes() + b'\n')
+                elif damage == 'failed-journey':
+                    acceptance.write(editor / 'browser-results.json', browser_journey_report('failed'))
+                else:
+                    acceptance.write(editor / 'browser-results.json', browser_journey_report('skipped'))
+                with self.assertRaises(ValueError):
+                    acceptance.gate(save_plan, needs_for(save_plan), receipts, 'b' * 40, roots=roots)
+        other_paths = ['web/editor/io/editor-export-srt.js']
+        other = ci_impact.plan('stable', 'non-save editor leaf', base='a' * 40, head='b' * 40,
+                               trusted=True, checks=ci_impact.checks_for(other_paths), paths=other_paths)
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            receipts, roots = build(other, base)
+            self.assertFalse((base / 'editor/browser-list.json').exists())
+            acceptance.gate(other, needs_for(other), receipts, 'b' * 40, roots=roots)
+
+    def test_editor_recovery_admission_runs_listing_and_execution_once(self):
+        from scripts import ci_acceptance as acceptance
+        save_paths = ['web/editor/io/editor-project-save.js']
+        plan = ci_impact.plan('stable', 'save module change', base='a' * 40, head='b' * 40,
+                              trusted=True, checks=ci_impact.checks_for(save_paths), paths=save_paths)
+        journeys = []
+
+        def command(argv, **kwargs):
+            cmd = argv[5:]
+            if cmd[0] == 'node' and '--test' in cmd:
+                report = next(a.split('=', 1)[1] for a in cmd
+                              if a.startswith('--test-reporter-destination=') and a != '--test-reporter-destination=stdout')
+                xml = ET.Element('testsuites')
+                for name in acceptance.node_names('editor'):
+                    ET.SubElement(xml, 'testcase', name=name)
+                Path(report).write_bytes(ET.tostring(xml))
+            else:
+                journeys.append(('--list' in cmd, argv[3],
+                                 'tests/e2e/editor-save-recovery.spec.mjs' in cmd))
+                acceptance.write(Path(kwargs['env']['PLAYWRIGHT_JSON_OUTPUT_FILE']), browser_journey_report())
+            return subprocess.CompletedProcess(argv, 0)
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
+                acceptance.subprocess, 'run', side_effect=command) as run:
+            output = Path(temporary) / 'fresh'
+            acceptance.run_check(plan, 'editor', output)
+            self.assertEqual(run.call_count, 3)
+            receipt = json.loads((output / 'receipt.json').read_text(encoding='utf-8'))
+            self.assertTrue((output / 'browser-validated.json').exists())
+        self.assertEqual([journey[0] for journey in journeys], [True, False])
+        self.assertEqual([journey[1] for journey in journeys], ['600', '900'])
+        self.assertTrue(all(journey[2] for journey in journeys))
+        self.assertEqual(receipt['reports']['browser-list.json']['selected'], 1)
 
     def test_test_inventory_keeps_unreviewed_and_stale_visible_without_blocking(self):
         from scripts.ci_acceptance import inventory
