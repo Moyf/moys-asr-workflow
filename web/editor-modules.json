@@ -607,6 +607,12 @@
       "exportName": "initAssManagerWiring"
     },
     {
+      "file": "editor/styles/editor-wiring-ass-transfer.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-transfer-init",
+      "exportName": "initAssStyleTransfer"
+    },
+    {
       "file": "editor/ui/editor-wiring-settings-init.js",
       "kind": "init",
       "name": "settings-init-wiring-init",
