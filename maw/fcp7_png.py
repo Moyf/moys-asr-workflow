@@ -7,14 +7,19 @@ import math
 import re
 import shutil
 import tempfile
+from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
+from heapq import heappop, heappush
 from pathlib import Path
 
 from maw.ass_fonts import normalize_ass_text_fontnames
 from maw.postprocess_ffmpeg import libass_missing_glyphs
 
 FRAME_RATES = {"24", "25", "30", "30000/1001", "50", "60", "60000/1001"}
+# A speaker box may emit two events plus alpha overrides for one cue.
+MAX_ASS_BYTES = 12 * 1024 * 1024
+MAX_UNORDERED_ASS_BYTES = 4 * 1024 * 1024
 MAX_RENDER_SAMPLES = 250_000
 BATCH_SIZE = 24
 IMAGE_FORMATS = {"png", "webp"}
@@ -142,12 +147,38 @@ class Event:
     text: str
 
 
+def _events_by_lane(groups: list[list[Event]], *, allow_unordered: bool) -> dict[int, list[Event]]:
+    """Keep later ASS groups above earlier overlapping groups."""
+    ranges = [(min(e.start for e in items), max(e.end for e in items), items) for items in groups]
+    ordered = all(a[0] <= b[0] for a, b in zip(ranges, ranges[1:]))
+    if not ordered and not allow_unordered:
+        limit = MAX_UNORDERED_ASS_BYTES // (1024 * 1024)
+        raise ValueError(f"超过 {limit} MB 的图片字幕 ASS 需要按每轨字幕起始时间排列")
+    lanes = defaultdict(list)
+    active = []
+    assigned = []
+    for first, last, items in ranges:
+        if ordered:
+            # The largest live lane determines the next layer. Ended entries
+            # below it cannot affect the result until they reach the top.
+            while active and active[0][1] <= first:
+                heappop(active)
+            lane = 1 - active[0][0] if active else 0
+            heappush(active, (-lane, last))
+        else:
+            lane = max((n + 1 for a, b, n in assigned if a < last and first < b), default=0)
+            assigned.append((first, last, lane))
+        lanes[lane].extend(items)
+    return lanes
+
+
 def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
                         duration_ms: int, selected_layers: list[int], image_format: str = "png") -> dict:
     if not isinstance(image_format, str) or image_format not in IMAGE_FORMATS:
         raise ValueError("不支持的字幕图片格式")
-    if not isinstance(ass, str) or not ass.strip() or len(ass.encode("utf-8")) > 4 * 1024 * 1024:
-        raise ValueError("ASS 内容为空或超过 4 MB")
+    ass_size = len(ass.encode("utf-8")) if isinstance(ass, str) else 0
+    if not 0 < ass_size <= MAX_ASS_BYTES or not ass.strip():
+        raise ValueError(f"ASS 内容为空或超过 {MAX_ASS_BYTES // (1024 * 1024)} MB")
     if fps not in FRAME_RATES:
         raise ValueError("不支持的图片字幕帧率")
     if any(type(n) is not int for n in (width, height, duration_ms)) or not (
@@ -186,35 +217,30 @@ def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
     tracks = []
     samples = 0
     for layer in sorted(set(selected_layers)):
-        assigned = []
-        for (event_layer, cue), items in groups.items():
-            if event_layer != layer:
-                continue
-            first, last = min(e.start for e in items), max(e.end for e in items)
-            # Later ASS events must stay above earlier overlapping events.
-            lane = max((n + 1 for a, b, n, _ in assigned if a < last and first < b), default=0)
-            assigned.append((first, last, lane, items))
-        for lane in sorted({entry[2] for entry in assigned}):
-            entries = [e for _, _, n, items in assigned if n == lane for e in items]
-            boundaries, dynamic = set(), []
-            active = []
+        lanes = _events_by_lane([items for (event_layer, _), items in groups.items() if event_layer == layer],
+                                allow_unordered=ass_size <= MAX_UNORDERED_ASS_BYTES)
+        for lane, entries in sorted(lanes.items()):
+            active_changes = defaultdict(int)
+            dynamic_changes = defaultdict(int)
             for event in entries:
                 start, end = min(total, frame(event.start)), min(total, frame(event.end))
                 if end <= start:
                     continue
-                boundaries.update((start, end))
-                active.append((start, end))
+                active_changes[start] += 1
+                active_changes[end] -= 1
                 for a, b in _dynamic_windows(event.text, event.end - event.start):
                     left, right = max(start, frame(event.start + a)), min(end, frame(event.start + b))
                     if right > left:
-                        boundaries.update((left, right))
-                        dynamic.append((left, right))
-            edges = sorted(boundaries)
+                        dynamic_changes[left] += 1
+                        dynamic_changes[right] -= 1
+            edges = sorted(active_changes.keys() | dynamic_changes.keys())
             spans = []
+            active = moving = 0
             for start, end in zip(edges, edges[1:]):
-                if not any(a <= start < b for a, b in active):
+                active += active_changes.get(start, 0)
+                moving += dynamic_changes.get(start, 0)
+                if not active:
                     continue
-                moving = any(a < end and start < b for a, b in dynamic)
                 added = end - start if moving else 1
                 if samples + added > MAX_RENDER_SAMPLES:
                     raise ValueError("动态字幕帧数过多，请缩短导出范围或降低帧率")

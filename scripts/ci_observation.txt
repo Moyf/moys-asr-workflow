@@ -143,6 +143,7 @@ tests/test_ass_oracle_cache.mjs
 tests/test_ass_preview_refresh.mjs
 tests/test_ass_request_diagnostics.mjs
 tests/test_ass_shake.mjs
+tests/test_ass_speaker_box.mjs
 tests/test_ass_stacking_pixel_oracle.py
 tests/test_ass_styles.py
 tests/test_audio_diagnostics.py

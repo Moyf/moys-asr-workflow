@@ -168,6 +168,24 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  function assSpeakerBoxText(content) {
+    // Both export paths emit a fill override before each half. Any other
+    // inline override (including font fallback) keeps its original event.
+    const match = /^\{\\(?:1c|c)(&H00[0-9A-F]{6}&)\}([^{}]+)\{\\(?:1c|c)(&H00[0-9A-F]{6}&)\}([^{}]+)$/u.exec(content);
+    if (!match || match[1] === match[3]) return '';
+    const [, , label, , body] = match;
+    const plain = (label + body).replaceAll('\\N', '\n');
+    const bodyStart = body.replaceAll('\\N', '\n').trimStart();
+    // Merging colour runs also merges their shaping context. A bare ASCII
+    // colon can change glyph advance when joined to the surrounding text.
+    // Keep the existing separators and admit only common opening punctuation.
+    if (!/[：\p{Zs}]$/u.test(label) || !/^[\p{L}0-9０-９"'“‘「『＂＇(（—…]/u.test(bodyStart)
+        || plain.includes('\\')
+        || !/^[\p{Script=Latin}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{P}\p{Zs}0-9０-９\n]+$/u.test(plain)) return '';
+    return label + body;
+  }
+
+
   function buildAssPayload(segments, options = {}) {
     void globalThis.window?.MaweAssFontAliases?.ensureCoverage?.();
     // A Canvas-only diagnostic plan may render provisionally; never send an
@@ -466,6 +484,12 @@ export function createUtilsModule(dependencies) {
       if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
       events.length = 0;
       const number = value => Number(value.toFixed(4));
+      const transform = profile.animations.t;
+      // The two masks run after animation so even a shared \alpha transform
+      // can only paint the channels assigned to each event. Custom tags
+      // outside this grammar keep their original rendering.
+      const canSplitSpeakerBox = colorStyle === 'speaker' && (!transform.enabled || !transform.tags
+        || /^(?:\\(?:(?:fs|fscx|fscy|fsp|frz|fr|bord|shad|b|i|u|s)-?\d+(?:\.\d+)?|[1234]?c&H[0-9a-f]{6,8}&?|(?:alpha|[1234]a)&H[0-9a-f]{2}&?)\s*)+$/iu.test(transform.tags));
       for (const slice of plan.slices) {
         if (slice.diagnostic) continue;
         for (const piece of slice.pieces) for (const item of slice.items) {
@@ -488,8 +512,8 @@ export function createUtilsModule(dependencies) {
             }
           }
           const size = Math.max(1, number(item.fontSize * scale));
-          // 每条 Dialogue 的发射入口：非震动句只发一次（start/end 即分片
-          // 边界，输出与拆分前逐字节一致）；震动句按固定间隔多次发射。
+          // 普通句按排布分片发射，震动句在每个分片内再按固定间隔发射。
+          // 说话人底框与文字在同一个发射点复用时钟及排版信息。
           const emitEvent = (start, end, position, { includeMove = slice.legacy && item.role === 'main' && !item.manual } = {}) => {
             const animation = start === item.start && end === item.end && scale === 1
               ? assAnimationOverrideTags(profile, { includeMove, fad: item.fad, pop: item.pop, style: item.style })
@@ -506,9 +530,22 @@ export function createUtilsModule(dependencies) {
             // Legacy 震动句带预折行 runs 与 \q2，必须走 runs 渲染而不是原文。
             const content = slice.legacy && !item.manual && !item.shake && item.cueScale === 1 && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
               { ...inlineOptions, preparedRuns: item.runs, fontTransform });
-            const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
+            const overrides = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '');
             const eventName = options.pngEventNames ? `maw:${item.role}:${item.index}` : item.speakerName;
-            events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(eventName)},0,0,0,,${decorated}`);
+            const event = `Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(eventName)},0,0,0,,${overrides}`;
+            const box = canSplitSpeakerBox && item.speakerName && item.style.borderStyle === 3
+              ? assSpeakerBoxText(content) : '';
+            if (box) {
+              // libass exempts transforms from collision detection. For the
+              // unpositioned main cue, put a no-op clock on the box only.
+              // It is already over at cue start and adds no PNG samples.
+              const collision = /\\(?:pos|move|t)\(/u.test(position + animation)
+                ? '' : '\\t(-2,-1,1,\\1a&HFF&)';
+              events.push(`${event}{\\1a&HFF&\\2a&HFF&${collision}}${box}`,
+                `${event}{\\3a&HFF&\\4a&HFF&}${content}`);
+            } else {
+              events.push(event + content);
+            }
           };
           if (item.shake) {
             // 原地震动：一条 ASS 事件只能有一个定位标签，导出时按固定间隔

@@ -349,12 +349,12 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
     const controller = new AbortController();
     const timeout = global.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
+      const requestToken = global.MaweBoot.SERVER_CONFIG.requestToken || '';
       const response = await fetch(global.MaweBoot.SERVER_CONFIG.assFrameUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-MAW-Request-Token': requestToken },
         signal: controller.signal,
-        body: JSON.stringify({ requestToken: global.MaweBoot.SERVER_CONFIG.requestToken || '',
-          ass: request.ass, timeMs: request.timeMs, greenScreen: request.greenScreen }),
+        body: JSON.stringify({ requestToken, ass: request.ass, timeMs: request.timeMs, greenScreen: request.greenScreen }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.ok) {
