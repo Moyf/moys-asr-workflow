@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { parse } from 'acorn';
-const source = fs.readFileSync(new URL('../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
+import { initModuleSource } from './helpers/init-module-source.mjs';
+
+const source = initModuleSource('editor/io/editor-wiring-export-actions.js');
 const fn = parse(source, { ecmaVersion: 'latest' }).body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'downloadPreparedAss');
 const code = source.slice(fn.start, fn.end);
 function fixture({ pickerError, writeError } = {}) {
@@ -46,7 +47,7 @@ test('font/write failure propagates without silently exporting a second copy', a
   assert.deepEqual(w.calls, ['picker', 'build', 'write']);
 });
 
- test('project switch during cold ASS download never writes new project into the old filename', async () => {
+test('project switch during cold ASS download never writes new project into the old filename', async () => {
   const h = fixture(); h.context.window.MaweProjectLoad = { projectBindingEpoch: 1 };
   const pending = h.run(); h.context.window.MaweProjectLoad.projectBindingEpoch = 2;
   h.release(); await assert.rejects(pending, /工程已切换/);

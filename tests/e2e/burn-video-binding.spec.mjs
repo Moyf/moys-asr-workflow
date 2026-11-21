@@ -22,7 +22,24 @@ for (const kind of ['audio', 'video']) {
       await page.waitForFunction(() => window.MaweMediaLoad && window.MaweCoreState.player.currentSrc.includes('/media'));
       const toggle = page.locator('#ass-mode-quick-toggle');
       if (await toggle.getAttribute('aria-pressed') !== 'true') await toggle.click();
-      await expect(page.locator('#burn-video-export-btn')).toBeVisible();
+      const burnButton = page.locator('#burn-video-export-btn');
+      await expect(burnButton).toBeVisible();
+      const jobsUrl = await page.evaluate(() => new URL(MaweBoot.SERVER_CONFIG.burnVideoJobsUrl, location.href).href);
+      const admissions = [];
+      page.on('request', request => {
+        if (request.method() === 'POST' && request.url() === jobsUrl) admissions.push(request.url());
+      });
+      await page.route(jobsUrl, route => route.abort());
+      await page.evaluate(() => {
+        window.showSaveFilePicker = () => new Promise(resolve => {
+          window.finishBurnPicker = () => resolve({
+            name: 'result.mp4',
+            createWritable: async () => { throw new Error('Stale burn unexpectedly opened the output'); },
+          });
+        });
+      });
+      await burnButton.click();
+      await page.waitForFunction(() => typeof window.finishBurnPicker === 'function');
       await page.evaluate(async ({ bytes, kind }) => {
         await MaweMediaLoad.loadMediaFile(new File([new Uint8Array(bytes)],
           kind === 'audio' ? 'replacement.wav' : 'replacement.mp4', { type: kind === 'audio' ? 'audio/wav' : 'video/mp4' }));
@@ -30,7 +47,10 @@ for (const kind of ['audio', 'video']) {
       expect(await page.evaluate(() => ({ capable: MaweBoot.SERVER_CONFIG.canBurnVideoExport,
         source: MaweBoot.SERVER_CONFIG.burnVideoSourceName, jobs: MaweBoot.SERVER_CONFIG.burnVideoJobsUrl,
         blob: MaweCoreState.player.currentSrc.startsWith('blob:') }))).toEqual({ capable: false, source: null, jobs: null, blob: true });
-      await expect(page.locator('#burn-video-export-btn')).toBeHidden();
+      await page.evaluate(() => window.finishBurnPicker());
+      await expect(page.locator('#hint-stack')).toContainText('工程或媒体绑定已变更');
+      expect(admissions).toEqual([]);
+      await expect(burnButton).toBeHidden();
       await page.evaluate(() => { MAWE_I18N.applyLanguage('en'); MaweGapRemovedMediaExport.updateButton(); });
       expect(await page.locator('#download-gap-removed-burn-video').evaluate(el => el.hidden)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath('replaced-source.png') });

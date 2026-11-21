@@ -1,3 +1,4 @@
+import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { getOverlayTrack } from './overlay-track.js';
 
 export function initMaweCuePanelWiring() {
@@ -286,7 +287,7 @@ function buildOverlayCueEl(seg, index) {
     const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
     // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
     // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
-    const wasPlaying = window.MaweKeyboardGuards.isPlaybackActive();
+    const wasPlaying = isPlaybackActive();
     MawePlaybackLoop.suppressCueListAutoScroll = true;
     try {
       MaweCoreState.waveformEditor?.revealTime(segment.start, true);

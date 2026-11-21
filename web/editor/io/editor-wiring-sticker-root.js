@@ -1,3 +1,4 @@
+export function initMaweStickerRootWiring() {
 MaweStickerRoot.syncControls();
 MaweStickerRoot.defaultButton.addEventListener('click', () =>
   MaweStickerRoot.applyRoot('default', MaweStickerRoot.defaultInput.value));
@@ -11,3 +12,4 @@ MaweStickerRoot.overrideToggle.addEventListener('change', () => {
   MaweStickerRoot.projectInput.focus();
 });
 if (!MaweStickerRoot.projectRoot() && MaweStickerRoot.getDefaultRoot()) MaweStickerRoot.activateProjectRoot();
+}

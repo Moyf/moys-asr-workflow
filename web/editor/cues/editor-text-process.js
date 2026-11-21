@@ -603,6 +603,7 @@ export function initMaweTextProcess() {
     const fingerprint = () => JSON.stringify([steps, selectedPreset]);
     const initial = fingerprint();
     const initialScope = selectedOnly.checked;
+    const presetsBeforeRefresh = window.MaweProcessing.library.presets;
     const ok = await refresh();
     if (session !== current) return;
     reading = false;
@@ -610,8 +611,15 @@ export function initMaweTextProcess() {
       if (ok) showStorageReady();
       else showStorageStatus('无法读取用户配置', 'error');
     }
-    if (!replaceSelection && fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
+    // 不重建已获焦的文本框：输入法组字可能还没有触发 input。
+    const focused = document.activeElement;
+    const editingText = focused?.matches('input[type="text"]') && stepList.contains(focused);
+    if (!replaceSelection && !editingText && fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
     else {
+      // 比较刷新前后已规范化的预设步骤，而不是把用户正在编辑的草稿拿来比较。
+      const previous = presetsBeforeRefresh.find(({ id }) => id === selectedPreset);
+      const refreshed = window.MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+      if (previous && refreshed && JSON.stringify(previous.steps) !== JSON.stringify(refreshed.steps)) selectedPreset = '';
       renderPresets();
       schedulePreview();
     }

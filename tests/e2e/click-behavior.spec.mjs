@@ -345,8 +345,9 @@ test('waveform cue double-click activates its subtitle editor while blank double
   await cue.scrollIntoViewIfNeeded();
   await cue.dblclick();
   await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  await expect(page.locator('.waveform-cue-quick-edit textarea')).toBeFocused();
   expect(await page.locator('#player').evaluate((element) => element.paused)).toBe(true);
+  await page.keyboard.press('Escape');
 
   const blankRow = page.locator('.waveform-row:not(:has(.waveform-cue-block))').first();
   const rowBox = await blankRow.boundingBox();
@@ -575,13 +576,13 @@ test('list context menu leads with text-position split', async ({ page }) => {
 test('Enter focuses the current subtitle editor after list or waveform clicks', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.cue[data-idx="0"]');
-  const panelText = page.locator('#cue-panel-text');
+  const editorInput = page.locator('.waveform-cue-quick-edit textarea');
   await cue.click();
   // 最后点击在列表：即使鼠标已移出列表，Enter 仍聚焦当前字幕编辑区
   await page.locator('#media-controls').hover();
   await page.keyboard.press('Enter');
   await expect(cue).not.toHaveClass(/editing/);
-  await expect(panelText).toBeFocused();
+  await expect(editorInput).toBeFocused();
   await page.keyboard.press('Escape');
 
   // 最后点击在波形背景：仍聚焦当前字幕编辑区
@@ -591,7 +592,7 @@ test('Enter focuses the current subtitle editor after list or waveform clicks', 
   await page.evaluate(() => MaweSelection.selectOnly(0));
   await page.keyboard.press('Enter');
   await expect(cue).not.toHaveClass(/editing/);
-  await expect(panelText).toBeFocused();
+  await expect(editorInput).toBeFocused();
 });
 
 test('B splits at the pointer inside the cue list and at the playhead outside it', async ({ page }) => {
@@ -669,6 +670,7 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = Array.from({ length: 90 }, (_, index) => {
       const start = index * 2000;
       return {
+        id: `anchor-cue-${index}`,
         start,
         end: start + 1800,
         text: `${samples[index % samples.length]} ${index}`,
@@ -710,7 +712,16 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
   });
   await target.dispatchEvent('click', { bubbles: true, detail: 1, clientX: splitPoint.x, clientY: splitPoint.y });
   await expect(target).toHaveClass(/selected/);
-  await page.mouse.move(splitPoint.x, splitPoint.y);
+  const liveSplitPoint = await text.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    const offset = Math.floor(node.textContent.length / 2);
+    range.setStart(node, offset);
+    range.collapse(true);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(liveSplitPoint.x, liveSplitPoint.y);
   await expect(page.locator('.cue-split-preview')).toHaveCount(1);
   const beforeTop = await target.evaluate((element) => element.getBoundingClientRect().top);
   await page.keyboard.press('b');
@@ -789,6 +800,7 @@ test('C merge keeps the source cue visually anchored while lazy rows relayout', 
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = Array.from({ length: 90 }, (_, index) => {
       const start = index * 2000;
       return {
+        id: `anchor-cue-${index}`,
         start,
         end: start + 1800,
         text: `${samples[index % samples.length]} ${index}`,

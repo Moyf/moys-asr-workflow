@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUtilsModule } from '../../web/shared/utils/project-tracks.js';
 import { cleanupTempDir, findFreePort, generateWav, makeTempDir, startServer } from './helpers.mjs';
+
+const { getMainTrack } = createUtilsModule();
 
 test('generated script project retains punctuation and NFD text through Server save and reload', async ({ page }) => {
   const directory = makeTempDir('script-alignment-roundtrip');
@@ -31,7 +34,7 @@ run_script_alignment(ScriptAlignmentRequest(Path(sys.argv[1]), Path(sys.argv[2])
     const project = join(directory, 'script.script-aligned.mosp');
     server = await startServer(project, media, await findFreePort());
     await page.goto(server.url);
-    await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
+    await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data && window.AsrEditorUtils?.getMainTrack(window.MAWE_EDITOR_BRIDGE.data)?.segments.length === 2);
     const snapshot = () => page.evaluate(() => ({
       text: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((cue) => cue.text),
       items: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((cue) => cue.items.map((item) => item.text).join('')),
@@ -39,25 +42,26 @@ run_script_alignment(ScriptAlignmentRequest(Path(sys.argv[1]), Path(sys.argv[2])
     }));
     const expected = { text: ['你好，世界。', 'cafe\u0301!'], items: ['你好，世界。', 'cafe\u0301!'], preserve: true };
     expect(await snapshot()).toEqual(expected);
-    expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).preserve_punctuation)).toBe(true);
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(JSON.parse(MaweJsonRepair.buildJson())).preserve_punctuation)).toBe(true);
     const saved = page.waitForResponse((response) => response.url().endsWith('/api/project') && response.request().method() === 'POST');
     await page.locator('#save-project').click();
     expect((await saved).ok()).toBe(true);
     await expect(page.locator('#save-project')).toBeEnabled();
-    await expect.poll(() => JSON.parse(readFileSync(project, 'utf8')).preserve_punctuation).toBe(true);
+    await expect.poll(() => getMainTrack(JSON.parse(readFileSync(project, 'utf8'))).preserve_punctuation).toBe(true);
     await page.reload();
-    await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
+    await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data && window.AsrEditorUtils?.getMainTrack(window.MAWE_EDITOR_BRIDGE.data)?.segments.length === 2);
     expect(await snapshot()).toEqual(expected);
     await page.screenshot({ path: test.info().outputPath('editor-roundtrip.png') });
-    const legacy = JSON.parse(readFileSync(project, 'utf8'));
-    delete legacy.preserve_punctuation;
-    const legacyPath = join(directory, 'legacy.mosp');
-    writeFileSync(legacyPath, JSON.stringify(legacy), 'utf8');
+    const withoutPreference = JSON.parse(readFileSync(project, 'utf8'));
+    delete getMainTrack(withoutPreference).preserve_punctuation;
+    const legacyPath = join(directory, 'missing-preference.mosp');
+    writeFileSync(legacyPath, JSON.stringify(withoutPreference), 'utf8');
     await server.stop();
     server = await startServer(legacyPath, media, await findFreePort());
     await page.goto(server.url);
-    await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
-    expect((await snapshot()).text[0]).toBe('你好  世界');
+    await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data && window.AsrEditorUtils?.getMainTrack(window.MAWE_EDITOR_BRIDGE.data)?.segments.length === 2);
+    // A missing preference must not rewrite the generated subtitle text.
+    expect(await snapshot()).toEqual({ ...expected, preserve: undefined });
   } finally {
     await server?.stop();
     cleanupTempDir(directory);
