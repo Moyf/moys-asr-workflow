@@ -1,22 +1,30 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
-import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, makeTempDir } from './helpers.mjs';
+import {
+  buildBrowserEditorFixture,
+  cleanupTempDir,
+  disableOnboarding,
+  findFreePort,
+  makeTempDir,
+  startStaticServer,
+} from './helpers.mjs';
 
-let dir, blankEditorUrl;
-test.beforeAll(() => {
+let dir;
+let server;
+test.beforeAll(async () => {
   dir = makeTempDir('cue-list-toolbar');
-  const portable = join(dir, 'editor.html');
-  buildPortableBlankEditor(portable);
-  blankEditorUrl = pathToFileURL(portable).href;
+  server = await startStaticServer(buildBrowserEditorFixture(join(dir, 'editor.html')), await findFreePort());
 });
-test.afterAll(() => cleanupTempDir(dir));
+test.afterAll(async () => {
+  await server?.stop();
+  cleanupTempDir(dir);
+});
 
 test('ellipsizes cue-list action labels instead of wrapping', async ({ page }) => {
   await disableOnboarding(page);
   await page.setViewportSize({ width: 360, height: 900 });
-  await page.goto(blankEditorUrl);
+  await page.goto(server.url);
   await page.waitForSelector('#cues-container');
 
   const state = await page.evaluate(() => {

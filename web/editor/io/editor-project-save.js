@@ -214,7 +214,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     const waveform = MaweCoreState.waveformEditor;
     const drag = waveform?.drag;
     if (!drag) return true;
-    if (silent) {
+    if (silent || backupOnly) {
       if (!backupOnly) MaweServerSave.scheduleAutoSaveFlush();
       return false;
     }
@@ -233,9 +233,8 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     if (!MaweServerSave.projectFileHandle && !MaweServerSave.serverProjectSavingEnabled()) {
       return saveProjectToServer({ silent });
     }
-    if (!prepareWaveformDragForSave(silent)) return false;
-    // A pointer preview is not committed subtitle truth. Timed autosave waits;
-    // an explicit save first finishes this one history transaction.
+    // ASS positioning has its own preview and history transaction. The selected
+    // writer handles any held waveform gesture before flushing inline edits.
     if (global.MaweAssCuePosition?.dragging) {
       if (silent) return false;
       global.MaweAssCuePosition.commitDrag();
@@ -257,7 +256,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     const current = () => bindingEpoch === MaweProjectLoad.projectBindingEpoch
       && contentEpoch === MaweState.projectEpoch && generation === MaweState.projectLoadGeneration;
     if (MaweState.projectLoadPending) return false;
-    if (!prepareWaveformDragForSave(false)) return false;
+    prepareWaveformDragForSave(false);
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();

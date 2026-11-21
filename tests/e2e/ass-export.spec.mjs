@@ -893,14 +893,44 @@ test('explains a stale page when the server rejects style sync with 403', async 
 
 test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {
   await page.goto(server.url);
-  await page.addStyleTag({ content: '@font-face { font-family: "ASS Metric Test"; src: local("Arial"); size-adjust: 150%; }' });
-  await page.evaluate(async () => { await document.fonts.load('20px "ASS Metric Test"'); });
-  const ratios = await page.evaluate(() => {
+  // Synthetic WOFF: one rectangular glyph for Mg and the cue characters, with
+  // a half-em advance. Both faces share the same bytes; no host fonts are needed.
+  const woff = [
+    'd09GRgABAAAAAAK8AAoAAAAAA5wAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAABPUy8yAAABZAAAAC8AAABgRS3bqmNtYXAAAAGc',
+    'AAAATQAAAGxjzDkbZ2x5ZgAAAfQAAAAYAAAAGCaLMdxoZWFkAAAA9AAAADYAAAA2JEelnGhoZWEAAAEsAAAAIAAAACQE5AFg',
+    'aG10eAAAAZQAAAAGAAAABgH0AABsb2NhAAAB7AAAAAYAAAAGAAwAAG1heHAAAAFMAAAAFgAAACAABAAGbmFtZQAAAgwAAACk',
+    'AAABX+y2XuVwb3N0AAACsAAAAAwAAAAgAAMAAAABAAAAAQAA1rwAwl8PPPUAAwPoAAAAAOG3sQAAAAAA4bexAAAAAAABwgK8',
+    'AAAAAwACAAAAAAAAeJxjYGRgYFb4b8HAwPiFgYHBiPEQA1AEBTACAFNVA0h4nGNgZGBgYGJgYQDRIBYaAAABEgALAAB4nGNg',
+    'ZvzCOIGBlYGFgTBg5EDi2AMBkPKdIMWs8N+CgYFZgeEEmnoFBgYACTUF9AAB9AAAAAAAAHicY2BgYGJgYGAGYhEgyQimWRgi',
+    'gLQQgwBQhInBlyE9OjwuNN4qLa+HeYLU//9AOQyx/1v+z1qyauGaBcdnTi7+l/8cbBIaAABQUhlxAAAAAAAAAAAMAAAAAQAA',
+    'AAABwgK8AAMAADERIREBwgK8/UR4nI2LwQqCQBRFz6gYtWjRqlrNoq0Q1A+4cRNu9AtEBhEEYVBwU//UH/bMgZRa9IaZOffe',
+    'd4ENDxTjKHbvdxyPlaiJfY4cHAczDtlzkVQFa3FO3Bx7bGkd+1y5Ow5mHHLmGee5Tk1n61In9dD11mSm6pvCfgf6k0yB8yPn',
+    'E5PL0aQYOiw1pahE/kF0L44hk1sJNxT819A/O/PGcj9a7r8Anbs8wHicY2BmwAsAAH0ABA==',
+  ].join('');
+  const src = `url("data:font/woff;base64,${woff}") format("woff")`;
+  const baseFamily = 'ASS Metric Base';
+  const adjustedFamily = 'ASS Metric Test';
+  await page.addStyleTag({ content: `
+    @font-face { font-family: "${baseFamily}"; src: ${src}; }
+    @font-face { font-family: "${adjustedFamily}"; src: ${src}; size-adjust: 150%; }
+  ` });
+  const fonts = await page.evaluate(async (families) => {
+    const ctx = document.createElement('canvas').getContext('2d');
+    return Promise.all(families.map(async (family) => {
+      const font = `100px "${family}"`;
+      const text = 'Mg字幕强调普通';
+      const faces = await document.fonts.load(font, text);
+      ctx.font = font;
+      return { statuses: faces.map((face) => face.status), width: ctx.measureText(text).width };
+    }));
+  }, [baseFamily, adjustedFamily]);
+  expect(fonts).toEqual([{ statuses: ['loaded'], width: 400 }, { statuses: ['loaded'], width: 600 }]);
+  const ratios = await page.evaluate(({ baseFamily, adjustedFamily }) => {
     MaweBoot.DATA.media_metadata = { video_width: 640, video_height: 360 };
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '字幕**强调**';
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const style = library.styles.find((entry) => entry.id === 'ass');
-    style.fontName = 'Arial'; style.fontSize = 72; style.emphasisScale = 1.1;
+    style.fontName = baseFamily; style.fontSize = 72; style.emphasisScale = 1.1;
     ASS_STYLE_LIBRARY = library;
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
@@ -911,7 +941,7 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
       return { base: base.cssSize, em: emphasized ? emphasized.cssSize : 0 };
     };
     const before = baseSize();
-    style.fontName = 'ASS Metric Test';
+    style.fontName = adjustedFamily;
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
     const after = baseSize();
     const ratio = after.em / after.base;
@@ -922,6 +952,9 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
     library.assProfiles[0].animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fs48' };
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
     return { before: before.base, after: after.base, ratio, animated: baseSize().base };
+  }, { baseFamily, adjustedFamily });
+  await test.info().attach('ass-inline-font-metrics', {
+    body: JSON.stringify({ fonts, ratios }), contentType: 'application/json',
   });
   expect(ratios.after).toBeLessThan(ratios.before * 0.8);
   expect(ratios.ratio).toBeCloseTo(26 / 24, 2);

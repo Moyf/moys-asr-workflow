@@ -1,4 +1,4 @@
-
+export function initMaweStickerPreviewWiring() {
 // === 表情包预览（视频画面内）===
 // 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
 
@@ -173,3 +173,4 @@ MaweDom.overlayToggle.addEventListener('change', () => {
 });
 
 // init 化模块经 window 延迟取用本文件的运行时状态（门面已在本文件前部挂载）。
+}

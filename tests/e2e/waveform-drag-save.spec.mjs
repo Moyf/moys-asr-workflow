@@ -144,16 +144,31 @@ for (const saveAs of [false, true]) {
     const historyBefore = await page.evaluate(() => MaweHistory.editorHistory.undoLength());
     await holdBoundary(page);
     await page.evaluate(asNew => {
-      window.__heldSave = {writes: 0, content: ''};
-      const handle = {name: 'saved.mosp', async createWritable() {
-        return {async write(blob) { window.__heldSave.writes++; window.__heldSave.content = await blob.text(); }, async close() {}};
-      }};
+      const saved = {writes: 0, content: ''};
+      window.__heldSave = saved;
+      const handle = {
+        name: 'saved.mosp',
+        async createWritable() {
+          return {
+            async write(blob) {
+              saved.dragActiveAtWrite = Boolean(MaweCoreState.waveformEditor.drag);
+              saved.undoLengthAtWrite = MaweHistory.editorHistory.undoLength();
+              saved.content = await blob.text();
+              saved.writes++;
+            },
+            async close() {},
+          };
+        },
+      };
       if (asNew) window.showSaveFilePicker = async () => handle;
       else MaweServerSave.projectFileHandle = handle;
     }, saveAs);
     await page.keyboard.press(saveAs ? 'Control+Shift+s' : 'Control+s');
     await expect.poll(() => page.evaluate(() => window.__heldSave.writes)).toBe(1);
-    expect(timings(JSON.parse(await page.evaluate(() => window.__heldSave.content)))).toEqual(expected);
+    const saved = await page.evaluate(() => window.__heldSave);
+    expect(saved.dragActiveAtWrite).toBe(false);
+    expect(saved.undoLengthAtWrite).toBe(historyBefore + 1);
+    expect(timings(JSON.parse(saved.content))).toEqual(expected);
     await page.mouse.up();
     expect(await readTimings(page)).toEqual(expected);
     expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(historyBefore + 1);
