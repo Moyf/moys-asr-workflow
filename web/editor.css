@@ -2043,13 +2043,25 @@
   .ass-style-library-notes { display: grid; gap: 8px; min-width: 0; }
   #ass-style-library-path-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #ass-style-project-hint { color: var(--amber-hover); overflow-wrap: anywhere; }
-  .ass-style-library-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+  .ass-style-library-actions { display: flex; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+  .ass-style-more-actions { position: relative; }
+  .ass-style-more-actions > summary { display: flex; align-items: center; min-height: 28px; padding: 4px 11px; color: var(--btn-text); background: var(--btn-bg); border: 1px solid var(--btn-border); border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; list-style: none; }
+  .ass-style-more-actions > summary::-webkit-details-marker { display: none; }
+  .ass-style-more-actions > summary:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .ass-style-more-menu { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 3; display: grid; gap: 4px; min-width: max-content; padding: 6px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+  .ass-style-more-menu button { text-align: left; }
   .ass-style-window-footer button { min-height: 28px; padding: 4px 11px; color: var(--btn-text); background: var(--btn-bg); border: 1px solid var(--btn-border); border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }
   .ass-style-window-footer button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
   .ass-style-window-footer button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .ass-style-window-footer button.primary { color: var(--accent-active-fg, var(--bg-base)); background: var(--accent); border-color: var(--accent); font-weight: 600; }
   .ass-style-window-footer button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
   .ass-style-window-footer button:disabled { opacity: .45; cursor: not-allowed; }
+  .ass-style-transfer-dialog { max-width: min(620px, 94vw); }
+  .ass-style-transfer-dialog:not([open]) { display: none; }
+  .modal.ass-style-transfer-dialog > .modal-hint { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+  .ass-style-transfer-dialog label { display: block; margin: 10px 0; }
+  .ass-style-import-summary { margin: 12px 0 8px; font-weight: 600; }
+  .ass-style-import-preview { white-space: pre-wrap; overflow: auto; max-height: 32vh; padding: 10px; background: var(--bg-panel); border: 1px solid var(--border); }
 
   /* ASS 模式预览只由 editor.js 在开关打开时添加 data-ass-mode；CSS 模式关闭时
      不改变任何旧规则。inline style 会继续承载当前样式的精确参数。 */
