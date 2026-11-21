@@ -120,6 +120,10 @@ test('OTIO menu keyboard navigation works but Escape does not restore its toolba
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#download-otio')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[aria-controls="extra-otio-menu"]')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#download-otio')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.locator('#extra-export-dropdown')).not.toHaveClass(/open/);
   await expect(page.locator('#extra-export-btn')).not.toBeFocused();

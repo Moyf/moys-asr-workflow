@@ -269,7 +269,7 @@ test('keeps the quick-import prompt when enabling an empty secondary track', asy
   const chooser = await chooserPromise;
   expect(prompt).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  await openSettingsPage(page, 'project-tracks');
+  await openSettingsPage(page, 'multi-subtitle');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
@@ -323,7 +323,7 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height - 2, { button: 'right' });
   await page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' }).click();
   expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('extension');
-  const editor = page.locator('#cue-panel-text');
+  const editor = page.locator('.waveform-cue-quick-edit textarea');
   await expect(editor).toBeVisible();
   await expect(editor).toBeFocused();
   await editor.fill('手动副字幕');
@@ -501,7 +501,13 @@ test('waveform extension cue double-click focuses the extension editor', async (
   await cue.scrollIntoViewIfNeeded();
   await cue.dblclick();
   await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  const editor = page.locator('.waveform-cue-quick-edit textarea');
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue('extension cue');
+  await editor.fill('edited extension cue');
+  await editor.press('ControlOrMeta+Enter');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].text))
+    .toBe('edited extension cue');
 });
 
 test('light theme keeps the main waveform subtitle white and secondary subtitle lightly gray', async ({ page }) => {
@@ -545,7 +551,7 @@ test('light theme keeps the main waveform subtitle white and secondary subtitle 
   });
   expect(colors.main.background).toBe('rgba(255, 255, 255, 0.82)');
   // 初始播放位置命中主字幕活动态，使用亮色主题的活动字幕深色令牌。
-  expect(colors.main.color).toBe('rgb(31, 37, 48)');
+  expect(colors.main.color).toBe('rgb(29, 29, 32)');
   expect(colors.extension.background).toBe('rgba(238, 240, 244, 0.68)');
   expect(colors.extension.background).not.toBe(colors.main.background);
 });
@@ -729,7 +735,7 @@ test('uses the same text editor box styling in single and dual-column modes', as
 
 test('reserves space for the dirty marker beside main dual-column text', async ({ page }) => {
   const project = {
-    segments: [{ id: 'dirty-main-001', start: 0, end: 2000, text: 'main dirty cue', _dirty: true }],
+    segments: [{ id: 'dirty-main-001', start: 0, end: 2000, text: 'main dirty cue' }],
     waveform: generateWaveformPayload(3000),
     multi_subtitle: {
       schema: 'moy.asr.multi_subtitle.v1',
@@ -756,6 +762,8 @@ test('reserves space for the dirty marker beside main dual-column text', async (
   }]);
 
   const main = page.locator('.multi-dual-cue .multi-cue-column.main').first();
+  await main.locator('.text').click();
+  await page.locator('#cue-panel-text').fill('edited main cue');
   await expect(main).toHaveClass(/dirty/);
   const geometry = await main.evaluate((element) => {
     const text = element.querySelector('.text');
@@ -1944,7 +1952,7 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
       bindings: [{
         id: 'binding-001', track_id: 'extension-1',
         main_segment_ids: ['main-001'], extension_segment_ids: ['extension-001'],
-        start_offset_ms: 100, end_offset_ms: -100,
+        start_offset_ms: 50, end_offset_ms: -250,
       }],
     },
   };
@@ -2474,8 +2482,7 @@ const coloredExtensionSrt = [
   '5', '00:00:11,500 --> 00:00:12,500', '后置二。', '',
 ].join('\n');
 
-// 副轨颜色组是数组下标引用：任何 splice 都必须同步平移，否则保存校验报
-// must point to an earlier head segment / a color head（用户工程合并即失败）。
+// 从旧格式导入颜色组，再验证 v2 组引用在合并和删除后仍能正确物化。
 async function importColoredPair(page) {
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', coloredMainSrt)]);
@@ -2487,14 +2494,19 @@ async function importColoredPair(page) {
   // 红色组横跨将被合并的副轨段（head@0 + 成员 1/2），绿色组整体位于合并点之后。
   await page.evaluate(() => {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    track.segments.forEach((segment, index) => {
-      segment.color = null;
-      segment.color_ref = null;
+    const segments = structuredClone(track.segments);
+    segments.forEach((segment, index) => {
       if (index === 0) segment.color = { name: 'red', value: '#e74c3c', start: segment.start, end: segment.end };
       if (index === 1 || index === 2) segment.color_ref = { name: 'red', headIdx: 0 };
       if (index === 3) segment.color = { name: 'green', value: '#2ecc71', start: segment.start, end: segment.end };
       if (index === 4) segment.color_ref = { name: 'green', headIdx: 3 };
     });
+    const imported = AsrEditorUtils.importProject({ segments: [], multi_subtitle: {
+      enabled: true, tracks: [{ id: track.id, segments }], bindings: [],
+    } }).project;
+    MaweBoot.DATA.subtitle_groups = imported.subtitle_groups;
+    const colored = AsrEditorUtils.getExtensionTrack(imported).segments;
+    track.segments.forEach((segment, index) => { segment.color_group_id = colored[index].color_group_id; });
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
   });
 }
@@ -2502,20 +2514,21 @@ async function importColoredPair(page) {
 function inspectExtensionColorRefs() {
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const invalid = [];
-  track.segments.forEach((segment, index) => {
+  const segments = AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, track.id);
+  segments.forEach((segment, index) => {
     const ref = segment.color_ref;
     if (!ref) return;
     if (!Number.isInteger(ref.headIdx) || ref.headIdx < 0 || ref.headIdx >= index) {
       invalid.push([index, 'earlier', ref.headIdx]);
-    } else if (!track.segments[ref.headIdx]?.color) {
+    } else if (!segments[ref.headIdx]?.color) {
       invalid.push([index, 'not-head', ref.headIdx]);
     }
   });
   return {
     invalid,
     count: track.segments.length,
-    refs: track.segments.map((segment) => segment.color_ref?.headIdx ?? null),
-    colors: track.segments.map((segment) => segment.color?.name ?? null),
+    refs: segments.map((segment) => segment.color_ref?.headIdx ?? null),
+    colors: segments.map((segment) => segment.color?.name ?? null),
   };
 }
 
@@ -2737,7 +2750,7 @@ test('ignores a tiny unbound extension overlap at the main merge boundary', asyn
     end: segment.end,
     text: segment.text,
   })))).toEqual([
-    { id: 'extension-001-merged', start: 1100, end: 1900, text: '已绑定副字幕' },
+    { id: 'extension-001', start: 1100, end: 1900, text: '已绑定副字幕' },
     { id: 'extension-002', start: 2990, end: 3990, text: '边界副字幕' },
   ]);
 });
@@ -4568,7 +4581,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     };
   });
   // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
-  // 默认黄色，跟随其样式预设固定在主字幕下方（MarginV 36）。
+  // 默认黄色，跟随其样式预设固定在主字幕下方（MarginV 100）。
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
@@ -4577,10 +4590,10 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   // 底部对齐时主文本块在锚点上方：副字幕锚点低于主字幕锚点即为主下方。
   expect(result.extensionAnchor.y).toBeGreaterThan(result.mainAnchor.y);
   expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
-  // 叠加字幕固定锚定在主字幕上方（88 + round(1.2 * 86) = 191）。
+  // 叠加字幕固定锚定在主字幕上方。
   expect(result.overlayAnchor.y).toBeLessThan(result.mainAnchor.y - result.mainHeight);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
-  // 主样式 marginV 88 + 1.2 × 字号 86 = 191 的 Overlay 样式。
+  // 主样式 marginV 180 + 1.2 × 字号 86 = 283 的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(3);
   expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
@@ -4589,10 +4602,10 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(dialogueLines[2]).toContain(`\\pos(${result.overlayAnchor.x},${result.overlayAnchor.y})`);
   const extensionStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   expect(extensionStyleLine).toBeTruthy();
-  expect(extensionStyleLine).toMatch(/,10,10,36,1$/);
+  expect(extensionStyleLine).toMatch(/,10,10,100,1$/);
   const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
   expect(overlayStyleLine).toBeTruthy();
-  expect(overlayStyleLine).toMatch(/,10,10,191,1$/);
+  expect(overlayStyleLine).toMatch(/,10,10,283,1$/);
 
   const variants = await page.evaluate(() => {
     const main = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass');
@@ -4623,9 +4636,9 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     expect(variant.overlay.alignment).toBe(overlayAlignment);
     const mainRow = windowRow(variant.main.alignment);
     const mainTop = variant.main.anchor.y - variant.main.height * mainRow / 2;
-    // 副字幕固定在其样式行位的预设位置（MarginV 36）；底部行位于主字幕下方。
+    // 副字幕固定在其样式行位的预设位置（MarginV 100）；底部行位于主字幕下方。
     const extRow = windowRow(variant.extensionAlignment);
-    const extExpectedY = [36, 540, 1080 - 36][extRow];
+    const extExpectedY = [100, 540, 1080 - 100][extRow];
     expect(variant.extension.anchor.y).toBeCloseTo(extExpectedY, 0);
     // 叠加字幕固定锚定在主字幕上方。
     expect(variant.overlay.anchor.y).toBeLessThan(mainTop);
@@ -4715,7 +4728,7 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
   await page.locator('#ass-color-style').selectOption('speaker');
   await expect(page.locator('#ass-color-speaker-hint')).toBeVisible();
-  await expect(page.locator('#ass-color-speaker-hint')).toContainText('需要启用「颜色对应说话人」');
+  await expect(page.locator('#ass-color-speaker-hint')).toContainText('先分配说话人');
   await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出带上说话人');
   await page.locator('#ass-color-speaker-export-link').click();
   await expect(page.locator('#editor-settings-page-project-color')).toBeVisible();

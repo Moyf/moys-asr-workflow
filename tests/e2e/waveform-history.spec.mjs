@@ -209,20 +209,21 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await expect(page.locator('#gap-remove-operation-mode')).toHaveValue('boundary_and_middle');
   await page.locator('#waveform-settings-toggle').click();
   const middleRow = page.locator('.waveform-row[data-row-index="0"]').first();
-  const middleBox = await middleRow.boundingBox();
   const middleContent = await middleRow.evaluate((element) => ({
     clientLeft: element.clientLeft,
+    clientTop: element.clientTop,
     clientWidth: element.clientWidth,
+    clientHeight: element.clientHeight,
   }));
+  // Feedback from the preceding action can cover the top of the row.
+  const middleY = middleContent.clientHeight * 0.8;
+  await middleRow.hover({ position: { x: middleContent.clientWidth * 0.2, y: middleY } });
+  const middleBox = await middleRow.boundingBox();
   expect(middleBox).not.toBeNull();
-  await page.mouse.move(
-    middleBox.x + middleContent.clientLeft + middleContent.clientWidth * 0.2,
-    middleBox.y + 20,
-  );
   await page.mouse.down({ button: 'middle' });
   await page.mouse.move(
     middleBox.x + middleContent.clientLeft + middleContent.clientWidth * 0.3,
-    middleBox.y + 20,
+    middleBox.y + middleContent.clientTop + middleY,
   );
   await page.mouse.up({ button: 'middle' });
   const middleResult = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
@@ -2100,11 +2101,10 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
   await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeHidden();
 });
 
-test('nested export menus preserve pointer reachability and keyboard focus', async ({ page }) => {
+test('nested export menus remain reachable from the toolbar with the pointer', async ({ page }) => {
   await page.goto(server.url);
   const exportButton = page.locator('#extra-export-btn');
-  const otioToggle = page.locator('#extra-export-menu > .dropdown-submenu').first()
-    .locator(':scope > .dropdown-submenu-toggle');
+  const otioToggle = page.locator('[aria-controls="extra-otio-menu"]');
 
   await exportButton.click();
   await otioToggle.hover();
@@ -2116,52 +2116,48 @@ test('nested export menus preserve pointer reachability and keyboard focus', asy
     submenuBox.y + submenuBox.height / 2,
   );
   await expect(page.locator('#download-otio')).toBeVisible();
-
-  await exportButton.focus();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#download-fcp7-export')).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(otioToggle).toBeFocused();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.locator('#download-otio')).toBeFocused();
-  await page.keyboard.press('ArrowLeft');
-  await expect(otioToggle).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(exportButton).not.toBeFocused();
-  await expect(page.locator('#extra-export-dropdown')).not.toHaveClass(/open/);
 });
 
 test('nested export menus keep the current submenu while the pointer crosses its aim corridor', async ({ page }) => {
+  await page.clock.install();
   await page.goto(server.url);
-  const exportButton = page.locator('#extra-export-btn');
-  const otioWrapper = page.locator('#extra-export-menu > .dropdown-submenu').first();
-  const dynamicWrapper = page.locator('#extra-export-menu > .dropdown-submenu').nth(1);
-  const otioToggle = otioWrapper.locator(':scope > .dropdown-submenu-toggle');
-  const dynamicToggle = dynamicWrapper.locator(':scope > .dropdown-submenu-toggle');
+  const otioToggle = page.locator('[aria-controls="extra-otio-menu"]');
+  const dynamicToggle = page.locator('[aria-controls="extra-dynamic-menu"]');
+  const otioMenu = page.locator('#extra-otio-menu');
+  const dynamicMenu = page.locator('#extra-dynamic-menu');
 
-  await exportButton.click();
+  await page.locator('#extra-export-btn').click();
   await otioToggle.hover();
-  await expect(page.locator('#extra-otio-menu')).toBeVisible();
+  await expect(otioMenu).toBeVisible();
+  const { now, switchDelay } = await page.evaluate(() => ({
+    now: Date.now(),
+    switchDelay: MaweExportMenus.SUBMENU_CLOSE_DELAY_MS,
+  }));
+  await page.clock.pauseAt(now + 1000);
 
   const otioToggleBox = await otioToggle.boundingBox();
   const dynamicToggleBox = await dynamicToggle.boundingBox();
+  const otioMenuBox = await otioMenu.boundingBox();
   expect(otioToggleBox).not.toBeNull();
   expect(dynamicToggleBox).not.toBeNull();
+  expect(otioMenuBox).not.toBeNull();
 
+  // Aim toward the open submenu even when the toolbar places it on the other side.
+  const opensLeft = otioMenuBox.x < otioToggleBox.x;
   await page.mouse.move(
-    otioToggleBox.x + otioToggleBox.width * 0.7,
-    otioToggleBox.y + otioToggleBox.height / 2,
+    otioToggleBox.x + otioToggleBox.width * (opensLeft ? 0.9 : 0.1),
+    otioToggleBox.y + otioToggleBox.height - 2,
   );
   await page.mouse.move(
-    dynamicToggleBox.x + dynamicToggleBox.width * 0.05,
-    dynamicToggleBox.y + dynamicToggleBox.height / 2,
-    { steps: 12 },
+    dynamicToggleBox.x + dynamicToggleBox.width * (opensLeft ? 0.1 : 0.9),
+    dynamicToggleBox.y + 2,
   );
-  await page.waitForTimeout(40);
-  await expect(page.locator('#extra-otio-menu')).toBeVisible({ timeout: 100 });
-  await expect(page.locator('#extra-dynamic-menu')).toBeHidden();
-  await page.waitForTimeout(180);
-  await expect(page.locator('#extra-dynamic-menu')).toBeVisible();
+  await page.clock.runFor(switchDelay - 1);
+  await expect(otioMenu).toBeVisible();
+  await expect(dynamicMenu).toBeHidden();
+  await page.clock.runFor(1);
+  await expect(dynamicMenu).toBeVisible();
+  await expect(otioMenu).toBeHidden();
 });
 
 const legacyStickerSegments = [

@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, openSettingsPage, startServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
+  generateWav, makeTempDir, openSettingsPage, startServer, startStaticServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 
 let server;
-let portable;
+let reopenServer;
 let tempDir;
 test.beforeAll(async () => {
   const dir = makeTempDir('text-tools');
@@ -13,10 +13,15 @@ test.beforeAll(async () => {
   const media = join(dir, 'synthetic.wav');
   generateProjectJson(project);
   generateWav(media, 300);
-  portable = buildBrowserEditorFixture(join(dir, 'portable.html'));
   server = await startServer(project, media, await findFreePort());
 });
-test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
+test.afterAll(async () => {
+  try {
+    await Promise.all([server?.stop(), reopenServer?.stop()]);
+  } finally {
+    cleanupTempDir(tempDir);
+  }
+});
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1400 });
   await disableOnboarding(page);
@@ -156,8 +161,9 @@ for (const path of ['timed', 'untimed', 'linked']) {
     await page.locator('#redo-btn').click();
     expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
-    // Reopen through the real project drop loader in a fresh portable editor.
-    await page.goto(`file://${portable}`);
+    // Reopen through the real drop loader on a fresh editor page.
+    reopenServer ??= await startStaticServer(buildBrowserEditorFixture(join(tempDir, 'reopen.html')), await findFreePort());
+    await page.goto(reopenServer.url);
     await expect(page.locator('#cues-container')).toBeVisible();
     const dataTransfer = await page.evaluateHandle((project) => {
       const transfer = new DataTransfer();
@@ -319,16 +325,6 @@ test('text processing converts clear Chinese numbers with surrounding spaces', a
   await expect(page.locator('#text-process-preview')).toContainText('处理后： 186 ，等三两分钟，八九不离十');
   await page.locator('#text-process-confirm').click();
   await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(' 186 ，等三两分钟，八九不离十');
-});
-
-test('portable file uses the same fade rules and SRT export settings', async ({ page }) => {
-  // 便携单 HTML 已弃维护，2.0 移除；决策与证据见回归分析记录。
-  test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
-  await page.goto(`file://${portable}`);
-  await expect(page.locator('#cues-container')).toBeVisible();
-  await seed(page, { text: '>甲乙<', timed: false });
-  await page.evaluate(() => MaweSettings.updateEditorSettings({ assSpecialSymbolRule: 'both' }));
-  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('\n甲乙\n');
 });
 
 for (const gesture of ['Shift+B', 'Control+Shift+B', 'Meta+Shift+B']) {
@@ -522,72 +518,6 @@ test('user presets, text overrides and explicit join defaults survive project ch
   await expect(threshold).toHaveValue('450');
   await page.locator('#auto-merge-project-reset').click();
   await expect(threshold).toHaveValue('600');
-});
-
-test('portable editor saves and reloads presets in its browser storage', async ({ page }) => {
-  test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见便携模式回归分析');
-  const errors = [];
-  const snapshots = {};
-  page.on('pageerror', error => errors.push(String(error.stack || error)));
-  await page.addInitScript(() => {
-    try { window.__portablePresetAtDocumentStart = localStorage.getItem('moy.asr.text_processing_presets.v1'); }
-    catch (error) { window.__portablePresetAtDocumentStart = `ERROR: ${String(error)}`; }
-  });
-  const snapshot = async () => {
-    const state = await page.evaluate(() => {
-      let storage;
-      try { storage = localStorage.getItem('moy.asr.text_processing_presets.v1'); }
-      catch (error) { storage = `ERROR: ${String(error)}`; }
-      return { href: location.href, origin: location.origin, storage, documentStartStorage: window.__portablePresetAtDocumentStart,
-        library: window.MaweProcessing?.library ?? null,
-        projectOverride: window.MaweProcessing?.projectOverride('text') ?? null,
-        selected: document.querySelector('#text-preset-select')?.value ?? null,
-        status: document.querySelector('#text-preset-status')?.dataset.state ?? null };
-    });
-    let cdp;
-    try {
-      cdp = await page.context().newCDPSession(page);
-      const { frameTree } = await cdp.send('Page.getFrameTree');
-      const frameId = frameTree.frame.id;
-      const { storageKey } = await cdp.send('Storage.getStorageKeyForFrame', { frameId });
-      state.cdp = { frameId, storageKey };
-    } catch (error) {
-      state.cdp = { error: String(error) };
-    } finally {
-      if (cdp) await cdp.detach().catch(() => {});
-    }
-    return state;
-  };
-  try {
-    await page.goto('file://' + portable);
-    await seed(page, { text: '  甲  ', timed: false });
-    await openTextProcess(page);
-    await removeTextProcessPrefill(page);
-    await expect(page.locator('#text-preset-status')).toHaveText('仅保存在当前浏览器（便携模式）');
-    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
-    await addTextProcessStep(page, 'trim');
-    page.once('dialog', (dialog) => dialog.accept('便携清理'));
-    await page.locator('#text-preset-save-as').click();
-    await page.locator('#text-preset-default').click();
-    const preset = page.locator('#text-preset-select option:checked');
-    await expect(preset).toHaveText('便携清理 ★');
-    snapshots.beforeReload = await snapshot();
-    await page.reload();
-    snapshots.afterReload = await snapshot();
-    await seed(page, { text: '  甲  ', timed: false });
-    await openTextProcess(page);
-    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
-    snapshots.afterOpen = await snapshot();
-    await expect(preset).toHaveText('便携清理 ★');
-    const preview = page.locator('#text-process-preview');
-    await expect(preview).toContainText('将处理 1 条字幕，预计修改 1 条');
-    await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：甲');
-  } catch (error) {
-    try { snapshots.onFailure = await snapshot(); } catch (snapshotError) { snapshots.snapshotError = String(snapshotError); }
-    throw error;
-  } finally {
-    console.log('portable preset synthetic diagnostics:', JSON.stringify({ snapshots, errors }));
-  }
 });
 
 test('join actions wait for the current user defaults', async ({ page }) => {
