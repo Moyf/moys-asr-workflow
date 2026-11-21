@@ -227,6 +227,9 @@ export function initWiringAssCanvasModule() {
 
 
   function runFillColor(style, run) {
+    // KTV 未唱字形渲染样式的次色：忽略说话人/注释/强调的 \1c 覆盖，与
+    // libass 的 \k 行为一致（像素 oracle 场景 5 实证）。
+    if (run?.karaoke && run.ktvSung === false) return style.secondaryColor || '#ffffff';
     if (run?.speakerColor) return run.speakerColor;
     if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if (run?.emphasized && style.emphasisStyle === 'text') return style.emphasisColor;
@@ -235,6 +238,7 @@ export function initWiringAssCanvasModule() {
 
 
   function runDecorColor(style, run) {
+    if (run?.karaoke && run.ktvSung === false) return style.secondaryColor || '#ffffff';
     if (run?.speakerColor) return run.speakerColor;
     if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if ((run?.underlined || run?.struck) && run?.emphasized && style.emphasisStyle === 'text') {
@@ -260,14 +264,18 @@ export function initWiringAssCanvasModule() {
       line.items.map((item) => [item.text, Boolean(item.run.emphasized), Boolean(item.run.underlined),
         Boolean(item.run.struck), item.run.size || '', Boolean(item.run.comment),
         Boolean(item.run.italic), item.run.speakerColor || '', item.run.fontName || '',
-        item.run.fontEmRatio || 0, quantize(item.width)]),
+        item.run.fontEmRatio || 0, quantize(item.width),
+        // KTV 唱态改变 run 颜色：未唱/已唱必须分成不同缓存键。
+        item.run.karaoke === undefined ? '' : (item.run.ktvSung === false ? 'ktv-unsung' : 'ktv-sung')]),
       quantize(ratio), fontFamilyCss(style.fontName), Boolean(style.bold), Boolean(style.italic),
       Boolean(track.fractionalFontSize), track.fractionalFontSize
         ? Number((Number(track.nativeFontSize) || 1).toFixed(4)) : Math.round(Number(track.nativeFontSize) || 1),
       quantize(style.spacing), quantize(style.outline), style.outlineColor,
       quantize(style.outlineOpacity ?? 100), style.backColor, quantize(style.backOpacity ?? 100),
       quantize(style.shadow), Math.round(Number(style.borderStyle) || 1),
-      style.primaryColor, style.emphasisColor, style.emphasisStyle || 'text',
+      // 次色是 KTV 未唱字的填充/装饰色，必须参与缓存键：改次色后旧位图
+      // 不能复用（其余三个颜色早已在键内，次色在 \k 落地前不参与绘制）。
+      style.primaryColor, style.secondaryColor || '', style.emphasisColor, style.emphasisStyle || 'text',
       style.commentColor, style.commentStyle || 'text', style.commentScale,
       Boolean(style.underline), Boolean(style.strikeOut),
       style.smallTextScale, style.largeTextScale, style.emphasisScale,

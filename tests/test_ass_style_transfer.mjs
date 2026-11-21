@@ -17,6 +17,27 @@ test('historical libraries migrate without discarding supplied settings', () => 
   }
 });
 
+test('v2 libraries predating karaoke import with disabled defaults and preserve explicit settings', () => {
+  const historical = utils.defaultAssStyleLibrary();
+  delete historical.assProfiles[0].animations.karaoke;
+  const migrated = transfer.validate(historical);
+  assert.equal(migrated.library.assProfiles[0].animations.karaoke.enabled, false);
+  assert.ok(migrated.warnings.some(warning => warning.includes('animations.karaoke')));
+
+  for (const enabled of [false, true]) {
+    const current = utils.defaultAssStyleLibrary();
+    current.assProfiles[0].animations.karaoke.enabled = enabled;
+    const result = transfer.validate(current);
+    assert.equal(result.library.assProfiles[0].animations.karaoke.enabled, enabled);
+    assert.ok(!result.warnings.some(warning => warning.includes('animations.karaoke')));
+  }
+  const incomplete = utils.defaultAssStyleLibrary();
+  incomplete.assProfiles[0].animations.karaoke = {};
+  assert.throws(() => transfer.validate(incomplete), /karaoke\.enabled 缺失/u);
+  incomplete.assProfiles[0].animations.karaoke = { enabled: 'invalid' };
+  assert.throws(() => transfer.validate(incomplete), /karaoke\.enabled 的值无效/u);
+});
+
 test('missing dependencies and future versions are rejected', () => {
   const input = utils.defaultAssStyleLibrary();
   input.assProfiles[0].styleId = 'absent';

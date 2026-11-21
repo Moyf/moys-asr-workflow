@@ -349,8 +349,15 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
     const style = { ...animated, spacing: animated.spacing * scale,
       outline: animated.outline * scale, shadow: animated.shadow * scale,
       __assMove: item.legacy && !item.manual && item.role === 'main' && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
+    // KTV：逐 run 标注已唱/未唱（翻转时刻 ≤ 当前播放进度即已唱）；包裹后的
+    // runs 经 assStackWrappedRuns 展开继承 karaoke 元数据，这里只加只读标记。
+    const karaokeElapsed = item.karaoke ? Number(tMs) - item.start : 0;
+    const runs = item.karaoke
+      ? item.runs.map(run => run.karaoke === undefined ? run
+        : { ...run, ktvSung: karaokeElapsed >= run.karaoke.flipMs })
+      : item.runs;
     return { visible: true, role: item.role, cueId: item.segment.id ?? item.index,
-      runs: item.runs, style, animation,
+      runs, style, animation,
       shakeOffset: item.shakeOffset || null,
       fractionalFontSize: !item.legacy || item.sharedStackCue,
       nativeFontSize: Math.max(1, animated.fontSize * scale), alignment: item.alignment,

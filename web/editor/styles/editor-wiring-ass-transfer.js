@@ -83,10 +83,10 @@ export function createAssStyleTransfer(utils) {
         if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error(`${path} 格式无效`);
         if (raw.version === 2) for (const key of Object.keys(result)) {
           if (!(key in value)) {
-            // The pop group was introduced without a version bump; existing v2
-            // libraries legitimately lack it and acquire its disabled defaults.
-            if (key === 'pop' && /^assProfiles\.[^.]+\.animations$/u.test(path)) {
-              changes.push(`${path}.pop 使用默认值`);
+            // Both groups were introduced without a version bump; existing v2
+            // libraries legitimately lack them and acquire disabled defaults.
+            if (['pop', 'karaoke'].includes(key) && /^assProfiles\.[^.]+\.animations$/u.test(path)) {
+              changes.push(`${path}.${key} 使用默认值`);
               continue;
             }
             // These MASS fields were added after v2 had already shipped.

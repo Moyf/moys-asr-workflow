@@ -13,6 +13,20 @@ const script = 'website/scripts/sync-maw-docs.mjs';
 const marker = 'LOCAL-SOURCE-SINGLE-TRUTH-TEST';
 const { marked } = createRequire(import.meta.url)('../tools/shared/vendor/marked-18.1.3/marked.umd.js');
 
+test('punctuation guidance covers new defaults and legacy project behavior', async () => {
+  const launcher = await readDocument('docs/user/LAUNCHER_GUIDE.md', { root });
+  const toolbox = await readDocument('docs/user/TOOLBOX.md', { root });
+  const alignment = await readDocument('docs/user/ALIGNMENT_FEATURES.md', { root });
+  const schema = await readDocument('docs/engineering/JSON_SCHEMA.md', { root });
+  for (const guide of [launcher, toolbox]) {
+    assert.ok(/新配置默认保留全部断句符号/u.test(guide), 'guide describes the new punctuation defaults');
+    assert.ok(/已保存的显式配置继续生效/u.test(guide), 'guide preserves existing explicit settings');
+  }
+  assert.ok(/为 `true`、`false` 或缺失时，编辑器启动均不会自动清理字幕和字词标点/u.test(schema));
+  assert.ok(/拆分默认保留标点并修剪空白；已有显式符号设置继续生效/u.test(schema));
+  assert.ok(/缺少该字段或字段为 `false` 的旧工程也不会在启动时自动清理标点/u.test(alignment));
+});
+
 // These fixtures are deliberately retained: no test cleanup removes user files.
 async function fixture({ missing = '' } = {}) {
   const target = await realpath(await mkdtemp(path.join(os.tmpdir(), 'maw-docs-preserved-')));

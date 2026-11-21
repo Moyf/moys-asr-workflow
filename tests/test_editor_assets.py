@@ -36,6 +36,13 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(json.loads(encoded), data)
         self.assertNotIn("<", encoded)
 
+    def test_generated_html_does_not_implicitly_clean_project_punctuation(self) -> None:
+        # Generated 1.x HTML embeds the same startup as Server mode. Do not
+        # regenerate the tracked release snapshot to verify this contract.
+        page = edit.build_blank_html()
+        self.assertNotIn("MaweTextCleanup.cleanPunctuation();", page)
+        self.assertIn("cleanPunctuation", page)  # explicit cleanup stays available
+
     def test_portable_about_gif_is_self_contained(self) -> None:
         page = edit.build_blank_html()
         match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)
@@ -271,6 +278,25 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("animation.popScale", canvas)
         styles_py = (ROOT / "maw" / "ass_styles.py").read_text(encoding="utf-8")
         self.assertIn('"pop": {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1}', styles_py)
+
+    def test_ass_karaoke_binds_profile_toggle_secondary_row_and_gate(self) -> None:
+        # 逐字换色（\k）：方案卡片、次色独占行（含提示文案）与「方案未开启时
+        # 禁用次色」的门控必须同时存在；改名后卡片文案与提示保持一致。
+        template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
+        self.assertIn('data-ass-animation="karaoke.enabled"', template)
+        self.assertIn("\\k 逐字换色（卡拉OK）", template)
+        self.assertIn('id="ass-style-karaoke-row"', template)
+        self.assertIn('id="ass-style-secondary-color"', template)
+        # 提示文案点名开关所在位置；次色行不再藏在四个复选框中间，
+        # 也不再带 hidden 属性。
+        self.assertIn("仅在「输出方案」中勾选「\\k 逐字换色（卡拉OK）」时生效", template)
+        self.assertNotIn('id="ass-style-secondary-color-field" hidden', template)
+        manager = edit.read_web_asset("editor/styles/editor-wiring-ass-manager.js")
+        self.assertIn("ass-style-karaoke-row", manager)
+        self.assertIn("assExportProfileId", manager)
+        css = (ROOT / "web" / "editor.css").read_text(encoding="utf-8")
+        self.assertIn(".ass-style-karaoke-row", css)
+        self.assertIn(".ass-style-karaoke-row.is-disabled", css)
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
         # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。
