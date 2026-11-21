@@ -410,6 +410,27 @@ test('ordinary links to images remain links to their repository targets', async 
   assert.deepEqual(collectImageSources(examples.join('\n'), 'docs/user/FAQ.md'), []);
 });
 
+test('inline link titles preserve their syntax while destinations are rewritten', async () => {
+  const target = await fixture();
+  const source = path.join(target, 'docs/user/FAQ.md');
+  const examples = [
+    ['[plain](WORKFLOW.md)', '[plain](../workflow/)'],
+    ['[parenthesized](WORKFLOW.md (指南))', '[parenthesized](../workflow/ (指南))'],
+    ['[escaped](WORKFLOW.md (指南\\)及\\(说明))', '[escaped](../workflow/ (指南\\)及\\(说明))'],
+    ['[backslash](WORKFLOW.md (指南\\\\))', '[backslash](../workflow/ (指南\\\\))'],
+    ['[single](WORKFLOW.md \'guide\')', '[single](../workflow/ \'guide\')'],
+    ['[double](WORKFLOW.md "guide")', '[double](../workflow/ "guide")'],
+    ['[file](../files/my%20notes.pdf (下载))', '[file](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/files/my%20notes.pdf (下载))'],
+    ['[resource](../assets/fixture.webp (查看))', '[resource](https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main/docs/assets/fixture.webp (查看))'],
+    ['![image](../assets/fixture.webp "caption")', '<img src="../../docs-assets/docs/assets/fixture.webp" alt="image" title="caption" loading="lazy" decoding="async" />'],
+  ];
+  await writeFile(source, `# FAQ fixture\n\n${examples.map(([input]) => input).join('\n\n')}\n`);
+  const result = run(target);
+  assert.equal(result.status, 0, result.stderr);
+  const page = await readFile(path.join(target, 'website/src/pages/docs/faq.md'), 'utf8');
+  for (const [, expected] of examples) assert.ok(page.includes(expected), expected);
+});
+
 test('comments preserve image examples while adjacent real images are synchronized', async () => {
   const target = await fixture();
   const source = path.join(target, 'docs/user/FAQ.md');

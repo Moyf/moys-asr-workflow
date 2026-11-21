@@ -348,7 +348,7 @@ function rewriteLinks(markdown, currentSource) {
     throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
   }
 
-  result = result.replace(/(\]\()([^\s)]+)(\s+(?:"[^"]*"|'[^']*'))?(\))/g, (_, open, target, title = '', close) => {
+  result = result.replace(/(\]\()([^\s)]+)(\s+(?:"[^"]*"|'[^']*'|\((?:\\[^\n]|[^\\()])*\)))?(\))/g, (_, open, target, title = '', close) => {
     return `${open}${rewriteTarget(target, currentSource)}${title}${close}`;
   });
 
