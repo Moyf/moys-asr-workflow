@@ -16,6 +16,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ScopeTests(CompactContainerAssertions, unittest.TestCase):
+    def test_scoped_recovery_e2e_admits_only_save_journey_sources(self):
+        self.assertTrue(ci_impact.recovery_e2e_for(['web/editor/io/editor-project-save.js']))
+        self.assertTrue(ci_impact.recovery_e2e_for(['tests/e2e/editor-save-recovery.spec.mjs']))
+        self.assertFalse(ci_impact.recovery_e2e_for(['web/editor/io/editor-export-srt.js']))
+        self.assertFalse(ci_impact.recovery_e2e_for(['docs/engineering/DEVELOPMENT.md']))
+        self.assertFalse(ci_impact.recovery_e2e_for([]))
+        save = ci_impact.plan('stable', 'save module change', paths=['web/editor/io/editor-project-save.js'],
+                              trusted=True)
+        self.assertIn('editor', save['checks'])
+        self.assertTrue(ci_impact.recovery_e2e_for(save['paths']))
+        untrusted = ci_impact.plan('stable', 'unavailable diff', head='b' * 40)
+        self.assertFalse(ci_impact.recovery_e2e_for(untrusted['paths']))
+
     def test_real_git_ci_policy_and_mixed_docs_do_not_request_preview(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -55,6 +68,13 @@ class ScopeTests(CompactContainerAssertions, unittest.TestCase):
         for path in actual:
             self.assertEqual(ci_impact.checks_for([path]), ['docs', 'website'])
         self.assertEqual(ci_impact.checks_for(['docs/engineering/unpublished.md']), ['docs'])
+
+    def test_document_images_select_website_check(self):
+        self.assertEqual(ci_impact.checks_for(['docs/assets/readme/overview.webp']), ['docs', 'website'])
+        # Root assets are not website document inputs; unclassified code/assets
+        # still conservatively select the existing full set of blocking checks.
+        self.assertEqual(ci_impact.checks_for(['assets/example.png']), list(ci_impact.CHECKS))
+
     def test_preview_is_runtime_specific_and_manual_is_job_level(self):
         for path in ('maw_gui.py', 'maw/runtimes/base.py', 'scripts/build-windows.ps1',
                      'web/launcher/boot/launcher.js', 'web/editor/boot/editor.js', 'pyproject.toml',

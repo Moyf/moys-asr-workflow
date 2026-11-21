@@ -1,4 +1,7 @@
 // 工程保存：服务器、文件句柄、另存为路径与脏标记清理。
+// 注意：修改本文件会触发 CI 的 scoped 阻塞准入——真实浏览器恢复旅程
+// （tests/e2e/editor-save-recovery.spec.mjs）会在合并前强制运行并通过
+// Change acceptance 验收（见 scripts/ci_impact.py 的 RECOVERY_E2E_SOURCES）。
 // ESM init 模块：initMaweProjectSave 在原清单位次执行原 IIFE 体（挂
 // window.MaweProjectSave 冻结门面——classic 侧出接口）；底部具名导出经门面
 // 在调用时转发，兄弟模块可静态 import。
