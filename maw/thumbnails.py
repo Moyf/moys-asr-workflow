@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import tempfile
 import threading
@@ -63,7 +64,9 @@ def _run(command: list[str], *, timeout_s: float, cancel: threading.Event | None
         deadline = time.monotonic() + timeout_s
         try:
             while process.poll() is None:
-                if stdout.tell() > 8 * 1024 * 1024 or stderr.tell() > 8 * 1024 * 1024:
+                # The child writes to these same file handles. Query file size
+                # without touching their shared cursor while the child is active.
+                if os.fstat(stdout.fileno()).st_size > 8 * 1024 * 1024 or os.fstat(stderr.fileno()).st_size > 8 * 1024 * 1024:
                     raise ThumbnailError("thumbnail command exceeded output budget")
                 if cancel is not None and cancel.is_set():
                     raise ThumbnailCancelled("thumbnail request cancelled")
@@ -77,10 +80,10 @@ def _run(command: list[str], *, timeout_s: float, cancel: threading.Event | None
         if cancel is not None and cancel.is_set():
             raise ThumbnailCancelled("thumbnail request cancelled")
         # Both outputs are bounded even for corrupt files or verbose decoders.
-        if stdout.tell() > 8 * 1024 * 1024:
+        if os.fstat(stdout.fileno()).st_size > 8 * 1024 * 1024 or os.fstat(stderr.fileno()).st_size > 8 * 1024 * 1024:
             raise ThumbnailError("thumbnail probe exceeded output budget")
         stdout.seek(0)
-        stderr.seek(max(0, stderr.tell() - 8192))
+        stderr.seek(max(0, os.fstat(stderr.fileno()).st_size - 8192))
         return subprocess.CompletedProcess(command, process.returncode, stdout.read(), stderr.read())
 
 

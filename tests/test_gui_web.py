@@ -6067,7 +6067,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
@@ -6749,7 +6749,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('bridge("open_runtime_folder"', script)
         self.assertIn('def open_runtime_folder(', backend)
         self.assertIn("repair: state.config.ocrRuntime?.status === \"broken\"", script)
-        self.assertIn('runtimeStatus !== "missing"', script)
+        self.assertIn('repair: Boolean(runtime.status && runtime.status !== "missing")', script)
         self.assertIn('event.type === "localRuntimeProgress"', script)
         self.assertIn('event.type === "localRuntimeReady"', script)
         self.assertIn('def install_local_runtime(', backend)

@@ -46,7 +46,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 151 个条目，`web/editor-modules.json` 标出其中 92 个 ESM 模块与外部桥，其余 59 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；条目数与 `web/editor-modules.json` 标注的 ESM 模块数随迁移变化，以 `pnpm run build:editor` 输出的 `Editor: N ESM factories / M sources` 为准（差值即仍保留 classic 共享作用域的条目），目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
 
 编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](../logs/unversioned/undated/ESM_MIGRATION.md)。
 
@@ -100,35 +100,33 @@ uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 
-交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存。新增界面文字保持可读字号，元素垂直间隔至少 8px，并实测间距和截图自查。文本统一 UTF-8 / LF。
+交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存；间距、字号与工具页验收见根 [AGENTS 的 UI 间距约定](../../AGENTS.md)。文本统一 UTF-8 / LF。
 
 ### PR 提交前检查
 
-提交 PR 前，先将最新的 `main` 合并到当前分支，并解决所有合并冲突。
+目标分支以 PR 实际设置为准：提交前同步该分支（`main` → `origin/main`，`2.0dev` → `origin/2.0dev`），解决冲突，不擅自更改目标分支。对外步骤见[贡献指南](../../CONTRIBUTING.md#提交-pr-前)，硬性要求见根 [AGENTS](../../AGENTS.md)。
 
-### PR 的文档与网站检查
+### PR / main 的改动检查
 
-`scripts/ci_impact.py` 输出 v1 计划（mode: light / domain / full；profile: light / editor / launcher / tools / full），同时保留原有 `light=true/false` 输出。只有 PR checkout 的第一父提交等于事件 `PR_BASE_SHA` 时才接受 `git diff --no-renames -z`；计划保留实际 base/head 与可信差异标记。普通用户指南、README 和网站内容单独变更为 light：文档检查照常运行，编辑器门禁同步文档并构建网站，Windows 预览不生成测试包。
+日常合并结论是 `Change acceptance`：只聚合计划生成与该计划明确选中的阻塞检查，不依赖完整辅助巡检或 Windows 预览包。它不是“全部测试通过”的声明。维护者还需审查与本次改动直接相关的辅助失败、已知风险和人工验证缺口。
 
-domain 仅用于新增补充矩阵的领域浏览器集合，不改变既有非 light 门禁。第一版只登记三个明确叶子与各自测试：编辑器颜色筛选、Launcher 主题键、独立时间码对比页；精确路径见 `DOMAIN_PATHS`，消费集合见 `BROWSER_FILES`。不能从目录名推定领域；新叶子、新测试须审计后登记。共享代码、依赖、配置、装配清单、未知或混合领域、空 / 坏 diff、基线不匹配全部 full。main push、v* tag、定时和手动运行也一律 full。
+PR 按经过校验的整个 PR 差异选测，不只看最后一笔提交；main push 按可信 before/after 差异选测。两者都允许普通工程文档、计划和日志走轻量检查。README、用户指南、发布说明、离线工具文档等实际输入先识别消费者，再决定是否需要网站、发布或工具契约检查；不能简单放行所有 Markdown，也不能让 main 文档提交因“非 PR”自动启动全量。
 
-已有门禁名称不变：选测任务失败或没有有效结论时，编辑器与 Windows 门禁显式失败。发布工作流不使用此选测。分支保护要求和 GitHub 上的实际工作流行为仍需在目标仓库确认。
+代码变化运行已审计的稳定基础与相关领域检查。共享、混合、未知代码和不可信差异扩大到稳定检查集合并报告覆盖边界，不自动升级为全部浏览器/媒体测试。领域映射、准入依据与精确集合以选择器及策略清单为准，不将 `common` 包、全部 Node 或整个浏览器目录直接视为可靠门禁。
 
-### 完整补充矩阵与 required 语义
+唯一例外是 scoped 浏览器准入：仅当 `web/editor/io/editor-project-save.js` 或其旅程 spec（`tests/e2e/editor-save-recovery.spec.mjs`）变更时，`Blocking / editor` 任务额外安装服务端依赖与 Chromium，真实运行自动保存/恢复旅程并以 1/1 分片对（listing+执行）做 fail-closed 校验；其余改动（含不可信差异）不运行浏览器。
 
-`.github/workflows/test-matrix.yml` 在 PR、main push、v* tag、每周定时和手动运行触发；完整模式在 Windows / Ubuntu 各运行完整 Python 标准发现、完整根目录 Node 测试和全部 Chromium 发现（每 OS 4 shards、2 workers、0 retries，fail-fast=false）。领域 PR 各 OS 运行对应浏览器小集合（1 shard）；light 有意不运行新增测试层。每个测试 job 最长 15 分钟，每次内层执行由 `run_check.py` 限制 600 秒；准备阶段安装锁定的 dev/test 依赖、Chromium 和真实 FFmpeg/libass / 编码器，不下载模型、不调用 ASR API。
+所选阻塞项失败、取消、意外跳过、缺报告、错 SHA 或回执不匹配，合并聚合必须失败；有意未选择不能冒充测试通过。选测和报告校验本身也有回归及故障注入。新增用例需要明确准入/观察角色和依据，不能静默落在完整发现以外。
 
-Python-only 单元通过 composite 的 `install-browser=false` 跳过 Chromium 下载；Node / 浏览器单元默认仍安装。Node 构建、Pillow、真实 FFmpeg 和其余锁定依赖不削减。计划 consumer 也按实际事件再次防守：明确非 PR 事件只接受 full，同 SHA 的 domain / light 自洽计划也会拒绝。
+### 完整巡检、预览包与发布
 
-| 层 | 执行与跳过规则 |
-| --- | --- |
-| 既有 Editor / Windows preview | 非 light 仍保留原 Linux 全 Node / 选定 e2e / required 子集，以及 Windows 全 Python、同次 cache 校验、64 个 display / 4 个 Launcher 浏览器专项与打包 smoke；领域选择不减少这些门禁。 |
-| 新 full Python | 标准发现 + `--report`；私有人工夹具和精确平台 guard 可 skip，但原因与 expected failure 必须报告，不冒充通过；另跑 `--pack media --required`，真实渲染和能力缺失不可 skip。写回执前强制回读两份报告，校验唯一非空 ID、运行 / skip / 结果计数及退出码，required 平台豁免按精确 ID / 原因重新计算，并核对 media 集合与全量发现的归组一致。 |
-| 新 Chromium | 同 job、同参数的分片 `--list` 集合与结果逐案对应；拒绝空 / 漏 / 重复 / 错分片、全局 errors、flaky、retry、xfail 和能力 skip。只有精确文件 + 完整标题 + 原因匹配的五个弃维护 portable case 可 skip。 |
-| 聚合门禁 | `Complete test matrix required` 使用 always，校验版本计划、selection 输出、应执行 job 状态和每个矩阵单元的唯一成功凭据；计划未选中是有意 skip，所选 job 缺失、意外 skip、cancelled 或失败均不能绿。所有测试结果与日志 always 上传。 |
-| Release | 三平台完整 Python 统一 `run_check → run_tests --report` 并 always 保留 JSON / 日志；Windows 阻断发布、辅助平台失败仅警告的原政策不变。tag 的新增 Node / e2e 是独立工作流，不自动变成 publish 依赖。 |
+`.github/workflows/test-matrix.yml` 保留现有每周定时和手动完整巡检，不再随每次 PR 更新、main push 或 tag 追加常驻全量矩阵。完整巡检仍在 Windows / Ubuntu 各运行完整 Python、Node、required-media 和全部 Chromium 分片；真实退出码、首次失败、日志及严格报告校验保留。辅助失败保持红灯，不以 `continue-on-error`、扩大 skip 或重试改写为通过，但不传播为所有 PR 的合并阻塞。
 
-这是一项**新增覆盖成本**：原 CI 只覆盖浏览器子集，现在 full 额外增加 4 个 Python / Node 单元和 8 个浏览器单元；domain 只减少新增矩阵的工作量，不能声称整个 CI 已比原来更省。尚未在远端 Actions 实跑，15 分钟预算、跨平台结果和分支保护需另行确认；本地静态检查或小集合通过不等于完整矩阵通过。
+Windows Preview 只在打包、启动、运行时等相关变化或手动请求时构建，保留实际打包与烟测能力，不为每个无关 PR 再执行完整 Python/浏览器与打包。确实相关的预览失败必须在该 PR 中明确处置；不以“辅助”自动认定可以合并。
+
+发布工作流不使用日常选测替代完整验收：三平台完整 Python 报告、Windows 阻断与辅助平台警告的既有政策不变。本轮不自动新增或修改 GitHub 分支保护，实际远端规则需单独核对，不能从 job 名称中的 required 推定已配置必需状态。
+
+已证实不稳定的具体用例可退出阻塞集合并继续观察，须保留原因、问题记录、复核与恢复条件；未知失败不自动标记 flaky。对当前 PR 的真实回归仍应修复，已知严重数据/安全风险仍可由维护者冻结相关合并或发布。完整巡检与合并检查分离的取舍及验收见[CI 门禁纠偏方案](../INDEX.md#plan-ci-gate-correction)。
 
 ### 浏览器回归
 
@@ -161,10 +159,6 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](JSON_SCHEMA.md)。反馈和开发进度写任务账本。官网文档由 [同步脚本](../../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 只重建 esbuild 产物，不重生成 `blank-editor.html`；PR 描述注明「内联副本待发布前统一重生成」，发布前统一处理，规则见根 [AGENTS](../../AGENTS.md)。
 
-```sh
-uv run --no-sync python edit.py --blank
-```
-
-发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../INDEX.md#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
+发布前检查、归档生成与网站核验见根 [AGENTS 的发布检查](../../AGENTS.md)与[发布管线](../INDEX.md#engineering-releases)。发布不等于只建 tag；远端、push、tag 和 Release 均需维护者明确要求。

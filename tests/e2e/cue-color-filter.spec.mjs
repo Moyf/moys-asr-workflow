@@ -20,7 +20,9 @@ let projectPath;
 
 const FIRST_SEGMENT_END_MS = 58000;
 
-test.beforeAll(async () => {
+// Color edits are auto-saved by the real server. Give each test a fresh
+// project so a previous test's colors cannot change the next initial state.
+test.beforeEach(async () => {
   tempDir = makeTempDir('colorfilter');
   const mediaPath = join(tempDir, 'synthetic.wav');
   projectPath = join(tempDir, 'project.json');
@@ -29,7 +31,7 @@ test.beforeAll(async () => {
   server = await startServer(projectPath, mediaPath, await findFreePort());
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await server?.stop();
   cleanupTempDir(tempDir);
 });
@@ -147,6 +149,9 @@ test('detaches a cue from a color group while keeping its color and limiting the
 
 test('color filter button appears only for projects with colored subtitles', async ({ page }) => {
   await waitEditorReady(page);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments
+    .filter(segment => segment.color || segment.color_ref)),
+  'fresh project must not inherit colored subtitles from another test').toEqual([]);
   await expect(page.locator('#color-filter-btn')).toBeHidden();
   await paintFirstSegmentRed(page);
   await expect(page.locator('#color-filter-btn')).toBeVisible();

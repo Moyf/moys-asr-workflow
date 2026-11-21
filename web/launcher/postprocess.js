@@ -459,7 +459,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -3120,7 +3120,7 @@
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
+  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection", "llmApiKey"); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
     persistLlmPrompt();

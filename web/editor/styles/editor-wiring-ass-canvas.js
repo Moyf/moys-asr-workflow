@@ -58,13 +58,11 @@ export function initWiringAssCanvasModule() {
 
   // subtitleFontFamilyCss 可能返回 var(--font-sans) 兜底；ctx.font 不解析
   // CSS 变量，这里解析成具体字体族列表。
-  // 字体别名表就绪时优先用别名链（"<存储值>", "<canonical>", "<其余别名>",
-  // sans-serif）：浏览器按列表顺序回退匹配，任一名字命中即与 libass 渲染
-  // 同一字形；链已是具体族名列表，无需再解析 var(--font-sans)。
+  // 字体别名仍优先匹配同一字体；缺字时恢复编辑器原有系统字体顺序，
+  // 不能直接跳到浏览器的 generic sans-serif。
   function fontFamilyCss(fontName) {
-    const aliasChain = global.MaweAssFontAliases?.chainCssFor?.(fontName) || '';
-    if (aliasChain) return aliasChain;
-    let family = global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
+    let family = global.MaweAssFontAliases?.chainCssFor?.(fontName, { fallback: 'var(--font-sans)' })
+      || global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
     if (family.includes('var(--font-sans)')) {
       if (!resolvedSansFamily) {
         resolvedSansFamily = (getComputedStyle(document.documentElement)
@@ -80,7 +78,7 @@ export function initWiringAssCanvasModule() {
     const weight = style.bold ? '700' : '400';
     // 斜体 run（//…//）覆盖样式级斜体设置：任一为真即按斜体字体绘制/测量。
     const italic = style.italic || Boolean(run?.italic) ? 'italic ' : '';
-    return `${italic}${weight} ${cssSize}px ${fontFamilyCss(style.fontName)}`.trim();
+    return `${italic}${weight} ${cssSize}px ${fontFamilyCss(run?.fontName || style.fontName)}`.trim();
   }
 
 
@@ -137,8 +135,10 @@ export function initWiringAssCanvasModule() {
     // 一致时复用整轨比例，避免重复查表。
     const styleItalic = Boolean(track.style.italic);
     const runItalic = styleItalic || Boolean(run?.italic);
-    const effectiveRatio = runItalic === styleItalic ? ratio
-      : fontBoxRatio({ ...track.style, italic: runItalic });
+    const effectiveRatio = Number.isFinite(run?.fontEmRatio) && run.fontEmRatio > 0
+      ? run.fontEmRatio
+      : runItalic === styleItalic && (!run?.fontName || run.fontName === track.style.fontName) ? ratio
+        : fontBoxRatio({ ...track.style, fontName: run?.fontName || track.style.fontName, italic: runItalic });
     const nativeSize = runNativeSize(track, run);
     const cssSize = nativeSize * effectiveRatio;
     const spacingCss = track.fractionalFontSize ? Number(track.style.spacing) || 0
@@ -147,7 +147,8 @@ export function initWiringAssCanvasModule() {
       cssSize,
       nativeSize,
       spacingCss,
-      perChar: spacingCss !== 0 && !supportsLetterSpacing(),
+      perChar: spacingCss !== 0 && !supportsLetterSpacing()
+        && global.AsrEditorUtils?.assManagedFontText?.(run?.text || ''),
     };
   }
 
@@ -162,6 +163,13 @@ export function initWiringAssCanvasModule() {
 
   // 逐字符模式：前进量 = 字符宽 + 间距；宽度与绘制用同一测量，保证
   // measurer 与 rasterize 不漂移。
+  function graphemes(text) {
+    return global.MaweAssFontAliases?.graphemes?.(text)
+      || (typeof Intl.Segmenter === 'function'
+        ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), item => item.segment)
+        : [text]);
+  }
+
   function paintItemText(g, item, x, baseline, info, mode) {
     if (!info.perChar) {
       if (mode === 'stroke') g.strokeText(item.text, x, baseline);
@@ -169,7 +177,7 @@ export function initWiringAssCanvasModule() {
       return;
     }
     let cursor = x;
-    for (const ch of item.text) {
+    for (const ch of graphemes(item.text)) {
       if (mode === 'stroke') g.strokeText(ch, cursor, baseline);
       else g.fillText(ch, cursor, baseline);
       cursor += g.measureText(ch).width + info.spacingCss;
@@ -180,7 +188,7 @@ export function initWiringAssCanvasModule() {
   function measureItem(g, item, info) {
     if (!info.perChar) return g.measureText(item.text).width;
     let width = 0;
-    for (const ch of item.text) width += g.measureText(ch).width + info.spacingCss;
+    for (const ch of graphemes(item.text)) width += g.measureText(ch).width + info.spacingCss;
     return width;
   }
 
@@ -193,7 +201,7 @@ export function initWiringAssCanvasModule() {
       g.letterSpacing = info.perChar || !info.spacingCss ? '0px' : `${info.spacingCss}px`;
       const metrics = g.measureText(text);
       const width = info.perChar
-        ? [...text].reduce((sum, ch) => sum + g.measureText(ch).width + info.spacingCss, 0)
+        ? graphemes(text).reduce((sum, ch) => sum + g.measureText(ch).width + info.spacingCss, 0)
         : metrics.width;
       let ascent = Number(metrics.fontBoundingBoxAscent) || info.cssSize * 0.8;
       let descent = Number(metrics.fontBoundingBoxDescent) || info.cssSize * 0.2;
@@ -219,6 +227,9 @@ export function initWiringAssCanvasModule() {
 
 
   function runFillColor(style, run) {
+    // KTV 未唱字形渲染样式的次色：忽略说话人/注释/强调的 \1c 覆盖，与
+    // libass 的 \k 行为一致（像素 oracle 场景 5 实证）。
+    if (run?.karaoke && run.ktvSung === false) return style.secondaryColor || '#ffffff';
     if (run?.speakerColor) return run.speakerColor;
     if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if (run?.emphasized && style.emphasisStyle === 'text') return style.emphasisColor;
@@ -227,6 +238,7 @@ export function initWiringAssCanvasModule() {
 
 
   function runDecorColor(style, run) {
+    if (run?.karaoke && run.ktvSung === false) return style.secondaryColor || '#ffffff';
     if (run?.speakerColor) return run.speakerColor;
     if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if ((run?.underlined || run?.struck) && run?.emphasized && style.emphasisStyle === 'text') {
@@ -251,14 +263,19 @@ export function initWiringAssCanvasModule() {
     return JSON.stringify([
       line.items.map((item) => [item.text, Boolean(item.run.emphasized), Boolean(item.run.underlined),
         Boolean(item.run.struck), item.run.size || '', Boolean(item.run.comment),
-        Boolean(item.run.italic), item.run.speakerColor || '', quantize(item.width)]),
+        Boolean(item.run.italic), item.run.speakerColor || '', item.run.fontName || '',
+        item.run.fontEmRatio || 0, quantize(item.width),
+        // KTV 唱态改变 run 颜色：未唱/已唱必须分成不同缓存键。
+        item.run.karaoke === undefined ? '' : (item.run.ktvSung === false ? 'ktv-unsung' : 'ktv-sung')]),
       quantize(ratio), fontFamilyCss(style.fontName), Boolean(style.bold), Boolean(style.italic),
       Boolean(track.fractionalFontSize), track.fractionalFontSize
         ? Number((Number(track.nativeFontSize) || 1).toFixed(4)) : Math.round(Number(track.nativeFontSize) || 1),
       quantize(style.spacing), quantize(style.outline), style.outlineColor,
       quantize(style.outlineOpacity ?? 100), style.backColor, quantize(style.backOpacity ?? 100),
       quantize(style.shadow), Math.round(Number(style.borderStyle) || 1),
-      style.primaryColor, style.emphasisColor, style.emphasisStyle || 'text',
+      // 次色是 KTV 未唱字的填充/装饰色，必须参与缓存键：改次色后旧位图
+      // 不能复用（其余三个颜色早已在键内，次色在 \k 落地前不参与绘制）。
+      style.primaryColor, style.secondaryColor || '', style.emphasisColor, style.emphasisStyle || 'text',
       style.commentColor, style.commentStyle || 'text', style.commentScale,
       Boolean(style.underline), Boolean(style.strikeOut),
       style.smallTextScale, style.largeTextScale, style.emphasisScale,
@@ -428,7 +445,11 @@ export function initWiringAssCanvasModule() {
       ? [{ text: String(track.speaker.text), emphasized: false, underlined: false,
         struck: false, size: null, speakerColor: track.speaker.color }, ...runs]
       : runs;
-    const layout = u.assCanvasLayoutLines(speaker, measurerFor(track, ratio));
+    const resolvedSpeaker = global.MaweAssFontAliases?.resolveRuns?.(speaker, style) || speaker;
+    // Never write display variation selectors into the shared export plan.
+    const displayRuns = resolvedSpeaker.map(run => ({ ...run,
+      text: u.assCanvasPreviewText?.(run.text) ?? run.text }));
+    const layout = u.assCanvasLayoutLines(displayRuns, measurerFor(track, ratio));
     if (!layout.blockHeight) return { skipped: true, opacity: alpha };
     // Secondary tracks override the vertical attachment while preserving
     // their horizontal alignment, matching the exported an/pos tags.
@@ -584,10 +605,13 @@ export function initWiringAssCanvasModule() {
     const safeStyle = style || {};
     const ratio = fontBoxRatio(safeStyle);
     const track = { style: safeStyle, nativeFontSize: Math.max(1, Number(safeStyle.fontSize) || 24) };
-    const runs = [{ text: String(text ?? ''), emphasized: false, underlined: false,
+    const sourceRuns = [{ text: String(text ?? ''), emphasized: false, underlined: false,
       struck: false, size: null }];
+    const runs = global.MaweAssFontAliases?.resolveRuns?.(sourceRuns, safeStyle) || sourceRuns;
     const u = global.AsrEditorUtils;
-    const layout = u.assCanvasLayoutLines(runs, measurerFor(track, ratio));
+    const displayRuns = runs.map(run => ({ ...run,
+      text: u.assCanvasPreviewText?.(run.text) ?? run.text }));
+    const layout = u.assCanvasLayoutLines(displayRuns, measurerFor(track, ratio));
     const dpr = Math.max(1, Math.min(3, Number(global.devicePixelRatio) || 1));
     const margin = 6;
     if (!layout.blockHeight) {
@@ -632,13 +656,24 @@ export function initWiringAssCanvasModule() {
     const key = JSON.stringify([style.fontName, style.bold, style.italic, nativeFontSize,
       style.spacing, style.smallTextScale, style.largeTextScale, style.emphasisScale, style.commentScale, run, text]);
     if (stackMetricsCache.has(key)) return stackMetricsCache.get(key);
-    const measured = measurerFor({ style, nativeFontSize, fractionalFontSize: true }, fontBoxRatio(style))(run, text);
+    // Stack collision probes use alternate bold/italic styles. Re-resolve the
+    // face here instead of trusting a ratio captured for the cue's old style.
+    const runs = global.MaweAssFontAliases?.resolveRuns?.([{ ...run, text }], style) || [{ ...run, text }];
+    const measure = measurerFor({ style, nativeFontSize, fractionalFontSize: true }, fontBoxRatio(style));
+    const parts = runs.map(part => measure(part, part.text));
+    const measured = {
+      width: parts.reduce((sum, part) => sum + part.width, 0),
+      ascent: Math.max(0, ...parts.map(part => part.ascent)),
+      descent: Math.max(0, ...parts.map(part => part.descent)),
+      inkPadding: Math.max(0, ...parts.map(part => part.inkPadding)),
+    };
     if (stackMetricsCache.size >= 4096) stackMetricsCache.delete(stackMetricsCache.keys().next().value);
     stackMetricsCache.set(key, measured);
     return measured;
   }
 
   function clearCaches() {
+    resolvedSansFamily = '';
     stackMetricsCache.clear();
     lineCache.clear();
     fontRatioCache.clear();

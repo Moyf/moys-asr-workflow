@@ -194,6 +194,8 @@ def _run_script_alignment(parser: argparse.ArgumentParser, args: argparse.Namesp
     if unsupported:
         parser.error("--align-script 不支持其他转写 / Server 参数；请使用 --alignment-* 参数配置文稿对齐")
     from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID
+    from maw.ffmpeg import resolve_ffmpeg_tools
+    from maw.gui_config import DEFAULT_ENV_PATH, load_env
     from maw.local_runtime import managed_runtime_status, run_timestamp_alignment_in_runtime
     from maw.script_timestamp_alignment import ScriptAlignmentRequest, check_script_alignment, run_script_alignment
 
@@ -207,20 +209,22 @@ def _run_script_alignment(parser: argparse.ArgumentParser, args: argparse.Namesp
         "anchors_path": Path(args.alignment_anchors) if args.alignment_anchors else None,
     }
     try:
+        configured_ffmpeg = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
+        tools = resolve_ffmpeg_tools(configured_ffmpeg or None)
         if args.alignment_check:
-            report = check_script_alignment(ScriptAlignmentRequest(**options))
+            report = check_script_alignment(ScriptAlignmentRequest(**options), ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
             print(json.dumps(report.to_payload(), ensure_ascii=False, indent=2))
             return 0
         if managed_runtime_status().ready:
             result = run_timestamp_alignment_in_runtime(
-                model_id=QWEN_FORCED_ALIGNER_MODEL_ID, on_event=print, **options,
+                model_id=QWEN_FORCED_ALIGNER_MODEL_ID, on_event=print, ffmpeg_path=configured_ffmpeg or None, **options,
             )
             artifact = result["artifact"]
             warnings = artifact.get("warnings", [])
             project_path, srt_path = artifact["projectPath"], artifact["srtPath"]
             report_payload = result["report"]
         else:
-            artifact, report = run_script_alignment(ScriptAlignmentRequest(**options))
+            artifact, report = run_script_alignment(ScriptAlignmentRequest(**options), ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
             warnings = report.warnings
             project_path, srt_path = artifact.project_path, artifact.srt_path
             report_payload = report.to_payload()

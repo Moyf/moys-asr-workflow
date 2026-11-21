@@ -21,6 +21,19 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('legacy full ASS library retains its 65th style and references', () => {
+  const base = helpers.defaultAssStyleLibrary();
+  const oldStyles = base.styles.filter(style => style.id !== 'ass-extension');
+  for (let i = 0; i < 62; i++) oldStyles.push({ ...base.styles[1], id: `custom-${i}`, name: `Custom ${i}`, builtin: false });
+  const normalized = helpers.normalizeAssStyleLibrary({
+    ...base, version: 1, styles: oldStyles,
+    assProfiles: [{ ...base.assProfiles[0], styleId: 'custom-61' }],
+  });
+  assert.equal(normalized.styles.length, 65);
+  assert.ok(normalized.styles.some(style => style.id === 'custom-61'));
+  assert.equal(normalized.assProfiles[0].styleId, 'custom-61');
+});
+
 test('green screen audio is opt-in and survives settings normalization', () => {
   assert.equal(helpers.normalizeEditorSettings().greenScreenIncludeAudio, false);
   assert.equal(helpers.normalizeEditorSettings({ greenScreenIncludeAudio: true }).greenScreenIncludeAudio, true);
@@ -352,6 +365,7 @@ test('buildAssPayload rewrites Style Fontname through the alias table and leaves
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('尚未与服务器同步；请检查当前样式并重试保存。', 'en'), 'Not synced with the server yet; check the current styles and try saving again.');
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
   assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
@@ -830,8 +844,10 @@ test('normalizes the persisted selected audio track', () => {
 
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
   const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
-  // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。
-  assert.deepEqual(defaults, ['，', '。', '、', '！', '？', ',', '.']);
+  // 无已存设置时保留全部标点；旧默认列表也是显式配置，不能猜测用户意图。
+  assert.deepEqual(defaults, []);
+  const oldDefault = ['，', '。', '、', '！', '？', ',', '.'];
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeEditorSettings({ splitTrimSymbols: oldDefault }).splitTrimSymbols)), oldDefault);
   // undefined → 默认；多字符片段与重复项被丢弃，任意单字符保留（自由文本框）。
   assert.deepEqual(
     JSON.parse(JSON.stringify(helpers.normalizeSplitTrimSymbols(undefined))),
@@ -874,10 +890,14 @@ test('splits merge join separator settings per subtitle type with legacy fallbac
 test('applies configured split trim symbols at split edges across the shared helpers', () => {
   const restore = () => helpers.setSplitTrimSymbols([...helpers.DEFAULT_SPLIT_TRIM_SYMBOLS]);
   try {
-    // 默认行为保持：拆分边缘移除逗号/句号；省略号需在文本框中额外配置。
+    // 默认拆分保留标点，空白仍修剪。
     assert.deepEqual(JSON.parse(JSON.stringify(
       helpers.splitSubtitleText('你好，世界', 2, 'continuous'),
-    )), { left: '你好', right: '世界', offset: 2 });
+    )), { left: '你好', right: '，世界', offset: 2 });
+    assert.equal(helpers.applySplitEdgeTrim('真的？'), '真的？');
+    assert.equal(helpers.applySplitEdgeTrim('、、是的', 'start'), '、、是的');
+    assert.equal(helpers.applySplitEdgeTrim('真的？  '), '真的？');
+    helpers.setSplitTrimSymbols(['，', '。', '、', '！', '？', ',', '.']);
     assert.equal(helpers.applySplitEdgeTrim('真的？'), '真的');
     assert.equal(helpers.applySplitEdgeTrim('、、是的', 'start'), '是的');
 
@@ -7341,8 +7361,8 @@ test('uses character boundaries for continuous text and protects words for word 
   assert.equal(helpers.splitSubtitleText('split a word', 9, 'word'), null);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'continuous'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A  B', 'continuous'))), [3]);
-  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('你好，世界。', 'continuous'))), [1, 2, 3, 4]);
-  assert.equal(helpers.splitSubtitleText('你好，世界。', 5, 'continuous'), null);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('你好，世界。', 'continuous'))), [1, 2, 3, 4, 5]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.splitSubtitleText('你好，世界。', 5, 'continuous'))), { left: '你好，世界', right: '。', offset: 5 });
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'word'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('split a, sentence', 'word'))), [6, 9]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('the story—you', 'word'))), [4, 9, 10]);
@@ -7367,10 +7387,10 @@ test('uses character boundaries for continuous text and protects words for word 
 });
 
 
-test('cleans punctuation and whitespace at a linked split point', () => {
+test('preserves punctuation at a linked split point by default', () => {
   const parts = helpers.cleanSplitTextParts('这是一句。它是这样', 4);
   assert.deepEqual(JSON.parse(JSON.stringify(parts)), {
-    left: '这是一句', right: '它是这样', offset: 4,
+    left: '这是一句', right: '。它是这样', offset: 4,
   });
 });
 
@@ -7910,4 +7930,13 @@ test('AI cleanup export projection respects active ownership, restoration and pu
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
   gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+});
+
+test('Canvas emoji hint replaces VS16 only on simple clusters without rewriting complex emoji', () => {
+  assert.equal(helpers.assCanvasPreviewText('❤️ ☀ 😀 🤔'), '❤︎ ☀︎ 😀︎ 🤔︎');
+  for (const text of ['123 #* 中文，。', '❤︎', '👩‍👩‍👧‍👧', '👍🏽', '🇨🇳', '1️⃣', '🏳️‍🌈']) {
+    assert.equal(helpers.assCanvasPreviewText(text), text);
+  }
+  assert.ok(helpers.assManagedFontText('( •̀ ω •́ )y 中文╬'));
+  for (const text of ['مرحبا', 'कर्म', '𞤀𞤢', '𑀓𑀭', 'a\u200db']) assert.equal(helpers.assManagedFontText(text), false);
 });

@@ -1,4 +1,4 @@
-"""Supplemental matrix execution and fail-closed aggregate gate (stdlib only)."""
+"""Auxiliary full inspection and strict collection validation (stdlib only)."""
 from __future__ import annotations
 
 import argparse
@@ -11,12 +11,12 @@ import subprocess
 import sys
 
 if __package__:
-    from . import browser_results, ci_impact
+    from . import browser_results, ci_full_plan as ci_impact
     from .run_tests import report_code
     from .test_policy import allowed_platform_skip, python_pack
 else:
     import browser_results
-    import ci_impact
+    import ci_full_plan as ci_impact
     from run_tests import report_code
     from test_policy import allowed_platform_skip, python_pack
 
@@ -72,7 +72,7 @@ def gate(plan: dict, needs: dict, receipts: list[dict]) -> None:
     found = [r["cell"] for r in receipts]
     if len(found) != len(set(found)) or set(found) != expected:
         raise ValueError("missing, duplicate, or unexpected matrix receipt")
-    if any(r["fingerprint"] != fingerprint(plan) or r["status"] != "success" for r in receipts):
+    if any(r.get("namespace") != "auxiliary-v1" or r["fingerprint"] != fingerprint(plan) or r["status"] != "success" for r in receipts):
         raise ValueError("failed or mismatched matrix receipt")
     for receipt in receipts:
         if receipt["cell"].endswith("-python"):
@@ -174,11 +174,11 @@ def run_cell(plan: dict, identity: str, root: Path) -> None:
     env = {**os.environ, "MAW_TEST_PYTHON": sys.executable, "MAW_E2E_PYTHON": sys.executable}
     evidence = {}
 
-    def run(command, *, report=None):
+    def run(command, *, report=None, timeout=600):
         child_env = dict(env)
         if report:
             child_env["PLAYWRIGHT_JSON_OUTPUT_FILE"] = str(report.resolve())
-        subprocess.run([sys.executable, "scripts/run_check.py", "--timeout", "600", "--", *command],
+        subprocess.run([sys.executable, "scripts/run_check.py", "--timeout", str(timeout), "--", *command],
                        env=child_env, check=True)
 
     if selected["layer"] == "python":
@@ -193,23 +193,26 @@ def run_cell(plan: dict, identity: str, root: Path) -> None:
     else:
         command = ["node", "node_modules/@playwright/test/cli.js", "test",
                    "--config=tests/config/playwright.config.mjs", "--project=chromium",
-                   "--workers=2", "--retries=0", "--forbid-only", "--reporter=json",
+                   "--workers=2", "--retries=0", "--forbid-only", "--reporter=line,json",
                    f"--shard={selected['shard']}/{selected['total']}",
                    *ci_impact.BROWSER_FILES[plan["profile"]]]
         run([*command, "--list"], report=root / "browser-list.json")
-        run(command, report=root / "browser-results.json")
+        # Windows shard 1 completed 308/311 outcomes before the old 600s
+        # aggregate limit. Keep per-test limits and zero retries unchanged;
+        # the line reporter preserves progress even if JSON cannot be finalized.
+        run(command, report=root / "browser-results.json", timeout=900)
         summary = browser_results.validate(json.loads((root / "browser-list.json").read_text(encoding="utf-8")),
                                            json.loads((root / "browser-results.json").read_text(encoding="utf-8")),
                                            selected["shard"], selected["total"])
         write_json(root / "browser-validated.json", summary)
-    write_json(root / "receipt.json", {"cell": identity, "fingerprint": fingerprint(plan), "status": "success",
+    write_json(root / "receipt.json", {"namespace": "auxiliary-v1", "cell": identity, "fingerprint": fingerprint(plan), "status": "success",
                                       "reports": evidence})
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("expand", "run", "gate"))
-    parser.add_argument("--plan", type=Path, default=Path(".artifacts/ci-plan.json"))
+    parser.add_argument("--plan", type=Path, default=Path(".artifacts/auxiliary/ci-plan.json"))
     parser.add_argument("--cell")
     parser.add_argument("--root", type=Path, default=Path(".artifacts/matrix"))
     args = parser.parse_args()
@@ -217,8 +220,13 @@ def main():
     event = os.environ.get("GITHUB_EVENT_NAME", "")
     if event and event != "pull_request" and plan["mode"] != "full":
         raise ValueError("non-PR workflow event requires a full CI plan")
-    if os.environ.get("GITHUB_SHA") and plan["head"] != os.environ["GITHUB_SHA"]:
+    expected_head = os.environ.get("CI_EXPECTED_SHA", os.environ.get("GITHUB_SHA", ""))
+    if expected_head and plan["head"] != expected_head:
         raise ValueError("plan HEAD differs from workflow commit")
+    if os.environ.get("CI_EXPECTED_SHA"):
+        actual = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
+        if actual != expected_head:
+            raise ValueError("plan HEAD differs from checked out code")
     if args.action == "expand":
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8", newline="\n") as stream:
             for key, layer in (("full_matrix", {"python", "node"}), ("browser_matrix", {"browser"})):

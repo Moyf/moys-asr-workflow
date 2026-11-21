@@ -800,6 +800,24 @@
     '烧录视频已保存': 'The burned video was saved',
     '重组后烧录视频已保存': 'The reconstructed burn video was saved',
     '烧录视频导出失败': 'Burned video export failed',
+    '当前环境无法直接打开已保存的文件或文件夹，请在保存位置手动打开。': 'This environment cannot open the saved file or folder directly. Open it manually from the save location.',
+    '打开文件': 'Open file',
+    '打开文件夹': 'Open folder',
+    '正在写入烧录视频…': 'Writing the burned video…',
+    '无法确认保存位置的更新已同步到磁盘。': 'Could not confirm that the save location was synced to disk.',
+    '无法打开已保存的烧录视频': 'Could not open the saved video',
+    '已向系统发出打开请求': 'Open request sent to the system',
+    '无法向系统发出打开请求，请从保存位置手动打开': 'Could not send the open request. Open it manually from the save location',
+    '打开操作已过期，请从保存位置手动打开': 'This open action has expired. Open it manually from the save location',
+    '启动器编辑器会话无效，请从启动器重新打开': 'The Launcher editor session is unavailable. Reopen the editor from the Launcher',
+    '烧录保存位置已失效，请重新选择': 'The burn save location has expired. Select it again',
+    '保存目标或所在文件夹已变更，请重新选择位置后导出': 'The save target or its folder changed. Select the location again',
+    '请选择普通的 MP4 保存目标，且不能覆盖工程或源媒体': 'Choose a regular MP4 file without overwriting the project or source media',
+    '保存的视频已移走或变更，无法从此处打开': 'The saved video moved or changed and cannot be opened from here',
+    '已写入视频，但无法确认保存目标的身份': 'The video was written, but its saved location could not be verified',
+    '无法完成烧录文件操作，请检查保存位置权限或可用空间后重试': 'Could not finish the video file operation. Check the save location permissions and available space',
+    '无法打开启动器保存对话框': 'Could not open the Launcher save dialog',
+    '启动器已有保存对话框，请先完成或关闭': 'A Launcher save dialog is already open. Complete or close it first',
     '与本地服务的连接中断，请重试': 'The connection to the local server was interrupted. Please try again',
     'FFmpeg 将重新编码源视频并烧录当前 ASS 字幕；长视频可能需要较长时间。': 'FFmpeg re-encodes the source video and burns the current ASS subtitles; long videos may take a while.',
     '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。': 'Re-encodes kept intervals and burns the current ASS subtitles; cuts are frame-accurate.',
@@ -891,8 +909,24 @@
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     'ASS 样式库': 'ASS style library',
+    '样式数量已达到上限（65 个）': 'The style limit has been reached (65)',
+    '导出样式库': 'Export style library', '导入样式库': 'Import style library',
+    '恢复导入前副本': 'Restore pre-import backup', '重新加载': 'Reload', '更多': 'More',
+    '导入 ASS 样式库': 'Import ASS style library', '确认导入': 'Import',
+    '样式库不包含字体文件、工程或特殊文本解析开关。请在目标电脑检查字体和实际效果。': 'The library does not include font files, projects, or special-text parsing settings. Check fonts and rendered results on the destination computer.',
+    '合并到当前库，保留当前默认设置': 'Merge into the current library and keep its defaults',
+    '恢复整个库，替换当前样式、方案和默认设置': 'Restore the entire library, replacing current styles, profiles, and defaults',
+    '样式库已导入；已保留导入前副本': 'Style library imported; a pre-import backup was kept',
+    '样式库已被其他窗口修改，请先重新加载': 'The library was changed in another window; reload it first',
+    '样式库已被其他窗口修改，请先导出当前副本，再重新加载': 'The library was changed in another window; export the current copy, then reload',
+    '尚未读取本机样式库，请重新加载': 'The local library has not been loaded; reload it first',
+    '本地有更新改动，等待再次同步': 'New local changes are waiting to sync',
+    '浏览器存储不可用或样式库损坏，样式尚未保存': 'Browser storage is unavailable or the library is damaged; styles have not been saved',
+    '重新加载失败，保留当前样式': 'Reload failed; keeping the current styles',
     '样式库正在加载…': 'Loading the style library…', 'SRT 渲染样式': 'SRT render style', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
+    'ASS 彩色 emoji 提醒': 'ASS color emoji warning',
+    '字幕含有 emoji。当前 ASS 烧录不支持彩色 emoji，可能只呈单色或缺字；请用「实际画面预览」检查。': 'Subtitles contain emoji. Current ASS burn-in does not support color emoji; they may appear monochrome or be missing. Check the actual-frame preview.',
     '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
     '⬆️ 当前预览样式由 ASS 字幕模式控制': '⬆️ Current preview styling is controlled by ASS subtitle mode',
     '使用 ASS 样式': 'Use ASS style', '主字幕 ASS 样式': 'Main-subtitle ASS style', '副字幕 ASS 样式': 'Extension-subtitle ASS style',
@@ -944,7 +978,16 @@
     '这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。': 'Configure the default SRT burn-in style here for the Toolbox “Burn subtitles” feature.',
     'ASS 导出': 'ASS export', 'ASS 导出默认方案': 'Default profile for ASS export', 'ASS 导出使用此方案及其动画。': 'ASS export uses this profile and its animations.',
     'ASS 导出使用此方案及其动画；双语字幕的副字幕样式在该方案的表单中配置。': 'ASS export uses this profile and its animations; for bilingual subtitles, the extension-subtitle style is configured in the profile form.',
-    '次色仅在 \\k 卡拉 OK 标签中使用，当前未支持': 'Secondary color is only used by \\k karaoke tags; not supported yet',
+    '未唱字词的颜色（ASS 次色）': 'Colour of unsung words (the ASS secondary colour)',
+    '仅在「输出方案」中勾选「\\k 逐字换色（卡拉OK）」时生效': 'Only takes effect when “\\k word-by-word colouring (karaoke)” is enabled in the ASS profile',
+    // 方案卡片标签会被逐文本节点匹配拆成 “\k” 与 “逐字换色（卡拉OK）”，
+    // 两个节点各需要独立键（同 \\fad 的先例）。
+    '\\k': '\\k',
+    '逐字换色（卡拉OK）': 'Word-by-word colouring (karaoke)',
+    // 方案摘要按片段拼接翻译（见 editor-wiring-ass-manager.js）；「无逐句动画」
+    // 复用既有键。
+    '逐字换色（未唱色 = 样式次色；仅有字词时间码的主字幕生效）': 'Word-by-word colouring (unsung = style secondary colour; only main subtitles with word timings)',
+    '按字词时间码逐字词从次色跳变到主色；未唱颜色用关联样式的「次色」。仅有字词时间码的主字幕生效，没有时间码或文本失配的句子保持普通输出。': 'Fills each word from the secondary colour to the primary colour following word timings; the unsung colour comes from the linked style’s secondary colour. Only main subtitles with word timings are affected; cues without timings keep plain output.',
     '主字幕样式': 'Main subtitle style', '副字幕默认样式': 'Default extension-subtitle style',
     '从左侧选择一个样式或 ASS 方案。': 'Choose a style or ASS profile on the left.', 'STYLE / PROFILE': 'STYLE / PROFILE',
     '名称': 'Name',  '字距': 'Letter spacing', '颜色': 'Colors', '主': 'Main', '副': 'Secondary', '主色': 'Primary', '次色': 'Secondary',
@@ -986,7 +1029,7 @@
     '已与用户级配置同步': 'Synced with user-level config', '仅保存在当前浏览器（便携模式）': 'Saved only in this browser (portable mode)',
     '使用本地副本，尚未同步': 'Using a local copy; not synced yet', '本地已保存，服务器同步失败：未知错误': 'Saved locally; server sync failed: unknown error',
     '本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）': 'Saved locally; server sync failed: HTTP 403 (the page is stale; refresh it and try again)',
-    '当前使用本地副本；服务器恢复后可再次点击保存同步。': 'Using a local copy; click Save again after the server is available.',
+    '尚未与服务器同步；请检查当前样式并重试保存。': 'Not synced with the server yet; check the current styles and try saving again.',
     '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
     '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
     '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',
@@ -2076,7 +2119,7 @@
     match = /^定位到第\s*(\d+)\s*条字幕$/.exec(text);
     if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
-    if (match) return `Save failed: ${match[1]}`;
+    if (match) return `Save failed: ${translateText(match[1], EN)}`;
     match = /^本地已保存，服务器同步失败：(.+)$/.exec(text);
     if (match) return `Saved locally; server sync failed: ${translateText(match[1], EN)}`;
     match = /^打开工程失败：(.+)$/.exec(text);

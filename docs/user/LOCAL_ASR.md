@@ -94,7 +94,7 @@ uv run --no-sync python -m maw.asr.local "clip.mp4" --engine whisper --model lar
 
 `auto` 优先 CUDA，不可用时 CPU；macOS 不自动选择 MPS。Qwen3-ASR 或 Qwen 对齐器可显式选 MPS，失败会报错，速度需与同一音频的 CPU 结果比较。FireRed 始终走 CPU。
 
-Faster-Whisper 的 CUDA 运行库与 Torch 不共用，需要适配 CTranslate2 的 CUDA / cuDNN 库；自动设备可在缺库时回退 CPU，显式 CUDA 保留错误。CPU 使用 int8。
+Faster-Whisper 的 CUDA 运行库与 Torch 不共用，需要适配 CTranslate2 的 CUDA 12 cuBLAS 与 cuDNN 9。自动设备在模型加载或转写任一阶段确认缺失或无法装载这些运行库时，会放弃已生成的部分转写，改用 CPU（int8）从头重试一次，日志会记录回退并提示速度可能变慢；显存不足、模型损坏等其他错误不触发回退。显式选择 CUDA 时不自动降级：错误信息保留原始报错，并提示可把设备改为 CPU，或安装与 CTranslate2 版本匹配的 CUDA 12 运行库并确保其 DLL 及传递依赖位于进程搜索路径。CPU 使用 int8。
 
 Qwen/FunASR/FireRed 分块后恢复原时间偏移。MOSS 不分块，避免不同块的说话人编号失去一致性；单次输入按约 90 分钟限制处理。Whisper 自行滑窗，不使用 MAW 分块参数。
 
@@ -117,6 +117,8 @@ AI 模型页的「对齐模型」独立管理 Qwen3-ForcedAligner-0.6B 和 FireR
 ## 安装失败与验证边界
 
 Launcher 自动选择 PyPI 镜像；需要 GPU Torch 时另用 PyTorch 索引。`MAW_PIP_INDEX` 可覆盖候选源，`MAW_PYTORCH_INDEX` 可替换 PyTorch 源；镜像必须实际提供对应 wheel，替换 URL 不能解决版本/硬件不兼容。
+
+使用默认候选源时，若镜像找不到锁定的依赖或安装文件校验失败，Launcher 会尝试官方 PyPI，仍按原清单校验。若手动指定了镜像，Launcher 不会自动访问列表外的源；可将 `MAW_PIP_INDEX` 改为 `https://pypi.org/simple`，再重启 Launcher 重试。不要修改锁定版本或移除哈希。安装失败可在设置中查看错误并复制报告，日志会注明实际使用的依赖清单和来源。
 
 Windows 用户名含中文时，依赖里的部分原生库（如 nagisa/DyNet）无法用系统默认代码页打开自己数据目录下的文件，安装验证会以「命令失败（退出码 1）」收场。MAW 会自动把运行时目录转换为 8.3 短路径（同一目录的英文别名）；若系统关闭了 8.3 名称生成，则改用公共目录 `C:\ProgramData\MAW-runtimes-<SID哈希>\<runtime>`，也可用环境变量 `MAW_RUNTIME_ASCII_ROOT` 指定一个无中文且当前用户可写的公共运行时根。公共目录按用户隔离（Windows 进程令牌 SID 哈希作子目录，不依赖 USERNAME/USERDOMAIN 环境变量）：本地 ASR、OCR、MOSS 运行环境各自占独立子目录；同机多用户不再共享运行时，每个 Windows 用户各自独立安装一份（安装动工前会先探测目录可写，无权限时给出明确指引）。OCR / MOSS 运行环境同理。
 

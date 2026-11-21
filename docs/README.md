@@ -24,6 +24,17 @@
 
 同一读者、主题和支持范围维护一份明确的现行说明。适用范围写在正文，人工回看状态以维护者确认结果为准。源码、配置、测试夹具与必要持久证据按项目用途入库。共用资源保留在 `assets/`；`archived/` 用于维护者选定的历史资料。
 
+### 规则放在哪里
+
+同一规则只维护一处，其他位置需要提及时写一行结论加链接，不复制正文：
+
+- 硬红线（署名、密钥与路径、编码、端口、删除、数据真源）放根 `AGENTS.md`；它同时是各主题的入口，只保留结论与链接。
+- 操作流程与实现细节放 `docs/engineering/`；用户可见行为放 `docs/user/`。
+- 对外贡献路径放 `CONTRIBUTING.md`，不复制内部 CI 与自审细则。
+- 具体任务的进度与证据放 `docs/logs/`，阶段方案放 `docs/plans/`。
+
+发现两处内容开始漂移时，以本节指定的位置为准，删除另一处副本。
+
 ### 入口与参考
 
 `README.md` 负责阅读分流；`INDEX.md` 用稳定主题锚点映射现行正文；`logs/INDEX.md` 登记保留日志；`logs/CURRENT.md` 记录当前相关参考、适用范围和未决事项。正文负责具体内容，计划负责进展。
@@ -58,9 +69,9 @@ Agent 与 CI 使用 `python scripts/run_check.py --timeout 180 --` 包装上述�
 官网源文档、映射或图片变化时，还需运行：
 
 ```sh
-pnpm --dir website run sync:docs
+pnpm --dir website run sync:releases
 pnpm --dir website run check
 pnpm --dir website run build
 ```
 
-生成副本与源文件一同提交。脚本、配置或测试输入变化时运行对应最小回归；应用行为与打包变化遵循[开发概览](INDEX.md#engineering-development)的检查。变更结果及需维护者回看的内容写入正常交付说明。
+`check` 与 `build` 在独立目录从当前工作树生成文档与配图，缺少输入即失败，不读取远端或依赖跟踪副本的新鲜度。生成前需先准备更新记录数据；`sync:releases` 会移动旧发布生成物，应先确认其操作范围。`sync:docs` 是手动刷新旧副本的命令，会覆盖清单对应文件；`check:docs` 只读比对旧副本，均不是构建前置条件。既有 Git 跟踪副本保留，功能变更无需提交副本。脚本、配置或测试输入变化时运行对应最小回归；应用行为与打包变化遵循[开发概览](INDEX.md#engineering-development)的检查。

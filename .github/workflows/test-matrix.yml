@@ -1,13 +1,14 @@
-name: Complete test matrix
+name: Auxiliary full inspection (advisory)
 
 on:
-  pull_request:
-  push:
-    branches: [main]
-    tags: ['v*']
   schedule:
     - cron: '23 3 * * 1'
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Optional commit or refs/pull/N/merge to inspect (read-only, no secrets)'
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -29,32 +30,34 @@ jobs:
       plan: ${{ steps.scope.outputs.plan }}
       full_matrix: ${{ steps.expand.outputs.full_matrix }}
       browser_matrix: ${{ steps.expand.outputs.browser_matrix }}
+      head: ${{ steps.scope.outputs.head }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Select trusted change scope
+      - name: Select dedicated full inspection plan
         id: scope
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: python scripts/ci_impact.py --plan .artifacts/ci-plan.json
+        run: python scripts/ci_full_plan.py --plan .artifacts/auxiliary/ci-plan.json
       - name: Validate and expand finite matrix
         id: expand
-        run: python scripts/ci_matrix.py expand
+        env:
+          CI_EXPECTED_SHA: ${{ steps.scope.outputs.head }}
+        run: python scripts/ci_matrix.py expand --plan .artifacts/auxiliary/ci-plan.json
       - name: Preserve plan
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: ci-test-plan
-          path: .artifacts/ci-plan.json
+          name: auxiliary-v1-plan
+          path: .artifacts/auxiliary/*.json
           include-hidden-files: true
           if-no-files-found: error
 
-  # Additive coverage: the existing editor and Windows-preview jobs stay intact.
+  # Full discovery is deliberately independent of Change acceptance.
   full-tests:
     needs: selection
     if: needs.selection.outputs.mode == 'full'
@@ -67,20 +70,28 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          ref: ${{ needs.selection.outputs.head }}
       - uses: actions/download-artifact@v7
         with:
-          name: ci-test-plan
-          path: .artifacts/
+          name: auxiliary-v1-plan
+          path: .artifacts/auxiliary/
       - uses: ./.github/actions/test-environment
         with:
           install-browser: ${{ matrix.layer != 'python' && 'true' || 'false' }}
       - name: Complete discovery and capability gates
-        run: uv run --no-sync python scripts/ci_matrix.py run --cell ${{ matrix.cell }}
+        id: tests
+        env:
+          CI_EXPECTED_SHA: ${{ needs.selection.outputs.head }}
+        run: uv run --no-sync python scripts/ci_matrix.py run --plan .artifacts/auxiliary/ci-plan.json --cell ${{ matrix.cell }}
+      - name: 中文检查摘要（不改变测试结果）
+        if: always()
+        continue-on-error: true
+        run: python scripts/ci_summary.py --role advisory --kind ${{ matrix.layer }} --label ${{ matrix.cell }} --outcome "${{ steps.tests.outcome }}"
       - name: Preserve all outcomes including skips and expected failures
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: matrix-${{ matrix.cell }}
+          name: auxiliary-v1-${{ matrix.cell }}
           path: |
             .artifacts/matrix/
             .artifacts/checks/
@@ -93,7 +104,8 @@ jobs:
     needs: selection
     if: needs.selection.outputs.mode == 'full' || needs.selection.outputs.mode == 'domain'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Allow setup and artifact upload outside the 15-minute test budget.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.selection.outputs.browser_matrix) }}
@@ -101,18 +113,26 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          ref: ${{ needs.selection.outputs.head }}
       - uses: actions/download-artifact@v7
         with:
-          name: ci-test-plan
-          path: .artifacts/
+          name: auxiliary-v1-plan
+          path: .artifacts/auxiliary/
       - uses: ./.github/actions/test-environment
       - name: List, execute and validate selected Chromium shard
-        run: uv run --no-sync python scripts/ci_matrix.py run --cell ${{ matrix.cell }}
+        id: tests
+        env:
+          CI_EXPECTED_SHA: ${{ needs.selection.outputs.head }}
+        run: uv run --no-sync python scripts/ci_matrix.py run --plan .artifacts/auxiliary/ci-plan.json --cell ${{ matrix.cell }}
+      - name: 中文检查摘要（不改变测试结果）
+        if: always()
+        continue-on-error: true
+        run: python scripts/ci_summary.py --role advisory --kind browser --label ${{ matrix.cell }} --outcome "${{ steps.tests.outcome }}"
       - name: Preserve discovery, outcomes, skips and traces
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: matrix-${{ matrix.cell }}
+          name: auxiliary-v1-${{ matrix.cell }}
           path: |
             .artifacts/matrix/
             .artifacts/checks/
@@ -122,27 +142,39 @@ jobs:
           retention-days: 7
 
   test-matrix-required:
-    name: Complete test matrix required
+    name: Auxiliary inspection result (advisory)
     if: always()
     needs: [selection, full-tests, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.selection.outputs.head }}
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - uses: actions/download-artifact@v7
         with:
-          name: ci-test-plan
-          path: .artifacts/
+          name: auxiliary-v1-plan
+          path: .artifacts/auxiliary/
       - name: Download every selected cell's evidence
         if: needs.selection.outputs.mode != 'light'
         uses: actions/download-artifact@v7
         with:
-          pattern: matrix-*
+          pattern: auxiliary-v1-*
           path: .artifacts/matrix-evidence/
       - name: Require plan, job results and exact receipts
+        id: gate
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
-        run: python scripts/ci_matrix.py gate --root .artifacts/matrix-evidence
+          CI_EXPECTED_SHA: ${{ needs.selection.outputs.head }}
+        run: python scripts/ci_matrix.py gate --plan .artifacts/auxiliary/ci-plan.json --root .artifacts/matrix-evidence
+
+      - name: 中文汇总门禁说明
+        if: always()
+        continue-on-error: true
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci_summary.py --role advisory --kind gate --label matrix --outcome "${{ steps.gate.outcome }}"

@@ -4,6 +4,7 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import base64
 import importlib.util
+import http.client
 import io
 import json
 import os
@@ -433,8 +434,40 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         handler.server = mock.Mock()
         handler.server.project.media_path = self.media
         handler.server.request_token = 'test-token'
+        handler.headers = {}
         handler.send_json = mock.Mock()
         return handler
+
+    def test_large_ass_request_requires_header_token_before_parsing(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.headers["Content-Length"] = str(16 * 1024 * 1024 + 1)
+        large_ass = "字" * (8 * 1024 * 1024 // 3 + 1)
+        handler.read_json_request = mock.Mock(return_value={
+            "requestToken": "test-token", "ass": large_ass, "timeMs": 0,
+        })
+        for token in ("", "ÿ", "wrong-token"):
+            handler.headers["X-MAW-Request-Token"] = token
+            handler.render_ass_frame()
+            handler.read_json_request.assert_not_called()
+            self.assertEqual(handler.send_json.call_args.args[0], 403)
+            self.assertTrue(handler.send_json.call_args.kwargs["close_connection"])
+
+        handler.headers["X-MAW-Request-Token"] = "test-token"
+        with mock.patch.object(server_editor, "editor_ffmpeg_binary", return_value=Path("ffmpeg")), \
+             mock.patch.object(server_editor, "render_ass_frame_png", return_value=(b"PNG", [])) as render:
+            handler.render_ass_frame()
+        handler.read_json_request.assert_called_once_with(max_bytes=48 * 1024 * 1024)
+        self.assertEqual(handler.send_json.call_args.args[0], 200)
+        self.assertIs(render.call_args.args[1], large_ass)
+
+    def test_srt_burn_keeps_its_existing_text_limit(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={
+            "requestToken": "test-token", "srt": "字" * (8 * 1024 * 1024 // 3 + 1),
+        })
+        handler.start_burn_video_job()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertIn("SRT 字幕内容超过 8 MB", handler.send_json.call_args.args[1]["error"])
 
     def test_ass_frame_endpoint_requires_token_and_valid_payload(self) -> None:
         handler = self._ass_frame_handler()
@@ -627,6 +660,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             'fonts': [{'canonical': '得意黑', 'names': ['得意黑', 'Smiley Sans']}],
         }
         with mock.patch.object(server_editor, 'font_alias_payload', return_value=payload), \
+             mock.patch.object(server_editor, 'font_coverage_payload', return_value={'schema': 'moy.asr.font_coverage.v1', 'faces': []}) as coverage, \
              server_editor.EditorServer(
                  ('127.0.0.1', 0), project, no_waveform=True, peaks_per_second=100,
              ) as server:
@@ -638,6 +672,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertEqual(response.status, 200)
                     body = json.loads(response.read())
                 self.assertEqual(body, payload)
+                coverage.assert_not_called()
+                with urllib.request.urlopen(f"{base_url}/api/ass-font-coverage", timeout=10) as response:
+                    body = json.loads(response.read())
+                self.assertEqual(body, {'schema': 'moy.asr.font_coverage.v1', 'faces': []})
+                coverage.assert_called_once_with()
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
@@ -1299,6 +1338,29 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_prproj_refusal_preserves_next_keep_alive_request(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            thread.start()
+            connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+            try:
+                connection.request("POST", "/api/prproj", body=b'{"output":"ignored.prproj"}',
+                                   headers={"Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 501)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+                connection.request("GET", "/api/prproj-capability")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+            finally:
+                connection.close()
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_server_page_uses_shared_template_and_routes_stickers(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
@@ -1324,7 +1386,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"recentProjectsUrl": "/api/recent-projects/open"', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "assFontCoverageUrl": "/api/ass-font-coverage", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         completed_page = server_editor.build_server_page(
@@ -2497,11 +2559,27 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertFalse(forbidden["ok"])
                     self.assertFalse(style_path.is_file())
 
-                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token})
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                               "_revision": initial["_revision"]})
                     self.assertEqual(status, 200)
                     self.assertEqual(saved["assignments"]["srtBurnStyleId"], "studio")
                     self.assertTrue(style_path.is_file())
                     self.assertNotIn("requestToken", saved)
+
+                    status, conflict = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                                  "_revision": initial["_revision"]})
+                    self.assertEqual(status, 409)
+                    self.assertFalse(conflict["ok"])
+
+                    status, restored = request("/api/ass-styles", {**initial, "requestToken": server.request_token,
+                                                                  "_revision": saved["_revision"], "_backup": True})
+                    self.assertEqual(status, 200)
+                    backup = json.loads(style_path.with_suffix(".json.backup").read_text(encoding="utf-8"))
+                    self.assertEqual(backup["assignments"]["srtBurnStyleId"], "studio")
+
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                               "_revision": restored["_revision"]})
+                    self.assertEqual(status, 200)
 
                     status, loaded = request("/api/ass-styles")
                     self.assertEqual(status, 200)

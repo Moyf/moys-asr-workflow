@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -143,7 +144,7 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         self.assertNotIn("items", result.segments[1])
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
-            ["你好", "没有逐字时间码"],
+            ["你好。", "没有逐字时间码。"],
         )
 
     def test_fun_asr_mixed_invalid_timestamps_use_valid_sentence_range(self) -> None:
@@ -186,7 +187,7 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         self.assertEqual(result.timestamp_granularity, "unknown")
         self.assertEqual(
             build_local_segments(result, duration_ms=2000),
-            [{"start": 0, "end": 2000, "text": "有时间码。没有可用范围"}],
+            [{"start": 0, "end": 2000, "text": "有时间码。没有可用范围。"}],
         )
 
     def test_items_from_timestamps_supports_word_units_with_spaces(self) -> None:
@@ -304,11 +305,8 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         for previous, current in zip(segments, segments[1:]):
             self.assertLessEqual(previous["end"], current["start"])
             self.assertLess(current["start"], current["end"])
-        # 剥尾标点只影响各条结尾，去掉标点后文本不丢字。
-        self.assertEqual(
-            "".join(seg["text"] for seg in segments).replace("，", "").replace("。", ""),
-            text.replace("，", "").replace("。", ""),
-        )
+        # 重切仍保留原始文字与标点。
+        self.assertEqual("".join(seg["text"] for seg in segments), text)
 
     def test_segment_only_continuous_short_cues_pass_through(self) -> None:
         source = {"start": 1000, "end": 3000, "text": "嗯，好的。", "speaker": "S02"}
@@ -325,7 +323,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 
         segments = build_local_segments(result, duration_ms=4000, max_len=15)
 
-        self.assertEqual([seg["text"] for seg in segments], ["嗯，好的"])
+        self.assertEqual([seg["text"] for seg in segments], ["嗯，好的。"])
         self.assertEqual([seg["start"] for seg in segments], [1000])
         self.assertEqual([seg["end"] for seg in segments], [3000])
         self.assertNotIn("items", segments[0])
@@ -344,12 +342,12 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         segments = build_local_segments(result, duration_ms=12_000, max_len=15, min_len=5, gap_split_ms=300)
 
         self.assertEqual([seg["text"] for seg in segments], [
-            # 共享断句配置下全角逗号也是强断句，句尾剥除 ，。 保留 ！。
-            "本地模型",
-            "AI校准和翻译",
-            "双语字幕",
-            "免费ASR",
-            "这些功能全都加上了",
+            # 共享断句配置下全角逗号仍切句，默认保留所有句尾符号。
+            "本地模型，",
+            "AI校准和翻译，",
+            "双语字幕，",
+            "免费ASR，",
+            "这些功能全都加上了。",
             "这么长一句话！",
         ])
         self.assertTrue(all(len(seg["text"]) <= 15 for seg in segments))
@@ -362,12 +360,12 @@ class LocalSegmentationTuningTests(unittest.TestCase):
             self.assertLessEqual(previous["end"], current["start"])
             self.assertLess(current["start"], current["end"])
 
-    def test_trailing_full_width_punct_is_stripped(self) -> None:
+    def test_explicit_trailing_full_width_punct_is_stripped(self) -> None:
         text = "这是结尾。"
         coarse = {"start": 0, "end": 2000, "text": text, "items": [{"text": text, "start": 0, "end": 2000}]}
         result = LocalTranscription(text, "zh", [], [coarse], "test-model")
 
-        segments = build_local_segments(result, duration_ms=2000)
+        segments = build_local_segments(result, duration_ms=2000, strip_tail_punct="，。")
 
         self.assertEqual(len(segments), 1)
         self.assertEqual(segments[0]["text"], "这是结尾")
@@ -405,7 +403,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 
         segments = build_local_segments(result, duration_ms=2000, max_len=7)
 
-        self.assertEqual([seg["text"] for seg in segments], ["哈哈哈哈", "呵呵呵呵"])
+        self.assertEqual([seg["text"] for seg in segments], ["哈哈哈哈，", "呵呵呵呵"])
         # 切分边界来自真实词级时间码，而不是字符插值估计。
         self.assertEqual(segments[0]["start"], 100)
         self.assertEqual(segments[0]["end"], 900)
@@ -454,6 +452,79 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         self.assertEqual([seg["text"] for seg in loose], [text])
         self.assertGreater(len(strict), 1)
         self.assertTrue(all(len(seg["text"]) <= 8 for seg in strict))
+
+
+# CTranslate2 装载 CUDA 运行库失败时的上游报错原文（Windows cuBLAS 12）。
+_CUDA_LIBRARY_LOAD_MESSAGE = "Library cublas64_12.dll is not found or cannot be loaded"
+
+
+class _ScriptedWhisperRuntime:
+    """WhisperModel 运行时替身：按脚本复现缺库失败与分段产出。
+
+    ``call_error`` 在 ``transcribe()`` 调用时抛出；``iteration_error`` 配合
+    ``fail_after`` 让生成器在产出指定数量的段之后抛出，模拟真实 faster-whisper
+    只有迭代生成器时才触发 CUDA 推理（进而才暴露缺库）的语义。
+    """
+
+    def __init__(
+        self,
+        *,
+        segments: Sequence[SimpleNamespace] = (),
+        language: str = "zh",
+        call_error: Exception | None = None,
+        iteration_error: Exception | None = None,
+        fail_after: int | None = None,
+    ) -> None:
+        self.segments = list(segments)
+        self.language = language
+        self.call_error = call_error
+        self.iteration_error = iteration_error
+        self.fail_after = fail_after
+        self.transcribe_calls: list[dict[str, object]] = []
+
+    def transcribe(self, audio: str, **kwargs: object):
+        self.transcribe_calls.append(dict(kwargs))
+        if self.call_error is not None:
+            raise self.call_error
+
+        def generate():
+            for index, segment in enumerate(self.segments):
+                if self.iteration_error is not None and index >= self.fail_after:
+                    raise self.iteration_error
+                yield segment
+
+        return generate(), SimpleNamespace(language=self.language)
+
+
+def _whisper_word_segment(text: str, start: float, end: float) -> SimpleNamespace:
+    """构造带逐字时间戳的段，字符均分整段时长。"""
+    span = (end - start) / max(len(text), 1)
+    words = [
+        SimpleNamespace(
+            word=char,
+            start=start + index * span,
+            end=start + (index + 1) * span,
+        )
+        for index, char in enumerate(text)
+    ]
+    return SimpleNamespace(start=start, end=end, text=f" {text}", words=words)
+
+
+def _fake_whisper_module(
+    scripts: dict[str, object],
+) -> tuple[list[dict[str, object]], SimpleNamespace]:
+    """构造 faster_whisper 替身模块；``scripts`` 按设备给出异常或运行时替身。"""
+    calls: list[dict[str, object]] = []
+
+    def factory(model_ref: str, **kwargs: object) -> object:
+        del model_ref
+        calls.append(dict(kwargs))
+        script = scripts[kwargs["device"]]
+        if isinstance(script, Exception):
+            raise script
+        return script
+
+    return calls, SimpleNamespace(WhisperModel=factory)
 
 
 class LocalAsrFlowTests(unittest.TestCase):
@@ -735,8 +806,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         )
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
-            # 默认剥尾清单（，。；,.）剥掉英文句尾句号，问叹号保留。
-            ["Hello, world", " Next sentence works!"],
+            # 默认保留全部标点，字词间空格不变。
+            ["Hello, world.", " Next sentence works!"],
         )
 
     def test_qwen_long_audio_is_split_and_timestamps_are_shifted(self) -> None:
@@ -922,10 +993,311 @@ class LocalAsrFlowTests(unittest.TestCase):
         faster_whisper_module = SimpleNamespace(WhisperModel=fake_whisper_model)
         with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
             with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
-                with self.assertRaisesRegex(LocalAsrError, "模型加载失败"):
+                with self.assertRaisesRegex(LocalAsrError, "模型加载失败") as ctx:
                     create_local_engine("whisper", device="cuda")._load()
 
+        message = str(ctx.exception)
+        # 保留原始报错并给出可操作指引（改选 CPU / 安装匹配运行库），而不是只报加载失败。
+        self.assertIn("cublas64_12.dll", message)
+        self.assertIn("明确设为 CPU", message)
+        self.assertIn("CUDA 12", message)
+        self.assertIn("cuDNN 9", message)
         self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_cuda_library_error_classification(self) -> None:
+        from maw.local_asr import _is_missing_cuda_runtime_error
+
+        missing = (
+            "Library cublas64_12.dll is not found or cannot be loaded",
+            "Library libcublas.so.12 is not found or cannot be loaded",
+            "Library cublasLt64_12.dll is not found or cannot be loaded",
+            "Library cudnn64_9.dll is not found or cannot be loaded",
+            "Library libcudnn.so.9 is not found or cannot be loaded",
+            "cuDNN is not loaded",
+            "cuBLAS is not loaded",
+        )
+        for message in missing:
+            with self.subTest(error=message):
+                self.assertTrue(_is_missing_cuda_runtime_error(RuntimeError(message)))
+
+        unrelated = (
+            "CUDA out of memory. Tried to allocate 2.00 GiB",
+            "CUDA error: invalid device function",
+            "Unable to open file 'model.bin'",
+            "Library foo.dll is not found or cannot be loaded",
+            "Could not load model",
+        )
+        for message in unrelated:
+            with self.subTest(error=message, expected=False):
+                self.assertFalse(_is_missing_cuda_runtime_error(RuntimeError(message)))
+
+    def test_whisper_auto_retries_on_cpu_when_transcribe_call_misses_cuda_library(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+            _whisper_word_segment("世界。", 1.2, 2.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        events: list[str] = []
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                result = engine.transcribe(
+                    Path("sample.wav"),
+                    language="zh",
+                    hotwords=["MAW"],
+                    on_event=events.append,
+                )
+
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual([call["compute_type"] for call in calls], ["float16", "int8"])
+        self.assertEqual(result.text, "你好。世界。")
+        # CPU 重试沿用相同的语言与热词参数。
+        self.assertEqual(cuda_runtime.transcribe_calls, cpu_runtime.transcribe_calls)
+        self.assertEqual(cpu_runtime.transcribe_calls[0]["language"], "zh")
+        self.assertEqual(cpu_runtime.transcribe_calls[0]["hotwords"], "MAW")
+        self.assertTrue(any(
+            "自动回退到 CPU" in event and "速度可能变慢" in event
+            for event in events
+        ))
+        self.assertEqual(events.count("[local] transcribing: sample.wav"), 2)
+
+    def test_whisper_auto_retries_on_cpu_when_first_iteration_misses_cuda_library(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            segments=[_whisper_word_segment("你好。", 0.0, 1.0)],
+            iteration_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            fail_after=0,
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+            _whisper_word_segment("世界。", 1.2, 2.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual(result.text, "你好。世界。")
+        self.assertEqual(
+            [item["text"] for item in result.items],
+            ["你", "好", "。", "世", "界", "。"],
+        )
+
+    def test_whisper_auto_cpu_retry_discards_partial_gpu_segments(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            segments=[
+                _whisper_word_segment("GPU半段。", 0.0, 1.0),
+                _whisper_word_segment("不会到达。", 1.2, 2.0),
+            ],
+            iteration_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            fail_after=1,
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+            _whisper_word_segment("世界。", 1.2, 2.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                result = engine.transcribe(Path("sample.wav"))
+
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        # 从头重试：结果只来自 CPU，不混入 GPU 已产出的半段，也不重复。
+        self.assertEqual(result.text, "你好。世界。")
+        self.assertNotIn("GPU半段", result.text)
+        self.assertEqual(
+            [item["text"] for item in result.items],
+            ["你", "好", "。", "世", "界", "。"],
+        )
+
+    def test_whisper_auto_cpu_retry_failure_reports_both_errors(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(call_error=RuntimeError("cpu int8 boom"))
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(LocalAsrError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        message = str(ctx.exception)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, message)
+        self.assertIn("cpu int8 boom", message)
+        # 只重试一次：没有第三次构造，防止无限重试。
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+
+    def test_whisper_explicit_cuda_transcribe_library_error_is_actionable(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime()
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="cuda")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(LocalAsrError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        message = str(ctx.exception)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, message)
+        self.assertIn("明确设为 CPU", message)
+        self.assertIn("CUDA 12", message)
+        self.assertIn("cuDNN 9", message)
+        self.assertIn("进程搜索路径", message)
+        # 显式 CUDA 不自动降级。
+        self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_auto_keeps_non_library_errors_at_transcribe(self) -> None:
+        for message in (
+            "CUDA out of memory. Tried to allocate 2.00 GiB",
+            "Unable to open file 'model.bin'",
+        ):
+            with self.subTest(error=message):
+                cuda_runtime = _ScriptedWhisperRuntime(call_error=RuntimeError(message))
+                cpu_runtime = _ScriptedWhisperRuntime()
+                calls, faster_whisper_module = _fake_whisper_module({
+                    "cuda": cuda_runtime,
+                    "cpu": cpu_runtime,
+                })
+                engine = create_local_engine("whisper", device="auto")
+
+                with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+                    with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                        with self.assertRaises(RuntimeError) as ctx:
+                            engine.transcribe(Path("sample.wav"))
+
+                self.assertNotIsInstance(ctx.exception, LocalAsrError)
+                self.assertIn(message, str(ctx.exception))
+                self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_constructor_non_library_errors_do_not_fall_back(self) -> None:
+        for message in (
+            "CUDA out of memory. Tried to allocate 2.00 GiB",
+            "Unable to open file 'model.bin'",
+        ):
+            with self.subTest(error=message):
+                calls, faster_whisper_module = _fake_whisper_module({
+                    "cuda": RuntimeError(message),
+                    "cpu": _ScriptedWhisperRuntime(),
+                })
+                engine = create_local_engine("whisper", device="auto")
+
+                with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+                    with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                        with self.assertRaisesRegex(LocalAsrError, "模型加载失败") as ctx:
+                            engine._load()
+
+                self.assertIn(message, str(ctx.exception))
+                # 显存不足 / 模型损坏不是缺运行库：不自动回退 CPU。
+                self.assertEqual([call["device"] for call in calls], ["cuda"])
+
+    def test_whisper_explicit_cpu_does_not_retry(self) -> None:
+        cpu_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": _ScriptedWhisperRuntime(),
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="cpu")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cpu"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        self.assertNotIsInstance(ctx.exception, LocalAsrError)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, str(ctx.exception))
+        self.assertEqual([call["device"] for call in calls], ["cpu"])
+
+    def test_whisper_reuses_cpu_runtime_after_inference_fallback(self) -> None:
+        cuda_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        cpu_runtime = _ScriptedWhisperRuntime(segments=[
+            _whisper_word_segment("你好。", 0.0, 1.0),
+        ])
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": cuda_runtime,
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                first = engine.transcribe(Path("sample.wav"))
+                second = engine.transcribe(Path("sample.wav"))
+
+        # 回退成功后缓存 CPU runtime：第二次调用不再构造模型。
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+        self.assertEqual(len(cpu_runtime.transcribe_calls), 2)
+        self.assertEqual(first.text, second.text)
+
+    def test_whisper_constructor_cpu_fallback_failure_reports_both_errors(self) -> None:
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            "cpu": RuntimeError("cpu int8 construct boom"),
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(LocalAsrError) as ctx:
+                    engine._load()
+
+        message = str(ctx.exception)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, message)
+        self.assertIn("cpu int8 construct boom", message)
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+
+    def test_whisper_after_constructor_fallback_transcribe_error_stays_raw(self) -> None:
+        # 构造期已回退到 CPU 后，转写阶段再遇到缺库文案也不再触发第二次恢复。
+        cpu_runtime = _ScriptedWhisperRuntime(
+            call_error=RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+        )
+        calls, faster_whisper_module = _fake_whisper_module({
+            "cuda": RuntimeError(_CUDA_LIBRARY_LOAD_MESSAGE),
+            "cpu": cpu_runtime,
+        })
+        engine = create_local_engine("whisper", device="auto")
+
+        with mock.patch.dict("sys.modules", {"faster_whisper": faster_whisper_module}):
+            with mock.patch("maw.local_asr.resolve_device", return_value="cuda"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    engine.transcribe(Path("sample.wav"))
+
+        self.assertNotIsInstance(ctx.exception, LocalAsrError)
+        self.assertIn(_CUDA_LIBRARY_LOAD_MESSAGE, str(ctx.exception))
+        # 构造期一次 CUDA + 一次 CPU；转写失败后不再有第二次 CPU 重试。
+        self.assertEqual([call["device"] for call in calls], ["cuda", "cpu"])
+
 
     def test_whisper_word_timestamps_are_normalized_to_milliseconds(self) -> None:
         class FakeRuntime:
@@ -1008,8 +1380,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(result.text, "Hello, world. Next sentence works!")
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
-            # 默认剥尾清单剥掉英文句尾句号。
-            ["Hello, world", " Next sentence works!"],
+            # 默认保留英文句尾句号。
+            ["Hello, world.", " Next sentence works!"],
         )
 
     def test_whisper_segment_without_words_keeps_sentence_boundary(self) -> None:
@@ -1071,7 +1443,7 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertNotIn("items", result.segments[1])
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
-            ["有精确字词", "只有句子级时间码"],
+            ["有精确字词。", "只有句子级时间码。"],
         )
 
     def test_whisper_generator_words_are_not_consumed_and_can_supply_text(self) -> None:
@@ -1326,9 +1698,9 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertTrue(runtime.kwargs["sentence_timestamp"])
         segments = build_local_segments(result, duration_ms=2000)
         self.assertEqual([segment["text"] for segment in segments], [
-            # 默认剥尾清单剥掉英文句尾句号。
-            "First sentence works here",
-            " Second sentence works too",
+            # 默认保留英文句尾句号。
+            "First sentence works here.",
+            " Second sentence works too.",
         ])
 
     def test_fun_asr_runtime_import_is_lazy(self) -> None:

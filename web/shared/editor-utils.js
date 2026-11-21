@@ -72,7 +72,11 @@ Object.assign(helpers, createLrcModule(helpers));
 Object.assign(helpers, createAssAnimationModule(helpers));
 Object.assign(helpers, createAssCanvasLayoutModule(helpers));
 Object.assign(helpers, createStickerPlacementModule(helpers));
-Object.assign(helpers, createAssExportModule(helpers));
+// 卡拉 OK 导出需要字词时间码条目；word-timing 模块刻意不并入 helpers 命名
+// 空间（见 window.AsrEditorUtils 的独立展开），这里按需显式注入。
+Object.assign(helpers, createAssExportModule({
+  ...helpers, getWordTimingEntries: wordTimingHelpers.getWordTimingEntries,
+}));
 Object.assign(helpers, createExportPlanModule(helpers));
 Object.assign(helpers, createFcp7Module(helpers));
 Object.assign(helpers, createExportWorkflowModule(helpers));
@@ -246,6 +250,8 @@ const {
   exportPolicyMsToFrames,
   exportVideoSize,
   fileBasename,
+  assManagedFontText,
+  assCanvasPreviewText,
   filterFontFamilyOptions,
   filterMarkers,
   findAdjacentCueIndex,
@@ -406,6 +412,8 @@ SUBTITLE_FONT_FAMILY_PRESETS,
 subtitleFontFamilyStoredToInput,
 subtitleFontFamilyInputToStored,
 mergeFontFamilyOptions,
+assManagedFontText,
+assCanvasPreviewText,
 filterFontFamilyOptions,
   SPEAKER_LABEL_COLORS,
   DEFAULT_SPEAKER_LABELS,

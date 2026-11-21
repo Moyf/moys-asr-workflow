@@ -84,19 +84,24 @@
 ## 工程说明
 
 <a name="engineering-long-commands"></a>
-### Agent 长命令防卡死指南（Windows / PowerShell 5.1）
+### 长命令、后台进程与孤儿清理
 
-[打开正文](engineering/AGENT_LONG_COMMAND_GUIDE.md)
+[已并入「有界输出与分层调试」](engineering/DEBUG_WORKFLOW.md)
 
 <a name="engineering-development"></a>
 ### MAW 开发概览
 
 [打开正文](engineering/DEVELOPMENT.md)
 
+<a name="engineering-test-reliability"></a>
+### 测试可靠性：先保护用户，再减少误报
+
+[打开正文](engineering/TEST_RELIABILITY.md)
+
 <a name="engineering-e2e-lifecycle"></a>
 ### E2E 服务进程生命周期
 
-[打开正文](engineering/E2E_PROCESS_LIFECYCLE.md)
+[已并入「E2E 残留服务进程与长命令挂起」](engineering/E2E_SERVER_HANG.md)
 
 <a name="engineering-e2e-hang"></a>
 ### E2E 残留服务进程与长命令挂起：排查与预防
@@ -162,6 +167,11 @@
 
 ## 共享计划
 
+<a name="plan-ci-gate-correction"></a>
+### CI 门禁纠偏：阻塞验证与完整巡检分离
+
+[方案、迁移范围、验收与回滚](plans/CI_GATE_CORRECTION.md)；已批准实施，进度见[实施账本](logs/release1.11.3/261117_CI门禁纠偏/TEST_FEEDBACK_CI门禁纠偏.md)，不修改发布或远端分支规则。
+
 <a name="plan-fcp7-png-subtitles"></a>
 ### FCP 7 XML 图片字幕导出
 
@@ -179,6 +189,11 @@
 ### 主字幕单句缩放开发方案
 
 [打开正文](plans/ASS_CUE_SCALE.md)
+
+<a name="plan-ass-ktv-karaoke"></a>
+### ASS KTV（卡拉 OK）字幕样式支持方案
+
+[打开正文](plans/ASS_KTV_KARAOKE.md)；已实现 `\k` 整词跳变全链路（`\kf`/`\ko` 留作后续）：利用字词时间码逐字换色，无时间码的字幕保持默认输出。
 
 这些阶段方案保留原始基线与状态；是否继续实施以本分支代码、后续记录和维护者确认为准。编辑器设置方案已有实施记录，旧前端方案不代表当前代码布局。
 
@@ -252,3 +267,8 @@
 ### 媒体分层与可信报告
 
 [打开记录](logs/release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md)
+
+<a name="punctuation-1x-backport"></a>
+### 1.x 标点保留回移
+
+[机制、验证与集成边界](logs/release1.11.3/261114_1x标点保留/验证记录.md)

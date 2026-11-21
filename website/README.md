@@ -4,7 +4,7 @@ Astro 官网草稿，面向 `Moy's ASR Workflow`（MAW）项目的下载、定�
 
 ## 本地开发
 
-在仓库根目录执行（需要 Node 20+ 与 pnpm；`sync:releases` 另需 Python 在 PATH 上）：
+在仓库根目录执行（需要 Node `^22.23.4 || ^24.22.1 || >=26.12.1` 与 pnpm 11.28.4；`sync:releases` 另需 Python 在 PATH 上）：
 
 ```powershell
 pnpm --dir website install --frozen-lockfile   # 安装依赖（仅首次或锁文件变更后）
@@ -16,12 +16,15 @@ pnpm --dir website run dev                     # 开发服务器 http://localhos
 
 ```powershell
 pnpm --dir website run check          # astro check：类型与 .astro 语法检查
+pnpm --dir website run check:docs     # 只读比对生成副本与当前源，过期即失败
 pnpm --dir website run sync:docs      # 从仓库公开文档重新生成 /docs/ 阅读区
 pnpm --dir website run build          # 构建静态站点到 website/dist/
 pnpm --dir website run preview        # 本地预览 dist/ 构建产物
 ```
 
-在 `website/` 目录内执行时去掉 `--dir website` 前缀即可；同步与生成输出均被 Git 忽略，重新克隆或拉取后需要重新生成。构建输出在 `dist/`。目前站点不包含后端、账号、上传接口或在线转写功能。
+在 `website/` 目录内执行时去掉 `--dir website` 前缀即可；dev、check、build 在独立目录从当前仓库生成文档和配图，缺源即失败。开发时源文档与手写页面变更会同步到开发服务器；文档清单变化、源文件删除或配图引用减少时需重启。构建使用隔离输入并清理、重建 `website/dist/`；该目录不得包含符号链接或 `.git`。可通过 `MAW_SITE_OUTPUT_DIR` 指定一个不存在的其他输出目录。构建过程中失败可能留下不完整输出，需重新构建。既有跟踪副本保留，功能 PR 无需提交副本。`sync:docs` 会覆盖旧生成副本；`check:docs` 仅对比旧副本，不是构建前置条件。`/releases/` 数据与构建产物不入库。目前站点不包含后端、账号、上传接口或在线转写功能。
+
+每次 dev、check、build 结束或失败时清理本次新建的隔离临时目录；开发服务在支持的 SIGINT / SIGTERM 中断后也会清理。强制终止或系统崩溃可能留下临时目录，清理失败会报错并返回非零状态；不会扫描或删除以前的目录。
 
 ## 内容边界
 
@@ -36,7 +39,7 @@ pnpm --dir website run preview        # 本地预览 dist/ 构建产物
 
 ## 计划部署
 
-GitHub Pages 发布同一仓库的官网、文档和 `/editor/`；也可以在 Vercel 中把 `website/` 设为 Root Directory 单独部署。大陆访问不保证稳定；正式上线前应在不同运营商网络实测。
+GitHub Pages 发布同一仓库的官网、文档和 `/editor/`；Vercel 部署也必须包含仓库根目录的文档源。大陆访问不保证稳定；正式上线前应在不同运营商网络实测。
 
 部署细节和内容清单见 [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) 与 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 

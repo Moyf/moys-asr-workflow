@@ -1,6 +1,6 @@
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { overlayTrackVisible } from '../cues/overlay-track.js';
-import { runFcp7PngExport } from './editor-fcp7-png.js';
+import { runFcp7PngExport, waitForFcp7Fonts } from './editor-fcp7-png.js';
 
 export function initMaweDynamicExports() {
 'use strict';
@@ -116,6 +116,8 @@ export function initMaweDynamicExports() {
         MaweDom.fcp7ExportCancel.disabled = true;
         MaweDom.fcp7ExportModal.dataset.busy = 'true';
         try {
+          await waitForFcp7Fonts(window.MaweAssFontAliases, controller.signal);
+          if (controller.signal.aborted) throw new DOMException('图片字幕导出已停止', 'AbortError');
           const assOptions = { alignFirstStart: false, pngEventNames: true };
           const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
