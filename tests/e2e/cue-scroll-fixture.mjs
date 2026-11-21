@@ -15,7 +15,7 @@ export function syntheticScrollProject(count = 107, mode = 'main', paired = fals
     id: `synthetic-${i}`, start: i * 2000, end: i * 2000 + 1800,
     text: `${samples[i % samples.length]} ${i + 1}`, items: [],
   }));
-  return {
+  const legacy = {
     media: 'synthetic.wav', segments, waveform: generateWaveformPayload(count * 2000 + 10000),
     multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: mode !== 'main',
       display_mode: mode === 'main' ? 'both' : mode, active_track_id: 'synthetic-ext',
@@ -26,6 +26,9 @@ export function syntheticScrollProject(count = 107, mode = 'main', paired = fals
         extension_segment_ids: [`ext-${s.id}`], start_offset_ms: 0, end_offset_ms: 0,
       })) : [] },
   };
+  // Server fixtures save in place, so they must already be canonical v2; the
+  // legacy shape above only feeds the shared importer like a real 1.x file.
+  return createProjectTracks().importProject(legacy).project;
 }
 
 export async function startScrollFixture({ count = 107, mode = 'main', paired = false, blank = false, readinessTimeoutMs = 45_000 } = {}) {
@@ -35,7 +38,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   const directory = mkdtempSync(join(evidenceRoot, 'fixture-'));
   const settings = join(directory, 'settings');
   mkdirSync(settings);
-  const project = createProjectTracks().importProject(syntheticScrollProject(count, mode, paired)).project;
+  const project = syntheticScrollProject(count, mode, paired);
   const projectPath = join(directory, 'synthetic.mosp');
   const mediaPath = join(directory, 'synthetic.wav');
   writeFileSync(projectPath, JSON.stringify(project));

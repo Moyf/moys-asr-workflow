@@ -504,6 +504,10 @@ test('waveform extension cue double-click focuses the extension editor', async (
   const editor = page.locator('.waveform-cue-quick-edit textarea');
   await expect(editor).toBeFocused();
   await expect(editor).toHaveValue('extension cue');
+  await editor.fill('edited extension cue');
+  await editor.press('ControlOrMeta+Enter');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].text))
+    .toBe('edited extension cue');
 });
 
 test('light theme keeps the main waveform subtitle white and secondary subtitle lightly gray', async ({ page }) => {
@@ -758,10 +762,8 @@ test('reserves space for the dirty marker beside main dual-column text', async (
   }]);
 
   const main = page.locator('.multi-dual-cue .multi-cue-column.main').first();
-  await page.evaluate(() => {
-    MaweMultiSubtitleCore.markMainSegmentsDirty(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
-    MaweCuePanel.renderAll();
-  });
+  await main.locator('.text').click();
+  await page.locator('#cue-panel-text').fill('edited main cue');
   await expect(main).toHaveClass(/dirty/);
   const geometry = await main.evaluate((element) => {
     const text = element.querySelector('.text');
@@ -2480,8 +2482,7 @@ const coloredExtensionSrt = [
   '5', '00:00:11,500 --> 00:00:12,500', '后置二。', '',
 ].join('\n');
 
-// 副轨颜色组是数组下标引用：任何 splice 都必须同步平移，否则保存校验报
-// must point to an earlier head segment / a color head（用户工程合并即失败）。
+// 从旧格式导入颜色组，再验证 v2 组引用在合并和删除后仍能正确物化。
 async function importColoredPair(page) {
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', coloredMainSrt)]);

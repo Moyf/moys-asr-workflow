@@ -14,6 +14,9 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.2 之后；2.0dev | 2026-11-21 | [PR 412 辅助失败分诊](release1.11.2/261121_PR412辅助失败/TEST_FEEDBACK_PR412辅助失败.md) / [独立自审](release1.11.2/261121_PR412辅助失败/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261121_PR412辅助失败/辅助失败修复.checklist.md) | 规范 v2 夹具、双语合并契约、文本处理时序、可携字体夹具与拖动期间保存护栏（10 项）的跟进 |
+| 1.11.2 之后；2.0dev | 2026-11-21 | [清理撤销／重做后的字幕预览](release1.11.2/261121_清理撤销字幕预览/TEST_FEEDBACK_清理撤销字幕预览.md) / [独立自审](release1.11.2/261121_清理撤销字幕预览/REVIEW_FINDINGS.md) | 暂停时预览刷新遗漏、旧回滚背景及浏览器回归验证 |
+| 1.11.2 之后；2.0dev | 2026-11-20 | [Playwright 全量收集修复](release1.11.2/261120_Playwright全量收集修复/TEST_FEEDBACK_Playwright全量收集.md) / [基线失败分诊](release1.11.2/261120_Playwright全量收集修复/TEST_FEEDBACK_基线失败分诊.md) / [独立自审](release1.11.2/261120_Playwright全量收集修复/REVIEW_FINDINGS.md) | 收集阻塞解除（1261 项/133 文件）+ 39 项远端失败样本分诊：32/45 修复（fixture 迁 v2、主轨读取、契约断言更新、1 处有证据产品回归：timed_text_edit_view rows 省略）；自审无 blocker/major、6 nit 已处置；剩 multi-subtitle 11 + nested menus 2 + timed-text-edit 同类 3 待续 |
 | 1.11.2 之后；2.0dev | 2026-11-20 | [G16-B/G/D 接线迁移](release1.11.2/261120_G16接线迁移/IMPLEMENTATION.md) / [独立自审](release1.11.2/261120_G16接线迁移/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261120_G16接线迁移/G16_BGD.checklist.md) | 播放消费者、媒体与导入事件、导出及烧录接线，含真实 Server 门槛与基线对照 |
 | 1.11.2 之后；2.0dev | 2026-11-18 | [集中报错审阅](release1.11.2/261118_集中报错/REVIEW_FINDINGS.md) | 独立组继续、准备范围复核及失败证据 |
 | 1.11.2 之后；2.0dev | 2026-11-18 | [模块依赖选测审阅](release1.11.2/261118_模块依赖选测/REVIEW_FINDINGS.md) | 共享影响计划、有限准入兼容、按需辅助消费者与过度选择清理；真实失败和后续集中报错边界单列 |

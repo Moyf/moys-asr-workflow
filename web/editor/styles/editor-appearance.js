@@ -228,7 +228,8 @@ export function initMaweAppearance() {
 
 
   function getStoredExtensionSubtitleAppearance(value = MaweBoot.DATA.preview?.extension_subtitle) {
-    return { ...subtitleAppearanceExtensionFields(value),
+    // Undefined would make the helper read the main subtitle's fields.
+    return { ...subtitleAppearanceExtensionFields(value ?? {}),
       ...normalizeSubtitleAppearance(value) };
   }
 

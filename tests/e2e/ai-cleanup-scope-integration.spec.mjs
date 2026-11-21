@@ -392,9 +392,24 @@ test('S3-T05 unrelated current cues return immediately and re-enter cleanup afte
     MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
   });
   await expect(page.locator('#overlay-main-text')).toHaveText(INITIAL_TEXT);
-  await page.evaluate(() => MaweHistory.performUndo());
+  // Read the preview in the same task as each history action so later media events cannot mask a stale render.
+  expect(await page.evaluate(() => {
+    MaweHistory.performUndo();
+    return {
+      paused: MaweCoreState.player.paused,
+      currentTime: MaweCoreState.player.currentTime,
+      text: MaweDom.overlayMainTextNode.nodeValue,
+    };
+  })).toEqual({ paused: true, currentTime: 2.5, text: 'kept' });
   await expect(page.locator('#overlay-main-text')).toHaveText('kept');
-  await page.evaluate(() => MaweHistory.performRedo());
+  expect(await page.evaluate(() => {
+    MaweHistory.performRedo();
+    return {
+      paused: MaweCoreState.player.paused,
+      currentTime: MaweCoreState.player.currentTime,
+      text: MaweDom.overlayMainTextNode.nodeValue,
+    };
+  })).toEqual({ paused: true, currentTime: 2.5, text: INITIAL_TEXT });
   await expect(page.locator('#overlay-main-text')).toHaveText(INITIAL_TEXT);
   await page.evaluate(() => {
     MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope.segment_id = 'main-001';
