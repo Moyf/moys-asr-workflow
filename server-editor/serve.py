@@ -1186,7 +1186,12 @@ def burn_ass_video(
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
                                 f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
-        filter_args.extend(("-fps_mode", "vfr", "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
+        # Preserve sub-frame cut times instead of rounding them to 1/fps.
+        # Older encoders omit packet duration; retain valid durations and fill
+        # missing ones from the decode clock so the final frame is not lost.
+        filter_args.extend(("-fps_mode", "vfr", "-enc_time_base:v", "filter",
+                            "-bsf:v", "setts=pts=PTS:dts=DTS:duration='if(gt(DURATION,0),DURATION,if(gt(NEXT_DTS,DTS),NEXT_DTS-DTS,PREV_OUTDURATION))'",
+                            "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
     elif stickers:
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
         graph_path = output_path.with_suffix(".filters")
