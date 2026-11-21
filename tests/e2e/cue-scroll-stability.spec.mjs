@@ -46,18 +46,26 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   await page.waitForTimeout(300);
 
   const original = await visual(page, index, kind);
-  const next = await visual(page, index + 1, kind);
+  const following = await visual(page, index + 1, kind);
+  const followingCueExists = () => page.evaluate(id =>
+    MaweMultiSubtitleCore.getActiveExtensionTrack().segments.some(cue => cue.id === id), following.id);
+
   await page.keyboard.press('c');
   const merged = await stable(page, original, index, 'extension merge', info, kind);
+  // The merged cue keeps the first cue's ID and extends to the second cue.
   expect(merged.id).toBe(original.id);
   expect(merged.start).toBe(original.start);
-  expect(merged.end).toBe(next.end);
-  expect(merged.text).toContain(next.text);
+  expect(merged.end).toBe(following.end);
+  expect(merged.text).toContain(following.text);
+  expect(await followingCueExists()).toBe(false);
   await page.keyboard.press(undoKey);
-  await stable(page, merged, index, 'extension undo merge', info, kind);
-  expect((await visual(page, index, kind)).id).toBe(original.id);
+  const restored = await stable(page, merged, index, 'extension undo merge', info, kind);
+  expect(restored).toMatchObject({ id: original.id, end: original.end });
+  expect(await followingCueExists()).toBe(true);
   await page.keyboard.press(redoKey);
-  await stable(page, merged, index, 'extension redo merge', info, kind);
+  const redone = await stable(page, merged, index, 'extension redo merge', info, kind);
+  expect(redone).toMatchObject({ id: original.id, end: following.end });
+  expect(await followingCueExists()).toBe(false);
   await page.keyboard.press(undoKey);
   await page.waitForTimeout(300);
 
@@ -74,6 +82,8 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
     await page.locator('#multi-subtitle-split-confirm').click();
   }
   const left = await stable(page, beforeSplit, index, 'extension split after resize', info, kind);
+  // Split keeps the original cue's identity on the left part (same ID and
+  // start; only the end moves) — the right part is the new cue.
   expect(left.id).toBe(beforeSplit.id);
   expect(left.start).toBe(beforeSplit.start);
   expect(left.end).toBeLessThan(beforeSplit.end);

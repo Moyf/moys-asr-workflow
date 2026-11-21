@@ -60,8 +60,8 @@ for (const target of ['main', 'overlay']) test(`clears ${target} stickers throug
   await page.locator('#sticker-clear').click();
   await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  const selected = target === 'overlay' ? saved.overlay_track.segments[0] : saved.segments[0];
-  const other = target === 'overlay' ? saved.segments[0] : saved.overlay_track.segments[0];
+  const selected = target === 'overlay' ? getOverlayTrack(saved).segments[0] : getMainTrack(saved).segments[0];
+  const other = target === 'overlay' ? getMainTrack(saved).segments[0] : getOverlayTrack(saved).segments[0];
   expect(selected).not.toHaveProperty('sticker_group_id');
   expect(typeof other.sticker_group_id).toBe('string');
   expect(saved.subtitle_groups.sticker).toHaveLength(1);
@@ -206,14 +206,12 @@ test('edits an independent overlay track, restores it through history, and expor
   const savedProject = await page.evaluate(() => window.__overlayTrackExports[0].content);
   const savedOverlay = getOverlayTrack(assertCanonical(JSON.parse(savedProject)));
   expect(await page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
-  expect(savedOverlay.segments[0]).not.toHaveProperty('_dirty');
   expect(savedOverlay.enabled).toBe(true);
   expect(savedOverlay.segments).toHaveLength(1);
   expect(savedOverlay.segments[0]).toMatchObject({
     id: 'overlay-001', start: 500, end: 1500, text: 'overlay edited',
   });
   expect(savedOverlay.segments[0]).not.toHaveProperty('_dirty');
-  expect(await page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0]._dirty)).toBe(true);
 
   await page.locator('#subtitle-export-btn').click();
   await page.locator('#download-full-srt').click();
@@ -914,12 +912,13 @@ test('multi-sentence sticker binding covers every bound cue without a drag', asy
   await page.locator('#sticker-grid .sticker-item').first().click();
   await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
 
-  // 数据契约：head.sticker 覆盖整个选区，第二句是 ref。
+  // 数据契约：两句同属一个稳定组，其推导范围覆盖整个选区。
   expect(await page.evaluate(() => {
-    const [head, member] = MaweBoot.DATA.segments;
-    return { start: head.sticker.start, end: head.sticker.end,
-      ref: member.sticker_ref && { name: member.sticker_ref.name, headIdx: member.sticker_ref.headIdx } };
-  })).toEqual({ start: 0, end: 2600, ref: { name: 'bind', headIdx: 0 } });
+    const [head, member] = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const range = AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker')[0];
+    return { start: range.start, end: range.end, name: range.source.name,
+      sameGroup: Boolean(head.sticker_group_id && head.sticker_group_id === member.sticker_group_id) };
+  })).toEqual({ start: 0, end: 2600, name: 'bind', sameGroup: true });
 
   // 关键回归：不拖动任何字幕条，第二句时间内就要显示表情包
   // （旧实现 head.sticker 只写到首句 end，必须拖动触发区间同步才恢复）。
@@ -1094,6 +1093,7 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
     return {
       color: segment.color?.name || null,
       ref: segment.color_ref ?? null,
+      group: segment.color_group_id,
       colorStart: segment.color?.start,
       colorEnd: segment.color?.end,
       segStart: segment.start,
@@ -1101,7 +1101,7 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
     };
   });
   expect(afterKey.color).toBe(paletteName);
-  expect(afterKey.ref).toBeUndefined();
+  expect(afterKey.ref).toBeNull();
   expect(typeof afterKey.group).toBe('string');
   // 颜色范围取叠加段自身（自持 head，不跨轨引用）
   expect(afterKey.colorStart).toBe(afterKey.segStart);

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload,
   makeTempDir, startServer } from './helpers.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 let dir, server, project;
 test.beforeAll(async () => {
@@ -13,8 +14,11 @@ test.beforeAll(async () => {
   for (let i = 0; i < (bytes.length - 44) / 2; i++) bytes.writeInt16LE(Math.round(3000 * Math.sin(2 * Math.PI * 440 * i / 8000)), 44 + i * 2);
   writeFileSync(media, bytes);
   project = join(dir, 'project.mosp');
-  writeFileSync(project, JSON.stringify({ media, segments: [{ id: 'one', start: 100, end: 1000, text: '音量' }],
-    waveform: generateWaveformPayload(12000) }));
+  // The save/reload journey overwrites the bound file in place, so the fixture
+  // must be canonical v2; a 1.x file would require an explicit migration save.
+  writeFileSync(project, JSON.stringify(createProjectTracks().importProject({ media,
+    segments: [{ id: 'one', start: 100, end: 1000, text: '音量' }],
+    waveform: generateWaveformPayload(12000) }).project));
   server = await startServer(project, media, await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(dir); });

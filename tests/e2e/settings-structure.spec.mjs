@@ -633,7 +633,13 @@ test('project ASS and speaker exports are undoable, reloadable and isolated from
   expect(personal.assMode).toBeUndefined();
   expect(personal.exportSpeakerLabels).toBeUndefined();
   expect(personal.mainSplitModeOverride).toBeUndefined();
-  await page.evaluate(() => MaweProjectLoad.applyCanonicalProject({ split_mode: 'continuous', segments: [] }, 'next.mosp'));
+  await page.evaluate(saved => {
+    const next = { ...saved, preview: undefined };
+    // v2 keeps the per-track main split override instead of the legacy
+    // top-level split_mode: dropping it emulates a project without the setting.
+    delete AsrEditorUtils.getMainTrack(next).split_mode_override;
+    MaweProjectLoad.applyCanonicalProject(next, 'next.mosp');
+  }, saved);
   await projectSettings(page, 'subtitle-style');
   await expect(page.locator('#ass-mode-toggle')).not.toBeChecked();
   await projectSettings(page, 'project-color');

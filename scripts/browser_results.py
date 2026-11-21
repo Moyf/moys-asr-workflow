@@ -5,16 +5,6 @@ import argparse
 import json
 from pathlib import Path
 
-PORTABLE_REASON = "便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析"
-PORTABLE_SKIPS = {
-    ("editor-bundle.spec.mjs", ("minified portable bundle preserves non-default data, paths and generated language",)): PORTABLE_REASON,
-    ("editor-bundle.spec.mjs", ("file executes every source and preserves project/export/undo behavior",)): PORTABLE_REASON,
-    ("editor-text-tools.spec.mjs", ("portable file uses the same fade rules and SRT export settings",)): PORTABLE_REASON,
-    ("editor-text-tools.spec.mjs", ("portable editor saves and reloads presets in its browser storage",)):
-        "便携模式已弃维护，2.0 移除 HTML，见便携模式回归分析",
-}
-
-
 def collection(report: dict, *, allow_empty: bool = False) -> dict:
     found = {}
 
@@ -105,10 +95,11 @@ def validate(listed: dict, actual: dict, current: int, total: int) -> dict:
     expected, observed = collection(listed), collection(actual)
     if expected.keys() != observed.keys():
         raise ValueError("missing or unexpected browser cases relative to --list")
-    skipped = []
     for key, test in observed.items():
         for case in (expected[key], test):
-            if case["expectedStatus"] not in {"passed", "skipped"}:
+            if case["expectedStatus"] == "skipped":
+                raise ValueError(f"unsupported skip (including capability skip): {key}")
+            if case["expectedStatus"] != "passed":
                 raise ValueError(f"expected failure is not coverage: {key}")
             if any(a["type"] in {"fail", "fixme"} for a in case.get("annotations", [])):
                 raise ValueError(f"xfail/fixme is not coverage: {key}")
@@ -116,20 +107,14 @@ def validate(listed: dict, actual: dict, current: int, total: int) -> dict:
         if len(results) != 1 or results[0]["retry"] != 0:
             raise ValueError(f"retry or missing outcome: {key}")
         if results[0]["status"] == "skipped":
-            reasons = [a.get("description", "") for a in test.get("annotations", []) if a["type"] == "skip"]
-            if (key[:2] not in PORTABLE_SKIPS or reasons != [PORTABLE_SKIPS[key[:2]]]
-                    or test["status"] != "skipped" or test["expectedStatus"] != "skipped"):
-                raise ValueError(f"unsupported skip (including capability skip): {key}")
-            skipped.append({"file": key[0], "title": list(key[1]), "reason": reasons[0]})
-        elif (test["expectedStatus"] != "passed" or test["status"] != "expected"
-              or results[0]["status"] != "passed" or results[0].get("errors")):
+            raise ValueError(f"unsupported skip (including capability skip): {key}")
+        if test["status"] != "expected" or results[0]["status"] != "passed" or results[0].get("errors"):
             raise ValueError(f"browser case did not pass first attempt: {key}")
     stats = actual["stats"]
-    if (any(stats[k] != 0 for k in ("unexpected", "flaky"))
-            or stats["expected"] != len(observed) - len(skipped) or stats["skipped"] != len(skipped)):
+    if any(stats[k] != 0 for k in ("unexpected", "flaky", "skipped")) or stats["expected"] != len(observed):
         raise ValueError("browser statistics do not match validated cases")
-    return {"selected": len(observed), "passed": len(observed) - len(skipped),
-            "skips": skipped, "expected_failures": 0, "retries": 0,
+    return {"selected": len(observed), "passed": len(observed),
+            "skips": [], "expected_failures": 0, "retries": 0,
             "shard": {"current": current, "total": total}}
 
 
