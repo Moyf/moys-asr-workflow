@@ -45,7 +45,7 @@ register({
 ## UI 与交互
 
 1. 入口：`Ctrl/Cmd+K`（全局，含文本编辑焦点内；输入法组词中放行——沿用 cue-quick-edit 的 `isComposing` 守卫先例）＋ 工具栏可见的「搜索命令」按钮。部分浏览器可能保留该组合键，遇到冲突可点击按钮。
-2. 结构：复用设置搜索的现成交互——输入框 + 结果列表 + `↑↓/Home/End/Enter` 键盘导航；打开时记住焦点、关闭时恢复；`Esc` 关闭。样式基调对齐设置窗口，遵守 UI 间距约定（实测 ≥ 8px）。
+2. 结构：复用设置搜索的输入框和结果列表。用上下方向键、`Home` 和 `End` 选择命令，按 `Enter` 执行。打开时记住焦点，按 `Esc` 关闭后恢复焦点。样式基调对齐设置窗口，遵守 UI 间距约定（实测 ≥ 8px）。
 3. 空查询：最近使用（localStorage `mawe-command-palette-recents`，只存命令 id 不存工程内容）+ 少量高频建议。
 4. 搜索：subsequence 模糊匹配 `title/category/keywords`，中英文与快捷键字面皆可命中；后续可加拼音首字母。
 5. 执行反馈：执行后关闭面板；命令自身的 `MaweHint.flashHint` 即为结果反馈。
