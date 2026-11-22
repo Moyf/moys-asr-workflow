@@ -42,7 +42,7 @@ const cases = [
   { name: 'rotated left-aligned paint', alignment: 7, extensionAlignment: 1,
     marginV: 180, marginL: 0, angle: 30, times: [1000] },
   { name: 'scaled right-aligned paint', alignment: 9, extensionAlignment: 3,
-    marginV: 240, marginR: 0, scaleX: 160, scaleY: 160, times: [1000] },
+    marginV: 240, marginR: 0, scaleX: 160, scaleY: 160, times: [1000], verifyGuardGeometry: true },
   { name: 'nonuniform scale and 90 degree rotation', marginV: 240,
     scaleX: 50, scaleY: 300, angle: 90, times: [1000] },
   { name: 'nonuniform scale and 30 degree rotation', marginV: 240,
@@ -366,7 +366,34 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       expect.soft(track.outside, `Canvas track ${index} loses no painted pixels`).toBe(0);
     }
     expect.soft(pixels.outside, 'libass loses no painted pixels').toBe(0);
-    expect.soft(pixels.sha256, 'guard-band translation preserves native libass pixels').toBe(pixels.guardCropSha256);
+    if (fixture.verifyGuardGeometry) {
+      // A translated scaled glyph can rasterize at a slightly different
+      // subpixel phase. Compare actual extents, while the guard's outside
+      // count above directly checks for cropped paint.
+      for (const key of ['main', 'extension', 'overlay']) {
+        const native = pixels.nativeTracks[key];
+        const guarded = pixels.tracks[key];
+        expect.soft(native.box, `${key} native paint exists`).not.toBeNull();
+        expect.soft(guarded.box, `${key} guarded paint exists`).not.toBeNull();
+        if (!native.box || !guarded.box) continue;
+        for (const coordinate of [0, 1, 2, 3]) expect.soft(
+          Math.abs(native.box[coordinate] - guarded.box[coordinate]),
+          `${key} native and guarded edges agree`).toBeLessThanOrEqual(1);
+      }
+      // marginR=0 and right alignment put this known fixture at the right
+      // edge. Allow 32 native pixels for the font's right side bearing and
+      // the group's paint-bound correction; a centered/left layout is far
+      // outside this range for these short strings.
+      for (const [engine, width, tracks] of [
+        ['Canvas', frame.width, frame.tracks],
+        ['libass', pixels.width, ['main', 'extension', 'overlay'].map(key => pixels.nativeTracks[key])],
+      ]) for (const [index, track] of tracks.entries()) {
+        if (track.box) expect.soft(width - track.box[2],
+          `${engine} track ${index} right edge stays near the right-aligned anchor`).toBeLessThanOrEqual(32);
+      }
+    } else {
+      expect.soft(pixels.sha256, 'guard-band translation preserves native libass pixels').toBe(pixels.guardCropSha256);
+    }
     expect.soft(pixels.fontSelections.length, 'libass records an actual selected font').toBeGreaterThan(0);
     const guard = pixels.guardBox;
     if (guard) {
@@ -403,8 +430,17 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
     for (const engine of ['canvas', 'libass']) {
       const full = engine === 'canvas' ? tall.canvas.tracks : ['main', 'extension', 'overlay'].map(k => tall.libass.tracks[k]);
       const base = engine === 'canvas' ? small.tracks : ['main', 'extension', 'overlay'].map(k => reference.tracks[k]);
-      const ratios = full.map((track, i) => (track.bands[0][1] - track.bands[0][0]) / (base[i].bands[0][1] - base[i].bands[0][0]));
-      expect.soft(full.map(t => t.bands.length), `${engine} preserves every multiline glyph band`).toEqual([11, 3, 3]);
+      // A single glyph can have an empty raster row inside it. Merge only
+      // one-pixel gaps; the fixture's actual text lines have larger gaps.
+      const textLines = track => track.bands.reduce((lines, band) => {
+        if (lines.length && band[0] - lines[lines.length - 1][1] <= 1) lines[lines.length - 1][1] = band[1];
+        else lines.push([...band]);
+        return lines;
+      }, []);
+      const lines = full.map(textLines);
+      const baseLines = base.map(textLines);
+      const ratios = lines.map((bands, i) => (bands[0][1] - bands[0][0]) / (baseLines[i][0][1] - baseLines[i][0][0]));
+      expect.soft(lines.map(bands => bands.length), `${engine} preserves every actual text line`).toEqual([11, 3, 3]);
       // 组缩放只作用于主/叠加；副字幕跟随其样式预设，字号不被整组缩小。
       expect.soft(ratios[0], `${engine} actually shrinks oversized group`).toBeLessThan(0.95);
       expect.soft(ratios[1], `${engine} secondary keeps its preset size`).toBeGreaterThan(0.95);
@@ -822,15 +858,40 @@ test('exported layout slices preserve the original main cue nonlinear and fade c
     AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     return { grouped, standalone: MaweExportSrt.buildAss() };
   });
+  // Keep each actual exported layout and timing boundary, but deliberately
+  // restart the two clocks at the start of each noninitial main-cue slice.
+  let resetFadeCount = 0;
+  let resetTransformCount = 0;
+  const restarted = sources.grouped.split('\n').map(line => {
+    if (!line.startsWith('Dialogue: 0,') || line.split(',')[1] === '0:00:00.00') return line;
+    return line.replace(/\\fade\(255,0,255,-?\d+,-?\d+,-?\d+,-?\d+\)/, () => {
+      resetFadeCount++;
+      return '\\fade(255,0,255,0,1000,1500,2000)';
+    }).replace(/\\t\(-?\d+,-?\d+,2,\\fs120\)/, () => {
+      resetTransformCount++;
+      return '\\t(0,1000,2,\\fs120)';
+    });
+  }).join('\n');
+  expect(resetFadeCount, 'negative control restarts the fade in both noninitial slices').toBe(2);
+  expect(resetTransformCount, 'negative control restarts the transform in both noninitial slices').toBe(2);
+  const dimensions = track => [track.box[2] - track.box[0], track.box[3] - track.box[1]];
+  const equivalentClock = (actual, expected) => actual.box && expected.box
+    && dimensions(actual).every((value, i) => Math.abs(value - dimensions(expected)[i]) <= 1)
+    && Math.abs(actual.peak - expected.peak) <= 2
+    && Math.abs(actual.painted - expected.painted) / expected.painted < 0.01;
   const rows = [];
   for (const time of [750, 1750]) {
     const grouped = libass(sources.grouped, time, testInfo, `candidate-clock-grouped-${time}`);
     const original = libass(sources.standalone, time, testInfo, `candidate-clock-standalone-${time}`);
-    rows.push({ time, grouped: grouped.tracks.main, original: original.tracks.main });
-    expect(grouped.tracks.main.painted, `main remains visible at ${time}ms`).toBeGreaterThan(30);
-    expect(grouped.tracks.main.glyphSha256,
-      `layout may move main, but must not restart its nonlinear transform/fade at ${time}ms`)
-      .toBe(original.tracks.main.glyphSha256);
+    const broken = libass(restarted, time, testInfo, `candidate-clock-restarted-${time}`);
+    const actual = grouped.tracks.main;
+    const reference = original.tracks.main;
+    rows.push({ time, grouped: actual, original: reference, restarted: broken.tracks.main });
+    expect.soft(actual.painted, `main remains visible at ${time}ms`).toBeGreaterThan(30);
+    expect.soft(equivalentClock(actual, reference),
+      `glyph dimensions, brightness and ink coverage retain the original clock at ${time}ms`).toBe(true);
+    expect.soft(equivalentClock(broken.tracks.main, reference),
+      `restarting both clocks must fail the same comparison at ${time}ms`).toBe(false);
   }
   writeFileSync(testInfo.outputPath('candidate-clock-comparison.json'), JSON.stringify(rows, null, 2));
   // This fixture changes the visible top-edge group at 500/1500ms. Merely
