@@ -265,7 +265,18 @@ export function initMaweCueElements() {
 
 
 
-  function buildMultiCueColumn(segment, index, track, kind) {
+  // A fresh index per list render avoids scanning every binding for every row.
+  // Keep target IDs raw: bindingForSegment compares the normalized cue ID to
+  // target.segment_id with strict equality and filters by target.track_id.
+  function buildBoundExtensionIds(bindings, trackId) {
+    const ids = new Set();
+    (bindings || []).forEach((binding) => {
+      if (!trackId || binding.target?.track_id === trackId) ids.add(binding.target?.segment_id);
+    });
+    return ids;
+  }
+
+  function buildMultiCueColumn(segment, index, track, kind, boundExtensionIds = null) {
     const column = document.createElement('div');
     column.className = `multi-cue-column ${kind}`;
     if (!segment) {
@@ -286,8 +297,11 @@ export function initMaweCueElements() {
     setTextHtml(text, segment.text || '', MaweDom.searchEl.value);
     column.append(header, text);
     if (kind === 'extension') {
-      const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
-      if (!binding) column.classList.add('unbound');
+      const id = boundExtensionIds ? window.AsrEditorUtils.stableId(segment.id) : null;
+      const bound = boundExtensionIds
+        ? Boolean(id && boundExtensionIds.has(id))
+        : Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(index, track));
+      if (!bound) column.classList.add('unbound');
       column.dataset.extIdx = String(index);
     } else {
       column.dataset.mainIdx = String(index);
@@ -305,7 +319,7 @@ export function initMaweCueElements() {
 
 
 
-  function buildDualCueEl(mainIndex, extensionIndex, track) {
+  function buildDualCueEl(mainIndex, extensionIndex, track, boundExtensionIds = null) {
     const main = mainIndex == null ? null : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
     const extension = extensionIndex == null ? null : track.segments[extensionIndex];
     const el = document.createElement('div');
@@ -319,7 +333,7 @@ export function initMaweCueElements() {
     if (extensionIndex != null) el.dataset.extIdx = String(extensionIndex);
     el.append(
       buildMultiCueColumn(main, mainIndex ?? -1, track, 'main'),
-      buildMultiCueColumn(extension, extensionIndex ?? -1, track, 'extension'),
+      buildMultiCueColumn(extension, extensionIndex ?? -1, track, 'extension', boundExtensionIds),
     );
     if (main) bindCueEvents(el, mainIndex);
     if (extension) {
@@ -553,6 +567,7 @@ export function initMaweCueElements() {
     speakerDescription,
     buildCueEl,
     buildMultiTimeEl,
+    buildBoundExtensionIds,
     buildMultiCueColumn,
     buildExtensionCueEl,
     buildDualCueEl,
@@ -585,6 +600,7 @@ export function buildCueEl(...args) { return window.MaweCueElements.buildCueEl(.
 export function buildMultiTimeEl(...args) { return window.MaweCueElements.buildMultiTimeEl(...args); }
 export function buildMultiCueColumn(...args) { return window.MaweCueElements.buildMultiCueColumn(...args); }
 export function buildExtensionCueEl(...args) { return window.MaweCueElements.buildExtensionCueEl(...args); }
+export function buildBoundExtensionIds(...args) { return window.MaweCueElements.buildBoundExtensionIds(...args); }
 export function buildDualCueEl(...args) { return window.MaweCueElements.buildDualCueEl(...args); }
 export function fmtShort(...args) { return window.MaweCueElements.fmtShort(...args); }
 export function fmtSrtTime(...args) { return window.MaweCueElements.fmtSrtTime(...args); }
