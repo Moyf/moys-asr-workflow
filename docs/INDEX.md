@@ -235,6 +235,13 @@
 
 [打开正文](plans/EDITOR_SETTINGS_PLAN.md)
 
+<a name="plan-command-palette"></a>
+### 编辑器命令面板（Command Palette）实施计划
+
+[设计与分期](plans/COMMAND_PALETTE_PLAN.md) · [命令盘点底稿](plans/command-palette/INVENTORY.md)
+
+命令注册契约、三条注册通道与分期。Phase 1 已实现 40 条常用命令；底稿盘点约 180–200 个现有命令入口与约 130 条键盘绑定。
+
 <a name="plan-launcher-redesign"></a>
 ### Launcher 现代化改版设计方案
 

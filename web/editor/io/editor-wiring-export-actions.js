@@ -348,12 +348,7 @@ document.getElementById('download-plain-text')?.addEventListener('click', async 
     desc: '纯文本字幕文件', types: { 'text/plain': ['.txt'] }
   });
 });
-document.getElementById('download-json')?.addEventListener('click', async () => {
-  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
-    desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
-  });
-});
+document.getElementById('download-json')?.addEventListener('click', () => MaweProjectSave.exportProjectToFile());
 MaweDom.saveProjectButton?.addEventListener('click', () => MaweProjectSave.saveCurrentProject());
 MaweDom.saveProjectAsButton?.addEventListener('click', () => MaweProjectSave.saveProjectAsToFile());
 // Project-level save shortcuts intentionally override the browser page-save

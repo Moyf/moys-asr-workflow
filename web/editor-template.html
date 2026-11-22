@@ -199,11 +199,25 @@ __WAVEFORM_CSS__
   <span class="info">当前 <b id="now">00:00.000</b></span>
   <span class="info">已选 <b id="sel-count">0</b></span>
   <span class="toolbar-utility-group" role="group" aria-label="编辑器工具">
+    <button type="button" id="command-palette-open" aria-haspopup="dialog" aria-controls="command-palette"><span>搜索命令</span> <kbd>Ctrl+K</kbd></button>
     <button type="button" id="project-settings-toggle" title="打开工程设置窗口" aria-expanded="false" aria-controls="project-settings-panel">工程设置</button>
 <button type="button" id="editor-settings-toggle" title="打开全局设置窗口" aria-expanded="false" aria-controls="editor-settings-panel">全局设置</button>
     <button type="button" id="help-toggle" title="查看鼠标操作与键盘快捷键" aria-expanded="false" aria-controls="help-panel">帮助</button>
   </span>
 </div>
+
+<dialog id="command-palette" aria-label="命令面板">
+  <div class="command-palette-body">
+    <input type="text" id="command-palette-query" role="combobox" aria-autocomplete="list" aria-controls="command-palette-results" aria-expanded="false" aria-label="搜索命令" placeholder="搜索命令…" autocomplete="off" spellcheck="false" autofocus>
+    <ul id="command-palette-results" role="listbox" aria-label="可用命令"></ul>
+    <p id="command-palette-empty" role="status" hidden>未找到匹配的命令</p>
+    <footer class="command-palette-keys">
+      <span><kbd>↑</kbd> <kbd>↓</kbd> <span>选择</span></span>
+      <span><kbd>Enter</kbd> <span>执行</span></span>
+      <span><kbd>Esc</kbd> <span>关闭</span></span>
+    </footer>
+  </div>
+</dialog>
 
 <!-- 可拖动的非模态静音空隙工具窗 -->
 <aside class="gap-remove-panel" id="gap-remove-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="gap-remove-panel-title">

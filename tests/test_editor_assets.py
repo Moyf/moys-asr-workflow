@@ -42,6 +42,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
 
+    def test_command_palette_entry_and_list_are_rendered(self) -> None:
+        page = edit.render_empty_editor_page()
+        self.assertIn('id="command-palette-open" aria-haspopup="dialog" aria-controls="command-palette"', page)
+        self.assertIn('<dialog id="command-palette"', page)
+        self.assertIn('id="command-palette-results" role="listbox"', page)
+
     # G06 后这些 composition 模块不再出现在清单里，
     # 但仍是 waveform.js 的显式 import 与源码契约。
     WAVEFORM_COMPOSITION_SOURCES: ClassVar[tuple[str, ...]] = (
@@ -224,6 +230,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-wiring-file-drop.js",
                 "editor/boot/editor-startup.js",
                 "editor/boot/editor-onboarding.js",
+                "editor/ui/editor-command-palette.js",
             },
         )
 
