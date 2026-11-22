@@ -526,6 +526,74 @@ test('support link opens the sponsor QR modal and closes on Escape or backdrop',
   await expect(page.locator('#supportModal')).toBeHidden();
 });
 
+for (const route of ['browser drop zone', 'native media field', 'native mixed drop', 'project field', 'batch drop zone']) {
+  test(`single MOSP subtitle routing: ${route}`, async ({ page }, testInfo) => {
+    await gotoLauncher(page);
+    await page.locator('#mediaPath').fill('D:\\Demo\\keep.wav');
+    const project = 'D:\\Demo\\incoming.MOSP';
+    const files = route === 'native mixed drop' ? [project, 'D:\\Demo\\other.wav'] : [project];
+    if (route === 'batch drop zone') await page.locator('#batchMode').click();
+    const target = route === 'project field' ? '#jsonPath'
+      : route.startsWith('native') ? '#mediaPath' : '#dropZone';
+    await page.locator(target).evaluate((node, { route, files }) => {
+      if (route.startsWith('native')) window.MAWLauncher.backend = 'real';
+      const transfer = new DataTransfer();
+      for (const path of files) {
+        const file = new File(['test'], path.split('\\').at(-1));
+        Object.defineProperty(file, 'path', { value: path });
+        transfer.items.add(file);
+      }
+      for (const type of ['dragenter', 'dragover', 'drop']) {
+        node.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      }
+      if (route.startsWith('native')) {
+        for (const path of files) window.MAWLauncher.onBackendEvent({
+          type: path.endsWith('.wav') ? 'dropMedia' : 'dropJson', path, fileCount: files.length, targetId: node.id,
+        });
+      }
+    }, { route, files });
+
+    if (['browser drop zone', 'native media field'].includes(route)) {
+      await expect(page.locator('#toolboxDrawer')).toBeVisible();
+      await expect(page.locator('#toolboxPostprocessPrimaryTab')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('#toolboxInputPath')).toHaveValue(project);
+      const notice = page.locator('#toolboxInputDropNotice');
+      await expect(notice).toBeVisible();
+      await expect(notice).toHaveText('已将 MOSP 工程载入字幕处理');
+      await expect(page.locator('#mediaPath')).toHaveValue('D:\\Demo\\keep.wav');
+      await expect(page.locator('#jsonPath')).toHaveValue('');
+      const spacing = await notice.evaluate(node => node.getBoundingClientRect().top -
+        node.closest('#toolboxInputDropZone').querySelector('.path-row').getBoundingClientRect().bottom);
+      expect(spacing).toBeGreaterThanOrEqual(8);
+      await page.locator('#toolboxDrawer').screenshot({ path: testInfo.outputPath('mosp-drop.png') });
+    } else {
+      await expect(page.locator('#toolboxDrawer')).toBeHidden();
+      if (route === 'project field') await expect(page.locator('#jsonPath')).toHaveValue(project);
+    }
+  });
+}
+
+test('delayed native MOSP events use their own drop target', async ({ page }) => {
+  await gotoLauncher(page);
+  await page.evaluate(() => {
+    window.MAWLauncher.backend = 'real';
+    const first = 'D:\\Demo\\editor.mosp';
+    const second = 'D:\\Demo\\subtitle.mosp';
+    for (const [id, path] of [['jsonPath', first], ['mediaPath', second]]) {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(['test'], path.split('\\').at(-1)));
+      const field = document.getElementById(id);
+      for (const type of ['dragover', 'drop']) {
+        field.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      }
+    }
+    window.MAWLauncher.onBackendEvent({ type: 'dropJson', path: first, targetId: 'jsonPath', fileCount: 1 });
+    window.MAWLauncher.onBackendEvent({ type: 'dropJson', path: second, targetId: 'mediaPath', fileCount: 1 });
+  });
+  await expect(page.locator('#jsonPath')).toHaveValue('D:\\Demo\\editor.mosp');
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\subtitle.mosp');
+});
+
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxOcrTab').click();

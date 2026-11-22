@@ -579,6 +579,7 @@
             <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
           <p id="toolboxInputPathError" class="field-error"></p>
+          <p id="toolboxInputDropNotice" class="hint hidden" role="status" data-i18n="toolbox_mosp_drop_loaded">已将 MOSP 工程载入字幕处理</p>
         </div>
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
           <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入，或查看报告）</p>
@@ -739,13 +740,13 @@
       <section id="toolboxAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxAlignmentTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_alignment_hint">适合初版 ASR 中有口吃、重录、重复或顺序混乱的口播；需要 MAW 工程和校对文稿，人工选择 take 后导出新工程。</p>
         <div class="field" style="margin-bottom:12px">
-          <label for="toolboxRecordingInputMode">输入方式 / Input</label>
+          <label for="toolboxRecordingInputMode" data-i18n="toolbox_recording_input_mode">输入方式</label>
           <select id="toolboxRecordingInputMode">
-            <option value="project">使用已有原始 ASR 工程 / Existing ASR project</option>
-            <option value="recording">从录音开始：先 ASR 再审查 / Transcribe then review</option>
+            <option value="project" data-i18n="toolbox_recording_input_project">使用已有原始 ASR 工程</option>
+            <option value="recording" data-i18n="toolbox_recording_input_audio">从录音开始</option>
           </select>
-          <p class="hint" style="margin-top:10px">从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。</p>
-          <button id="cancelRecordingPreparation" class="ghost hidden" type="button" style="margin-top:10px">停止 ASR 准备 / Stop ASR</button>
+          <p class="hint" style="margin-top:10px" data-i18n="toolbox_recording_input_hint">从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。</p>
+          <button id="cancelRecordingPreparation" class="ghost hidden" type="button" style="margin-top:10px" data-i18n="toolbox_recording_stop">停止转写</button>
         </div>
         <div id="toolboxAlignmentInputs" class="toolbox-alignment-inputs">
           <div id="toolboxAlignmentProjectDropZone" class="field toolbox-input">
@@ -774,7 +775,11 @@
           </div>
         </div>
         <div id="toolboxAlignmentGapSettings" class="adv-group toolbox-alignment-gap-settings">
-          <h3 data-i18n="toolbox_alignment_gap_heading">自动标记静音</h3>
+          <label class="check-field" for="toolboxAlignmentAutoSilence">
+            <input id="toolboxAlignmentAutoSilence" type="checkbox" aria-controls="toolboxAlignmentGapParameters">
+            <span data-i18n="toolbox_alignment_gap_heading">自动标记静音</span>
+          </label>
+          <div id="toolboxAlignmentGapParameters" class="hidden">
           <div class="toolbox-grid">
             <div class="field">
               <label for="toolboxAlignmentGapMinimum" data-i18n="toolbox_alignment_gap_minimum">最短静音（ms）</label>
@@ -798,6 +803,7 @@
             </div>
           </div>
           <p class="hint toolbox-alignment-gap-hint" data-i18n="toolbox_alignment_gap_hint">仅作用于口播对齐导出的自动空隙；与 MAWE 设置分开保存。</p>
+          </div>
         </div>
         <p class="toolbox-notice" data-i18n="toolbox_alignment_notice">不会覆盖输入工程；导出后会生成 source.aligned.mosp。</p>
       </section>
@@ -1220,7 +1226,7 @@
           <button id="runWaveform" class="primary" type="button" data-i18n="toolbox_run_waveform">生成波形并打开编辑器</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="alignment">
-          <button id="runToolboxAlignment" class="primary" type="button" data-i18n="toolbox_run_alignment">启动并打开口播对齐</button>
+          <button id="runToolboxAlignment" class="primary" type="button">打开口播对齐</button>
           <button id="stopToolboxAlignment" class="ghost hidden" type="button" data-i18n="toolbox_stop_alignment">停止服务</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="scriptAlignment">

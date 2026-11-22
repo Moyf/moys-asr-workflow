@@ -1039,6 +1039,10 @@ def apply_alignment_to_project(
             provenance,
         )
     if gap_remove_override is not None:
+        # Launcher detector settings are not a replacement for the edited gap list.
+        # Keep computed and manual provenance unless the caller supplied gap state.
+        if not {"gaps", "provenance"}.intersection(gap_remove_override):
+            gap_remove_override = {**gap_remove, **gap_remove_override}
         gap_remove = _normalize_gap_remove_override(
             gap_remove_override,
             gap_remove,

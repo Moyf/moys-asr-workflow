@@ -1972,7 +1972,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(page.count('id="toolboxUtilityMediaDropZone"'), 1)
         self.assertGreater(page.index('id="toolboxAlignmentInputs"'), page.index('class="toolbox-content"'))
         self.assertGreater(page.index('id="toolboxAlignmentGapSettings"'), page.index('id="toolboxAlignmentInputs"'))
-        self.assertIn('data-i18n="toolbox_alignment_gap_heading">自动标记静音</h3>', page)
+        self.assertIn('id="toolboxAlignmentAutoSilence" type="checkbox" aria-controls="toolboxAlignmentGapParameters">', page)
+        self.assertIn('id="toolboxAlignmentGapParameters" class="hidden"', page)
         self.assertIn('id="toolboxAlignmentGapMinimum" type="number" min="100" max="60000" step="50" value="400"', page)
         self.assertIn('id="toolboxAlignmentGapThreshold" type="number" min="-96" max="0" step="1" value="-28"', page)
         self.assertIn('id="toolboxAlignmentGapLeadIn" type="number" min="0" max="2000" step="10" value="120"', page)
@@ -2002,7 +2003,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";', postprocess_script)
         self.assertIn("function initializeAlignmentGapRemove()", postprocess_script)
         self.assertIn("saveAlignmentGapRemove(alignmentGapRemove);", postprocess_script)
-        self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
+        self.assertIn("const gapRemove = autoMarkSilence ? alignmentGapRemoveFromControls({ normalizeFields: true }) : null;", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
         self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
@@ -3252,6 +3253,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["gapRemove"]["threshold_db"], -28)
         self.assertEqual(result["gapRemove"]["lead_in_ms"], 120)
         self.assertEqual(wait_for_server.call_args, mock.call("http://127.0.0.1:9877/", timeout=SERVER_START_TIMEOUT))
+        self.assertTrue(self.api.stop_alignment_server()["stopped"])
+
+        with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+            with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                with mock.patch("maw.gui_web._wait_for_server", return_value=True):
+                    disabled = self.api.start_alignment_server({
+                        "projectPath": str(project), "scriptPath": str(script), "autoMarkSilence": False,
+                        "gapRemove": {"minimum_ms": 400},
+                    })
+        self.assertTrue(disabled["ok"], disabled)
+        self.assertIsNone(disabled["gapRemove"])
+        self.assertIn("--no-auto-mark-silence", popen.call_args.args[0])
+        self.assertNotIn("--gap-minimum-ms", popen.call_args.args[0])
         self.assertTrue(self.api.stop_alignment_server()["stopped"])
 
     def test_packaged_alignment_child_resets_pyinstaller_environment(self) -> None:

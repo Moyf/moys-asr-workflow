@@ -535,6 +535,7 @@ class LauncherApi:
         self.alignment_script_path: Path | None = None
         self.alignment_media_path: Path | None = None
         self.alignment_gap_remove: dict[str, int | float] | None = None
+        self.alignment_auto_mark_silence = True
         self._media_tool_lock = Lock()
         self.media_tool_process: subprocess.Popen[str] | None = None
         self.media_tool_cancel_event: Event | None = None
@@ -2294,7 +2295,8 @@ class LauncherApi:
         return {"ok": True, "url": launch_url}
 
     def start_alignment_server(self, payload: Mapping[str, object]) -> dict[str, object]:
-        gap_remove = normalize_gap_remove_settings(payload.get("gapRemove"))
+        auto_mark_silence = payload.get("autoMarkSilence") is not False
+        gap_remove = normalize_gap_remove_settings(payload.get("gapRemove")) if auto_mark_silence else None
         project_path = _optional_path(payload.get("projectPath"))
         if project_path is None:
             return _error_result(
@@ -2347,6 +2349,7 @@ class LauncherApi:
                 and self.alignment_script_path == script_path
                 and self.alignment_media_path == media_path
                 and self.alignment_gap_remove == gap_remove
+                and self.alignment_auto_mark_silence == auto_mark_silence
                 and self.alignment_server_port is not None
             )
             if same_inputs:
@@ -2377,6 +2380,7 @@ class LauncherApi:
             media_path,
             port,
             gap_remove=gap_remove,
+            auto_mark_silence=auto_mark_silence,
         )
         command.append("--no-open")
         self.alignment_log_file = tempfile.TemporaryFile(mode="w+b")
@@ -2395,6 +2399,7 @@ class LauncherApi:
             self.alignment_script_path = script_path
             self.alignment_media_path = media_path
             self.alignment_gap_remove = gap_remove
+            self.alignment_auto_mark_silence = auto_mark_silence
         except OSError as error:
             self._close_alignment_log()
             self.alignment_process = None
@@ -3996,10 +4001,11 @@ class LauncherApi:
             self._log_sink.append(event)
         self.pump.enqueue(event)
 
-    def handle_drop_paths(self, paths: Sequence[str]) -> None:
+    def handle_drop_paths(self, paths: Sequence[str], *, file_count: int | None = None, target_id: str = "") -> None:
         for path in paths:
             if path:
-                self._emit(_route_dropped_path(path))
+                self._emit({**_route_dropped_path(path), "targetId": target_id,
+                            "fileCount": file_count if file_count is not None else len(paths)})
                 self.pump.flush()
 
 
@@ -4116,7 +4122,10 @@ def bind_launcher_drop(window: object | None, api: LauncherApi) -> None:
         return
 
     def on_drop(event: Mapping[str, object]) -> None:
-        api.handle_drop_paths(_drop_paths_from_event(event))
+        files = _drop_files_from_event(event)
+        target = event.get("target")
+        target_id = str(target.get("id") or "") if isinstance(target, Mapping) else ""
+        api.handle_drop_paths(_drop_paths_from_event(event), file_count=len(files), target_id=target_id)
 
     window.dom.document.events.drop += DOMEventHandler(on_drop, True, True)
 
@@ -4869,15 +4878,19 @@ def _route_dropped_path(path: str) -> dict[str, object]:
     return {"type": "dropReject", "path": path}
 
 
-def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
+def _drop_files_from_event(event: Mapping[str, object]) -> Sequence[object]:
     data_transfer = event.get("dataTransfer")
     if not isinstance(data_transfer, Mapping):
-        return []
+        return ()
     files = data_transfer.get("files")
     if not isinstance(files, Sequence) or isinstance(files, (str, bytes)):
-        return []
+        return ()
+    return files
+
+
+def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     paths: list[str] = []
-    for file_item in files:
+    for file_item in _drop_files_from_event(event):
         if not isinstance(file_item, Mapping):
             continue
         value = file_item.get("pywebviewFullPath")

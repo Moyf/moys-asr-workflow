@@ -105,6 +105,28 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
   } finally {await server?.stop();cleanupTempDir(dir);}
 });
 
+test('Launcher recording input labels follow the UI language without resetting the mode', async ({ page }) => {
+  await page.goto(pathToFileURL(resolve('web/launcher/index.html')).href);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#toolboxFab').click();
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxAlignmentTab').click();
+  const mode = page.locator('#toolboxRecordingInputMode');
+  const label = page.locator('label[for="toolboxRecordingInputMode"]');
+  await expect(label).toHaveText('输入方式');
+  await expect(mode.locator('option')).toHaveText(['使用已有原始 ASR 工程', '从录音开始']);
+  await mode.selectOption('recording');
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(label).toHaveText('Input mode');
+  await expect(mode.locator('option')).toHaveText(['Use an existing raw ASR project', 'Start from a recording']);
+  await expect(mode).toHaveValue('recording');
+  await expect(page.locator('#runToolboxAlignment')).toHaveText('Transcribe and open speech alignment');
+  await expect(page.locator('#cancelRecordingPreparation')).toHaveText('Stop transcription');
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await expect(mode.locator('option:checked')).toHaveText('从录音开始');
+  await expect(mode).toHaveValue('recording');
+});
+
 for (const scenario of ['same inputs', 'new files', 'new service', 'model changed during polling']) {
 test(`Launcher recording mode: ${scenario}`,async({page})=>{
   const changeInputs=scenario==='new files';
@@ -112,7 +134,22 @@ test(`Launcher recording mode: ${scenario}`,async({page})=>{
   await page.waitForFunction(()=>window.MAWLauncher?.config?.postprocessProviders?.length>0);
   await expect(page.locator('#mediaPath')).toHaveValue('');
   await page.locator('#toolboxFab').click();await page.locator('#toolboxUtilitiesPrimaryTab').click();await page.locator('#toolboxAlignmentTab').click();
+  const run=page.locator('#runToolboxAlignment');
+  const silence=page.locator('#toolboxAlignmentAutoSilence');
+  const parameters=page.locator('#toolboxAlignmentGapParameters');
+  await expect(run).toHaveText('打开口播对齐');
   await page.locator('#toolboxRecordingInputMode').selectOption('recording');
+  await expect(run).toHaveText('转写并打开口播对齐');
+  await expect(silence).not.toBeChecked();
+  await expect(parameters).toBeHidden();
+  await silence.check();
+  await expect(parameters).toBeVisible();
+  const silenceGap=await parameters.evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
+  expect(silenceGap).toBeGreaterThanOrEqual(8);
+  if (scenario!=='same inputs') {
+    await silence.uncheck();
+    await expect(parameters).toBeHidden();
+  }
   await expect(page.locator('#toolboxAlignmentProjectDropZone')).toBeHidden();
   await page.locator('#toolboxAlignmentScriptPath').fill('/tmp/script.txt');
   await page.locator('#toolboxUtilityMediaPath').fill('/tmp/audio.wav');
@@ -170,6 +207,9 @@ test(`Launcher recording mode: ${scenario}`,async({page})=>{
   expect(await page.evaluate(()=>window.recordingPayload.transcription.providerId)).toBeTruthy();
   expect(await page.evaluate(()=>window.recordingPayload.transcription)).toMatchObject({mediaPath:expectedMedia,srtPath:''});
   expect(await page.evaluate(()=>window.recordingServerPayload)).toMatchObject({projectPath:expectedProject,scriptPath:expectedScript,mediaPath:expectedMedia});
+  expect(await page.evaluate(()=>window.recordingServerPayload)).toMatchObject({
+    autoMarkSilence:scenario==='same inputs', gapRemove:scenario==='same inputs'?{minimum_ms:400}:null,
+  });
   const gap=await page.locator('#toolboxAlignmentInputs').evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(8);
   writeFileSync(test.info().outputPath("spacing.json"),JSON.stringify({minimum:8,measuredVerticalGap:gap},null,2));

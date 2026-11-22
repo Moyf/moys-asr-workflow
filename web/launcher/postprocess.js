@@ -1316,8 +1316,10 @@
     const run = $("runToolboxAlignment");
     const stop = $("stopToolboxAlignment");
     if (!run || !stop) return;
-    run.textContent = t(alignmentRunning ? "toolbox_reopen_alignment" : "toolbox_run_alignment");
+    run.textContent = t($("toolboxRecordingInputMode").value === "recording"
+      ? "toolbox_transcribe_alignment" : "toolbox_run_alignment");
     run.disabled = busy;
+    $("toolboxAlignmentAutoSilence").disabled = busy;
     stop.classList.toggle("hidden", !alignmentRunning);
     stop.disabled = busy;
   }
@@ -1457,7 +1459,8 @@
     if (busy) return;
     const paths = validateAlignmentInputs();
     if (!paths) return;
-    const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });
+    const autoMarkSilence = $("toolboxAlignmentAutoSilence").checked;
+    const gapRemove = autoMarkSilence ? alignmentGapRemoveFromControls({ normalizeFields: true }) : null;
     setBusy(true, "toolbox_status_alignment_starting");
     try {
       let inputs = paths;
@@ -1518,7 +1521,7 @@
         $("toolboxAlignmentProjectPath").value = prepared.projectPath;
         window.MAWLauncher.setJsonPath(prepared.projectPath);
       }
-      const result = await bridge("start_alignment_server", { ...inputs, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
+      const result = await bridge("start_alignment_server", { ...inputs, autoMarkSilence, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
       if (!result.ok) {
         if (result.code?.startsWith("alignment_server_")) {
           alignmentRunning = false;
@@ -3085,6 +3088,10 @@
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("toolboxRecordingInputMode").addEventListener("change", () => {
     $("toolboxAlignmentProjectDropZone").classList.toggle("hidden", $("toolboxRecordingInputMode").value === "recording");
+    renderAlignmentAction();
+  });
+  $("toolboxAlignmentAutoSilence").addEventListener("change", () => {
+    $("toolboxAlignmentGapParameters").classList.toggle("hidden", !$("toolboxAlignmentAutoSilence").checked);
   });
   $("cancelRecordingPreparation").addEventListener("click", async () => {
     const result = await bridge("cancel_recording_review");
@@ -3214,6 +3221,7 @@
     }
   });
   $("toolboxInputPath").addEventListener("input", () => {
+    $("toolboxInputDropNotice").classList.add("hidden");
     clearChainSelection();
     inputManual = Boolean($("toolboxInputPath").value.trim());
     setFieldError("toolboxInputPath", "");
@@ -3418,6 +3426,17 @@
     if (event.stage === "done" && event.warnings?.length) setResult(`${t("toolbox_done")}\n${event.warnings.join("\n")}`, "success", { revealWarning: true });
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.openDroppedMosp = (path) => {
+    if (busy || mediaToolRunning) return false;
+    toolboxOpenMode = "manual";
+    selectToolboxSection("postprocess");
+    if ($("toolboxDrawer").classList.contains("hidden")) setOpen(true);
+    const input = $("toolboxInputPath");
+    input.value = path;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    $("toolboxInputDropNotice").classList.remove("hidden");
+    return true;
+  };
   window.MAWLauncher.openToolboxAiProcessing = () => {
     // DeepSeek 彩蛋提示里的「AI处理」入口：打开工具箱并切到 AI 处理标签页。
     toolboxOpenMode = "manual";

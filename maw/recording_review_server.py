@@ -36,7 +36,8 @@ class RecordingReviewJob:
             raise RecordingWorkflowError("审查输入版本已失效。")
         gap = request.get("gapRemove", self.state.gap_remove_override)
         review, selection, project = review_recording(self.state.project, self.state.alignment,
-                                                       request, gap_remove=gap)
+                                                        request, gap_remove=gap,
+                                                        auto_mark_silence=self.state.auto_mark_silence)
         digest = review["selectionDigest"]
         with self.lock:
             if self.current_digest and digest != self.current_digest:
