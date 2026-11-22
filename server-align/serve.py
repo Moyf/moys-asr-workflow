@@ -109,6 +109,12 @@ class AlignmentServer(ThreadingHTTPServer):
 class AlignmentRequestHandler(BaseHTTPRequestHandler):
     server: AlignmentServer
 
+    def end_headers(self) -> None:
+        instance = os.environ.get("MAW_SERVER_INSTANCE_ID", "")
+        if instance.isascii() and instance.isalnum():
+            self.send_header("X-MAW-Instance", instance)
+        super().end_headers()
+
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
         self.handle_request(include_body=True)
 

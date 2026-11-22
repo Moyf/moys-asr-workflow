@@ -113,8 +113,12 @@ export function serverHasExited(proc) {
 }
 
 // Bound the entire response (including its body), not just connection setup.
-export async function serverRequest(url, { json = false, timeout = 1000 } = {}) {
+export async function serverRequest(url, { json = false, timeout = 1000, instance } = {}) {
   const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(timeout) });
+  if (instance && response.headers.get('X-MAW-Instance') !== instance) {
+    await response.body?.cancel();
+    return { ok: false, body: null };
+  }
   if (json) return { ok: response.ok, body: await response.json() };
   await response.body?.cancel();
   return { ok: response.ok };

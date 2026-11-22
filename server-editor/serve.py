@@ -2042,6 +2042,7 @@ class EditorServer(ThreadingHTTPServer):
         with self.startup_lock:
             return {
                 "ok": True,
+                "service": "maw-editor",
                 "status": self.startup_status,
                 "stage": self.startup_stage,
                 "progress": self.startup_progress,
@@ -3017,6 +3018,12 @@ def _restore_runtime_inline_caches(previous: dict | None, incoming: dict) -> Non
 
 class EditorRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    def end_headers(self) -> None:
+        instance = os.environ.get("MAW_SERVER_INSTANCE_ID", "")
+        if instance.isascii() and instance.isalnum():
+            self.send_header("X-MAW-Instance", instance)
+        super().end_headers()
 
     def handle(self) -> None:
         """Ignore a browser closing a keep-alive connection while reading it.

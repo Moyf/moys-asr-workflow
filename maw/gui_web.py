@@ -214,6 +214,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "alignment_media_invalid": "The selected speech-alignment media file does not exist or is unsupported.",
     "alignment_server_no_response": "Speech-alignment server did not respond.",
     "alignment_server_start_failed": "Speech-alignment server failed to start.",
+    "server_port_occupied": "Another service is using this port. Choose another port.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
@@ -2137,10 +2138,13 @@ class LauncherApi:
             timeout=0.25,
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
-        ) and (not json_text or not owned_server_running):
-            if json_text:
+        ):
+            if not _is_editor_listener(url, port):
+                return _error_result("port", "server_port_occupied", url)
+            if not json_text:
+                return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
+            if not owned_server_running:
                 return _error_result("port", "server_media_busy", "")
-            return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
             command = build_serve_command(None, None, port)
@@ -2201,6 +2205,9 @@ class LauncherApi:
             result = _error_result("port", "server_no_response", url, context=context)
             result["diagnostics"] = diagnostics
             return result
+        if not _is_editor_listener(url, port):
+            self._stop_owned_server()
+            return _error_result("port", "server_port_occupied", url)
         self._close_server_log()
         return {"ok": True, "url": launch_url}
 
@@ -2356,9 +2363,10 @@ class LauncherApi:
         ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
+        status = _server_startup_status(url)
         return {
-            "ok": True, "running": pid is not None, "url": url, "pid": pid,
-            "startupStatus": _server_startup_status(url) if pid is not None else "",
+            "ok": True, "running": bool(status) or pid is not None, "url": url, "pid": pid,
+            "startupStatus": status,
         }
 
     def recent_projects(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -4746,10 +4754,23 @@ def _server_startup_status(url: str) -> str:
     try:
         with urlopen(f"{url.rstrip('/')}/api/startup-status", timeout=0.25) as response:
             payload = json.loads(response.read(4096))
-        status = payload.get("status") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict) or payload.get("ok") is not True:
+            return ""
+        # Older editors predate the service tag but already publish this startup schema.
+        if "service" in payload:
+            if payload["service"] != "maw-editor":
+                return ""
+        elif not (isinstance(payload.get("stage"), str)
+                  and type(payload.get("progress")) is int and isinstance(payload.get("error"), str)):
+            return ""
+        status = payload.get("status")
         return status if status in ("loading", "ready", "error") else ""
     except (OSError, URLError, ValueError):
         return ""
+
+
+def _is_editor_listener(url: str, port: int) -> bool:
+    return bool(_server_startup_status(url)) or _maw_server_process_id(port) is not None
 
 
 def _wait_for_server(

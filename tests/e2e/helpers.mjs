@@ -70,15 +70,22 @@ export function cleanupTempDir(dir) {
 // ---------------------------------------------------------------------------
 // Find a free TCP port on 127.0.0.1 (ephemeral, no hardcode).
 // ---------------------------------------------------------------------------
-export function findFreePort() {
+// Non-privileged ports blocked by browser Fetch: https://fetch.spec.whatwg.org/#port-blocking
+const blockedBrowserPorts = new Set([1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061,
+  6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080]);
+
+export function findFreePort(attempts = 32) {
   return new Promise((resolve, reject) => {
     const srv = createServer();
     srv.unref();
     srv.on('error', reject);
     srv.listen(0, '127.0.0.1', () => {
       const port = srv.address().port;
-      // Fetch and Chromium reject the X11 port even when TCP binding succeeds.
-      srv.close(() => port === 6000 ? findFreePort().then(resolve, reject) : resolve(port));
+      srv.close(() => {
+        if (port >= 1024 && !blockedBrowserPorts.has(port)) resolve(port);
+        else if (attempts > 1) findFreePort(attempts - 1).then(resolve, reject);
+        else reject(new Error('No browser-accessible ephemeral port available'));
+      });
     });
   });
 }
@@ -332,11 +339,12 @@ export function generateProjectJson(filePath) {
 // ---------------------------------------------------------------------------
 async function launchServerProcess(pythonArgs, port, env, { waitForStartup = false, readinessTimeoutMs = 30_000 } = {}) {
   if (!Number.isFinite(readinessTimeoutMs) || readinessTimeoutMs <= 0) throw new RangeError('readinessTimeoutMs must be finite and positive');
+  const instance = randomBytes(16).toString('hex');
   const proc = spawnServerProcess(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
-    env,
+    env: { ...env, MAW_SERVER_INSTANCE_ID: instance },
   });
 
   const url = `http://127.0.0.1:${port}/`;
@@ -367,8 +375,8 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
 
       const poll = async () => {
         try {
-          const res = await serverRequest(url);
-          if (res.ok) {
+          const res = await serverRequest(url, { instance });
+          if (res.ok && !serverHasExited(proc)) {
             finish(resolve);
             return;
           }
@@ -390,7 +398,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
         throw new Error(`Server exited during project startup: ${proc.exitCode ?? proc.signalCode}`);
       }
       try {
-        const response = await serverRequest(`${url}api/startup-status`, { json: true });
+        const response = await serverRequest(`${url}api/startup-status`, { json: true, instance });
         const result = response.body;
         if (response.ok && result.status === 'ready') break;
         if (response.ok && result.status === 'error') {

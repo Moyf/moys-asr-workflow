@@ -28,15 +28,19 @@ function fixture(server, harness, timeout = 15000) {
 
 test('startup failure returns a bounded final server diagnostic', () => {
   const result = fixture(
-    "process.stdout.write('x'.repeat(2000000)); process.stdout.write('\\nERROR: fixture startup failed\\n'); process.exitCode = 3;",
-    `try {
-      await startBlankServer(await findFreePort(), 'settings');
+    "setTimeout(() => { process.stdout.write('x'.repeat(2000000)); process.stdout.write('\\nERROR: fixture startup failed\\n'); process.exitCode = 3; }, 600);",
+    `const { createServer } = await import('node:http');
+    const unrelated = createServer((req, res) => res.end('other service'));
+    const port = await findFreePort();
+    await new Promise(resolve => unrelated.listen(port, '127.0.0.1', resolve));
+    try {
+      await startBlankServer(port, 'settings');
       throw new Error('Unexpected startup success');
     } catch (error) {
       assert.ok(error.message.length < 4300);
       assert.match(error.message, /Server exited with code 3/);
       assert.match(error.message, /ERROR: fixture startup failed/);
-    }`,
+    } finally { unrelated.closeAllConnections(); await new Promise(resolve => unrelated.close(resolve)); }`,
     // Allow the helper's 30s startup deadline and 5s cleanup to report their
     // diagnostics, with room for the Windows Job supervisor to start.
     process.platform === 'win32' ? 45000 : 15000,
@@ -50,7 +54,7 @@ test('ready server stop releases its process and descendant listening port', () 
     `const { spawn } = require('node:child_process');
      const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
      spawn(process.execPath, ['-e',
-       "require('node:http').createServer((req, res) => res.end('ready')).listen(" + port + ", '127.0.0.1')"
+       "require('node:http').createServer((req, res) => {res.setHeader('X-MAW-Instance', process.env.MAW_SERVER_INSTANCE_ID);res.end('ready')}).listen(" + port + ", '127.0.0.1')"
      ], { stdio: 'inherit' });`,
     `const port = await findFreePort();
      const server = await startBlankServer(port, 'settings');
