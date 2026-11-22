@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN" class="tool-action-tooltips" data-tool-page="script-match-review">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>MAW 文稿匹配对照</title>
+  <script src="../../../tools/shared/tool-page.js"></script>
+  <link rel="stylesheet" href="../../../tools/shared/tool-page.css">
+  <link rel="stylesheet" href="review.css">
+  <script defer src="review.js"></script>
+</head>
+<body>
+  <header class="topbar compare-topbar">
+    <div class="brand"><span class="logo" aria-hidden="true">◑</span><span data-copy="title">MAW 文稿匹配对照</span></div>
+    <div id="toolbar" class="toolbar" hidden>
+      <select id="filter" aria-label="筛选差异" aria-describedby="filter-hint"></select>
+      <input id="search" type="search" aria-label="搜索字幕或文稿" placeholder="搜索字幕或文稿…">
+      <button id="reset" class="btn" type="button" data-copy="reset">重置筛选</button>
+      <button id="export" class="btn primary" type="button" data-copy="export">导出调整后的 MOSP</button>
+      <p id="filter-hint" class="filter-hint hint" role="status"></p>
+    </div>
+    <button class="tool-theme" data-tool-theme type="button">◐</button>
+  </header>
+  <main>
+    <p id="empty" class="tool-empty">从 Launcher 的「文稿修正 → 打开完整对照」进入。</p>
+    <div id="workspace" hidden>
+      <div class="review-content">
+        <div class="review-summary">
+          <div class="summary-head">
+            <h1 id="heading" class="compare-heading"></h1>
+            <section class="cards" id="cards"></section>
+            <button id="warnings" class="card notes-card" type="button" aria-controls="match-notes" aria-expanded="false" hidden>
+              <span><strong id="notes-title" data-copy="warnings">匹配说明</strong><small id="notes-count"></small></span>
+              <span class="notes-icon" aria-hidden="true">ⓘ</span>
+            </button>
+          </div>
+          <p id="feedback" class="feedback" role="status" hidden></p>
+          <footer class="statusbar" id="state" aria-live="polite"></footer>
+        </div>
+        <section class="table-scroll" aria-labelledby="heading" tabindex="0">
+          <table><thead><tr><th scope="col" data-copy="range">时间 / 差异</th><th scope="col" data-copy="before">原始字幕</th><th scope="col" data-copy="script">文稿候选</th><th scope="col" data-copy="after">调整后的字幕</th></tr></thead><tbody id="rows"></tbody></table>
+          <div id="no-results" class="tool-empty" hidden><span data-copy="noResults">没有符合条件的差异。</span><br><button id="clear-empty" class="btn" type="button" data-copy="reset">重置筛选</button></div>
+        </section>
+      </div>
+      <div class="pager"><span id="page-count" aria-live="polite"></span><button id="prev" class="btn" type="button" data-copy="prev">上一页</button><button id="next" class="btn" type="button" data-copy="next">下一页</button></div>
+      <section class="wave-panel" aria-labelledby="timeline-heading">
+        <div class="wave-head">
+          <div class="wave-title"><strong id="timeline-heading" data-copy="timeline">时间分布</strong><div class="wave-hints"><span class="hint wave-default" data-copy="timelineHint">点击色块定位；留白为字幕间隙</span><span id="seek-feedback" class="hint wave-error" role="status"></span></div></div>
+          <div class="wave-tools">
+            <div id="zoom-presets" class="zoom-group" role="group" aria-label="常用时间窗口">
+              <button class="btn" type="button" data-span="10000" data-copy="span10" aria-pressed="false">10 秒窗口</button>
+              <button class="btn" type="button" data-span="30000" data-copy="span30" aria-pressed="false">30 秒窗口</button>
+              <button class="btn" type="button" data-span="60000" data-copy="span60" aria-pressed="false">1 分钟窗口</button>
+            </div>
+            <div class="zoom-group"><button id="zoom-out" class="btn" type="button" aria-label="缩小">−</button><button id="zoom-in" class="btn" type="button" aria-label="放大">＋</button><button id="fit" class="btn" type="button" data-copy="fit">重置缩放</button></div>
+          </div>
+        </div>
+        <div class="wave-grid"><div class="track-names"><span data-copy="before">原始字幕</span><span data-copy="after">调整后的字幕</span></div><div id="wave-scroll" class="wave-scroll" role="region" aria-labelledby="timeline-heading" tabindex="0"><div id="wave-track"><canvas id="timeline" aria-hidden="true"></canvas></div></div></div>
+        <form id="seek-form" class="seek"><label for="seek" data-copy="seek">定位时间（秒）</label><input id="seek" type="number" min="0" step="any" value="0"><button class="btn" type="submit" data-copy="locate">定位</button></form>
+      </section>
+    </div>
+  </main>
+  <section id="match-notes" class="notes-flyout" role="region" aria-labelledby="notes-title" tabindex="0" hidden><ul id="warning-list"></ul></section>
+</body>
+</html>
