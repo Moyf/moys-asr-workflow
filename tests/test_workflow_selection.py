@@ -46,7 +46,7 @@ class ConcreteWorkflowTests(unittest.TestCase):
 
                 with mock.patch.object(workflow, "execute_browser", side_effect=discover):
                     args = ("browser-regressions", ["node", "playwright", "--shard=1/2"],
-                            Path(directory), [], "e2e", reports)
+                            Path(directory), reports)
                     if error:
                         with self.assertRaisesRegex(ValueError, error):
                             workflow.prepare_browser(*args)
@@ -65,9 +65,78 @@ class ConcreteWorkflowTests(unittest.TestCase):
 
             with mock.patch.object(workflow, "execute", side_effect=discover) as execute:
                 workflow.prepare_browser("browser-regressions", ["node", "playwright", "--shard=1/1"],
-                                         Path(directory), [], "e2e", reports)
+                                         Path(directory), reports)
             self.assertEqual(execute.call_count, 1)
             self.assertEqual(len(reports), 1)
+
+    def test_saved_browser_groups_cannot_drop_or_repeat_files(self):
+        files = ["tests/e2e/cue-list-count-layout.spec.mjs", "tests/e2e/multi-subtitle.spec.mjs",
+                 "tests/e2e/settings-structure.spec.mjs"]
+        plan = {**selected(), "e2e_specs": files}
+        with tempfile.TemporaryDirectory() as directory:
+            saved = Path(directory) / "selection.json"
+            for groups in ([files[:1], files[2:]], [files[:2], files[1:]], [files, []]):
+                with self.subTest(groups=groups):
+                    saved.write_text(json.dumps({**plan, "browser_file_groups": groups}), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "browser file groups"):
+                        workflow.read_selection(saved)
+            groups = [files[::2], files[1::2]]
+            saved.write_text(json.dumps({**plan, "browser_file_groups": groups}), encoding="utf-8")
+            evidence = Path(directory) / "evidence"
+            with mock.patch.object(workflow, "run_steps", return_value={"exit_code": 0}) as run, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(workflow.main(["--stage", "merge", "--selection-plan", str(saved),
+                                                "--report-dir", str(evidence),
+                                                "--layer", "browser", "--shard", "2/2"]), 0)
+            command = run.call_args.args[0][0][1]
+            self.assertEqual([arg for arg in command if arg.startswith("tests/e2e/")], groups[1])
+            self.assertIn("--shard=1/1", command)
+            self.assertEqual(run.call_args.kwargs["metadata"]["browser_file_group"], {"current": 2, "total": 2})
+            replay = workflow.read_selection(evidence / "plan.json")
+            self.assertEqual(replay["e2e_specs"], files)
+            self.assertEqual(replay["browser_file_groups"], groups)
+            with mock.patch.object(workflow, "run_steps", return_value={"exit_code": 0}) as run, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(workflow.main(["--stage", "merge", "--selection-plan", str(evidence / "plan.json"),
+                                                "--report-dir", str(Path(directory) / "whole-layer"),
+                                                "--layer", "browser"]), 0)
+            command = run.call_args.args[0][0][1]
+            self.assertEqual([arg for arg in command if arg.startswith("tests/e2e/")], files)
+
+    def test_replaying_a_plan_without_browser_files_reports_not_selected(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(directory)
+            saved = root / "selection.json"
+            evidence = root / "evidence"
+            plan = {**selected(), "packs": ["common"], "e2e_specs": [], "browser_file_groups": []}
+            saved.write_text(json.dumps(plan), encoding="utf-8")
+            self.assertEqual(workflow.main(["--stage", "merge", "--selection-plan", str(saved),
+                                            "--report-dir", str(evidence), "--layer", "browser", "--shard", "1/1"]), 0)
+            summary = json.loads((evidence / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["status"], "not-selected")
+
+    def test_file_group_discovery_requires_each_assigned_file(self):
+        files = ["alpha.spec.mjs", "beta.spec.mjs"]
+        expected_specs = [f"tests/e2e/{file}" for file in files]
+        with tempfile.TemporaryDirectory() as directory:
+            for found, error in ((files, None), (files[:1], "missing"),
+                                 ([*files, "extra.spec.mjs"], "unexpected")):
+                with self.subTest(found=found):
+                    def discover(name, command, timeout, report):
+                        listed = {"errors": [], "suites": [{"title": file, "specs": [
+                            {"file": file, "title": "case", "tests": [{"projectName": "chromium"}]}
+                        ]} for file in found]}
+                        report.write_text(json.dumps(listed), encoding="utf-8")
+                        return {"exit_code": 0, "log": "discovery.log"}
+
+                    with mock.patch.object(workflow, "execute_browser", side_effect=discover) as execute:
+                        args = ("browser-regressions", ["node", "playwright", "--shard=1/1"], Path(directory), [])
+                        if error:
+                            with self.assertRaisesRegex(ValueError, error):
+                                workflow.prepare_browser(*args, expected_specs=expected_specs)
+                        else:
+                            workflow.prepare_browser(*args, expected_specs=expected_specs)
+                        self.assertEqual(execute.call_count, 1)
 
     def test_concrete_targets_are_executed_once_and_layers_do_not_rebuild(self):
         plan = selected()

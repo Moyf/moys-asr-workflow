@@ -39,6 +39,12 @@ def auxiliary_plan(blocking: dict, *, impact=None, validated=False) -> dict:
 
 
 def write_plan(plan: dict, output: Path) -> None:
+    specs = plan['e2e_specs']
+    # A job already uses two Playwright workers. Keep a pair in one job.
+    groups = [specs] if specs else []
+    if len(specs) > 2:
+        groups = [specs[::2], specs[1::2]]
+    plan = {**plan, 'browser_file_groups': groups}
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, ensure_ascii=True, indent=2) + '\n', encoding='utf-8', newline='\n')
     values = auxiliary_flags(plan)
@@ -46,6 +52,8 @@ def write_plan(plan: dict, output: Path) -> None:
         with Path(output).open('a', encoding='utf-8', newline='\n') as stream:
             for name, value in values.items():
                 stream.write(f'aux_{name}={str(value).lower()}\n')
+            browser_shards = '[1,2]' if len(groups) == 2 else '[1]'
+            stream.write(f'aux_browser_shards={browser_shards}\n')
             stream.write('aux_error=false\n')
     message = 'Targeted auxiliary scope: ' + ', '.join(
         f'{layer}={len(plan[field])}' for layer, field in
