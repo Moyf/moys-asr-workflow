@@ -18,16 +18,22 @@ from scripts import ci_impact
 from tests.compact_assertions import CompactContainerAssertions
 
 
-def browser_journey_report(status='passed'):
+RECOVERY_TITLES = (
+    'auto-saved text and cue times survive restarting the editor server',
+    'disconnected save downloads the latest edit without changing the original file',
+)
+
+
+def browser_journey_report(status='passed', *, titles=RECOVERY_TITLES):
     """Minimal valid Playwright JSON pair member for the scoped recovery spec."""
     result_status = 'passed' if status == 'passed' else status
-    spec = {'file': 'tests/e2e/editor-save-recovery.spec.mjs',
-            'title': 'autosave recovers edited cues after a server restart',
-            'tests': [{'projectName': 'chromium', 'expectedStatus': 'passed', 'status': 'expected',
-                       'results': [{'status': result_status, 'retry': 0}]}]}
+    specs = [{'file': 'editor-save-recovery.spec.mjs', 'title': title,
+              'tests': [{'projectName': 'chromium', 'expectedStatus': 'passed', 'status': 'expected',
+                         'results': [{'status': result_status, 'retry': 0}]}]}
+             for title in titles]
     return {'errors': [], 'config': {'shard': {'current': 1, 'total': 1}},
-            'suites': [{'title': 'editor-save-recovery.spec.mjs', 'line': 0, 'specs': [spec]}],
-            'stats': {'expected': 1 if status == 'passed' else 0, 'skipped': 0,
+            'suites': [{'title': 'editor-save-recovery.spec.mjs', 'line': 0, 'specs': specs}],
+            'stats': {'expected': len(specs) if status == 'passed' else 0, 'skipped': 0,
                       'unexpected': 0, 'flaky': 0}}
 
 
@@ -275,6 +281,23 @@ with mock.patch.object(ci_acceptance.subprocess, 'run', side_effect=command):
                     acceptance.write(editor / 'browser-results.json', browser_journey_report('skipped'))
                 with self.assertRaises(ValueError):
                     acceptance.gate(save_plan, needs_for(save_plan), receipts, 'b' * 40, roots=roots)
+        autosave_only = RECOVERY_TITLES[:1]
+        substituted = (*autosave_only, 'unrelated test')
+        for listed, executed, error in (
+            (RECOVERY_TITLES, autosave_only, 'missing or unexpected browser cases relative to --list'),
+            (autosave_only, autosave_only, 'missing required browser cases'),
+            (substituted, substituted, 'missing required browser cases'),
+        ):
+            with tempfile.TemporaryDirectory() as temporary, self.subTest(listed=listed, executed=executed):
+                receipts, roots = build(save_plan, Path(temporary))
+                editor = next(receipt for receipt in receipts if receipt['check'] == 'editor')
+                for name, titles in (('browser-list.json', listed), ('browser-results.json', executed)):
+                    path = roots['editor'] / name
+                    acceptance.write(path, browser_journey_report(titles=titles))
+                    editor['reports'][name].update(sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                   selected=len(titles), run=len(titles))
+                with self.assertRaisesRegex(ValueError, error):
+                    acceptance.gate(save_plan, needs_for(save_plan), receipts, 'b' * 40, roots=roots)
         other_paths = ['web/editor/io/editor-export-srt.js']
         other = ci_impact.plan('stable', 'non-save editor leaf', base='a' * 40, head='b' * 40,
                                trusted=True, checks=ci_impact.checks_for(other_paths), paths=other_paths)
@@ -316,7 +339,18 @@ with mock.patch.object(ci_acceptance.subprocess, 'run', side_effect=command):
         self.assertEqual([journey[0] for journey in journeys], [True, False])
         self.assertEqual([journey[1] for journey in journeys], ['600', '900'])
         self.assertTrue(all(journey[2] for journey in journeys))
-        self.assertEqual(receipt['reports']['browser-list.json']['selected'], 1)
+        self.assertEqual(receipt['reports']['browser-list.json']['selected'], 2)
+
+    def test_scoped_recovery_runner_rejects_missing_journey(self):
+        from scripts import ci_acceptance as acceptance
+
+        def command(argv, *, env, **kwargs):
+            acceptance.write(Path(env['PLAYWRIGHT_JSON_OUTPUT_FILE']),
+                             browser_journey_report(titles=RECOVERY_TITLES[:1]))
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(acceptance.subprocess, 'run', command):
+            with self.assertRaisesRegex(ValueError, 'missing required browser cases'):
+                acceptance.run_recovery_e2e(Path(temporary))
 
     def test_test_inventory_keeps_unreviewed_and_stale_visible_without_blocking(self):
         from scripts.ci_acceptance import inventory

@@ -227,6 +227,14 @@ def commands_for(check, plan):
 
 
 RECOVERY_SPEC = 'tests/e2e/editor-save-recovery.spec.mjs'
+# Playwright reports spec paths relative to its tests/e2e testDir.
+RECOVERY_CASES = frozenset(
+    (Path(RECOVERY_SPEC).relative_to('tests/e2e').as_posix(), (title,), 'chromium')
+    for title in (
+        'auto-saved text and cue times survive restarting the editor server',
+        'disconnected save downloads the latest edit without changing the original file',
+    )
+)
 RECOVERY_PLAYWRIGHT = ['node', 'node_modules/@playwright/test/cli.js', 'test',
                        '--config=tests/config/playwright.config.mjs', '--project=chromium',
                        '--workers=1', '--retries=0', '--forbid-only', '--shard=1/1',
@@ -250,9 +258,11 @@ def run_recovery_e2e(root: Path) -> None:
 
     journey([*command, '--list'], report=listing, timeout=600)
     journey(command, report=results, timeout=900)
-    write(root / 'browser-validated.json',
-          browser_results.validate(json.loads(listing.read_text(encoding='utf-8')),
-                                   json.loads(results.read_text(encoding='utf-8')), 1, 1))
+    validated = browser_results.validate(
+        json.loads(listing.read_text(encoding='utf-8')), json.loads(results.read_text(encoding='utf-8')),
+        1, 1, required_cases=RECOVERY_CASES,
+    )
+    write(root / 'browser-validated.json', validated)
 
 
 def report_evidence(plan, check, root):
@@ -294,7 +304,8 @@ def report_evidence(plan, check, root):
             count = validate_node_report(node_names(check), ET.fromstring(raw))
             summary.update(selected=count, run=count)
         elif name == 'browser-list.json':
-            validated = browser_results.validate(json.loads(raw), json.loads(results_path.read_bytes()), 1, 1)
+            validated = browser_results.validate(json.loads(raw), json.loads(results_path.read_bytes()),
+                                                 1, 1, required_cases=RECOVERY_CASES)
             summary.update(selected=validated['selected'], run=validated['selected'])
             result['browser-results.json'] = {
                 'sha256': hashlib.sha256(results_path.read_bytes()).hexdigest(),
