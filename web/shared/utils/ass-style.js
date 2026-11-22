@@ -236,6 +236,8 @@ export function createUtilsModule(dependencies) {
     // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
     // fromScale < 1 为「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
     pop: Object.freeze({ enabled: false, fromScale: 0.7, inMs: 120, accel: 1 }),
+    // Preserve imported 1.x settings until 2.0 supports karaoke rendering.
+    karaoke: Object.freeze({ enabled: false }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -359,6 +361,7 @@ export function createUtilsModule(dependencies) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
     const pop = source.pop && typeof source.pop === 'object' ? source.pop : {};
+    const karaoke = source.karaoke && typeof source.karaoke === 'object' ? source.karaoke : {};
     const fade = source.fade && typeof source.fade === 'object' ? source.fade : {};
     const move = source.move && typeof source.move === 'object' ? source.move : {};
     const transform = source.t && typeof source.t === 'object' ? source.t : {};
@@ -376,6 +379,7 @@ export function createUtilsModule(dependencies) {
         inMs: normalizeAssLibraryNumber(pop.inMs, 120, 0, 60000),
         accel: normalizeAssLibraryNumber(pop.accel, 1, 0.01, 100, false),
       },
+      karaoke: { enabled: normalizeAssLibraryBoolean(karaoke.enabled) },
       fade: (() => {
         const t1 = normalizeAssLibraryNumber(fade.t1, 0, 0, 60000);
         const t2 = Math.max(t1, normalizeAssLibraryNumber(fade.t2, 250, 0, 60000));
@@ -464,7 +468,9 @@ export function createUtilsModule(dependencies) {
         styleMap.set(id, normalized);
       });
     }
-    const styles = [...styleMap.values()].slice(0, 64);
+    // A legacy full library can contain 65 styles after the extension built-in
+    // is added. Keep it intact, matching the Python library normalization.
+    const styles = [...styleMap.values()].slice(0, 65);
     // v1 used 1.0 as the built-in emphasis default. Migrate only that old
     // built-in value so custom styles and explicit v2 values remain intact.
     if (previousVersion < 2) {
