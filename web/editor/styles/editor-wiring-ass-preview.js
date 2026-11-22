@@ -293,7 +293,11 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
   const rawTracks = [policy.isTrackEnabled(main, 'preview') ? main.segments : [],
     policy.isTrackEnabled(extension, 'preview') ? extension.segments : [],
     policy.isTrackEnabled(overlay, 'preview') ? overlaySegments : []];
-  const revision = assStackInputRevision([rawTracks[0].length ? MaweExportSrt.cleanupMainSegments() : [], rawTracks[1], rawTracks[2]], rawTracks);
+  const revision = assStackInputRevision([
+    rawTracks[0].length ? MaweExportSrt.cleanupSegments(rawTracks[0]) : [],
+    rawTracks[1].length && MaweDom.extensionOverlayToggle?.checked ? MaweExportSrt.cleanupSegments(rawTracks[1]) : [],
+    rawTracks[2],
+  ], rawTracks);
   const key = JSON.stringify([revision, getAssStyleLibrary(), MaweBoot.DATA.styles, main?.style, extension?.style, overlay?.style, MaweSettings.EDITOR_SETTINGS,
     MaweAppearance.getSubtitleAppearance(), metrics.resolution, MaweColors.COLOR_PALETTE,
     MaweSpeakerLabels.getSpeakerLabelSettings(), MaweBoot.DATA.speakers, MaweBoot.DATA.annotation_mode, MaweDom.overlayToggle.checked,
