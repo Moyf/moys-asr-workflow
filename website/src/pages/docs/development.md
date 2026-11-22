@@ -24,7 +24,7 @@ source: "docs/engineering/DEVELOPMENT.md"
 | `edit.py`、`web/` | 本地编辑器页面渲染、共享前端源码与 1.x 的历史便携入口。 |
 | `maw/waveform.py`、`maw/quapeaks.py`、`maw/mopeaks.py`、`maw/media_cache.py` | 波形提取、容器与缓存编排。 |
 | 编辑器打开旧工程、保存与另存 | 先读 [v2 保存约束](../json-schema/#当前目标v2-统一字幕轨道)。`web/editor/io/editor-project-save.js` 处理另存，成功写入前保持待迁移状态。`editor-project-load.js` 标记浏览器导入的旧工程，`editor-server-save.js` 管保存状态。`server-editor/serve.py` 标记从 Server 打开的旧工程，并保护 Server 写入目标。前端先选 `tests/test_v2_migration_save.mjs`，Server 先选 `tests/test_v2_migration_save.py`，交互加 `tests/e2e/v2-migration-save.spec.mjs`。 |
-| 烧录字幕与视频导出 | 编辑器 `web/editor/io/editor-wiring-burn-video.js` 走 `server-editor/serve.py` 的烧录作业，先分清原视频和移除空隙后的时间轴，查 `tests/test_burn_video_export.py`。Launcher 工具箱由 `web/launcher/postprocess.js` 经 `maw/gui_web.py` 调用 `maw/postprocess_ffmpeg.py`，查 `tests/test_gui_web.py` 或 `tests/test_postprocess.py`。两端共用部分编码和字幕转换逻辑。 |
+| 烧录字幕与视频导出 | 编辑器 `web/editor/io/editor-wiring-burn-video.js` 走 `server-editor/serve.py` 的烧录作业，先分清原视频和移除空隙后的时间轴，查 `tests/test_burn_video_export.py`。Launcher 工具箱由 `web/launcher/postprocess.js` 经 `maw/gui_web.py` 调用 `maw/postprocess_ffmpeg.py`，查 `tests/test_gui_web.py` 或 `tests/test_postprocess.py`。公开 CLI 的 `--burn` 从 `maw/cli.py` 调用同一烧录实现，参数与调用见 `tests/test_cli.py`。Editor 与 Launcher 共用部分编码和字幕转换逻辑。 |
 | `server-editor/serve.py` | 仅 loopback 的媒体 Range、受限保存、最近工程与本机设置。 |
 | `desktop/` | Electron MOSE 桌面壳；Tauri 实验已移除，决策见 [desktop README](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md)。 |
 | `website/` | Astro 官网与源文档的静态副本。 |
@@ -41,6 +41,8 @@ source: "docs/engineering/DEVELOPMENT.md"
 - `render_editor_page()`、模板、bundle、文件导入、下载式保存降级、Server 保存、备份恢复和媒体导出供本地应用共用，继续保留。HTML 对比报告、人工核验页也不属于此次退役范围。
 
 切换实现不代表发布验收完成。发布 2.0 前仍需在最终集成版本验证：本地应用打开旧工程及媒体、新建/保存/取消/失败保护、备份恢复、字幕与媒体导出，以及三个平台安装包和 Pages 实际产物。历史 HTML 不承诺兼容新版工程；历史发行附件与用户副本保持原样。
+
+1.x 仅在发布检查或维护者明确要求时运行 `uv run --no-sync python edit.py --blank` 并核对 diff，禁止手改生成物。1.x 前端 PR 注明内联副本待发布前重生成。仅 `file://` 的行为已停止维护，按实际覆盖记录相关测试。
 
 ## 数据与持久化
 
@@ -70,7 +72,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 `web/editor-scripts.txt` 定义源码执行顺序，`web/editor-modules.json` 登记 ESM 模块。其余接线保留 classic 共享作用域，目录位置不决定执行顺序。实际模块和源码数量读 `pnpm run build:editor` 输出。Server 和 Electron 使用装配后的 `web/editor/boot/editor-bundle.js`，1.x 便携入口也使用该产物。发布包自带 bundle，运行无需 Node。
 
-编辑器或 Launcher 的 JS、清单或构建配置变化后，先重建对应 bundle，再运行 `pnpm run check:editor` 或 `pnpm run check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。开发命令见[开发入口与 bundle](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
+Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的 `pnpm run build:editor` 或 `pnpm run build:launcher`，再运行同端的 `check:editor` 或 `check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。Launcher 按 `web/launcher-scripts.txt` 装配，`batch.js` 与 `postprocess.js` 经 `window.MAWLauncher` 访问主脚本。开发命令见[开发入口与 bundle](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
 字幕域同域函数通过静态 import 接通；现阶段具名函数仍在调用时转发既有浏览器单例门面，不代表这些模块已能独立实例化。初始化只在清单原位执行一次，import 求值不注册。可变状态、常量与 DOM 句柄继续由既有门面按值访问，不应包装成可调用的函数导出。
 

@@ -22,9 +22,14 @@ source: "docs/INDEX.md"
 [打开正文](../ass-styles/)
 
 <a name="user-cli"></a>
-### MAW 命令行与自动化
+### 用户 CLI 指南
 
-[打开正文](../cli/)
+[MAW 命令行与自动化](../cli/)
+
+<a name="user-mcp"></a>
+### 用户 MCP 指南（规划中）
+
+[查看接入状态](../cli/#maw-mcp)
 
 <a name="user-editor"></a>
 ### MAWE 编辑器指南

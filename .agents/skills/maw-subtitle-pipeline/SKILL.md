@@ -11,8 +11,8 @@ description: 在 MAW 执行长视频切分、Qwen 转写和硬字幕烧录，支
 
 1. **依赖**：仓库根目录已 `uv sync`；`ffmpeg` / `ffprobe` 在 PATH（需带 libass，gyan.dev full/essentials 与 BtbN 构建均满足；`ffmpeg -version` 的 configuration 里查 `--enable-libass`）。
 2. **ASR Key**：先检查 `<仓库根>/.env` 是否存在（只查存在性，绝不读取或打印内容）。不存在时向用户询问 `DASHSCOPE_API_KEY`（阿里云百炼），把 `DASHSCOPE_API_KEY=<key>` 写入 `.env`（UTF-8、LF，`.env` 已在 .gitignore）。其他供应商见 `docs/user/PROVIDERS.md`。改用环境变量传入也可以，但不要把 key 放进命令行参数。
-3. **GPU → 烧录编码器**：`powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name)"` 判断厂商，烧录步骤按映射显式传编码器：
-   - AMD → `amf`；NVIDIA → `nvenc`；Intel 核显 → `qsv`；查不到 → `auto`（auto 按 nvenc → qsv → amf → cpu 顺序尝试、失败自动回退，AMD 机器显式指定可省去失败的尝试）。
+3. **GPU → 烧录编码器**：`powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name)"` 可在 Windows 查看显卡厂商，供需要指定编码器时参考：
+   - 默认用 `auto`，它在当前 FFmpeg 列出的硬件编码器中依次尝试，硬件编码失败后回退 CPU。指定硬件时，AMD 用 `amf`，NVIDIA 用 `nvenc`，Intel 核显用 `qsv`。
 
 ## 任务目录与防覆盖
 
@@ -72,9 +72,9 @@ uv run --no-sync python maw_gui.py -i "<part>.mkv" -o "<part>.srt" "<part>.mosp"
 uv run --no-sync python maw_gui.py --burn "<part>.srt" -i "<part>.mkv" --encoder <encoder>
 ```
 
-- `--burn` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程：SRT 与工程按样式库样式转换，PlayRes 取视频实际分辨率，字体名归一化，缺字中止，与工具箱「烧录字幕」同一套转换与编码逻辑。
+- `--burn` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程：SRT 使用样式库的烧录样式，工程读取工程内的轨道和单句样式，ASS/SSA 使用内嵌样式。字体名归一化，缺字中止。工程的轨道范围与导出限制见[用户 CLI 指南](../../../docs/user/CLI.md#烧录字幕)。
 - 输出自动写入媒体同目录 `<原名>.压字幕.mp4`，重名自动避让，不覆盖任何文件；默认 CRF 21、音频 AAC 192k，保留全部音轨。
-- `<encoder>` 传首次配置里确定的值（如 `amf`）；`--encoder` 仅限 `auto|cpu|nvenc|amf|qsv`，显式值不存在于当前 FFmpeg 时报错，此时回退 `auto`。
+- `<encoder>` 传首次配置里确定的值（如 `amf`）；`--encoder` 仅限 `auto|cpu|nvenc|amf|qsv`，当前 FFmpeg 缺少显式指定的编码器时会报错，可改用 `auto` 重新运行。
 - 成功判据：退出码 0 +「视频已烧录字幕:」行 + 输出文件真实存在；失败时 stderr 说明原因（含字幕文件缺失、格式不支持）。
 - 超时建议：媒体时长 ÷ 0.5（4K CPU 编码更慢，必要时换硬件编码器或告知用户耗时）。
 

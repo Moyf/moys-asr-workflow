@@ -129,7 +129,7 @@ MAW 用爱发电 ❤️
 3. **先生成一小段字幕**：选择服务商、配置 API Key，导入一两分钟的短素材，确认转写成功后再处理完整录音。
 4. **校对、保存、导出**：转写完成后点击「打开编辑器」即可进行编辑；完成编辑后可以导出 srt 字幕使用，或直接烧录视频。
 
-> 源码安装、命令行起步和媒体迁移见 [从零完成一次字幕工程](../documentation-index/#user-workflow)。
+> 安装包自动化见[用户 CLI 指南](../documentation-index/#user-cli)，MCP 接入进展见[用户 MCP 指南（规划中）](../documentation-index/#user-mcp)。源码安装和媒体迁移见[从零完成一次字幕工程](../documentation-index/#user-workflow)。
 
 ## 星星历史
 <a href="https://www.star-history.com/?repos=Moyf%2Fmoys-asr-workflow&type=date&legend=top-left">

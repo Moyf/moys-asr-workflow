@@ -123,8 +123,12 @@ CLI 不为 OpenRouter 模型自动补前缀，必须填服务商实际模型 ID�
 - `--burn SUBTITLE` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程，与工具箱「烧录字幕」共用转换和编码流程。SRT 使用样式库的烧录样式，ASS/SSA 使用文件内嵌样式。
 - 直接烧录工程时，默认使用主轨和已启用导出的叠加轨，读取工程中的轨道样式和单句样式。需要副轨、完整动画或逐句定位时，先从编辑器导出 ASS，再将该文件传给 `--burn`。
 - 输出写入媒体同目录 `<原名>.压字幕.mp4`，重名自动避让；默认 CRF 21、预设 medium、音频 192k，保留全部音轨，需要自定义编码参数时改用工具箱。
-- `--encoder` 可选 `auto`（默认，硬件编码失败自动回退 CPU）、`cpu`、`nvenc`、`amf`、`qsv`；已知显卡厂商时建议显式指定，避免 auto 盲试不存在的硬件编码器。
+- `--encoder` 可选 `auto`（默认，硬件编码失败自动回退 CPU）、`cpu`、`nvenc`、`amf`、`qsv`；自动模式只尝试当前 FFmpeg 列出的硬件编码器。需要指定编码器时按实际硬件选择。
 - `--burn` 不能与转写、Server 或文稿对齐参数混用；字幕缺字或编码失败时退出码非零，stderr 说明原因。
+
+### 让 Agent 批量处理本地视频
+
+在已配置的 MAW 源码环境，可按[批量出片技能](https://github.com/Moyf/moys-asr-workflow/blob/2.0dev/.agents/skills/maw-subtitle-pipeline/SKILL.md)切分、转写、烧录或核验成片，也可只做其中一步。转写第一条音轨和烧录可用公开 CLI。指定其他转写音轨时，技能使用下节的 Qwen 源码模块；烧录保留全部音轨。
 
 ## 高级模块命令与公开 CLI 的区别
 
@@ -195,3 +199,8 @@ if (-not (Test-Path -LiteralPath $srtPath) -or -not (Test-Path -LiteralPath $mos
 | 没有可安全停止的 Server | `1`，确认端口与状态。 |
 
 启动或配置排错见 [FAQ](../faq/)；编辑和保存见 [EDITOR_GUIDE](../editor-guide/)。
+
+<a name="maw-mcp"></a>
+## 用户 MCP 指南（规划中）
+
+当前 2.0dev 尚未提供可从 MAW 安装包连接的 MCP 服务。需要自动转写、烧录或启动本地编辑器时，可使用本页的[公开 CLI](#入口与输出)。面向用户 Agent 的实时编辑属于后续开发方向。本节将在相应功能交付后列出支持版本、连接方式、可用操作与可运行示例。

@@ -61,6 +61,8 @@ Windows 超时使用本次 PID 的 `taskkill /T`，POSIX 使用新进程组；�
 
 e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解码 UTF-8；退出与启动超时错误含短尾部。进程管理继续使用 `server-process.mjs`：Windows Job supervisor 的 stdin 必须保持管道，以便 owner 消失时回收后代；不得以本通用运行器的 stdin=ignore 配置覆盖它。浏览器 trace、截图与 HTML 报告依然按需读取，不应整份加入对话。
 
+unittest 使用 `scripts/run_tests.py`。页面或内联脚本的成员断言使用 `CompactContainerAssertions`，避免失败时打印完整页面。
+
 ## 长命令与后台服务
 
 - 长命令分开执行，按本次集合设置超时。Windows 后台服务在独立终端启动，或用 `Start-Process -WindowStyle Hidden` 并将输出重定向到文件。探活后继续操作，用完从原入口停止。避免 `-NoNewWindow` 或 bash 的 `&` 让长驻进程继承命令管道。

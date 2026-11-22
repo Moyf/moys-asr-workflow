@@ -15,9 +15,14 @@
 [打开正文](user/ASS_STYLES.md)
 
 <a name="user-cli"></a>
-### MAW 命令行与自动化
+### 用户 CLI 指南
 
-[打开正文](user/CLI.md)
+[MAW 命令行与自动化](user/CLI.md)
+
+<a name="user-mcp"></a>
+### 用户 MCP 指南（规划中）
+
+[查看接入状态](user/CLI.md#maw-mcp)
 
 <a name="user-editor"></a>
 ### MAWE 编辑器指南
