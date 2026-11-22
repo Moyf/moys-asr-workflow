@@ -393,6 +393,12 @@ export function initMaweServerSave() {
     if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject) return;
     autoSaveFlushTimer = window.setTimeout(() => {
       autoSaveFlushTimer = null;
+      // Avoid recomputing the entire v2 project fingerprint on every retry
+      // while the same unfinished waveform gesture is still held.
+      if (MaweCoreState.waveformEditor?.drag) {
+        scheduleAutoSaveFlush();
+        return;
+      }
       if (hasUnsavedProjectChanges() && !projectSaveInFlight) {
         void MaweProjectSave.saveCurrentProject({ silent: true });
       }

@@ -906,6 +906,20 @@
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     'ASS 样式库': 'ASS style library',
+    '样式数量已达到上限（65 个）': 'The style limit has been reached (65)',
+    '导出样式库': 'Export style library', '导入样式库': 'Import style library',
+    '恢复导入前副本': 'Restore pre-import backup', '重新加载': 'Reload', '更多': 'More',
+    '导入 ASS 样式库': 'Import ASS style library', '确认导入': 'Import',
+    '样式库不包含字体文件、工程或特殊文本解析开关。请在目标电脑检查字体和实际效果。': 'The library does not include font files, projects, or special-text parsing settings. Check fonts and rendered results on the destination computer.',
+    '合并到当前库，保留当前默认设置': 'Merge into the current library and keep its defaults',
+    '恢复整个库，替换当前样式、方案和默认设置': 'Restore the entire library, replacing current styles, profiles, and defaults',
+    '样式库已导入；已保留导入前副本': 'Style library imported; a pre-import backup was kept',
+    '样式库已被其他窗口修改，请先重新加载': 'The library was changed in another window; reload it first',
+    '样式库已被其他窗口修改，请先导出当前副本，再重新加载': 'The library was changed in another window; export the current copy, then reload',
+    '尚未读取本机样式库，请重新加载': 'The local library has not been loaded; reload it first',
+    '本地有更新改动，等待再次同步': 'New local changes are waiting to sync',
+    '浏览器存储不可用或样式库损坏，样式尚未保存': 'Browser storage is unavailable or the library is damaged; styles have not been saved',
+    '重新加载失败，保留当前样式': 'Reload failed; keeping the current styles',
     '样式库正在加载…': 'Loading the style library…', 'SRT 渲染样式': 'SRT render style', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
     '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
@@ -1001,7 +1015,7 @@
     '已与用户级配置同步': 'Synced with user-level config', '仅保存在当前浏览器（便携模式）': 'Saved only in this browser (portable mode)',
     '使用本地副本，尚未同步': 'Using a local copy; not synced yet', '本地已保存，服务器同步失败：未知错误': 'Saved locally; server sync failed: unknown error',
     '本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）': 'Saved locally; server sync failed: HTTP 403 (the page is stale; refresh it and try again)',
-    '当前使用本地副本；服务器恢复后可再次点击保存同步。': 'Using a local copy; click Save again after the server is available.',
+    '尚未与服务器同步；请检查当前样式并重试保存。': 'Not synced with the server yet; check the current styles and try saving again.',
     '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
     '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
     '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',
@@ -2098,7 +2112,7 @@
     match = /^定位到第\s*(\d+)\s*条字幕$/.exec(text);
     if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
-    if (match) return `Save failed: ${match[1]}`;
+    if (match) return `Save failed: ${translateText(match[1], EN)}`;
     match = /^本地已保存，服务器同步失败：(.+)$/.exec(text);
     if (match) return `Saved locally; server sync failed: ${translateText(match[1], EN)}`;
     match = /^打开工程失败：(.+)$/.exec(text);
