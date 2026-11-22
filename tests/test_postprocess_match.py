@@ -9,7 +9,7 @@ from pathlib import Path
 
 from maw.postprocess import OutputMode
 from maw.postprocess_io import read_project
-from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, MatchCoverageError, ScriptMatchRequest, prepare_script_text, processed_script_text, run_script_match
+from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, prepare_script_text, processed_script_text, run_script_match
 from scripts.mosp_match_text import clean_markdown_inline_symbols
 from tests.track_helpers import main_segments
 
@@ -151,6 +151,82 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             )
 
         self.assertEqual(list(self.root.glob("clip.matched*")), [])
+
+    def test_low_coverage_newline_paths_refuse_to_write(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": 0, "end": 1000, "text": "AB"},
+            {"start": 5000, "end": 6000, "text": "CD"},
+        ]}), encoding="utf-8")
+        for manuscript in ("WX\nYZ", "W\nX\nYZ"):
+            with self.subTest(manuscript=manuscript):
+                self.script_path.write_text(manuscript, encoding="utf-8")
+                before = set(self.root.iterdir())
+                with self.assertRaises(MatchCoverageError):
+                    run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.BOTH))
+                self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_newline_coverage_reports_real_match_rate(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": 0, "end": 1000, "text": "AB"},
+            {"start": 5000, "end": 6000, "text": "CD"},
+        ]}), encoding="utf-8")
+        self.script_path.write_text("AB\nCX", encoding="utf-8")
+        result = run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
+        self.assertTrue(any("文稿匹配度：75%" in warning for warning in result.warnings))
+        self.assertEqual([s["text"] for s in main_segments(read_project(result.project_path))], ["AB", "CX"])
+
+    def test_resegment_preserves_silence_at_source_boundary(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": 0, "end": 1000, "text": "AB"},
+            {"start": 5000, "end": 6000, "text": "CD"},
+        ]}), encoding="utf-8")
+        self.script_path.write_text("AB\nC\nD", encoding="utf-8")
+        result = run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual([(s["start"], s["end"], s["text"]) for s in segments],
+                         [(0, 1000, "AB"), (5000, 5500, "C"), (5500, 6000, "D")])
+
+    def test_text_mode_keeps_unanchored_cue_and_corrects_anchored_text(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"id": "first", "start": 0, "end": 1000, "text": "欢迎各位来到现场"},
+            {"id": "middle", "start": 1000, "end": 2000, "text": "猫在沙发睡觉"},
+            {"id": "last", "start": 2000, "end": 3000, "text": "接下来公布最终结菓"},
+        ]}, ensure_ascii=False), encoding="utf-8")
+        self.script_path.write_text("欢迎各位来到现场天气预报警报接下来公布最终结果", encoding="utf-8")
+        original = read_project(self.project_path)
+        result = run_script_match(ScriptMatchRequest(
+            self.project_path, None, self.script_path, OutputMode.JSON, match_mode="text",
+        ))
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual(segments[1], main_segments(original)[1])
+        self.assertEqual(segments[2]["text"], "接下来公布最终结果")
+        self.assertEqual((segments[2]["id"], segments[2]["start"], segments[2]["end"]), ("last", 2000, 3000))
+        self.assertTrue(any("1 个字幕段未找到对应文稿" in warning for warning in result.warnings))
+
+    def test_v2_binding_and_group_are_preserved_or_resegmentation_refused(self) -> None:
+        legacy = {"segments": [
+            {"id": "a", "start": 0, "end": 1000, "text": "AB", "color": {"name": "yellow", "value": "#c4a019"}},
+            {"id": "b", "start": 5000, "end": 6000, "text": "CD", "color_ref": {"headIdx": 0, "name": "yellow"}},
+        ], "multi_subtitle": {"schema": "moy.asr.multi_subtitle.v1", "enabled": True,
+            "tracks": [{"id": "sub", "segments": [{"id": "translated", "start": 0, "end": 1000, "text": "translation"}]}],
+            "bindings": [{"id": "binding", "track_id": "sub", "main_segment_ids": ["a"],
+                          "extension_segment_ids": ["translated"], "start_offset_ms": 0, "end_offset_ms": 0}]}}
+        self.project_path.write_text(json.dumps(legacy), encoding="utf-8")
+        original = read_project(self.project_path)
+        self.project_path.write_text(json.dumps(original), encoding="utf-8")
+        self.script_path.write_text("AB\nCX", encoding="utf-8")
+        result = run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
+        reopened = read_project(result.project_path)
+        self.assertEqual(reopened["bindings"], original["bindings"])
+        self.assertEqual(reopened["subtitle_groups"], original["subtitle_groups"])
+        self.assertEqual([s["id"] for s in main_segments(reopened)], ["a", "b"])
+        self.assertEqual([s.get("color_group_id") for s in main_segments(reopened)],
+                         [s.get("color_group_id") for s in main_segments(original)])
+        self.assertEqual(reopened["tracks"][1], original["tracks"][1])
+
+        self.script_path.write_text("AB\nC\nD", encoding="utf-8")
+        with self.assertRaises(SubtitleMatchError):
+            run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
 
     def test_srt_input_creates_a_project_and_srt(self) -> None:
         srt_path = self.root / "clip.srt"
@@ -307,9 +383,9 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             json.dumps(
                 {
                     "segments": [
-                        {"start": 0, "end": 1000, "text": "旧一"},
-                        {"start": 1000, "end": 2000, "text": "旧二"},
-                        {"start": 2000, "end": 3000, "text": "旧三"},
+                        {"start": 0, "end": 1000, "text": "但是也有地平论者在发力"},
+                        {"start": 1000, "end": 2000, "text": "你有没有自主意识"},
+                        {"start": 2000, "end": 3000, "text": "AI 会不会统治地球"},
                     ]
                 },
                 ensure_ascii=False,

@@ -8,6 +8,7 @@ import copy
 import difflib
 import json
 import unicodedata
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
@@ -497,6 +498,8 @@ def _match_project(
     blocks = tuple(block for block in matcher.get_matching_blocks() if block.size)
     matched_chars = sum(block.size for block in blocks)
     coverage = matched_chars / max(1, min(len(source_text), len(script.value)))
+    if coverage < MIN_MATCH_COVERAGE:
+        raise MatchCoverageError(coverage)
 
     has_manuscript_boundaries = len(punctuation_segments) > 1 and (
         "\n" in script_text or "\r" in script_text or any(symbol in script_text for symbol in split_punctuation)
@@ -559,10 +562,7 @@ def _match_project(
                     reconciled_items_value.extend(reconciled_items)
                     target_segment["items"] = reconciled_items_value
                 changed += 1
-        return normalize_project(result), (f"文稿匹配度：100%；已按文稿换行更新 {changed} 个字幕段。",)
-
-    if coverage < MIN_MATCH_COVERAGE:
-        raise MatchCoverageError(coverage)
+        return normalize_project(result), (f"文稿匹配度：{coverage:.0%}；已按文稿换行更新 {changed} 个字幕段。",)
 
     boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
     result = copy.deepcopy(project)
@@ -571,8 +571,14 @@ def _match_project(
         raise ValueError("project segments must be an array")
     unmatched = 0
     changed = 0
+    block_ends = [block.a + block.size for block in blocks] if match_mode == "text" else []
     for span in spans:
         check_match_cancelled(is_cancelled)
+        if match_mode == "text":
+            block_index = bisect_right(block_ends, span.normalized_start)
+            if block_index == len(blocks) or blocks[block_index].a >= span.normalized_end:
+                unmatched += 1
+                continue
         script_start = _map_boundary(span.normalized_start, boundaries)
         script_end = _map_boundary(span.normalized_end, boundaries)
         script_start, script_end = sorted((script_start, script_end))
@@ -674,10 +680,12 @@ def _resegment_project(
                 min(source_start, matched_source_end),
             )
 
-    def source_time(position: int) -> int:
+    def source_time(position: int, *, start_boundary: bool) -> int:
         for span in spans:
             check_match_cancelled(is_cancelled)
-            if position <= span.normalized_end:
+            # A shared text offset can represent two different times when
+            # consecutive source cues have silence between them.
+            if position < span.normalized_end or (not start_boundary and position == span.normalized_end):
                 segment = original_segments[span.segment_index]
                 ratio = (position - span.normalized_start) / max(1, span.normalized_end - span.normalized_start)
                 start = _integer_field(segment, "start")
@@ -689,8 +697,8 @@ def _resegment_project(
     rebuilt: list[tuple[int, int, JsonDict]] = []
     for index, text in enumerate(manuscript_segments):
         check_match_cancelled(is_cancelled)
-        start = source_time(source_starts[index])
-        end = source_time(source_ends[index + 1])
+        start = source_time(source_starts[index], start_boundary=True)
+        end = source_time(source_ends[index + 1], start_boundary=False)
         if end <= start:
             return None
         source_index = min(
@@ -751,8 +759,8 @@ def _resegment_project(
             piece = copy.deepcopy(source_segment)
             is_full_segment = local_start == 0 and local_end == len(normalized_source.value)
             if not is_full_segment:
-                start = source_time(overlap_start)
-                end = source_time(overlap_end)
+                start = source_time(overlap_start, start_boundary=True)
+                end = source_time(overlap_end, start_boundary=False)
                 if end <= start:
                     continue
                 piece["start"] = start
