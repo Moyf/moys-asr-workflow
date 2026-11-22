@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { projectModel } from '../helpers/runtime-project.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 import { getMainTrack, cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 let directory, server, projectPath;
@@ -26,6 +27,7 @@ test.afterAll(async () => {
 });
 
 test('real editor saves/reopens trustworthy local scopes and keeps gap-only review history reversible', async ({ page }) => {
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
   await page.goto(server.url);
@@ -48,6 +50,7 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
     MaweSettings.EDITOR_SETTINGS.assMode = false;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
+  await waitForAssFonts(page);
   const initial = await page.evaluate(async () => ({
     source: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0], ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(),
     ass: MaweExportSrt.buildAss(), dynamic: MaweExportSrt.buildDynamicCaptionExportData(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, true),

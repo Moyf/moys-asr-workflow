@@ -189,6 +189,18 @@ export function initMaweMultiImport() {
     } else {
       multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
     }
+    if (pending.segments.sourceTrack?.style) {
+      delete track.style;
+      if (pending.segments.sourceStyle) {
+        if (oldTrack?.style) track.style = window.AsrEditorUtils.cloneJsonValue(oldTrack.style);
+        window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, pending.segments.sourceStyle);
+        const newId = track.style.style_id;
+        const snapshot = MaweBoot.DATA.styles.find(style => style.id === newId);
+        Object.assign(snapshot, { ...pending.segments.sourceStyle, ...snapshot });
+        track.style = { ...pending.segments.sourceTrack.style, style_id: newId };
+      }
+    }
+    window.MaweAssManagerWiring?.initializeProjectStyles?.();
     extensionSegments.forEach(segment => { delete segment.color_group_id; delete segment.sticker_group_id; });
     for (const kind of ['color', 'sticker']) {
       for (const group of pending.segments.subtitle_groups?.[kind] || []) {
@@ -281,6 +293,7 @@ export function initMaweMultiImport() {
 
   async function openProjectFile(file, options = {}) {
     const generation = MaweState.beginProjectLoad();
+    let applied = false;
     const current = () => generation === MaweState.projectLoadGeneration;
     const suppressMediaPrompt = options.suppressMediaPrompt === true;
     const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取工程 ${file.name}…`, 5);
@@ -295,6 +308,7 @@ export function initMaweMultiImport() {
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
   requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(rawProject.speakers) });
+      applied = true;
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
@@ -327,6 +341,7 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       return false;
     } finally {
       MaweState.finishProjectLoad(generation);
+      if (current() && applied) window.MaweProjectFontCheck?.schedule();
       if (current()) MaweServerSave.configureServerSaveControls();
       finishLoading();
     }

@@ -53,6 +53,21 @@ class PythonTrackOutputTests(CompactContainerAssertions, unittest.TestCase):
         p['tracks'][1]['export'] = {'enabled': False}
         self.assertNotIn('Hello', render_srt(p, mode='main_and_extension'))
 
+    def test_selected_secondary_keeps_track_and_cue_styles_in_ass(self):
+        p = project()
+        p['styles'] = [{'id': 'secondary-style', 'name': 'Secondary', 'fontName': 'Arial', 'fontSize': 88}]
+        p['tracks'][1]['style'] = {'style_id': 'secondary-style'}
+        p['tracks'][1]['segments'][0]['assStyle'] = {'fontName': 'Arial', 'fontSize': 112}
+        ass = render_project_ass(p, title='t', play_resolution=(1920, 1080), mode='main_and_extension')
+        self.assertIn('Style: Secondary,Arial,88,', ass)
+        self.assertIn('Style: Cue_0,Arial,112,', ass)
+        self.assertRegex(ass, r'Dialogue: 1,[^\n]*,Cue_0,,[^\n]*Hello')
+        p['tracks'][1]['export'] = {'enabled': False}
+        ass = render_project_ass(p, title='t', play_resolution=(1920, 1080), mode='main_and_extension')
+        self.assertNotIn('Hello', ass)
+        self.assertNotIn('Style: Secondary,', ass)
+        self.assertNotIn('Style: Cue_0,', ass)
+
     def test_unknown_overlay_is_not_rendered_as_plain(self):
         p = project()
         p['tracks'][2]['variant'] = 'future'

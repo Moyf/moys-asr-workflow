@@ -140,6 +140,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
   }
   MaweGapRemoveUi.updateGapRemoveUi();
+  window.MaweAssManagerWiring?.initializeProjectStyles?.();
+  window.MaweAssManagerWiring?.syncAssStyleManager?.();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
   window.MaweAssManagerWiring?.updateAssStyleLibraryStatus();
@@ -161,6 +163,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweServerSave.projectCheckpointed = true;
   MaweServerSave.configureServerSaveControls();
   MaweServerSave.scheduleAutoSave();
+  if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
 }
 
 
@@ -351,6 +354,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
     const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
     const overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    window.MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.segments = overlayLayer.map(segment => ({ ...segment }));
     overlay.enabled = overlayLayer.length > 0;
     overlay._dirty = true;

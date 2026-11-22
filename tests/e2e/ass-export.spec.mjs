@@ -10,6 +10,7 @@ import {
   generateWaveformPayload,
   makeTempDir,
   startServer, closeSettingsPanels, openSettingsPage, setProjectTrackEnabled } from './helpers.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 
 const DURATION_MS = 4_000;
 
@@ -198,6 +199,7 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-ass')).toHaveText('ASS（带样式）');
   await page.locator('#download-full-ass').click();
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const save = await page.evaluate(() => window.__exportSaves[0]);
@@ -268,7 +270,9 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
 
 test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS previews', async ({ page }, testInfo) => {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
+  await waitForAssFonts(page);
   const result = await page.evaluate(async () => {
     await loadAssStyleLibrary({ force: true });
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
@@ -354,15 +358,11 @@ test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS
 
 test('inherits ASS track colours through inline formatting and keeps explicit emphasis colours', async ({ page }) => {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
+  await waitForAssFonts(page);
   await page.evaluate(async () => {
     await loadAssStyleLibrary({ force: true });
-    ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
-    const main = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
-    const extension = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
-    Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
-    // Avoid the legacy built-in default colour that the style migration upgrades.
-    Object.assign(extension, { primaryColor: '#f1d24c', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
     const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
     {
@@ -377,6 +377,14 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
       MaweBoot.DATA.bilingual = fixture.bilingual;
       MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
+    MaweAssManagerWiring.initializeProjectStyles();
+    updateAssStyleManagerLibrary(library => {
+      const main = library.styles.find(entry => entry.id === 'ass');
+      const extension = library.styles.find(entry => entry.id === 'ass-extension');
+      const stroke = { borderStyle: 1, outline: 4, emphasisStyle: 'stroke', emphasisColor: '#ff0000' };
+      Object.assign(main, stroke, { primaryColor: '#22cc55' });
+      Object.assign(extension, stroke, { primaryColor: '#f1d24c' });
+    }, { persist: false });
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both',
       assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true });
     MaweDom.overlayToggle.checked = true;
@@ -405,8 +413,10 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
     expect(payload[part].emphasisStrokes).toEqual(['#ff0000']);
   }
   await page.evaluate(() => {
-    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
-    Object.assign(style, { primaryColor: '#55aaff', emphasisStyle: 'text' });
+    updateAssStyleManagerLibrary(library => {
+      const style = library.styles.find(entry => entry.id === 'ass-extension');
+      Object.assign(style, { primaryColor: '#55aaff', emphasisStyle: 'text' });
+    }, { persist: false });
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
   });
   const extensionAfter = await page.evaluate(() => {
@@ -430,6 +440,7 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
 test('ASS emphasis controls drive preview and inline export color', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
   await openSettingsPage(page, 'subtitle-style');
   await openSettingsPage(page, 'subtitle-style');
@@ -448,6 +459,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('none');
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  await waitForAssFonts(page);
   const literal = await page.evaluate(() => {
     const text = '%%弱化%% //斜体//';
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text }];
@@ -559,6 +571,7 @@ test('ASS underscore markers underline only the marked preview and export text',
 
   await page.locator('#subtitle-export-btn').click();
   await page.locator('#download-full-ass').click();
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const ass = await page.evaluate(() => window.__exportSaves[0].content);
   expect(ass).toMatch(/\{\\u1\}下划线\{\\u0\}/);
@@ -892,7 +905,9 @@ test('explains a stale page when the server rejects style sync with 403', async 
 });
 
 test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
+  await waitForAssFonts(page);
   // Synthetic WOFF: one rectangular glyph for Mg and the cue characters, with
   // a half-em advance. Both faces share the same bytes; no host fonts are needed.
   const woff = [
@@ -927,11 +942,13 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
   expect(fonts).toEqual([{ statuses: ['loaded'], width: 400 }, { statuses: ['loaded'], width: 600 }]);
   const ratios = await page.evaluate(({ baseFamily, adjustedFamily }) => {
     MaweBoot.DATA.media_metadata = { video_width: 640, video_height: 360 };
-    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '字幕**强调**';
+    const track = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    track.segments[0].text = '字幕**强调**';
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const style = library.styles.find((entry) => entry.id === 'ass');
     style.fontName = baseFamily; style.fontSize = 72; style.emphasisScale = 1.1;
     ASS_STYLE_LIBRARY = library;
+    AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, style);
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
     const baseSize = () => {
@@ -941,7 +958,7 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
       return { base: base.cssSize, em: emphasized ? emphasized.cssSize : 0 };
     };
     const before = baseSize();
-    style.fontName = adjustedFamily;
+    AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, track, { fontName: adjustedFamily });
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
     const after = baseSize();
     const ratio = after.em / after.base;
@@ -963,6 +980,7 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
 
 test('uses outline colour for sample boxes and preserves zero scaling', async ({ page }) => {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
   await openSettingsPage(page, 'subtitle-style');
   await openSettingsPage(page, 'subtitle-style');
@@ -1001,9 +1019,10 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
   await sample.locator('..').screenshot({ path: test.info().outputPath('ass-style-sample.png') });
   await page.evaluate(() => {
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '字幕**强调**' }];
-    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
-    style.emphasisStyle = 'stroke';
-    style.emphasisColor = '#00ff00';
+    updateAssStyleManagerLibrary(library => {
+      const style = library.styles.find(entry => entry.id === 'ass');
+      Object.assign(style, { emphasisStyle: 'stroke', emphasisColor: '#00ff00' });
+    }, { persist: false });
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
@@ -1037,9 +1056,9 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
   await expect(emphasizedPayload()).resolves.toEqual([{ box: '#00ff00', stroke: '' }]);
   expect((await canvasStats()).greenOverRed).toBeGreaterThan(20);
   await page.evaluate(() => {
-    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
-    style.borderStyle = 1;
-    syncAssStyleForm(style);
+    updateAssStyleManagerLibrary(library => {
+      library.styles.find(entry => entry.id === 'ass').borderStyle = 1;
+    }, { persist: false });
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
   });
   // BorderStyle 1：描边层吃同一描边色与不透明度；强调描边与主描边同形
@@ -1049,9 +1068,9 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
   expect(borderOne.greenStroke).toBeGreaterThan(20);
   await expect(emphasizedPayload()).resolves.toEqual([{ box: '', stroke: '#00ff00' }]);
   await page.evaluate(() => {
-    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
-    style.scaleX = 0;
-    syncAssStyleForm(style);
+    updateAssStyleManagerLibrary(library => {
+      library.styles.find(entry => entry.id === 'ass').scaleX = 0;
+    }, { persist: false });
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
   });
   // 零缩放：主字幕与样式窗样例画布都不再占据任何像素。
@@ -1061,6 +1080,7 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
 
 test('offsets the opaque shadow and keeps the border box shadow unclipped', async ({ page }) => {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
   const colourBBoxes = () => page.evaluate(() => {
     const canvas = document.querySelector('.ass-preview-canvas');
@@ -1089,12 +1109,14 @@ test('offsets the opaque shadow and keeps the border box shadow unclipped', asyn
 
   // BorderStyle 1：影子剪影相对文字整体偏移 (shad, shad)，右下露边。
   await page.evaluate(() => {
-    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '影子' }];
+    const track = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    track.segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '影子' }];
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const style = library.styles.find((entry) => entry.id === 'ass');
     Object.assign(style, { fontName: 'Arial', fontSize: 60, outline: 0, shadow: 20,
       primaryColor: '#ffffff', backColor: '#0000ff', backOpacity: 100 });
     ASS_STYLE_LIBRARY = library;
+    AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, style);
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
@@ -1107,8 +1129,8 @@ test('offsets the opaque shadow and keeps the border box shadow unclipped', asyn
   // BorderStyle 3：底框影子偏移 pad 已计入位图外延，右/下不被截断
   //（蓝影 maxY 明显超出底框红边 maxY）。
   await page.evaluate(() => {
-    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
-    Object.assign(style, { borderStyle: 3, outline: 6, outlineColor: '#ff0000', shadow: 30 });
+    AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA),
+      { borderStyle: 3, outline: 6, outlineColor: '#ff0000', shadow: 30 });
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   const boxed = await colourBBoxes();

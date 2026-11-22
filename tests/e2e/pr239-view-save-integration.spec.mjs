@@ -38,6 +38,11 @@ async function openView(page) {
 }
 
 test('view-only edits return to the saved default and persist with v2 groups and FPS through real Server reopen', async ({ page }) => {
+  await expect.poll(() => page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').status)).toBe('linked');
+  expect(await dirty(page)).toBe(false);
+  await page.evaluate(() => MaweAssManagerWiring.applyProjectStyleSelection('main', 'default'));
+  expect(await dirty(page)).toBe(true);
+  await page.evaluate(() => MaweHistory.performUndo());
   expect(await dirty(page)).toBe(false);
   await openView(page);
   await selectView(page, 'single');

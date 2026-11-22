@@ -1,5 +1,5 @@
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
-import { runFcp7PngExport } from './editor-fcp7-png.js';
+import { runFcp7PngExport, waitForFcp7Fonts } from './editor-fcp7-png.js';
 export function initMaweDynamicExports() {
 'use strict';
 
@@ -107,6 +107,8 @@ export function initMaweDynamicExports() {
         }
         const stop = document.getElementById('fcp7-export-stop');
         const controller = new AbortController();
+        const projectGeneration = MaweState.projectLoadGeneration;
+        const bindingEpoch = MaweProjectLoad.projectBindingEpoch;
         const controls = [...MaweDom.fcp7ExportModal.querySelectorAll('input, select')]
           .map(element => ({ element, disabled: element.disabled }));
         controls.forEach(({ element }) => { element.disabled = true; });
@@ -121,6 +123,11 @@ export function initMaweDynamicExports() {
         MaweDom.fcp7ExportCancel.disabled = true;
         MaweDom.fcp7ExportModal.dataset.busy = 'true';
         try {
+          await waitForFcp7Fonts(window.MaweAssFontAliases, controller.signal);
+          if (controller.signal.aborted || projectGeneration !== MaweState.projectLoadGeneration
+              || bindingEpoch !== MaweProjectLoad.projectBindingEpoch) {
+            throw new DOMException('图片字幕导出已停止', 'AbortError');
+          }
           const assOptions = { alignFirstStart: false, pngEventNames: true };
           const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);

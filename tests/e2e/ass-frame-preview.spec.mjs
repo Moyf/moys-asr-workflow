@@ -4,6 +4,8 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   makeTempDir, startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 let tempDir;
 let server;
@@ -17,9 +19,15 @@ test.beforeAll(async () => {
   execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
     'testsrc2=s=640x360:d=4:r=30', '-c:v', 'libx264', '-crf', '10', '-y', media]);
   const project = join(tempDir, 'project.json');
-  writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4',
+  const fixture = createProjectTracks().importProject({ media: 'synthetic.mp4',
     segments: [{ start: 1000, end: 2800, text: '第二句字幕 包含**强调文字**语法' }],
-    waveform: generateWaveformPayload(4000) }));
+    waveform: generateWaveformPayload(4000) }).project;
+  // Keep ordinary actual-frame tests independent of the built-in CJK family's
+  // availability. The font-warning test supplies and checks its own warning.
+  fixture.styles = [{ id: 'test-preview', name: 'Frame fixture',
+    fontName: process.platform === 'linux' ? 'Liberation Sans' : 'Arial' }];
+  createProjectTracks().getMainTrack(fixture).style = { style_id: 'test-preview' };
+  writeFileSync(project, JSON.stringify(fixture));
   server = await startServer(project, media, await findFreePort());
 });
 
@@ -27,11 +35,13 @@ test.afterAll(async () => { await server?.stop(); if (tempDir) cleanupTempDir(te
 
 async function enableAss(page) {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
   await openSettingsPage(page, 'subtitle-style');
   await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
+  await waitForAssFonts(page);
   await closeSettingsPanels(page);
 }
 
@@ -312,10 +322,11 @@ test('preview visibility and speaker labels remain independent from exports and 
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   const options = await page.evaluate(() => {
-    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'yellow' });
-    window.MaweBoot.DATA.preview.subtitle.speaker_labels = {
-      mapping_enabled: true, enabled: true, separator: '：', names: { yellow: 'Host' },
-    };
+    const track = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const speaker = MaweSpeakerLabels.createIdentity({ name: 'Host', color: '#f9ca1f' });
+    MaweSpeakerLabels.assignIdentity([{ track_id: track.id, segment_id: track.segments[0].id }], speaker.id);
+    MaweSpeakerLabels.setAnnotationMode('speaker');
+    MaweSpeakerLabels.setSpeakerLabelSettings({ ...MaweSpeakerLabels.getSpeakerLabelSettings(), enabled: true, separator: '：' });
     window.MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = false;
     const labelled = window.MaweExportSrt.buildAss({ preview: true });
     const exported = window.MaweExportSrt.buildAss();
@@ -643,11 +654,12 @@ test('overlays the sticker layer on the actual frame window following the previe
   // 尚未绑定表情包：图层保持隐藏。
   await expect(layer).toBeHidden();
 
-  // 注入覆盖整句的表情包区间（等价分配后的 head.sticker 数据并推进区间版本）。
+  // 在主轨给整句绑定表情包并推进区间版本。
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].sticker = {
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, main.segments, [0], 'sticker', {
       name: 'demo', filename: 'demo.png', rel: 'demo.png', start: 1000, end: 2800,
-    };
+    });
     window.MaweStickerOverlay.stickerOverlayDataVersion += 1;
     window.MaweAssFrame.syncWindowStickers();
   });

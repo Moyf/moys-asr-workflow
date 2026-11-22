@@ -1,19 +1,23 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from './helpers.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 
 const project = JSON.parse(readFileSync(new URL('../fixtures/project-tracks/legacy-three-tracks.expected.json', import.meta.url), 'utf8'));
 let directory, server;
 test.beforeAll(async () => { directory = makeTempDir('binding-index'); server = await startBlankServer(await findFreePort(), directory); });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 test('binding diagnostic preserves swap, undo/redo, save/reopen and switch results', async ({ page }) => {
-  await disableOnboarding(page); await page.goto(server.url);
+  await disableOnboarding(page);
+  await stubAssFontCoverage(page);
+  await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweMultiImport));
   await page.evaluate(input => {
     MaweSettings.updateEditorSettings({ autoSaveProject: false });
     MaweProjectLoad.applyCanonicalProject({ ...input, media: '' }, 'binding-v2.mosp');
   }, project);
   expect(await page.evaluate(() => AsrEditorUtils.isBindingIndexEnabled())).toBe(true);
+  await waitForAssFonts(page);
   async function equivalent() {
     const outputs = await page.evaluate(() => {
       return [false, true].map(enabled => {

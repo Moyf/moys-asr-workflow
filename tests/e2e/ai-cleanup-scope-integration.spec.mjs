@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createUtilsModule } from '../../web/shared/utils/project-tracks.js';
+import { waitForAssFonts } from './ass-font-readiness.mjs';
 import { getMainTrack, getOverlayTrack, getExtensionTrack,
   cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer,
@@ -125,6 +126,7 @@ async function saveAndReload(page) {
 }
 
 async function renderOutputs(page, timeMs) {
+  await waitForAssFonts(page);
   return page.evaluate((currentTimeMs) => {
     const ordinary = MaweExportSrt.buildSrt();
     const gapRemoved = MaweExportSrt.buildGapRemovedSrt();

@@ -227,7 +227,22 @@ export function createEditorState(project) {
   }
   function setSnapshotReader(reader) { snapshotReader = reader; }
   let savedProject = projectFingerprint();
-  function noteSavedSegments(fingerprint = projectFingerprint()) { savedProject = fingerprint; }
+  let savedProjectWithStyleDefaults = savedProject;
+  const projectStyleDefaults = [];
+  function noteSavedSegments(fingerprint = projectFingerprint()) {
+    savedProject = savedProjectWithStyleDefaults = fingerprint;
+    if (!projectStyleDefaults.length) return;
+    const snapshot = JSON.parse(fingerprint);
+    let defaultsAdded = false;
+    for (const applyDefaults of projectStyleDefaults) defaultsAdded = applyDefaults(snapshot) || defaultsAdded;
+    if (defaultsAdded) savedProjectWithStyleDefaults = projectFingerprint(snapshot);
+  }
+  // Style-library loading can finish after the initial checkpoint or during a
+  // save. Only missing styles on those tracks belong to the initial defaults.
+  function includeProjectStyleDefaults(applyDefaults) {
+    projectStyleDefaults.push(applyDefaults);
+    noteSavedSegments(savedProject);
+  }
   function subtitleTracks() {
     return (project.tracks || []).map(track => [track.id, track]);
   }
@@ -261,6 +276,8 @@ export function createEditorState(project) {
   }
   function beginProjectSession() {
     projectEpoch += 1;
+    projectStyleDefaults.length = 0;
+    savedProjectWithStyleDefaults = savedProject;
     selection.reset();
     panelRef = null; panelKind = 'main'; panelTrackId = null;
     sessionHighlights.clear();
@@ -275,7 +292,9 @@ export function createEditorState(project) {
     changes.projectImportDirty = hasProjectChanges();
   }
   function hasProjectChanges(pendingText = false) {
-    return Boolean(pendingText || importNeedsSave || projectFingerprint() !== savedProject);
+    if (pendingText || importNeedsSave) return true;
+    const current = projectFingerprint();
+    return current !== savedProject && current !== savedProjectWithStyleDefaults;
   }
 
   let projectLoadGeneration = 0;
@@ -304,6 +323,7 @@ export function createEditorState(project) {
 
   return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
     projectFingerprint, persistenceSnapshot, setSnapshotReader, beginProjectSession, establishProjectCheckpoint,
+    includeProjectStyleDefaults,
     rememberSessionHighlights, restoreSessionHighlights, get projectEpoch() { return projectEpoch; },
     // Kept as narrow compatibility aliases for existing command/history callers.
     segmentsFingerprint: projectFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty,
