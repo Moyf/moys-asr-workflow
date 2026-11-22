@@ -198,7 +198,7 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 正文写整体改动，不复述 commit 流水账。
 
-提交前先确认当前 PR 的目标分支（base branch），fetch 后将最新目标分支合并到当前分支并解决冲突。目标为 `2.0dev` 时同步 `origin/2.0dev`，目标为 `main` 时同步 `origin/main`；不得固定合并 main，也不得擅自更改 PR 目标。合并、提交和推送仍需明确授权。
+提交前先确认当前 PR 的目标分支（base branch），fetch 后将最新目标分支同步到当前 PR 工作分支并解决冲突。目标为 `2.0dev` 时同步 `origin/2.0dev`，目标为 `main` 时同步 `origin/main`；不得固定同步 main，也不得擅自更改 PR 目标。维护已开启的 PR 时，可以在任务范围内提交并普通推送到该 PR 的工作分支，无需逐次请示。**将 PR 合入目标分支仍需明确授权**；不得把 PR 分支的推送许可用于直接推送目标分支、强推或发布。
 
 1. **先说问题和结果**：标题写用户可感知的修复；开头两句交代触发场景、旧行为与期望行为。路径、布局或数据问题优先用一个最小前后对照，不铺背景。
 2. **正文默认四段**：「为什么改」→「改了什么」→「验证」→「边界 / 待确认」。目标是首屏能判断目的与风险；每段 2–4 条，每组最多 5 条。简单 PR 可合并小节，不为凑模板加内容。
@@ -213,7 +213,7 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 条目面向用户，默认一句话「**简短标题** ： 结果」。不写实现细节、根因、重试过程、测试与边缘情况；操作步骤和限制放用户指南，技术细节放工程文档或日志。
 
-发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
+发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。新增远端、发布相关的推送、打 tag 或创建 GitHub Release 均需维护者明确授权；日常更新已开启的 PR 按上节执行。
 
 Release 正文只从 CL 生成：正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前再跑 `--check-doc` 与 `--output` 检查；beta / rc 不新增归档；补丁版本在 CL 写 `<!-- release-base: X.Y.0 -->`。正式版收尾必须分别核对 **GitHub Release** 与 **官网** 两层，门槛见[发布管线](docs/releases/README.md)：官网用 `scripts/verify_release_site.py --base-url https://moyf.github.io/moys-asr-workflow --expected-tag vVERSION` 校验，允许有界等待；超时报告「安装包已发布，官网待同步」，只重试 Pages workflow，不重打包、不撤回 Release、不移动 tag。
 
