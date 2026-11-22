@@ -16,26 +16,23 @@ import {
 
 let tempDir;
 let server;
-let projectPath;
 
 const FIRST_SEGMENT_END_MS = 58000;
 
-test.beforeAll(async () => {
+// Color edits may autosave, so each case starts with its own uncolored project.
+test.beforeEach(async ({ page }) => {
   tempDir = makeTempDir('colorfilter');
   const mediaPath = join(tempDir, 'synthetic.wav');
-  projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
-  generateProjectJson(projectPath);
+  const projectPath = generateProjectJson(join(tempDir, 'project.json'));
   server = await startServer(projectPath, mediaPath, await findFreePort());
-});
-
-test.afterAll(async () => {
-  await server?.stop();
-  cleanupTempDir(tempDir);
-});
-
-test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
+});
+
+test.afterEach(async () => {
+  await server?.stop();
+  server = undefined;
+  cleanupTempDir(tempDir);
 });
 
 async function waitEditorReady(page) {
