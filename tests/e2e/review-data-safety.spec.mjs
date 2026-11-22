@@ -64,6 +64,63 @@ async function content(page) {
   return page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA));
 }
 
+test('held-boundary save matches normal release for bound tracks and undo', async ({ page }) => {
+  const project = boundProject();
+  const thirdMain = projectModel.getMainTrack(project).segments[2];
+  thirdMain.start = thirdMain.items[0].start = 2400;
+  thirdMain.end = thirdMain.items[0].end = 3400;
+  const thirdBinding = project.bindings.find(binding => binding.id === 'binding-2');
+  thirdBinding.start_offset_ms = 1500 - thirdMain.start;
+  thirdBinding.end_offset_ms = 3000 - thirdMain.end;
+  await openFixture(page, project);
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ autoSaveProject: false, cueMoveStepMs: 100 }));
+  const rangesAndBindings = async () => {
+    const project = await content(page);
+    return {
+      tracks: project.tracks.map(track => ({ id: track.id, segments: track.segments.map(({id, start, end}) => ({id, start, end})) })),
+      bindings: project.bindings,
+    };
+  };
+  const hold = async () => {
+    const boundary = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]').first();
+    await expect(boundary).toBeVisible();
+    const box = await boundary.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.keyboard.press('d');
+  };
+  const initial = await rangesAndBindings();
+  await hold();
+  await page.mouse.up();
+  const normalRelease = await rangesAndBindings();
+  expect(normalRelease.tracks.find(track => track.id === 'translation-after-swap').segments[0].end).toBe(1100);
+  await page.reload();
+  await expect(page.locator('#cues-container')).toBeVisible();
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ autoSaveProject: false, cueMoveStepMs: 100 }));
+  expect(await rangesAndBindings()).toEqual(initial);
+  const before = await page.evaluate(() => MaweHistory.editorHistory.undoLength());
+  await hold();
+  const saved = page.waitForResponse(response => response.url().endsWith('/api/project')
+    && response.request().method() === 'POST');
+  await page.keyboard.press('Control+s');
+  expect((await saved).ok()).toBe(true);
+  expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.drag))).toBe(false);
+  expect(await rangesAndBindings()).toEqual(normalRelease);
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(before + 1);
+  await page.mouse.up();
+  const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
+  expect(projectModel.validateTracksProject(savedProject).ok).toBe(true);
+  expect(savedProject.tracks.map(track => ({id: track.id, segments: track.segments.map(({id, start, end}) => ({id, start, end}))}))).toEqual(normalRelease.tracks);
+  expect(savedProject.bindings).toEqual(normalRelease.bindings);
+  await page.keyboard.press('Control+z');
+  await expect.poll(rangesAndBindings).toEqual(initial);
+  page.once('dialog', dialog => dialog.accept());
+  await page.reload();
+  await expect(page.locator('#cues-container')).toBeVisible();
+  expect(await rangesAndBindings()).toEqual(normalRelease);
+});
+
 for (const { syncDuration, scale, farShort = false } of [{ syncDuration: false, scale: 1 }, { syncDuration: true, scale: 1 },
   { syncDuration: true, scale: .01 }, { syncDuration: true, scale: 1, farShort: true }]) {
   test(`main merge preserves unselected bound secondary through undo and real save, sync=${syncDuration}, scale=${scale}, far-short=${farShort}`, async ({ page }) => {

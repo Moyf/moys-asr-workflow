@@ -119,6 +119,17 @@ function setCurrentCuePanelOverlayIndex(index) {
 
 MaweDom.cuePanelPrev?.addEventListener('click', () => MaweCuePanel.navigateCuePanel(-1));
 MaweDom.cuePanelNext?.addEventListener('click', () => MaweCuePanel.navigateCuePanel(1));
+// A keyboard user can enter a panel field while still holding a waveform drag.
+// Finish that gesture before accepting a separate edit in the panel.
+function finishWaveformBeforePanelEdit() {
+  const waveform = MaweCoreState.waveformEditor;
+  const drag = waveform?.drag;
+  if (!drag) return;
+  waveform.endCueDrag({type: drag.changed ? 'pointerup' : 'pointercancel', pointerId: drag.pointerId, ...drag.lastPointerPosition});
+}
+for (const field of [MaweDom.cuePanelText, MaweDom.cuePanelStart, MaweDom.cuePanelDuration]) {
+  field?.addEventListener('focus', finishWaveformBeforePanelEdit);
+}
 MaweDom.cuePanelText?.addEventListener('focus', MaweCuePanel.captureCuePanelTextEditSnapshot);
 MaweDom.cuePanelText?.addEventListener('keydown', (event) => {
   // Esc：按当前字幕编辑区设置决定取消还是提交文本编辑。
