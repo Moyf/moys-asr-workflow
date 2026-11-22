@@ -109,6 +109,8 @@ test('keeps server styles read-only until the initial library arrives', async ({
 
 test('warns before leaving while server style edits are still saving', async ({ page }) => {
   await openLibrary(page);
+  // Edit the SRT burn preset independently of the project's linked ASS tracks.
+  await page.locator('#ass-style-list [data-ass-selection-id="default"]').click();
   const requested = Promise.withResolvers();
   const firstSave = Promise.withResolvers();
   await page.route('**/api/ass-styles', async route => {
@@ -130,7 +132,7 @@ test('warns before leaving while server style edits are still saving', async ({ 
   }
   await expect.poll(() => page.evaluate(async () => {
     const library = await (await fetch('/api/ass-styles')).json();
-    return library.styles.find(style => style.id === 'ass').fontSize;
+    return library.styles.find(style => style.id === 'default').fontSize;
   })).toBe(109);
   await expect(page.locator('#ass-style-library-status')).toContainText('已与用户级配置同步');
   expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true);

@@ -65,6 +65,7 @@
       "saved content governs undo dirtiness while session highlights and rebuildable caches stay transient",
       "saving an earlier snapshot keeps later edits dirty and excludes highlights from every saved track",
       "actual import repairs remain unsaved until successful save acknowledgement",
+      "late track style defaults keep the sent checkpoint and later edits distinct",
       "markProjectDirty increments the epoch and notifies registered listeners exactly once",
       "onProjectDirtyChange dedupes repeat registration and ignores non-functions",
       "changes flag writes notify on dirty transitions only, and markSaved stays silent",

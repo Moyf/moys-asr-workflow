@@ -327,7 +327,8 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
         outlineColor: '#112233',
       }
       : style);
-    ASS_STYLE_LIBRARY = library;
+    window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA),
+      window.AsrEditorUtils.assStyleForId(library, 'ass'));
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MaweDom.playerWrap.style.height = '540px';
@@ -475,7 +476,8 @@ test('uses ASS speaker-only colour for the label while preserving the base text 
         italic: true,
       }
       : style);
-    ASS_STYLE_LIBRARY = library;
+    window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA),
+      window.AsrEditorUtils.assStyleForId(library, 'ass'));
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);

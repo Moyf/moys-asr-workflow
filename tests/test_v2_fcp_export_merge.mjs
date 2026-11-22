@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
+import { waitForFcp7Fonts } from '../web/editor/io/editor-fcp7-png.js';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture(format) {
@@ -20,6 +21,8 @@ function fixture(format) {
       querySelector: selector => ({ value: selector.includes('scope') ? 'media' : 'source' }),
       createElement: node, createTextNode: value => ({ textContent: value }) },
     MaweBoot: { DATA: project, FILENAME_BASE: 'demo', SERVER_CONFIG: {} },
+    MaweState: { projectLoadGeneration: 0 },
+    MaweProjectLoad: { projectBindingEpoch: 0 },
     AsrEditorUtils: {
       getOverlayTrack: data => data.tracks.find(track => track.role === 'overlay'),
       TrackPolicy: { assertExportable: (...args) => calls.gates.push(args) },
@@ -39,6 +42,7 @@ function fixture(format) {
     MaweExportSrt: { buildAss: () => '[ass]' },
     MaweExportTimeline: { async downloadFile(...args) { calls.native.push(args); return { status: 'saved' }; } },
     MaweHint: { flashHint() {} },
+    waitForFcp7Fonts,
     async runFcp7PngExport(options) { calls.png.push(options); return { imageCount: 1, packagePath: 'demo' }; },
   };
   context.window = context;

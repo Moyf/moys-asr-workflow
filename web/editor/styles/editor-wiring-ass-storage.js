@@ -1,10 +1,11 @@
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
-import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager } from './editor-wiring-ass-manager.js';
+import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager, initializeProjectStyles } from './editor-wiring-ass-manager.js';
 
 const storageService = {};
 
 export function getAssStyleLibrary() { return storageService.getLibrary(); }
 export function isAssStyleLibraryReady() { return storageService.isReady(); }
+export function hasAssStyleLibraryLoaded() { return storageService.hasLoaded(); }
 export function canEditAssStyleLibrary() { return storageService.canEdit(); }
 export function incrementAssStyleLibraryRevision() { storageService.incrementRevision(); }
 export function setAssStyleLibrary(value, options) { return storageService.setLibrary(value, options); }
@@ -76,6 +77,8 @@ const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
 const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
 let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
 let ASS_STYLE_LIBRARY_READY = false;
+let assStyleLibraryHasLoaded = false;
+let assStyleProjectInitScheduled = false;
 let assStyleLibrarySaveTimer = 0;
 let assStyleLibraryLoadPromise = null;
 let assStyleLibraryDirty = false;
@@ -107,6 +110,32 @@ function setAssStyleLibrary(value, { persistLocal = false } = {}) {
     try { writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY); } catch (_) { /* optional cache */ }
   }
   return ASS_STYLE_LIBRARY;
+}
+
+// A library request can finish while an import replaces the project. Start a
+// fresh, generation-guarded initialization after that import has settled.
+function scheduleCurrentProjectStyleInit() {
+  if (assStyleProjectInitScheduled) return;
+  assStyleProjectInitScheduled = true;
+  const run = () => {
+    if (MaweState.projectLoadPending) { setTimeout(run, 100); return; }
+    const generation = MaweState.projectLoadGeneration;
+    const epoch = MaweState.projectEpoch;
+    queueMicrotask(() => {
+      assStyleProjectInitScheduled = false;
+      if (generation !== MaweState.projectLoadGeneration || epoch !== MaweState.projectEpoch || MaweState.projectLoadPending) {
+        scheduleCurrentProjectStyleInit();
+        return;
+      }
+      if (initializeProjectStyles({ includeInCheckpoint: true })) {
+        MaweState.markProjectDirty();
+        syncAssStyleManager?.();
+        MawePlaybackLoop.refreshSubtitlePreview?.();
+        window.MaweProjectFontCheck?.schedule();
+      }
+    });
+  };
+  setTimeout(run, 0);
 }
 
 function assStyleLibrarySummary() {
@@ -250,6 +279,14 @@ async function persistAssStyleLibrary({ keepalive = false } = {}) {
   return assStyleSavePromise;
 }
 
+function refreshLinkedProjectStyles(previous) {
+  const record = MaweHistory.captureSegmentsRecord('更新联动样式');
+  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, ASS_STYLE_LIBRARY)) {
+    MaweHistory.commitRecord(record);
+    MaweState.markProjectDirty();
+  }
+}
+
 async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
   if (assStyleImportInFlight) return ASS_STYLE_LIBRARY;
   if (assStyleLibraryLoadPromise) return assStyleLibraryLoadPromise;
@@ -260,6 +297,22 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
     MawePlaybackLoop.refreshSubtitlePreview?.();
     return ASS_STYLE_LIBRARY;
   }
+  const generation = MaweState.projectLoadGeneration;
+  const projectEpoch = MaweState.projectEpoch;
+  const previous = ASS_STYLE_LIBRARY;
+  const hadLoaded = assStyleLibraryHasLoaded;
+  const finishProjectStyles = () => {
+    assStyleLibraryHasLoaded = true;
+    if (generation !== MaweState.projectLoadGeneration || projectEpoch !== MaweState.projectEpoch) {
+      scheduleCurrentProjectStyleInit();
+      return;
+    }
+    if (hadLoaded) refreshLinkedProjectStyles(previous);
+    if (initializeProjectStyles({ includeInCheckpoint: true })) {
+      MaweState.markProjectDirty();
+      if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
+    }
+  };
   if (discard) {
     clearTimeout(assStyleLibrarySaveTimer);
     assStyleLibrarySaveTimer = 0;
@@ -267,7 +320,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
   const startedAtRevision = assStyleLibraryRevision;
   // The browser cache is a startup fallback only. Once the server has been
   // read, a failed refresh must not replace that trusted in-memory library.
-  if (assStyleLibraryUsesServerStorage() && assStyleStorageRevision === null && !assStyleLibraryDirty && !discard) {
+  if (!hadLoaded && assStyleLibraryUsesServerStorage() && assStyleStorageRevision === null && !assStyleLibraryDirty && !discard) {
     setAssStyleLibrary(readLocalAssStyleLibrary());
   }
   setAssStyleLibraryStatus('正在加载…', 'pending');
@@ -298,6 +351,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
       }
       ASS_STYLE_LIBRARY_READY = true;
       setAssStyleLibraryStatus('', 'success');
+      finishProjectStyles();
       syncAssStyleManager?.();
       MawePlaybackLoop.refreshSubtitlePreview?.();
       assStyleLibraryLoadPromise = null;
@@ -328,6 +382,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
       ASS_STYLE_LIBRARY_READY = false;
       setAssStyleLibraryStatus('重新加载失败，保留当前样式', 'warning');
     }
+    finishProjectStyles();
     syncAssStyleManager?.();
     MawePlaybackLoop.refreshSubtitlePreview?.();
     // Do not cache either a successful or failed request: each subsequent
@@ -341,6 +396,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
 // G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
 storageService.getLibrary = () => ASS_STYLE_LIBRARY;
 storageService.isReady = () => ASS_STYLE_LIBRARY_READY;
+storageService.hasLoaded = () => assStyleLibraryHasLoaded;
 storageService.canEdit = () => !assStyleLibraryUsesServerStorage() || Boolean(assStyleStorageRevision);
 storageService.incrementRevision = () => { assStyleLibraryRevision += 1; };
 storageService.setLibrary = setAssStyleLibrary;
@@ -356,6 +412,9 @@ storageService.importLibrary = async (library, expectedRevision) => {
     throw new Error('样式库已改变，请重新导入并预览');
   }
   assStyleImportInFlight = true;
+  const previous = ASS_STYLE_LIBRARY;
+  const generation = MaweState.projectLoadGeneration;
+  const epoch = MaweState.projectEpoch;
   try {
     const saved = await commitAssStyleLibrary(library, { backup: true });
     if (expectedRevision !== assStyleLibraryRevision) {
@@ -365,6 +424,11 @@ storageService.importLibrary = async (library, expectedRevision) => {
     }
     assStyleLibraryRevision += 1;
     setAssStyleLibrary(saved, { persistLocal: true });
+    if (generation === MaweState.projectLoadGeneration && epoch === MaweState.projectEpoch && !MaweState.projectLoadPending) {
+      refreshLinkedProjectStyles(previous);
+    } else {
+      scheduleCurrentProjectStyleInit();
+    }
     assStyleLibraryDirty = false;
     ASS_STYLE_LIBRARY_READY = true;
     setAssStyleLibraryStatus('样式库已导入；已保留导入前副本', 'success');

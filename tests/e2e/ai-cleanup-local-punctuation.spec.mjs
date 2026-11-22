@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, getMainTrack, makeTempDir, startServer } from './helpers.mjs';
 import { projectModel } from '../helpers/runtime-project.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 
 const cases = [
   { name: 'an unselected emoji followed by a separate terminal punctuation item', expected: '正文😀。', artifactText: '正文😀。', manuscript: '正文', previewTime: 500,
@@ -86,9 +87,11 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       }
       server = await startServer(artifact.path, mediaPath, await findFreePort());
       await disableOnboarding(page);
+      await stubAssFontCoverage(page);
       await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
       await page.goto(server.url);
       await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
+      await waitForAssFonts(page);
       const snapshot = await page.evaluate((previewTime) => {
         MaweDom.overlayToggle.checked = true;
         MaweSettings.EDITOR_SETTINGS.assMode = false;
@@ -110,7 +113,9 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
         expect(snapshot.markers.some((marker) => marker.review?.status === 'pending')).toBe(true);
       } else expect(snapshot.removedGaps.length).toBeGreaterThan(0);
       expect(fixture.allowedTexts || [fixture.expected]).toContain(snapshot.css);
-      expect(snapshot.canvas).toContain(snapshot.css);
+      // Canvas adds VS15 to simple emoji while exported text remains unchanged.
+      const canvasExpected = await page.evaluate(text => AsrEditorUtils.assCanvasPreviewText(text), snapshot.css);
+      expect(snapshot.canvas).toContain(canvasExpected);
       expect(snapshot.dynamic.segments[0].text).toBe(snapshot.css);
       for (const output of [snapshot.ordinary, snapshot.compressed, snapshot.ass]) {
         expect(output).toContain(snapshot.css);

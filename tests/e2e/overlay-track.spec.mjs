@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 import {
   getMainTrack, getOverlayTrack, materializeTrackSegments,
   cleanupTempDir,
@@ -595,6 +596,7 @@ test('keeps the cue color on a Shift+drag conversion and colors the overlay prev
 });
 
 test('exports overlay cues through the ASS and per-color SRT paths', async ({ page }) => {
+  await stubAssFontCoverage(page);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
@@ -611,6 +613,7 @@ test('exports overlay cues through the ASS and per-color SRT paths', async ({ pa
 
   // 活跃字幕变化会切分主轨事件；检查完整时间覆盖与分层，避免把布局分片
   // 误当作重复字幕，也不能漏掉颜色样式或真实的重叠时间。
+  await waitForAssFonts(page);
   const ass = await page.evaluate(() => MaweExportSrt.buildAss());
   const events = assDialogueEvents(ass);
   expect([...new Set(events.map(event => event.layer))].sort()).toEqual([0, 2]);
@@ -645,6 +648,7 @@ test('exports overlay cues through the ASS and per-color SRT paths', async ({ pa
 });
 
 test('ASS mode previews and exports overlay cues with shared movement and original fade clocks', async ({ page }) => {
+  await stubAssFontCoverage(page);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
@@ -659,6 +663,7 @@ test('ASS mode previews and exports overlay cues with shared movement and origin
   await dropProject(page, project);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
 
+  await waitForAssFonts(page);
   const result = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();

@@ -43,7 +43,7 @@ class SpeakerCleanupMigrationTests(unittest.TestCase):
             entry = {"id": "cut", "start": items[first]["start"], "end": items[last - 1]["end"], "cleanup_scope": scope}
             before = {"schema": "moy.asr.project.v2", "tracks": [{"id": "main", "role": "main", "name": "Main", "enabled": True, "segments": [cue]}], "bindings": [],
                       "bilingual": {"display_mode": "both"}, "subtitle_groups": {"next_id": 1, "color": [], "sticker": []},
-                      "processing_overrides": {"text": []}, "styles": {"vendor": True},
+                      "processing_overrides": {"text": []}, "styles": [{"id": "example", "name": "Example", "vendor": True}],
                       "gap_remove": {"gaps": [{"start": entry["start"], "end": entry["end"], "removed": True}],
                                      "provenance": {"sources": {"ai_cleanup": [entry]}}}}
             after = import_project(copy.deepcopy(before)).project

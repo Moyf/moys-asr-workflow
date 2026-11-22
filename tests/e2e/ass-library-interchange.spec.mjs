@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { waitForAssFonts } from './ass-font-readiness.mjs';
 import { DURATION_MS, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson, generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
 const editor = test.extend({
@@ -13,6 +14,8 @@ const editor = test.extend({
       generateWav(media, DURATION_MS / 1000);
       const projectPath = generateProjectJson(join(directory, 'project.mosp'));
       const project = JSON.parse(readFileSync(projectPath, 'utf8'));
+      project.styles = [{ id: 'saved-track', name: 'Saved track style', fontSize: 67 }];
+      for (const track of project.tracks) track.style = { style_id: 'saved-track', forked: true };
       project.tracks.find(track => track.role === 'main').segments[0].assStyle = {
         id: 'ass', name: 'Saved cue style', fontSize: 73,
       };
@@ -95,6 +98,7 @@ for (const variant of ['default', 'karaoke']) {
     await page.locator('#ass-style-save').click();
     profile.animations.fad.enabled = true;
     await expect.poll(() => currentLibrary(page)).toEqual(expected);
+    await waitForAssFonts(page);
     const ass = await page.evaluate(() => MaweExportSrt.buildAss());
     expect(ass).toContain('\\fad(250,250)');
     expect(ass).not.toMatch(/\\k\d/u);
@@ -103,6 +107,20 @@ for (const variant of ['default', 'karaoke']) {
     expect(readFileSync(projectPath, 'utf8')).toBe(initialProjectFile);
   });
 }
+
+editor('restoring a library updates linked track snapshots and supports undo', async ({ libraryEditor }) => {
+  const { page } = libraryEditor;
+  const sourcePath = fileURLToPath(new URL('../fixtures/ass-styles/main-f345a896-default.json', import.meta.url));
+  const restoredSize = JSON.parse(readFileSync(sourcePath, 'utf8')).library.styles.find(s => s.id === 'ass').fontSize;
+  await changeFontSize(page, 'ass', restoredSize + 15);
+  await page.evaluate(() => MaweAssManagerWiring.applyProjectStyleSelection('main', 'ass'));
+  const mainStyle = () => page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main'));
+  expect(await mainStyle()).toMatchObject({ status: 'linked', style: { fontSize: restoredSize + 15 } });
+  await restoreLibrary(page, sourcePath);
+  expect(await mainStyle()).toMatchObject({ status: 'linked', style: { fontSize: restoredSize } });
+  await page.evaluate(() => MaweHistory.performUndo());
+  expect((await mainStyle()).style.fontSize).toBe(restoredSize + 15);
+});
 
 editor('round-trips a new native 2.0 library and its default assignments', async ({ libraryEditor }, info) => {
   const { page } = libraryEditor;

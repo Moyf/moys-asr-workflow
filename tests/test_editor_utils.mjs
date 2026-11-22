@@ -4455,6 +4455,27 @@ test('default-off ASS switches retain single-cue fade and pop marker effects', (
   assert.equal(state.popScale, 0.85);
 });
 
+test('keeps all 64 legacy ASS styles and their references when adding the extension builtin', () => {
+  const legacy = {
+    version: 1,
+    styles: [
+      { id: 'default', name: 'SRT 默认' }, { id: 'ass', name: 'ASS' },
+      ...Array.from({ length: 62 }, (_, index) => ({ id: `custom-${index}`, name: `Custom ${index}` })),
+    ],
+    assProfiles: [{ id: 'last-profile', name: 'Last profile', styleId: 'custom-61' }],
+    assignments: { srtBurnStyleId: 'custom-61', assExtensionStyleId: 'custom-61' },
+  };
+  const migrated = helpers.normalizeAssStyleLibrary(legacy);
+  assert.equal(migrated.styles.length, 65);
+  assert.ok(migrated.styles.some(style => style.id === 'ass-extension'));
+  assert.ok(migrated.styles.some(style => style.id === 'custom-61'));
+  assert.equal(migrated.assProfiles.find(profile => profile.id === 'last-profile').styleId, 'custom-61');
+  assert.equal(migrated.assignments.srtBurnStyleId, 'custom-61');
+  assert.equal(migrated.assignments.assExtensionStyleId, 'custom-61');
+  const reopened = helpers.normalizeAssStyleLibrary(JSON.parse(JSON.stringify(migrated)));
+  assert.deepEqual(JSON.parse(JSON.stringify(reopened)), JSON.parse(JSON.stringify(migrated)));
+});
+
 test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
   // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
   const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233', backColor: '#000000' });
@@ -7926,4 +7947,13 @@ test('AI cleanup export projection respects active ownership, restoration and pu
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
   gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+});
+
+test('Canvas emoji hint replaces VS16 only on simple clusters without rewriting complex emoji', () => {
+  assert.equal(helpers.assCanvasPreviewText('❤️ ☀ 😀 🤔'), '❤︎ ☀︎ 😀︎ 🤔︎');
+  for (const text of ['123 #* 中文，。', '❤︎', '👩‍👩‍👧‍👧', '👍🏽', '🇨🇳', '1️⃣', '🏳️‍🌈']) {
+    assert.equal(helpers.assCanvasPreviewText(text), text);
+  }
+  assert.ok(helpers.assManagedFontText('( •̀ ω •́ )y 中文╬'));
+  for (const text of ['مرحبا', 'कर्म', '𞤀𞤢', '𑀓𑀭', 'a\u200db']) assert.equal(helpers.assManagedFontText(text), false);
 });
