@@ -101,15 +101,19 @@ test('unchanged playback frames reuse both projections and rebuild a changed cue
   const retained = cache.retainedCue(cue, gap);
   const exported = cache.exportSegments(cues, gap);
   assert.equal(retained.text, '甲丙');
+  const otherTrack = [second];
+  const otherExport = cache.exportSegments(otherTrack, gap);
   const baseline = { ...counts };
   for (let frame = 0; frame < 30; frame += 1) {
     assert.equal(cache.retainedCue(cue, gap), retained);
     assert.equal(cache.exportSegments(cues, gap), exported);
+    assert.equal(cache.exportSegments(otherTrack, gap), otherExport);
   }
   assert.deepEqual(counts, baseline, 'warm frames must not invoke a projector again');
   second.text = '丁乙丙';
   second.items[0].text = '丁';
   const changed = cache.exportSegments(cues, gap);
+  assert.equal(cache.exportSegments(otherTrack, gap)[0], changed[1]);
   assert.equal(changed[0], exported[0], 'unmodified cue remains reusable');
   assert.equal(changed[1].text, '丁乙丙');
   assert.equal(counts.exportRuns, baseline.exportRuns + 1);

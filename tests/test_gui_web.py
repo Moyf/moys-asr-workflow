@@ -3179,7 +3179,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 return self.returncode or 0
 
         with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
-            with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]) as wait_for_server:
+            with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]) as wait_for_server, \
+                    mock.patch("maw.gui_web._server_startup_status", return_value="loading"):
                 result = self.api.start_server({
                     "jsonPath": str(project),
                     "mediaPath": str(media),
@@ -3200,9 +3201,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             [
                 mock.call(
                     "http://127.0.0.1:9876/",
-                    timeout=0.25,
+                    timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
                     probe_path=EDITOR_HEALTH_PROBE_PATH,
                     probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+                    retry=False,
                 ),
                 mock.call(
                     "http://127.0.0.1:9876/",
@@ -3640,7 +3642,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         with mock.patch.object(sys, "frozen", True, create=True):
             with mock.patch.object(sys, "executable", str(executable)):
                 with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
-                    with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]):
+                    with mock.patch("maw.gui_web._wait_for_server", side_effect=[False, True]), \
+                            mock.patch("maw.gui_web._server_startup_status", return_value="ready"):
                         result = self.api.start_server({
                             "jsonPath": str(project),
                             "mediaPath": str(media),
@@ -3710,12 +3713,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             def wait(self, timeout: float | None = None) -> int:
                 return self.returncode or 0
 
-        def wait(_url: str, *, timeout: float, probe_path: str = "/", probe_timeout: float = 0.25) -> bool:
+        def wait(_url: str, *, timeout: float, probe_path: str = "/", probe_timeout: float = 0.25,
+                 retry: bool = True) -> bool:
             calls.append("wait")
             return len(calls) > 1
 
         with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()):
-            with mock.patch("maw.gui_web._wait_for_server", side_effect=wait):
+            with mock.patch("maw.gui_web._wait_for_server", side_effect=wait), \
+                    mock.patch("maw.gui_web._server_startup_status", return_value="ready"):
                 result = self.api.start_server({"jsonPath": str(project), "mediaPath": str(media), "port": "9876"})
 
         self.assertTrue(result["ok"])
@@ -3732,8 +3737,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(detail, "HTTP 404")
 
     def test_start_server_returns_existing_server_url_without_spawning(self) -> None:
-        """Given a responding port, When starting server, Then it reports the existing server instead of spawning."""
-        with mock.patch("maw.gui_web._wait_for_server", return_value=True):
+        """Reuse a responding editor while its project is loading."""
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web._server_startup_status", return_value="loading"):
             with mock.patch("maw.gui_web.subprocess.Popen") as popen:
                 result = self.api.start_server({"port": "9876", "guiLang": "zh"})
 
@@ -3742,8 +3748,74 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
         popen.assert_not_called()
 
+    def test_start_server_accepts_slow_editor_identity_after_launch(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                time.sleep(0.4)
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
+                try:
+                    self.wfile.write(b'{"ok":true,"service":"maw-editor","status":"ready"}')
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        process = mock.Mock()
+        process.poll.return_value = None
+
+        def spawn(*_args: object, **_kwargs: object) -> object:
+            thread.start()
+            return process
+
+        try:
+            with mock.patch("maw.gui_web._maw_server_process_id", return_value=None), \
+                    mock.patch("maw.gui_web.popen_process_tree", side_effect=spawn), \
+                    mock.patch.object(self.api, "_stop_owned_server") as stop:
+                result = self.api.start_server({"port": str(server.server_port)})
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(stop.call_count, 1)  # Only the pre-launch cleanup.
+        finally:
+            if thread.is_alive():
+                server.shutdown()
+                thread.join()
+            server.server_close()
+
+    def test_start_server_accepts_slow_existing_editor_identity(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                time.sleep(0.4)
+                self.send_response(HTTPStatus.OK)
+                self.end_headers()
+                try:
+                    self.wfile.write(b'{"ok":true,"service":"maw-editor","status":"loading"}')
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        try:
+            with mock.patch("maw.gui_web._maw_server_process_id", return_value=None), \
+                    mock.patch("maw.gui_web.popen_process_tree", side_effect=AssertionError("unexpected launch")) as spawn:
+                result = self.api.start_server({"port": str(server.server_port)})
+            self.assertTrue(result["ok"], result)
+            self.assertTrue(result["serverAlreadyRunning"])
+            spawn.assert_not_called()
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+
     def test_start_server_does_not_silently_ignore_manual_media_on_another_server(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web._server_startup_status", return_value="ready"), \
                 mock.patch("maw.gui_web.subprocess.Popen") as popen:
             result = self.api.start_server({
                 "jsonPath": str(self.root / "captions.mosp"),
@@ -3789,7 +3861,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.api.server_process = previous_process
 
         with mock.patch("maw.gui_web.subprocess.Popen", return_value=replacement_process) as popen:
-            with mock.patch("maw.gui_web._wait_for_server", side_effect=[True, True]):
+            with mock.patch("maw.gui_web._wait_for_server", side_effect=[True, True]), \
+                    mock.patch("maw.gui_web._server_startup_status", return_value="ready"):
                 result = self.api.start_server({
                     "jsonPath": str(project),
                     "port": "9876",
@@ -3828,12 +3901,49 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
                     mock.patch("maw.gui_web.urlopen") as request:
                 response = request.return_value.__enter__.return_value
-                response.read.return_value = json.dumps({"ok": True, "status": status}).encode()
+                response.read.return_value = json.dumps({"ok": True, "status": status, "stage": status,
+                                                         "progress": 50, "error": ""}).encode()
                 result = self.api.get_server_status({"port": "9876"})
                 self.assertTrue(result["running"])
                 self.assertEqual(result["startupStatus"], status)
                 request.assert_called_once_with("http://127.0.0.1:9876/api/startup-status", timeout=0.25)
                 response.read.assert_called_once_with(4096)
+
+    def test_other_http_services_on_editor_port_are_not_opened_or_replaced(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                self.send_response(response_code)
+                self.end_headers()
+                self.wfile.write(response_body)
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        payload = {"port": str(server.server_port)}
+        try:
+            with mock.patch("maw.gui_web._maw_server_process_id", return_value=None), \
+                    mock.patch("maw.gui_web.popen_process_tree") as spawn:
+                for response_code, response_body in [(404, b"missing"), (200, b"other service"),
+                                                     (200, b'{"ok":true,"status":"ready"}')]:
+                    with self.subTest(response_code=response_code, body=response_body):
+                        result = self.api.start_server(payload)
+                        self.assertFalse(result["ok"])
+                        self.assertEqual(result["code"], "server_port_occupied")
+                        self.assertNotIn("url", result)
+                        self.assertFalse(self.api.get_server_status(payload)["running"])
+                response_code, response_body = 200, b'{"ok":true,"service":"maw-editor","status":"loading"}'
+                self.assertTrue(self.api.start_server(payload)["serverAlreadyRunning"])
+                self.assertEqual(self.api.get_server_status(payload)["startupStatus"], "loading")
+                response_body = b'{"ok":true,"status":"ready","stage":"ready","progress":100,"error":""}'
+                self.assertTrue(self.api.start_server(payload)["serverAlreadyRunning"])
+                spawn.assert_not_called()
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
 
     def test_missing_or_malformed_startup_status_does_not_mark_live_server_offline(self) -> None:
         for payload in (b"not json", b"[]", b'{"status":"unexpected"}', b"\xff"):
@@ -3870,6 +3980,15 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web._process_command_line", return_value='"D:\\Tools\\MAW.exe" --server 9876'):
                 from maw.gui_web import _maw_server_process_id
                 self.assertEqual(_maw_server_process_id(9876), 4321)
+
+    def test_maw_server_pid_rejects_other_frozen_commands(self) -> None:
+        from maw.gui_web import _maw_server_process_id
+
+        for flag in ("--serve-alignment", "--server-other"):
+            with self.subTest(flag=flag), \
+                    mock.patch("maw.gui_web._listening_process_id", return_value=4321), \
+                    mock.patch("maw.gui_web._process_command_line", return_value=f'"D:\\Tools\\MAW.exe" {flag} --port 9876'):
+                self.assertIsNone(_maw_server_process_id(9876))
 
     def test_check_server_media_reports_existing_project_media(self) -> None:
         """Given JSON embeds existing media, When checked, Then media is usable."""

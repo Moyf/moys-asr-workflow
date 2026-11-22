@@ -149,6 +149,7 @@ interface MaweBootApi {
 }
 
 interface MaweExportSrtApi {
+  cleanupSegments: (segments: ProjectSegment[]) => ProjectSegment[];
   cleanupMainSegments: () => ProjectSegment[];
   cleanupPreviewSegment: (segment: ProjectSegment) => ProjectSegment;
   setCleanupProjectionCacheEnabled: (enabled: boolean) => void;

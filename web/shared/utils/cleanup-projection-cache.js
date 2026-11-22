@@ -64,9 +64,7 @@ export function createCleanupProjectionCache({ createRetainedProjector, createEx
   let exportProjector;
   let retainedCues = new WeakMap();
   let exportCues = new WeakMap();
-  let exportSource = null;
-  let exportResult = null;
-  let exportIdentities = [];
+  let exportTracks = new WeakMap();
 
   function reset(gapRemove) {
     gapReference = gapRemove;
@@ -76,9 +74,7 @@ export function createCleanupProjectionCache({ createRetainedProjector, createEx
     exportProjector = null;
     retainedCues = new WeakMap();
     exportCues = new WeakMap();
-    exportSource = null;
-    exportResult = null;
-    exportIdentities = [];
+    exportTracks = new WeakMap();
   }
 
   function hasCleanup(gapRemove) {
@@ -125,22 +121,23 @@ export function createCleanupProjectionCache({ createRetainedProjector, createEx
     if (!hasCleanup(gapRemove)) return source;
     syncGap(gapRemove);
     if (!exportProjector) exportProjector = createExportProjector(gapRemove);
-    if (exportSource === source && exportIdentities.length === source.length && exportResult) {
+    const cached = exportTracks.get(source);
+    if (cached && cached.identities.length === source.length) {
       let unchanged = true;
       for (let index = 0; index < source.length; index += 1) {
         const cue = source[index];
-        if ((index in source) !== (index in exportIdentities) || exportIdentities[index] !== cue
-            || (cue && typeof cue === 'object' && !matchesCue(cue, exportCues.get(cue)?.snapshot))) {
+        if ((index in source) !== (index in cached.identities) || cached.identities[index] !== cue
+            || (cue && typeof cue === 'object' && !matchesCue(cue, cached.snapshots[index]))) {
           unchanged = false;
           break;
         }
       }
-      if (unchanged) return exportResult;
+      if (unchanged) return cached.result;
     }
-    exportSource = source;
-    exportIdentities = source.slice();
-    exportResult = source.flatMap((cue) => [projectCue(cue, exportCues, exportProjector)]);
-    return exportResult;
+    const result = source.flatMap((cue) => [projectCue(cue, exportCues, exportProjector)]);
+    const snapshots = source.map(cue => exportCues.get(cue)?.snapshot);
+    exportTracks.set(source, { identities: source.slice(), snapshots, result });
+    return result;
   }
 
   function setEnabled(value) {

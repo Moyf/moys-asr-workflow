@@ -545,6 +545,7 @@ export function initMaweExportSrt() {
   }
 
   global.MaweExportSrt = Object.freeze({
+    cleanupSegments,
     cleanupMainSegments,
     cleanupPreviewSegment,
     setCleanupProjectionCacheEnabled,

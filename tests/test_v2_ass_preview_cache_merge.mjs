@@ -18,7 +18,7 @@ test('ASS preview cache follows v2 track visibility and the current style librar
       getSubtitleGroupValue: () => null, assStackFrame: () => ({ items: [], diagnostic: '' }) },
     MaweMultiSubtitleCore: { getActiveExtensionTrack: () => secondary },
     MaweExportSrt: { currentAssVideoResolution: () => ({ width: 1920, height: 1080 }),
-      cleanupMainSegments: () => main.segments,
+      cleanupSegments: segments => segments,
       buildAss({ onAssPlan }) { builds++; onAssPlan({ profile: { animations: {} } }); } },
     MaweCoreState: { player: {} },
     MaweSettings: { EDITOR_SETTINGS: {} }, MaweAppearance: { getSubtitleAppearance: () => ({}) },

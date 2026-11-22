@@ -26,12 +26,10 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
         self.assertTrue(aux_film['preparation']['real_media'])
 
     def test_browser_shards_follow_selected_file_count(self):
-        specs = ['tests/e2e/cue-list-count-layout.spec.mjs', 'tests/e2e/multi-subtitle.spec.mjs',
-                 'tests/e2e/settings-structure.spec.mjs']
+        specs = [f'tests/e2e/case-{index}.spec.mjs' for index in range(118)]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            for count, groups in ((0, []), (1, [specs[:1]]), (2, [specs[:2]]),
-                                  (3, [specs[::2], specs[1::2]])):
+            for count, job_count in ((0, 1), (1, 1), (2, 1), (3, 2), (99, 2), (100, 3), (118, 3)):
                 with self.subTest(count=count):
                     output = root / f'outputs-{count}'
                     plan = {'python_tests': ['tests/test_asr_presets.py'], 'node_tests': [],
@@ -40,9 +38,12 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
                     with mock.patch.dict(os.environ, env):
                         ci_auxiliary.write_plan(plan, root / 'plan.json')
                     values = dict(line.split('=', 1) for line in output.read_text(encoding='utf-8').splitlines())
-                    self.assertEqual(json.loads(values['aux_browser_shards']), [1, 2] if count == 3 else [1])
+                    self.assertEqual(json.loads(values['aux_browser_shards']), list(range(1, job_count + 1)))
                     written = json.loads((root / 'plan.json').read_text(encoding='utf-8'))
-                    self.assertEqual(written['browser_file_groups'], groups)
+                    groups = written['browser_file_groups']
+                    self.assertEqual(len(groups), job_count if count else 0)
+                    self.assertTrue(all(groups))
+                    self.assertCountEqual([spec for group in groups for spec in group], specs[:count])
                     self.assertEqual(values['aux_python'], 'true')
                     self.assertEqual(values['aux_browser'], str(bool(count)).lower())
 
@@ -135,14 +136,14 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
 
     def test_browser_layer_passes_ci_matrix_shard(self):
         plan = {'python_tests': [], 'node_tests': [],
-                'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(20)],
+                'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(100)],
                 'preparation': {}}
         with mock.patch.dict(os.environ, {'CI_PREPARATION': '{}'}), \
                 mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \
                 mock.patch.object(ci_run_layer.subprocess, 'run', return_value=mock.Mock(returncode=7)) as run:
-            self.assertEqual(ci_run_layer.main(['--layer', 'browser', '--report-dir', 'evidence', '--shard', '2/2']), 7)
+            self.assertEqual(ci_run_layer.main(['--layer', 'browser', '--report-dir', 'evidence', '--shard', '3/3']), 7)
         command = run.call_args.args[0]
-        self.assertEqual(command[command.index('--shard') + 1], '2/2')
+        self.assertEqual(command[command.index('--shard') + 1], '3/3')
         self.assertEqual(command[command.index('--report-dir') + 1], 'evidence')
 
     def test_auxiliary_planning_failure_is_visible_without_failing_admission(self):

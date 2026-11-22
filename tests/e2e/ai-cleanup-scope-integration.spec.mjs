@@ -230,6 +230,41 @@ test('S3-T02 editing an unscoped item keeps the scope until the user restores it
   expectRestoredMainOutputs(await renderOutputs(page, 2500), 'deleted', 'words', 'retained-expanded');
 });
 
+test('paused ASS preview follows a restored cleanup range after swapping tracks', async ({ page }) => {
+  await waitForAssFonts(page);
+  await page.evaluate(() => {
+    MaweMultiImport.swapMainAndExtensionSubtitles();
+    MaweSettings.updateEditorSettings({ assMode: true });
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 2.5;
+    const wave = MaweCoreState.waveformEditor;
+    wave.settings.mode = 'multi';
+    wave.settings.secondsPerRow = 10;
+    wave.render();
+  });
+  const outputs = () => page.evaluate(() => {
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+    const painted = MaweAssCanvas.lastRender.tracks.flatMap(track => track.lines || [])
+      .flatMap(line => line.items.map(item => item.text)).join('');
+    return { painted, exported: MaweExportSrt.buildAss(), paused: MaweCoreState.player.paused };
+  });
+  async function check(restored) {
+    const { painted, exported, paused } = await outputs();
+    expect(paused).toBe(true);
+    for (const text of [painted, exported]) {
+      expect(text).toContain('kept');
+      expect(text.includes('deleted')).toBe(restored);
+    }
+  }
+  await check(false);
+  await page.locator('.waveform-gap-block[data-gap-index="0"]').first().click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '恢复区段' }).click();
+  await check(true);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await check(false);
+});
+
 async function trackRanges(page) {
   return page.evaluate(() => [
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
