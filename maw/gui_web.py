@@ -1278,7 +1278,7 @@ class LauncherApi:
                     extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
-                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols") is True,
                 ),
                 is_cancelled=operation.cancel_event.is_set,
                 begin_commit=operation.begin_commit,
@@ -2026,7 +2026,7 @@ class LauncherApi:
                 match_mode=match_mode,
                 extra_split_punctuation=extra_split,
                 preserve_punctuation=preserve,
-                clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                clean_markdown_symbols=payload.get("cleanMarkdownSymbols") is True,
             )
         except PostprocessFileError as error:
             return _error_result("postprocessScriptPath", "script_invalid", str(error))
@@ -2095,7 +2095,7 @@ class LauncherApi:
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
             preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
-            clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
+            clean_markdown_symbols = payload.get("cleanMarkdownSymbols") is True
             request = ScriptMatchRequest(
                 project_path, srt_path, script_path, OutputMode.JSON,
                 media_path=_optional_path(payload.get("mediaPath")),

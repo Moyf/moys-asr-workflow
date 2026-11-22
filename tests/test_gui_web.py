@@ -2194,8 +2194,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         script = self.root / "inline-preview.md"
         script.write_text("**粗体**\n==高亮==\n", encoding="utf-8")
 
-        cleaned = self.api.read_script_preview({"path": str(script)})
-        preserved = self.api.read_script_preview({"path": str(script), "cleanMarkdownSymbols": False})
+        cleaned = self.api.read_script_preview({"path": str(script), "cleanMarkdownSymbols": True})
+        preserved = self.api.read_script_preview({"path": str(script)})
 
         self.assertEqual(cleaned["preview"].rstrip("\n"), "粗体\n高亮")
         self.assertEqual(preserved["preview"].rstrip("\n"), "**粗体**\n==高亮==")
@@ -2223,7 +2223,6 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "projectPath": str(project),
             "scriptPath": str(script),
             "outputMode": "project",
-            "cleanMarkdownSymbols": False,
         })
 
         self.assertTrue(preserved["ok"])
@@ -2238,19 +2237,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         result = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["preview"], "1. 甲\n2. 乙")
+        self.assertEqual(result["preview"], "1. **甲**\n2. ==乙==")
         self.assertEqual(result["matchRate"], 100)
         self.assertEqual(result["originalSegmentCount"], 1)
         self.assertEqual(result["matchedSegmentCount"], 2)
 
-        preserved = self.api.preview_script_match({
+        cleaned = self.api.preview_script_match({
             "projectPath": str(project),
             "scriptPath": str(script),
-            "cleanMarkdownSymbols": False,
+            "cleanMarkdownSymbols": True,
         })
 
-        self.assertTrue(preserved["ok"])
-        self.assertEqual(preserved["preview"], "1. **甲**\n2. ==乙==")
+        self.assertTrue(cleaned["ok"])
+        self.assertEqual(cleaned["preview"], "1. 甲\n2. 乙")
 
     def test_match_preview_distinguishes_invalid_subtitle_from_low_match(self) -> None:
         malformed = self.root / "malformed.srt"
@@ -4737,9 +4736,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             self.assertTrue(started["ok"], started)
             self.api.worker.join(timeout=5)
             request = run.call_args.args[0]
-            self.assertEqual(request.srt_path, expected)
+            self.assertEqual(_canonical_test_path(request.srt_path), _canonical_test_path(expected))
 
-        self.assertEqual(self.api.recording_review_status()["srtPath"], str(expected))
+        self.assertEqual(_canonical_test_path(self.api.recording_review_status()["srtPath"]), _canonical_test_path(expected))
         self.assertEqual(existing.read_text(encoding="utf-8"), "existing")
 
     def test_recording_review_bridge_can_poll_cancel_and_retry(self) -> None:
@@ -6130,7 +6129,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
@@ -6156,7 +6155,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        self.assertIn('<input id="postprocessCleanMarkdownSymbols" type="checkbox" checked>', page)
+        self.assertIn('<input id="postprocessCleanMarkdownSymbols" type="checkbox">', page)
         self.assertIn("cleanMarkdownSymbols: $(\"postprocessCleanMarkdownSymbols\").checked", script)
         self.assertIn("cleanMarkdownSymbols: Boolean($(\"postprocessCleanMarkdownSymbols\")?.checked)", script)
         self.assertIn('$("postprocessCleanMarkdownSymbols").addEventListener("input"', script)

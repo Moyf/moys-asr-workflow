@@ -494,7 +494,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1435,7 +1435,24 @@
     return paths;
   }
 
-  let resumeRecordingPreparation = false;
+  let pendingRecordingKey = null;
+  function recordingPreparationKey(scriptPath, transcription) {
+    // Compare the submitted settings in memory only. Ignore probe metadata and options
+    // overridden by recording preparation; compare the effective track, not probe state.
+    const { audioTrackCount, defaultAudioTrack, audioTrack, testRun, lengthLimit,
+      alignmentModel, alignmentModelPath, autoPostprocess, ...settings } = transcription;
+    return JSON.stringify([scriptPath, audioTrack ?? defaultAudioTrack ?? 0, settings]);
+  }
+
+  function changedRecordingNotice(running) {
+    if (document.documentElement.lang === "en") {
+      return running ? "Inputs changed. Cancel the previous transcription or wait for it to finish, then start again."
+        : "Inputs changed. The previous result was not opened; click again to use the current inputs.";
+    }
+    return running ? "输入已更改。请取消上一次转写或等待它完成，然后重新启动。"
+      : "输入已更改，未打开上一次结果。请再次点击以使用当前输入。";
+  }
+
   async function runToolboxAlignment() {
     if (busy) return;
     const paths = validateAlignmentInputs();
@@ -1445,11 +1462,22 @@
     try {
       let inputs = paths;
       if ($("toolboxRecordingInputMode").value === "recording") {
-        if (!resumeRecordingPreparation) {
-          const transcription = window.MAWLauncher.getRecordingReviewTranscriptionPayload(paths.mediaPath);
+        const transcription = window.MAWLauncher.getRecordingReviewTranscriptionPayload(paths.mediaPath);
+        const key = recordingPreparationKey(paths.scriptPath, transcription);
+        if (pendingRecordingKey !== null && pendingRecordingKey !== key) {
+          const previous = await bridge("recording_review_status");
+          if (!previous.ok || previous.status === "running") {
+            const detail = previous.ok ? "" : `${postprocessErrorText(previous)}\n`;
+            setResult(`${detail}${changedRecordingNotice(true)}`, "error");
+            return;
+          }
+          pendingRecordingKey = null;
+          $("cancelRecordingPreparation").classList.add("hidden");
+        }
+        if (pendingRecordingKey === null) {
           const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
           if (!started.ok) { setResult(postprocessErrorText(started), "error"); return; }
-          resumeRecordingPreparation = true;
+          pendingRecordingKey = key;
         }
         $("cancelRecordingPreparation").classList.remove("hidden");
         let prepared;
@@ -1476,9 +1504,16 @@
             pollDelay = 400;
             if (prepared.message) setResult(prepared.message, "info");
           }
-          resumeRecordingPreparation = false;
-        } finally { $("cancelRecordingPreparation").classList.toggle("hidden", !resumeRecordingPreparation); }
+          pendingRecordingKey = null;
+        } finally { $("cancelRecordingPreparation").classList.toggle("hidden", pendingRecordingKey === null); }
         if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
+        const current = alignmentInputs();
+        if ($("toolboxRecordingInputMode").value !== "recording" || key !== recordingPreparationKey(
+          current.scriptPath, window.MAWLauncher.getRecordingReviewTranscriptionPayload(current.mediaPath),
+        )) {
+          setResult(changedRecordingNotice(false), "info");
+          return;
+        }
         inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
         $("toolboxAlignmentProjectPath").value = prepared.projectPath;
         window.MAWLauncher.setJsonPath(prepared.projectPath);
@@ -2232,7 +2267,7 @@
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
-    $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
+    $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols === true;
     $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
