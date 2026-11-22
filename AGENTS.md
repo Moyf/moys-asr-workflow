@@ -1,10 +1,19 @@
 # AGENTS.md
 
-## 项目与文档
+## 项目与任务入口
 
-- 先核对用户要达成的结果、问题的触发条件和现有行为。区分症状与原因，直接指出更值得解决的问题。
+- 先核对用户要达成的结果、问题的触发条件和现有行为。区分症状与原因，直接指出更值得解决的问题。以当前工作树为准，同时遵循所涉目录的 `AGENTS.md`。稀疏检出时可用 `git show <目标引用>:<路径>` 读对应文件。
 - MAW 是可公开分发的 ASR 工作流。主流程以 Qwen ASR API 转写本地媒体，生成 SRT 和 `.mosp`，再在本地编辑与导出。Launcher 和 CLI 也提供[实验性本地识别](docs/user/LOCAL_ASR.md)。新增引擎、模型下载管理器、剪辑脚本或比较工具须有明确需求。完整产品方向见 [MOSE](docs/engineering/MOSE.md)。
-- 以当前工作树的实现与说明为准。按[文档索引](docs/INDEX.md)找专题，按[开发概览](docs/engineering/DEVELOPMENT.md#代码入口)定位源码。批量切分、转写与烧录按 [maw-subtitle-pipeline](.agents/skills/maw-subtitle-pipeline/SKILL.md) 操作。
+
+| 任务 | 入口 |
+| --- | --- |
+| 改软件版本、准备候选版本 | [2.0dev 版本准备](docs/releases/preparation/README.md) |
+| 写发布正文、上线或恢复 | [预发布正文](docs/releases/README.md#预发布正文)、[正式版归档](docs/releases/README.md#正式版归档)及[发布验收与恢复](docs/releases/README.md#发布顺序与恢复)，按本次操作选读。 |
+| 找功能源码与首批测试 | [代码入口](docs/engineering/DEVELOPMENT.md#代码入口)中与操作对应的行。 |
+| 检查待提交改动 | [提交前自审](docs/engineering/DEVELOPMENT.md#提交前自审)，先选工作区候选或 PR 已提交范围。 |
+| 批量切分、转写与烧录 | [maw-subtitle-pipeline](.agents/skills/maw-subtitle-pipeline/SKILL.md) |
+
+- 从本次任务对应的章节开始。涉及新的数据、构建或发布边界时补读对应约定。其他专题查[文档索引](docs/INDEX.md)，接续已有任务按需查 [CURRENT](docs/logs/CURRENT.md) 和相关日志。
 - 用户用法放 `docs/user/`，工程说明放 `docs/engineering/`，共享计划放 `docs/plans/`。共用排查证据按[日志索引](docs/logs/INDEX.md)的基线归入 `docs/logs/release<版本>/<YYMMDD>_<主题>/`。临时产物、个人待办和原始输出留在 `.artifacts/`。优先更新已有正文，按[文档约定](docs/README.md#doc-policy)维护索引、引用和验证。官网源文档、映射或配图变化时，按[本分支的提交与验证](docs/README.md#提交与验证)同步、检查并提交生成副本。
 
 ## 协作、数据与安全
@@ -13,7 +22,7 @@
 - 所有文本使用 UTF-8 与 LF，换行遵循 `.gitattributes`。`.env` 中的 Key 仅供本机使用，禁止读取、打印、提交或放入测试夹具。禁止提交媒体、识别结果、波形 sidecar、原始截图及个人工作流资产。
 - 报错、日志和复现记录须隐去本机绝对路径与用户名。用分支名和短 SHA 标识复现环境。提交前用 `.githooks` 或 `python scripts/check_personal_paths.py` 检查个人路径。提交只用维护者身份，提交信息禁加代理或 AI 署名、`Co-authored-by` 及工具链接。
 - 本地服务器只监听 `127.0.0.1`，禁止开放任意文件浏览和任意路径写入。
-- v2 落盘字幕以 `tracks[*].segments` 为准，顶层 `segments` 用于旧格式兼容。字幕和字词的 `start` / `end` 为源媒体整数毫秒。`waveform` 只作为可重建缓存。旧工程首次保存为 v2 时显式另存，取消或失败须保留原件。改工程格式时同步更新 [JSON 契约](docs/engineering/JSON_SCHEMA.md)、相关测试与 CHANGELOG。
+- v2 落盘字幕以 `tracks[*].segments` 为准，顶层 `segments` 用于旧格式兼容。字幕和字词的 `start` / `end` 为源媒体整数毫秒。`waveform` 只作为可重建缓存。旧工程首次保存为 v2 时显式另存，取消或失败须保留原件。涉及工程读写先核对 [JSON 契约](docs/engineering/JSON_SCHEMA.md)的相关章节。改格式时同步更新契约、相关测试与 CHANGELOG。
 - 引入外部代码时逐项审核、补测试、更新文档。排除整目录覆盖与外部机器的配置、缓存和辅助工具。
 - 使用 Codegraph 时显式传入所用索引的 `projectPath`，避开父目录混合索引。借用主仓库索引只用于导航，编辑前用当前工作树源码核对。重构或索引与分支差异较大时直接查当前源码。
 
@@ -59,5 +68,4 @@
 - 合并、提交、推送、开 PR、建远端、打 tag 和发布须经维护者明确授权。提交前核对 PR 的实际目标仓库与分支，fetch 后将该仓库的最新目标分支合入当前分支并处理冲突。若 `origin` 是 fork，按 PR 目标选择对应远端。保留已选 PR 目标。
 - PR 写清为什么改、改了什么、验证和待确认边界。简单改动可合并小节，无待确认可省略。给出 reviewer 能访问的证据及必要验收。长正文用 UTF-8 文件提交并回读。Issue / PR 的条目序号用「条目 N」，`#数字` 留作真实引用。
 - 用户可感知的改动按 PR 或分支整体写入 CHANGELOG。内部调整并入所属功能，独立修复单列。体验优化用「提升」，问题修复用「修复」，行为或默认值变化用「变更」，完整且重要的新能力才用「全新特性」，不确定时用「提升」。Release Markdown 的粗体闭合标记与后续正文或标点间留一空格，标点后继续正文时也留空格。
-- 发布前核对版本、README、支持范围、许可证与第三方声明，按发布范围验收并检查敏感资产与路径。发布正文只维护 CHANGELOG，按[发布管线](docs/releases/README.md)生成和检查正式版归档及实际 notes。新补丁写 `release-base`，beta / rc 不新增正式归档。
-- 正式版须分别验证公开 GitHub Release 的正文和附件，以及官网索引、正文和详情页，两层通过才算发布完成。官网单独失败时记录「安装包已发布，官网待同步」及最后错误，按[恢复流程](docs/releases/README.md#官网失败后的单独恢复)填写 `expected_tag`，只重试 Pages 并复查公开地址。beta / rc 无需刷新正式版索引。确认发布成功后更新日志基线。
+- 发布正文只维护 CHANGELOG。发布前核对版本、README、支持范围、许可证与第三方声明，按发布范围验收并检查敏感资产与路径。正式版须分别核实公开 GitHub Release 和官网。按[发布管线](docs/releases/README.md#发布顺序与恢复)记录完成状态或处理失败。确认发布成功后更新日志基线。

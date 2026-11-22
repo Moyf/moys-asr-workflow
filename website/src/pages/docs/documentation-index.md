@@ -278,7 +278,7 @@ source: "docs/INDEX.md"
 <a name="engineering-releases"></a>
 ### 版本更新文档与发布管线
 
-[生成、校验与发布](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/releases/README.md)
+[2.0dev 版本准备](https://github.com/Moyf/moys-asr-workflow/blob/2.0dev/docs/releases/preparation/README.md) · [正文生成、校验与发布](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/releases/README.md)
 
 <a name="logs"></a>
 ## 日志与历史

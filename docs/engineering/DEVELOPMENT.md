@@ -4,6 +4,8 @@
 
 ## 代码入口
 
+按本次操作查对应行。涉及具体字段、页面装配或 CI 时，再读本页相应章节或链接的契约。
+
 | 位置 | 职责 |
 | --- | --- |
 | `maw_gui.py`、`maw/cli.py` | Launcher 启动、公开转写 CLI 与 Server 管理。 |
@@ -14,6 +16,8 @@
 | `maw/runtimes/`、`maw/local_models.py` | 独立运行环境与模型准备；MOSS 依赖单独声明。 |
 | `edit.py`、`web/` | 本地编辑器页面渲染、共享前端源码与 1.x 的历史便携入口。 |
 | `maw/waveform.py`、`maw/quapeaks.py`、`maw/mopeaks.py`、`maw/media_cache.py` | 波形提取、容器与缓存编排。 |
+| 编辑器打开旧工程、保存与另存 | 先读 [v2 保存约束](JSON_SCHEMA.md#当前目标v2-统一字幕轨道)。`web/editor/io/editor-project-save.js` 处理另存，成功写入前保持待迁移状态。`editor-project-load.js` 标记浏览器导入的旧工程，`editor-server-save.js` 管保存状态。`server-editor/serve.py` 标记从 Server 打开的旧工程，并保护 Server 写入目标。前端先选 `tests/test_v2_migration_save.mjs`，Server 先选 `tests/test_v2_migration_save.py`，交互加 `tests/e2e/v2-migration-save.spec.mjs`。 |
+| 烧录字幕与视频导出 | 编辑器 `web/editor/io/editor-wiring-burn-video.js` 走 `server-editor/serve.py` 的烧录作业，先分清原视频和移除空隙后的时间轴，查 `tests/test_burn_video_export.py`。Launcher 工具箱由 `web/launcher/postprocess.js` 经 `maw/gui_web.py` 调用 `maw/postprocess_ffmpeg.py`，查 `tests/test_gui_web.py` 或 `tests/test_postprocess.py`。两端共用部分编码和字幕转换逻辑。 |
 | `server-editor/serve.py` | 仅 loopback 的媒体 Range、受限保存、最近工程与本机设置。 |
 | `desktop/` | Electron MOSE 桌面壳；Tauri 实验已移除，决策见 [desktop README](../../desktop/README.md)。 |
 | `website/` | Astro 官网与源文档的静态副本。 |
@@ -149,9 +153,11 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 流程（agent 用后台 subagent 承担审查者；人类开发者换一个视角通读）：
 
-1. **独立视角通读全部 diff**（`git diff <基线>...HEAD`）。审查者未参与实现；实现者不为自己辩护，只回答提问。大 diff 按产品代码 / 测试与规范拆成多个审查者并行，各自给出编号 findings。
+1. **确定范围并独立通读**。审查者未参与实现。按要审查的快照取证。
+   - 待提交改动先用 `git status --short --untracked-files=all` 确认本次路径。用 `git diff HEAD -- <本次路径>` 查看已跟踪文件相对 HEAD 的工作区差异，另行打开本次新增的未跟踪文件。核对暂存用 `git diff --cached -- <本次路径>`，核对未暂存用 `git diff -- <本次路径>`。同一文件混有他人改动时，先协调或隔离本次内容，再确认要交付的快照。
+   - 审已提交的 PR 时，核对目标仓库、分支和 PR 头。更新目标引用后用 `git diff <实际目标引用>...<PR 头>`。如需连同本地后续改动审查，两种范围都要检查。记录所审快照，变化后复核新增差异。大改动按产品代码、测试和规范分工，各自记录发现。
 2. **标准对标 Greptile**：正确性 bug、边界条件、异常与降级路径、回归风险、跨平台差异（Windows / macOS / Linux）、性能影响、测试有效性（测试是否真的守住修复）、仓库约定（AGENTS.md、CHANGELOG 小节归属、文档同步、个人路径与 CRLF）。每条 finding 必须给出证据——文件:行加实际执行过的命令或验证输出；禁止臆测式风格点评。
-3. **双向验证**：新增测试在「修复缺失」的代码上必须真实失败（暂存修复只留测试，或用基线 worktree 对照），证明它能守住回归；行为修复用既有 e2e 用例做旧逻辑回退对照。验证后恢复原状并重建受影响产物。
+3. **双向验证**：新增回归测试须在修复前的代码上真实失败。行为修复用既有用例做旧行为对照。需要回退验证时可用基线工作树，保护其他会话的改动。之后恢复本次临时修改并重建受影响产物。
 4. **分诊**：真实缺陷立即修复并复验；nit 与「接受的风险」逐条记录，不静默丢弃，也不为表格好看伪装成已修复。
 5. **记录在案**：审查发现与处置写入 `docs/logs/release<基线>/<YYMMDD>_<主题>/REVIEW_FINDINGS.md`，按[文档约定](../README.md#doc-policy)登记日志索引，供后续 Greptile 复审对照与下次开发参考。
 6. **放行门槛**：没有未处置的 blocker / major 才提交；PR 描述如实写自审发现、处置与未测边界。审查过程中的临时修改全部恢复，不残留进程与脏文件。
@@ -160,6 +166,4 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](JSON_SCHEMA.md)。反馈和开发进度写任务账本。官网文档由 [同步脚本](../../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-2.0 发布核对本地应用、打包与 Pages 的[独立编辑入口版本边界](#独立编辑入口的版本边界)。1.x 便携副本例外及 PR 备注见[根 AGENTS](../../AGENTS.md)。发布正文生成与上线验收见[发布管线](../releases/README.md)。
-
-发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../INDEX.md#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
+软件版本、发布正文和上线验收见[版本与发布入口](../INDEX.md#engineering-releases)。涉及打包或 Pages 时核对[独立编辑入口的版本边界](#独立编辑入口的版本边界)。提交、远端操作、tag 与发布按[根 AGENTS](../../AGENTS.md)取得对应授权。
