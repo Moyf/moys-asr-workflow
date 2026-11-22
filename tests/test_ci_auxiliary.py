@@ -111,15 +111,18 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
         self.assertNotIn('--blocked-preparation', run.call_args.args[0])
 
     def test_browser_layer_passes_ci_matrix_shard(self):
+        self.assertEqual(ci_auxiliary.browser_shards(0), [1])
+        self.assertEqual(ci_auxiliary.browser_shards(99), [1, 2])
+        self.assertEqual(ci_auxiliary.browser_shards(100), [1, 2, 3])
         plan = {'python_tests': [], 'node_tests': [],
                 'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(20)],
                 'preparation': {}}
         with mock.patch.dict(os.environ, {'CI_PREPARATION': '{}'}), \
                 mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \
                 mock.patch.object(ci_run_layer.subprocess, 'run', return_value=mock.Mock(returncode=7)) as run:
-            self.assertEqual(ci_run_layer.main(['--layer', 'browser', '--report-dir', 'evidence', '--shard', '2/2']), 7)
+            self.assertEqual(ci_run_layer.main(['--layer', 'browser', '--report-dir', 'evidence', '--shard', '3/3']), 7)
         command = run.call_args.args[0]
-        self.assertEqual(command[command.index('--shard') + 1], '2/2')
+        self.assertEqual(command[command.index('--shard') + 1], '3/3')
         self.assertEqual(command[command.index('--report-dir') + 1], 'evidence')
 
     def test_auxiliary_planning_failure_is_visible_without_failing_admission(self):

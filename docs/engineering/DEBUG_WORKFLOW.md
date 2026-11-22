@@ -102,11 +102,13 @@ python scripts/test_workflow.py --base-ref upstream/2.0dev
 
 ### CI 范围与重跑
 
+辅助浏览器检查选中 1–99 个 spec 文件时分两片，达到 100 个时分三片。每片使用两个 worker、零重试和 900 秒执行时限。查看各片回执时，按实际运行的分片数核对测试集合。
+
 `Change checks` 保留有限准入与 `Change acceptance` 回执。它读取同一影响计划，将已准入消费者映射到对应检查组；其他选中 Python、Node 和浏览器消费者由独立辅助检查执行，并扣除本次准入已完整覆盖的文件。只准入个别方法的 Python 文件仍在辅助检查中执行整文件，避免漏掉其余消费者。
 
-辅助检查与有限准入分别结算，失败保留并分诊。选中辅助浏览器时按具体文件发现用例，分两片执行。只有其他辅助层时使用一片。完整 Editor 和 Windows 检查保留手动入口。日常准入、Windows 预览与人工核验边界见[开发概览](DEVELOPMENT.md#日常变更准入与手动辅助检查20dev)。
+辅助检查与有限准入分别结算，失败保留并分诊。只有其他辅助层时使用一片。完整 Editor 和 Windows 检查保留手动入口。日常准入、Windows 预览与人工核验边界见[开发概览](DEVELOPMENT.md#日常变更准入与手动辅助检查20dev)。
 
-准入失败时查看 `blocking-failures` 工件。辅助结果在对应分片的 `targeted-auxiliary-results-1` / `targeted-auxiliary-results-2`。手动巡检各组按自己的前置条件运行，浏览器报告与 trace 分开保存。 [CI 工作流](../../.github/workflows/editor-checks.yml)
+准入失败时查看 `blocking-failures` 工件。每个辅助分片的结果保存在 `targeted-auxiliary-results-<分片号>` 工件中。手动巡检各组按自己的前置条件运行，浏览器报告与 trace 分开保存。 [CI 工作流](../../.github/workflows/editor-checks.yml)
 
 GitHub Actions 的 **Re-run failed jobs** 和 **Re-run all jobs** 都会重新执行所选作业。[文件级接续](TEST_GOVERNANCE.md#执行与结果真实性)仍待实现。
 

@@ -38,6 +38,13 @@ def auxiliary_plan(blocking: dict, *, impact=None, validated=False) -> dict:
             'node_tests': [p for p in impact['node_tests'] if p not in admitted_node]}
 
 
+def browser_shards(spec_count: int) -> list[int]:
+    # The 118-spec selection exceeded the 900s browser deadline on two runners.
+    if spec_count >= 100:
+        return [1, 2, 3]
+    return [1, 2] if spec_count else [1]
+
+
 def write_plan(plan: dict, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, ensure_ascii=True, indent=2) + '\n', encoding='utf-8', newline='\n')
@@ -46,6 +53,7 @@ def write_plan(plan: dict, output: Path) -> None:
         with Path(output).open('a', encoding='utf-8', newline='\n') as stream:
             for name, value in values.items():
                 stream.write(f'aux_{name}={str(value).lower()}\n')
+            stream.write('aux_shards=' + json.dumps(browser_shards(len(plan['e2e_specs']))) + '\n')
             stream.write('aux_error=false\n')
     message = 'Targeted auxiliary scope: ' + ', '.join(
         f'{layer}={len(plan[field])}' for layer, field in
