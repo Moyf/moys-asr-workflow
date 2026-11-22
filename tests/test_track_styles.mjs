@@ -49,6 +49,16 @@ test('save to library requires explicit replacement for a conflicting name', () 
   assert.equal(result.ok, true);
   assert.equal(h.resolveTrackStyle(project, track, result.library).status, 'linked');
   assert.equal(result.style.fontSize, 77);
+  const nearCapacity = copy(library);
+  while (nearCapacity.styles.length < 64) {
+    const id = 'custom-' + nearCapacity.styles.length;
+    nearCapacity.styles.push({ ...library.styles[1], id, name: id });
+  }
+  h.updateTrackStyle(project, track, { name: 'New project preset' });
+  const lastSlot = h.saveTrackStyleToLibrary(project, track, nearCapacity);
+  assert.equal(lastSlot.library.styles.length, 65);
+  h.updateTrackStyle(project, track, { name: 'One more preset' });
+  assert.equal(h.saveTrackStyleToLibrary(project, track, lastSlot.library).reason, 'full');
 });
 
 test('editing a shared snapshot separates just the edited track and library deletion preserves it', () => {

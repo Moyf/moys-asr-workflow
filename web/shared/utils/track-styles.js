@@ -98,7 +98,7 @@ export function createUtilsModule(dependencies) {
     if (matches.length > 1) return { ok: false, reason: 'ambiguous', library };
     if (matches.length && comparable(matches[0]) !== comparable(snapshot) && !replace)
       return { ok: false, reason: 'conflict', library };
-    if (!matches.length && next.styles.length >= 64) return { ok: false, reason: 'full', library };
+    if (!matches.length && next.styles.length >= 65) return { ok: false, reason: 'full', library };
     const id = matches[0]?.id || nextId(next.styles);
     const saved = { ...normalized(snapshot), id, builtin: matches[0]?.builtin || false };
     if (matches.length) next.styles[next.styles.indexOf(matches[0])] = saved;

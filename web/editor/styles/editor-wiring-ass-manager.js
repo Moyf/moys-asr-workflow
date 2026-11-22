@@ -1,5 +1,5 @@
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
-import { getAssStyleLibrary, isAssStyleLibraryReady, hasAssStyleLibraryLoaded, incrementAssStyleLibraryRevision,
+import { getAssStyleLibrary, isAssStyleLibraryReady, hasAssStyleLibraryLoaded, canEditAssStyleLibrary, incrementAssStyleLibraryRevision,
   setAssStyleLibrary, updateAssStyleLibrarySummary, scheduleAssStyleLibrarySave,
   loadAssStyleLibrary, persistAssStyleLibrary } from './editor-wiring-ass-storage.js';
 
@@ -39,6 +39,7 @@ const {
   assStyleDragHandle,
   assStyleDuplicateButton,
   assStyleEditorEmpty,
+  assStyleFontToggle,
   assStyleForm,
   assStyleFormTitle,
   assStyleLibraryPathHint,
@@ -110,11 +111,14 @@ function updateAssStyleLibraryStatus() {
   assStyleLibraryStatus.dataset.state = !usesServerStorage && assStyleLibraryStatusState === 'success'
     ? 'local' : assStyleLibraryStatusState;
   if (assStyleLibraryPathHint) {
-    const pathHint = !usesServerStorage
-      ? '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。'
-      : isAssStyleLibraryReady()
-        ? '已保存到本机用户级配置；Launcher 与 Editor 共享。'
-        : '当前使用本地副本；服务器恢复后可再次点击保存同步。';
+    let pathHint = '尚未与服务器同步；请检查当前样式并重试保存。';
+    if (!usesServerStorage) {
+      pathHint = '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。';
+    } else if (isAssStyleLibraryReady()) {
+      pathHint = '已保存到本机用户级配置；Launcher 与 Editor 共享。';
+    } else if (!canEditAssStyleLibrary()) {
+      pathHint = assStyleLibraryStatusState === 'pending' ? '' : '尚未读取本机样式库，请重新加载';
+    }
     assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
   }
   updateAssStyleProjectHint();
@@ -239,6 +243,7 @@ function assStyleFormValue(field) {
 }
 
 function updateAssStyleManagerLibrary(mutator, { persist = true, recordProjectHistory = true } = {}) {
+  if (!canEditAssStyleLibrary()) return;
   const previous = getAssStyleLibrary();
   const next = assStyleManagerClone(getAssStyleLibrary());
   if (!next) return;
@@ -298,6 +303,7 @@ function updateAssProfileField(path, value) {
 
 function syncAssStyleForm(style) {
   if (!assStyleForm) return;
+  const canEdit = canEditAssStyleLibrary();
   const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
   const borderBox = Number(safeStyle.borderStyle) === 3;
   for (const [id, text] of [
@@ -314,6 +320,7 @@ function syncAssStyleForm(style) {
   if (assStyleSrtHint) assStyleSrtHint.hidden = !isSrtDefault;
   if (assStylePreviewModeHint) assStylePreviewModeHint.hidden = isSrtDefault;
   assStyleForm.querySelectorAll('[data-ass-style-field]').forEach((field) => {
+    field.disabled = !canEdit;
     if (document.activeElement === field) return;
     const value = safeStyle[field.dataset.assStyleField];
     if (field.type === 'checkbox') field.checked = value === true;
@@ -338,10 +345,12 @@ function syncAssStyleForm(style) {
 
 function syncAssProfileForm(profile) {
   if (!assProfileForm) return;
+  const canEdit = canEditAssStyleLibrary();
   const safeProfile = window.AsrEditorUtils.normalizeAssProfile(profile);
   if (assProfileFormTitle) assProfileFormTitle.textContent = safeProfile.name;
   if (assProfileBuiltinBadge) assProfileBuiltinBadge.hidden = !safeProfile.builtin;
   assProfileForm.querySelectorAll('[data-ass-profile-field]').forEach((field) => {
+    field.disabled = !canEdit;
     if (document.activeElement === field) return;
     const value = safeProfile[field.dataset.assProfileField];
     if (value !== undefined && value !== null) field.value = String(value);
@@ -356,8 +365,8 @@ function syncAssProfileForm(profile) {
     }
     // fad / pop 的数值参数供单句标记（`>>…<<`、`{{…}}`）在全局开关关闭时
     // 复用，不随 enabled 联动禁用；fade / move / t 保持开关联动。
-    field.disabled = key !== 'enabled' && group !== 'fad' && group !== 'pop'
-      && safeProfile.animations?.[group]?.enabled !== true;
+    field.disabled = !canEdit || (key !== 'enabled' && group !== 'fad' && group !== 'pop'
+      && safeProfile.animations?.[group]?.enabled !== true);
   });
   if (assProfilePreviewSummary) {
     const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
@@ -369,6 +378,11 @@ function syncAssProfileForm(profile) {
 
 function syncAssStyleManager({ force = false } = {}) {
   if (!assStyleWindow) return;
+  const canEdit = canEditAssStyleLibrary();
+  for (const control of [assStyleNewButton, assStyleDuplicateButton, assProfileNewButton, assStyleResetButton, assStyleFontToggle,
+    assStyleSaveButton, assSrtDefaultStyleSelect, assDefaultProfileSelect, assProfileExtensionStyleSelect]) {
+    if (control) control.disabled = !canEdit;
+  }
   setAssStyleLibrary(window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()));
   const styles = getAssStyleLibrary().styles || [];
   const profiles = getAssStyleLibrary().assProfiles || [];
@@ -428,7 +442,7 @@ function syncAssStyleManager({ force = false } = {}) {
     // 内置条目右上角显示「重置」（恢复默认值）；「删除当前」只对自定义条目生效。
     const builtin = selected?.builtin === true;
     assStyleDeleteButton.hidden = builtin;
-    assStyleDeleteButton.disabled = !selected;
+    assStyleDeleteButton.disabled = !canEdit || !selected;
     assStyleDeleteButton.title = '删除当前条目';
     if (assStyleResetButton) {
       assStyleResetButton.hidden = !builtin;
@@ -449,8 +463,8 @@ function syncAssStyleManager({ force = false } = {}) {
 }
 
 function createAssStyle() {
-  if ((getAssStyleLibrary().styles || []).length >= 64) {
-    MaweHint.flashHint('样式数量已达到上限（64 个）', 'warning');
+  if ((getAssStyleLibrary().styles || []).length >= 65) {
+    MaweHint.flashHint('样式数量已达到上限（65 个）', 'warning');
     return;
   }
   const id = assStyleManagerId('style', getAssStyleLibrary().styles);
@@ -466,7 +480,7 @@ function createAssStyle() {
 
 function duplicateAssStyle() {
   const source = selectedAssStyle();
-  if (!source || (getAssStyleLibrary().styles || []).length >= 64) {
+  if (!source || (getAssStyleLibrary().styles || []).length >= 65) {
     MaweHint.flashHint('无法复制样式：已达到数量上限', 'warning');
     return;
   }
@@ -662,6 +676,7 @@ function openProjectStyleEditor(role) {
   syncAssStyleManager({ force: true });
 }
 function saveProjectStyleToLibrary(role) {
+  if (!canEditAssStyleLibrary()) return;
   const track = projectStyleTrack(role);
   if (!track) return;
   const history = MaweHistory.captureSegmentsRecord('存回工程样式');
@@ -722,6 +737,7 @@ function showAssListContextMenu(event, kind) {
   // 阻止冒泡：document 级 contextmenu 监听会关闭非 cue 上的菜单，
   // 不拦截的话刚显示的菜单会立即被吞掉。
   event.preventDefault();
+  if (!canEditAssStyleLibrary()) return;
   event.stopPropagation();
   assStyleManagerSetSelection(kind, button.dataset.assSelectionId);
   const collection = kind === 'profile' ? getAssStyleLibrary().assProfiles : getAssStyleLibrary().styles;
@@ -821,10 +837,12 @@ function syncSubtitleStyleAssControls() {
   if (overlayAssStyleFields) overlayAssStyleFields.hidden = !assMode || !projectStyleTrack('overlay');
   const library = window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
   const styles = library.styles || [];
+  const canEdit = canEditAssStyleLibrary();
   const syncTrack = (role, select, prefix) => {
     if (!select) return;
     const track = projectStyleTrack(role);
     const resolved = window.AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, library);
+    select.disabled = !canEdit;
     select.replaceChildren();
     if (resolved.style && !resolved.libraryStyle) appendAssStyleOption(select, '', `${resolved.style.name}（工程样式）`);
     styles.forEach(style => appendAssStyleOption(select, style.id, style.name));
@@ -832,7 +850,7 @@ function syncSubtitleStyleAssControls() {
     const status = document.getElementById(`${prefix}-ass-style-status`);
     if (status) status.textContent = resolved.status === 'linked' ? '与样式库联动' : resolved.style ? '工程样式已分离' : '尚未设置工程样式';
     const save = /** @type {HTMLButtonElement | null} */ (document.getElementById(`${prefix}-ass-style-save-library`));
-    if (save) save.disabled = !resolved.style;
+    if (save) save.disabled = !canEdit || !resolved.style;
   };
   syncTrack('main', mainAssStyleSelect, 'main');
   syncTrack('secondary', extensionAssStyleSelect, 'extension');

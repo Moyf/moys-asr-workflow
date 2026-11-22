@@ -55,7 +55,7 @@ test('library edits update linked tracks, project edits fork, and save is one un
 
 test('failed library reload preserves linked project snapshots without a browser cache', async ({ page }) => {
   await page.evaluate(async () => {
-    const library = structuredClone(ASS_STYLE_LIBRARY);
+    const library = await (await fetch(MaweBoot.SERVER_CONFIG.assStylesUrl, { cache: 'no-store' })).json();
     library.styles.find(style => style.id === 'ass').fontSize = 101;
     const response = await fetch(MaweBoot.SERVER_CONFIG.assStylesUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -76,7 +76,7 @@ test('failed library reload preserves linked project snapshots without a browser
   await page.route('**/api/ass-styles', route => route.abort());
   await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style'));
   await page.locator('#ass-style-manager-open').click();
-  await expect(page.locator('#ass-style-library-status')).toContainText('服务器同步失败');
+  await expect(page.locator('#ass-style-library-status')).toContainText('重新加载失败，保留当前样式');
   expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').style.fontSize)).toBe(101);
   expect(await page.evaluate(() => ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize)).toBe(101);
   expect(await page.evaluate(() => MaweBoot.DATA.styles)).toEqual(before.styles);
@@ -87,7 +87,7 @@ test('failed library reload preserves linked project snapshots without a browser
   // A later successful reload must still update linked snapshots as one undo.
   await page.unroute('**/api/ass-styles');
   await page.evaluate(async () => {
-    const library = structuredClone(ASS_STYLE_LIBRARY);
+    const library = await (await fetch(MaweBoot.SERVER_CONFIG.assStylesUrl, { cache: 'no-store' })).json();
     library.styles.find(style => style.id === 'ass').fontSize = 109;
     const response = await fetch(MaweBoot.SERVER_CONFIG.assStylesUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

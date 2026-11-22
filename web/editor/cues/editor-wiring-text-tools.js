@@ -115,6 +115,7 @@ MaweDom.timedTextEditSingleTextarea?.addEventListener('input', () => {
   MaweTimedTextEdit.refreshTimedTextEditSearch({ preserveIndex: true });
   MaweTimedTextEdit.scheduleTimedTextEditReport();
 });
+let timedTextEditViewFocusSequence = 0;
 MaweDom.timedTextEditView?.addEventListener('click', (event) => {
   const button = event.target.closest?.('button[data-view]');
   if (!button || button.disabled || !MaweDom.timedTextEditDraft) return;
@@ -135,8 +136,19 @@ MaweDom.timedTextEditView?.addEventListener('click', (event) => {
   else MaweTimedTextEdit.renderTimedTextEditRows();
   MaweTimedTextEdit.renderTimedTextEditView();
   MaweTimedTextEdit.flushTimedTextEditReport();
-  setTimeout(() => (nextView === 'single'
-    ? MaweDom.timedTextEditSingleTextarea : MaweDom.timedTextEditRows.querySelector('textarea'))?.focus(), 0);
+  const draft = MaweDom.timedTextEditDraft;
+  const focusSequence = ++timedTextEditViewFocusSequence;
+  const pointerActivation = event.detail > 0;
+  setTimeout(() => {
+    if (!MaweDom.timedTextEditModal.classList.contains('show')
+      || MaweDom.timedTextEditDraft !== draft || draft.view !== nextView
+      || focusSequence !== timedTextEditViewFocusSequence) return;
+    const active = document.activeElement;
+    if (MaweDom.timedTextEditModal.contains(active)
+      && (active !== button || !pointerActivation)) return;
+    (nextView === 'single'
+      ? MaweDom.timedTextEditSingleTextarea : MaweDom.timedTextEditRows.querySelector('textarea'))?.focus();
+  }, 0);
 });
 MaweDom.timedTextEditShowAll?.addEventListener('click', () => {
   if (!MaweDom.timedTextEditDraft) return;
