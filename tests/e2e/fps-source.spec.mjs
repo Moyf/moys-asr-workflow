@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { disableOnboarding, findFreePort, generateWaveformPayload, openSettingsPage, startServer } from './helpers.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 // Real Chromium + Server + ffprobe, with synthetic media retained as local evidence.
 const root = resolve('.artifacts/fps-source/browser');
@@ -21,9 +22,9 @@ test.afterEach(async () => { await server?.stop(); server = null; });
 
 async function open(page, name, timebase) {
   project = join(root, `${name}.mosp`);
-  writeFileSync(project, JSON.stringify({ media: media25, timebase,
+  writeFileSync(project, JSON.stringify(createProjectTracks().importProject({ media: media25, timebase,
     waveform: generateWaveformPayload(2000), segments: [{ id: 's', start: 200, end: 1200,
-      text: 'hello', items: [{ start: 200, end: 1200, text: 'hello' }] }] }));
+      text: 'hello', items: [{ start: 200, end: 1200, text: 'hello' }] }] }).project));
   server = await startServer(project, media25, await findFreePort());
   await disableOnboarding(page);
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
@@ -45,14 +46,20 @@ async function saveReload(page) {
 for (const fps of [30, 23.976]) {
   test(`explicit ${fps} survives actual save reload and local media replacement`, async ({ page }, testInfo) => {
     await open(page, `user-${fps}`, { unit: 'milliseconds', fps: 30 });
-    const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA.segments));
+    const before = await page.evaluate(() => JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments));
     await page.locator('#timeline-fps').fill(String(fps));
     await page.locator('#timeline-fps').press('Enter');
     expect(await page.evaluate(() => MaweBoot.DATA.timebase)).toEqual({ unit: 'milliseconds', fps, fps_source: 'user' });
-    if (fps === 30) expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA.segments))).toBe(before);
+    if (fps === 30) expect(await page.evaluate(() => JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments))).toBe(before);
     const saved = await saveReload(page);
     expect(saved.timebase.fps_source).toBe('user');
+    // The media input saves the current project as part of replacement. Wait
+    // for that write to finish before changing timebase and saving it again.
+    const replacementSave = page.waitForResponse(response => response.url().endsWith('/api/project')
+      && response.request().method() === 'POST');
     await page.setInputFiles('#load-media-file', media24);
+    expect((await replacementSave).ok()).toBe(true);
+    await expect.poll(() => page.evaluate(() => MaweServerSave.projectSaveInFlight)).toBe(false);
     await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentSrc.startsWith('blob:'))).toBe(true);
     await page.locator('#timeline-timebase').selectOption('frames');
     expect(await page.evaluate(() => MaweBoot.DATA.timebase)).toEqual({ unit: 'frames', fps, fps_source: 'user' });

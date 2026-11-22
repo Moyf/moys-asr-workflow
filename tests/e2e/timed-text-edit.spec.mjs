@@ -63,6 +63,75 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('opening focus preserves an early search and ignores a closed dialog', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.locator('#timed-text-edit-btn').click();
+  await page.keyboard.press('Control+f');
+  const search = page.locator('#timed-text-edit-find');
+  await search.fill('abc');
+  await page.clock.runFor(50);
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue('abc');
+  await page.keyboard.press('Escape');
+  await page.locator('#timed-text-edit-btn').click();
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(50);
+  await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
+  expect(await page.evaluate(() => MaweDom.timedTextEditModal.contains(document.activeElement))).toBe(false);
+});
+
+test('rapid reopen locates the newly selected cue rather than the previous one', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.evaluate(() => {
+    MaweBoot.DATA.timed_text_edit_view = 'single';
+    MaweSelection.selectOnly(0);
+    MaweTimedTextEdit.openTimedTextEdit();
+  });
+  await page.clock.runFor(20);
+  await page.evaluate(() => {
+    MaweTimedTextEdit.closeTimedTextEdit();
+    MaweSelection.selectOnly(1);
+    MaweTimedTextEdit.openTimedTextEdit();
+  });
+  const editor = page.locator('#timed-text-edit-single-textarea');
+  await page.clock.runFor(30);
+  await expect(editor).not.toBeFocused();
+  await page.clock.runFor(20);
+  await expect(editor).toBeFocused();
+  expect(await editor.evaluate(el => el.selectionStart)).toBe('就是这颗'.length + 1);
+});
+
+test('view focus follows mouse and keyboard without overriding a later selection', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.locator('#timed-text-edit-btn').click();
+  await page.clock.runFor(50);
+  const single = page.locator('#timed-text-edit-view [data-view="single"]');
+  const rowsButton = page.locator('#timed-text-edit-view [data-view="rows"]');
+  await single.click();
+  await page.clock.runFor(1);
+  await expect(page.locator('#timed-text-edit-single-textarea')).toBeFocused();
+  await rowsButton.click();
+  const rows = page.locator('#timed-text-edit-rows textarea');
+  await rows.nth(1).focus();
+  await page.clock.runFor(1);
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.insertText('X');
+  await expect(rows.nth(1)).toHaveValue(/X/);
+  await single.focus();
+  await page.keyboard.press('Enter');
+  await page.clock.runFor(1);
+  await expect(single).toBeFocused();
+});
+
 test('overall editing completes MASS styles in both preview and saved word timings', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
