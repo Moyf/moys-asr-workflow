@@ -535,10 +535,35 @@ body:not(.launcher-ready) .shell {
 
 /* 最近工程：serverCard 工程文件输入框下方的紧凑列表；空列表时整块隐藏。
    顶部间距由 .field 的 margin-top 提供（.field 只有上边距，见 UI 间距约定）。 */
+.recent-projects-field {
+  gap: 8px;
+}
+
+.recent-projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .recent-projects-label {
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1;
+}
+
+.recent-projects-toggle {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.recent-projects-toggle:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 
 .recent-projects-list {
@@ -1636,6 +1661,8 @@ textarea::placeholder {
   background: var(--bg-raised);
 }
 
+.match-review-link { margin-top: 8px; }
+.match-preview-pending { margin: 8px 0 0; color: var(--text-secondary); }
 .script-preview pre {
   max-height: 120px;
   margin: 6px 0 0;
@@ -2324,6 +2351,30 @@ textarea::placeholder {
   gap: 5px;
   max-block-size: 132px;
   overflow-y: auto;
+}
+
+.toolbox-compare-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.toolbox-compare-row .toolbox-chain-heading {
+  margin: 0;
+}
+
+.toolbox-compare-row .ghost {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 55%, var(--border-subtle));
+  background: var(--info-tint);
+}
+
+.toolbox-compare-row .ghost:hover:not(:disabled) {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-soft);
 }
 
 .toolbox-chain-item,

@@ -306,9 +306,9 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             json.dumps(
                 {
                     "segments": [
-                        {"start": 0, "end": 1000, "text": "旧一"},
-                        {"start": 1000, "end": 2000, "text": "旧二"},
-                        {"start": 2000, "end": 3000, "text": "旧三"},
+                        {"start": 0, "end": 1000, "text": "但是也有地平论者在发力"},
+                        {"start": 1000, "end": 2000, "text": "你有没有自主意识"},
+                        {"start": 2000, "end": 3000, "text": "AI 会不会统治地球"},
                     ]
                 },
                 ensure_ascii=False,
@@ -536,6 +536,68 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
                 (3000, 4000, "第二句文稿。"),
             ],
         )
+
+    def test_timed_matching_uses_segment_bounds_for_missing_items(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": 0, "end": 600, "text": "甲", "items": [{"start": 100, "end": 400, "text": "甲"}]},
+            {"start": 1000, "end": 1600, "text": "乙丙", "items": []},
+            {"start": 1800, "end": 1900, "text": ""},
+            {"start": 2000, "end": 2700, "text": "丁", "items": [{"start": 2100, "end": 2600, "text": "丁"}]},
+            {"start": 3000, "end": 3500, "text": "戊", "items": [{"start": 3100, "end": 3400, "text": "戊"}]},
+        ]}, ensure_ascii=False), encoding="utf-8")
+        self.script_path.write_text("甲\n乙\n丙\n丁\n戊", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual(
+            [(segment["start"], segment["end"], segment["text"]) for segment in segments],
+            [(100, 400, "甲"), (1000, 1300, "乙"), (1300, 1600, "丙"), (2100, 2600, "丁"), (3100, 3400, "戊")],
+        )
+        self.assertTrue(any("1 个字幕段缺少字词时间码" in warning for warning in result.warnings))
+
+    def test_timed_matching_reports_all_overlapping_extras_even_when_none_survive(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": start, "end": start + 500, "text": text,
+             "items": [{"start": start, "end": start + 500, "text": text}], **metadata}
+            for start, text, metadata in [
+                (0, "开头正文", {}),
+                (1000, "额外旁白", {}),
+                (2000, "禁用内容", {"disabled": True}),
+                (3000, "结尾正文", {}),
+            ]
+        ]}, ensure_ascii=False), encoding="utf-8")
+        self.script_path.write_text("开头正文结尾正文", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual([(segment["start"], segment["end"], segment["text"]) for segment in segments], [
+            (0, 3500, "开头正文结尾正文"),
+        ])
+        self.assertIn("1 个文稿之外的 ASR 字幕段与匹配结果完全重叠，未保留。", result.warnings)
+        self.assertIn("1 个禁用字幕段与匹配结果完全重叠，未保留。", result.warnings)
+
+    def test_text_mode_does_not_distribute_an_english_id_across_unrelated_cues(self) -> None:
+        texts = ["欢迎各位来观看本场比赛", "他确实在拿到名局的时候", "在康康中表现得相当亮眼", "接下来我们一起回顾关键回合"]
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": index * 1000, "end": index * 1000 + 900, "text": text}
+            for index, text in enumerate(texts)
+        ]}, ensure_ascii=False), encoding="utf-8")
+        self.script_path.write_text(f"{texts[0]}ZmjjKK{texts[-1]}。", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(
+            self.project_path, None, self.script_path, OutputMode.JSON, match_mode="text",
+        ))
+
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual([segment["text"] for segment in segments], [*texts[:-1], f"{texts[-1]}。"])
+        self.assertEqual([(segment["start"], segment["end"]) for segment in segments], [
+            (index * 1000, index * 1000 + 900) for index in range(len(texts))
+        ])
 
     def test_mosp_items_drive_character_timed_script_matching(self) -> None:
         self.project_path.write_text(

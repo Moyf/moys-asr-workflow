@@ -75,6 +75,8 @@ language_filter_hint_suffix: "中开启。",
     openai_key_hint_suffix: "获取 API Key",
     json_project: "工程文件",
     recent_projects: "最近工程",
+    recent_projects_show_more: "显示更多",
+    recent_projects_show_less: "收起",
     recent_project_missing_badge: "已失效",
     json_placeholder: "生成工程后会自动填入，也可以手动选择之前的工程",
     server_media: "媒体文件（可选）",
@@ -238,6 +240,8 @@ language_filter_hint_suffix: "中开启。",
     openai_key_hint_suffix: "↗",
     json_project: "Project file",
     recent_projects: "Recent projects",
+    recent_projects_show_more: "Show more",
+    recent_projects_show_less: "Show less",
     recent_project_missing_badge: "Missing",
     json_placeholder: "Auto-filled after generation, or choose an earlier project",
     server_media: "Media file (optional)",
@@ -1413,4 +1417,20 @@ Object.assign(STRINGS.en, {
   artifact_type_comparison: "Comparison HTML",
   toolbox_task_cleanup: "Compare complete expressions and clean failed takes, true repeats, process talk and false starts without rewriting source words. A reference is optional. Local scripts convert the editing draft to reversible cuts and review regions, followed by a missed-cut scan and continuity audit.",
   ai_cleanup_stats_summary: "Matched {matched} · Rephrased {rephrased} · Extra kept {extras} · Deleted cues {removed} · Partial edits {edited} / {items} items · Pending review {review}",
+});
+Object.assign(STRINGS.zh, { toolbox_open_match_review: "打开完整对照", toolbox_text_match_preview: "更正预览", toolbox_match_preview_pending: "正在匹配文稿与字幕，生成预览…" });
+Object.assign(STRINGS.en, { toolbox_open_match_review: "Open full comparison", toolbox_text_match_preview: "Correction preview", toolbox_match_preview_pending: "Matching the manuscript to the subtitles and preparing the preview…" });
+Object.assign(STRINGS.zh, {
+  toolbox_compare_heading: "对比工具",
+  toolbox_match_source: "文稿来源：{path}",
+  toolbox_match_compare_hint: "使用上方的「转写对比」工具查看详情。",
+  toolbox_open_transcript_compare: "转写对比",
+  toolbox_open_timestamp_compare: "时间码对比",
+});
+Object.assign(STRINGS.en, {
+  toolbox_compare_heading: "Comparison tools",
+  toolbox_match_source: "Manuscript: {path}",
+  toolbox_match_compare_hint: "Use Transcript Compare above to see the details.",
+  toolbox_open_transcript_compare: "Transcript compare",
+  toolbox_open_timestamp_compare: "Timestamp compare",
 });

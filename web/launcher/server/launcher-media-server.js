@@ -130,15 +130,27 @@ async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result
 function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
 // 最近工程：读取编辑器持久化的 recent_projects，点击条目即填入工程文件输入框
 // 并走 setJsonPath 既有的 refreshServerMedia 流程；失效条目置灰但仍可点击尝试。
-// 失效徽标挂 data-i18n：语言切换由 renderLanguage() 的通用扫描接管
-//（MAWLauncher.onLanguageChanged 会被 batch.js/postprocess.js 覆盖，不能依赖）。
+const COLLAPSED_RECENT_PROJECTS = 3;
+function setRecentProjectsExpanded(expanded) {
+  const toggle = $("recentProjectsToggle");
+  const items = $("recentProjectsList").children;
+  const hasMore = items.length > COLLAPSED_RECENT_PROJECTS;
+  expanded = hasMore && expanded;
+  toggle.classList.toggle("hidden", !hasMore);
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.dataset.i18n = expanded ? "recent_projects_show_less" : "recent_projects_show_more";
+  toggle.textContent = t(toggle.dataset.i18n);
+  Array.from(items).forEach((item, index) => {
+    item.classList.toggle("hidden", !expanded && index >= COLLAPSED_RECENT_PROJECTS);
+  });
+}
 function renderRecentProjects(projects) {
   const list = $("recentProjectsList");
   const field = $("recentProjectsField");
-  if (!list || !field) return;
+  const toggle = $("recentProjectsToggle");
+  if (!list || !field || !toggle) return;
   const items = Array.isArray(projects) ? projects : [];
   list.replaceChildren();
-  field.classList.toggle("hidden", !items.length);
   items.forEach((project) => {
     if (!project || typeof project.path !== "string" || typeof project.name !== "string") return;
     const item = document.createElement("button");
@@ -161,6 +173,8 @@ function renderRecentProjects(projects) {
     item.addEventListener("click", () => setJsonPath(project.path));
     list.append(item);
   });
+  field.classList.toggle("hidden", !list.childElementCount);
+  setRecentProjectsExpanded(toggle.getAttribute("aria-expanded") === "true");
 }
 let recentProjectsRequest = 0;
 async function loadRecentProjects() {

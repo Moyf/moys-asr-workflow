@@ -8,7 +8,9 @@ import copy
 import difflib
 import json
 import unicodedata
-from dataclasses import dataclass
+from bisect import bisect_left, bisect_right
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final
@@ -27,6 +29,7 @@ from scripts.mosp_match_text import (
     clean_markdown_text,
     clean_markdown_inline_symbols,
     generate_matched_mosp,
+    normalize_character,
 )
 
 
@@ -83,6 +86,34 @@ class ScriptMatchRequest:
     clean_markdown_symbols: bool = True
 
 
+@dataclass(slots=True)
+class ScriptMatchTrace:
+    """Optional evidence for review, keyed by the relevant cue's time range."""
+
+    candidates: dict[tuple[int, int], str] = field(default_factory=dict)
+    issues: dict[tuple[int, int], str] = field(default_factory=dict)
+    estimated: set[tuple[int, int]] = field(default_factory=set)
+    coverage: tuple[float, float] | None = None
+
+
+def _match_coverage(matched: int, source: int, manuscript: int, trace: ScriptMatchTrace | None) -> tuple[str, str]:
+    coverage = matched / max(1, min(source, manuscript))
+    if coverage < MIN_MATCH_COVERAGE:
+        raise MatchCoverageError(coverage)
+    manuscript_coverage = matched / max(1, manuscript)
+    source_coverage = matched / max(1, source)
+    if trace is not None:
+        trace.coverage = manuscript_coverage, source_coverage
+    return (
+        f"文稿匹配度：{coverage:.0%}",
+        f"覆盖率：文稿 {manuscript_coverage:.0%}，原字幕 {source_coverage:.0%}（按可匹配字符计算）。",
+    )
+
+
+def _cue_range(segment: JsonDict) -> tuple[int, int]:
+    return _integer_field(segment, "start"), _integer_field(segment, "end")
+
+
 @dataclass(frozen=True, slots=True)
 class _CueSpan:
     segment_index: int
@@ -117,40 +148,9 @@ def run_script_match(
     check_match_cancelled(is_cancelled)
     script_path, script_text = _read_script(request.script_path)
     check_match_cancelled(is_cancelled)
-    if request.match_mode not in {"script", "text"}:
-        raise ValueError("不支持的文稿匹配模式")
-    extra_split_punctuation = request.extra_split_punctuation if request.match_mode == "script" else ()
-    preserve_punctuation = request.preserve_punctuation if request.match_mode == "script" else ()
-    prepared_script, punctuation_warning = prepare_script_text(
-        script_text,
-        extra_split_punctuation,
-        preserve_punctuation,
-        clean_markdown_symbols=request.clean_markdown_symbols,
-    )
-    check_match_cancelled(is_cancelled)
     if on_status is not None:
         on_status("toolbox_status_matching")
-    if (
-        request.match_mode == "script"
-        and source_project is not None
-        and _has_complete_item_timings(project, is_cancelled=is_cancelled)
-    ):
-        matched, warnings = _match_project_with_character_timings(
-            project,
-            prepared_script,
-            request.extra_split_punctuation,
-            request.preserve_punctuation,
-            is_cancelled=is_cancelled,
-        )
-    else:
-        matched, warnings = _match_project(
-            project,
-            prepared_script,
-            DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
-            frozenset(request.preserve_punctuation),
-            request.match_mode,
-            is_cancelled=is_cancelled,
-        )
+    matched, warnings = match_script_project(project, source_project is not None, script_text, request, is_cancelled=is_cancelled)
     check_match_cancelled(is_cancelled)
     if begin_commit is not None and not begin_commit():
         raise MatchCancelledError("文稿匹配已取消。")
@@ -165,10 +165,44 @@ def run_script_match(
         operation="match",
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
-        warnings=(f"文稿来源：{script_path}", punctuation_warning, *warnings),
+        warnings=(f"文稿来源：{script_path}", *warnings),
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
+
+
+def match_script_project(
+    project: JsonDict,
+    from_project: bool,
+    script_text: str,
+    request: ScriptMatchRequest,
+    *,
+    trace: ScriptMatchTrace | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> tuple[JsonDict, tuple[str, ...]]:
+    """One computation for the Launcher preview, review and normal export."""
+    if request.match_mode not in {"script", "text"}:
+        raise ValueError("不支持的文稿匹配模式")
+    script_mode = request.match_mode == "script"
+    extra = request.extra_split_punctuation if script_mode else ()
+    preserve = request.preserve_punctuation if script_mode else ()
+    prepared, punctuation_warning = prepare_script_text(
+        script_text, extra, preserve, clean_markdown_symbols=request.clean_markdown_symbols,
+    )
+    multi_subtitle = project.get("multi_subtitle")
+    if script_mode and isinstance(multi_subtitle, dict) and multi_subtitle.get("bindings"):
+        matched, warnings = _match_project(project, prepared, match_mode="text", is_cancelled=is_cancelled, trace=trace)
+        warnings = (*warnings, "工程含主副轨字幕绑定，已保留原分段与时间，只更正文字。")
+    elif script_mode and from_project and _supports_item_timed_matching(project, is_cancelled=is_cancelled):
+        matched, warnings = _match_project_with_character_timings(
+            project, prepared, extra, preserve, is_cancelled=is_cancelled, trace=trace,
+        )
+    else:
+        matched, warnings = _match_project(
+            project, prepared, DEFAULT_SPLIT_PUNCTUATION | frozenset(extra), frozenset(preserve),
+            request.match_mode, is_cancelled=is_cancelled, trace=trace,
+        )
+    return matched, (punctuation_warning, *warnings)
 
 
 def prepare_script_text(
@@ -229,12 +263,22 @@ def processed_script_text(
     return "\n".join(_split_script_segments(normalized_text, split_punctuation, preserved))
 
 
-def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None) -> bool:
+def _supports_item_timed_matching(project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None) -> bool:
+    """Decide whether the character-timed matcher can carry this project.
+
+    A few segments without word items are normal (the ASR service sometimes
+    omits them); those get character timings synthesised from the segment
+    bounds before matching.  The timed path is only used when a strict
+    majority of enabled segments carry complete item timings, so projects
+    without real word timings keep using the structure-preserving path.
+    """
+
     check_match_cancelled(is_cancelled)
     segments = project.get("segments")
     if not isinstance(segments, list) or not segments:
         return False
     enabled_count = 0
+    timed_count = 0
     for segment in segments:
         check_match_cancelled(is_cancelled)
         if not isinstance(segment, dict):
@@ -244,7 +288,7 @@ def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], 
         enabled_count += 1
         items = segment.get("items")
         if not isinstance(items, list) or not items:
-            return False
+            continue
         for item in items:
             check_match_cancelled(is_cancelled)
             if (
@@ -256,7 +300,56 @@ def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], 
                 or isinstance(item.get("end"), bool)
             ):
                 return False
-    return enabled_count > 0
+            if item["end"] < item["start"] or (
+                item["end"] == item["start"] and _has_matchable_text(item["text"], is_cancelled)
+            ):
+                return False
+        timed_count += 1
+    return enabled_count > 0 and timed_count * 2 > enabled_count
+
+
+def _has_matchable_text(text: str, is_cancelled: Callable[[], bool] | None) -> bool:
+    for character in text:
+        check_match_cancelled(is_cancelled)
+        if normalize_character(character):
+            return True
+    return False
+
+
+def _synthesize_missing_item_timings(
+    segments: list[JsonDict],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> int:
+    """Give segments without word items a single segment-wide item.
+
+    The timed matcher distributes characters across an item's timespan, so a
+    segment-wide item yields uniform character timing.  Segments whose text
+    has no matchable characters contribute nothing, matching the item-based
+    behaviour.
+    """
+
+    check_match_cancelled(is_cancelled)
+    synthesized = 0
+    for segment in segments:
+        check_match_cancelled(is_cancelled)
+        items = segment.get("items")
+        if isinstance(items, list) and items:
+            continue
+        text = segment.get("text")
+        if not isinstance(text, str):
+            continue
+        try:
+            start = _integer_field(segment, "start")
+            end = _integer_field(segment, "end")
+        except ValueError:
+            continue
+        if end <= start:
+            continue
+        segment["items"] = [{"start": start, "end": end, "text": text}]
+        if _has_matchable_text(text, is_cancelled):
+            synthesized += 1
+    return synthesized
 
 
 def _match_project_with_character_timings(
@@ -266,22 +359,25 @@ def _match_project_with_character_timings(
     preserve_punctuation: tuple[str, ...],
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    trace: ScriptMatchTrace | None = None,
 ) -> tuple[JsonDict, tuple[str, ...]]:
     check_match_cancelled(is_cancelled)
     split_punctuation = DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
     preserved = frozenset(preserve_punctuation)
     if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
-        return _match_project(project, script_text, split_punctuation, preserved, "script", is_cancelled=is_cancelled)
+        return _match_project(project, script_text, split_punctuation, preserved, "script", is_cancelled=is_cancelled, trace=trace)
 
     source_segments = project.get("segments")
     if not isinstance(source_segments, list):
         raise ValueError("project segments must be an array")
-    matcher_project = copy.deepcopy(project)
-    matcher_project["segments"] = [
+    enabled_segments = [
         segment
         for segment in source_segments
         if isinstance(segment, dict) and segment.get("disabled") is not True
     ]
+    matcher_segments = copy.deepcopy(enabled_segments)
+    synthesized = _synthesize_missing_item_timings(matcher_segments, is_cancelled=is_cancelled)
+    matcher_project: JsonDict = {**project, "segments": [*matcher_segments]}
     mosp_text = json.dumps(matcher_project, ensure_ascii=False)
     try:
         _cues, report, matched_text = generate_matched_mosp(
@@ -290,6 +386,7 @@ def _match_project_with_character_timings(
             split_punctuation=split_punctuation,
             preserve_punctuation=preserved,
             is_cancelled=is_cancelled,
+            require_cue_anchor=True,
         )
     except AlignmentError as error:
         raise SubtitleMatchError(str(error)) from error
@@ -297,27 +394,52 @@ def _match_project_with_character_timings(
     asr_characters = _report_integer(report, "asr_characters")
     manuscript_characters = _report_integer(report, "manuscript_characters")
     matched_characters = _report_integer(report, "matched_characters")
-    coverage = matched_characters / max(1, min(asr_characters, manuscript_characters))
-    if coverage < MIN_MATCH_COVERAGE:
-        raise MatchCoverageError(coverage)
+    rate, coverage_note = _match_coverage(matched_characters, asr_characters, manuscript_characters, trace)
 
     raw_matched: JsonValue = json.loads(matched_text)
     if not isinstance(raw_matched, dict):
         raise ValueError("character matcher returned an invalid project")
-    _preserve_equal_count_segment_metadata(matcher_project, raw_matched, is_cancelled=is_cancelled)
-    preserved_extras = _merge_unmatched_source_segments(
-        matcher_project.get("segments"),
+    if trace is not None:
+        for segment in enabled_segments:
+            if not segment.get("items") and _has_matchable_text(str(segment.get("text", "")), is_cancelled):
+                trace.estimated.add(_cue_range(segment))
+        for segment in _reviewable_segments(raw_matched):
+            trace.candidates[_cue_range(segment)] = str(segment["text"])
+    _inherit_timed_metadata(enabled_segments, raw_matched, report, is_cancelled=is_cancelled)
+    preserved_extras, clipped_extras, dropped_extras = _merge_unmatched_source_segments(
+        [*enabled_segments],
         raw_matched,
         report,
         is_cancelled=is_cancelled,
+        issues=trace.issues if trace is not None else None,
     )
-    raw_matched["segments"] = _merge_disabled_segments(source_segments, raw_matched)
+    combined, clipped_disabled, dropped_disabled = _merge_disabled_segments(
+        source_segments, raw_matched, is_cancelled=is_cancelled, issues=trace.issues if trace is not None else None,
+    )
+    _remap_segment_references(source_segments, combined, match_by_id=True, is_cancelled=is_cancelled)
+    raw_matched["segments"] = combined
     matched = normalize_project(raw_matched)
     warnings: list[str] = [
-        f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
+        f"{rate}；已按字词时间码重新生成字幕段。",
+        coverage_note,
     ]
+    unanchored = _report_integer(report, "unanchored_manuscript_cues")
+    if unanchored:
+        warnings.append(f"{unanchored} 个文稿段没有对应的原字幕字符，未生成字幕。")
+    if synthesized:
+        warnings.append(f"{synthesized} 个字幕段缺少字词时间码，已按原字幕起止时间估算。")
+    if _report_integer(report, "unplaced_manuscript_characters"):
+        warnings.append("部分新增或改写文字没有可靠的独立时间码，已并入同段相邻字词，未拉长字幕时间。")
     if preserved_extras:
         warnings.append(f"已保留 {preserved_extras} 个文稿之外的 ASR 字幕段。")
+    for label, clipped, dropped in (
+        ("文稿之外的 ASR 字幕段", clipped_extras, dropped_extras),
+        ("禁用字幕段", clipped_disabled, dropped_disabled),
+    ):
+        if clipped:
+            warnings.append(f"{clipped} 个{label}与匹配结果重叠，已收窄到空隙内。")
+        if dropped:
+            warnings.append(f"{dropped} 个{label}与匹配结果完全重叠，未保留。")
     return matched, tuple(warnings)
 
 
@@ -326,6 +448,11 @@ def _report_integer(report: dict[str, object], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"character matcher report field {key!r} is invalid")
     return value
+
+
+def _reviewable_segments(project: JsonDict) -> list[JsonDict]:
+    values = project.get("segments")
+    return [segment for segment in values if isinstance(segment, dict)] if isinstance(values, list) else []
 
 
 def _integer_field(segment: JsonDict, key: str, default: int | None = None) -> int:
@@ -337,10 +464,83 @@ def _integer_field(segment: JsonDict, key: str, default: int | None = None) -> i
     return round(value)
 
 
+def _fit_segments_into_gaps(
+    candidates: list[JsonDict],
+    matched_segments: list[JsonValue],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+    issues: dict[tuple[int, int], str] | None = None,
+) -> tuple[list[JsonDict], int, int]:
+    """Fit candidate cues into the gaps between matched manuscript cues.
+
+    Manuscript cues are authoritative and never move.  A candidate that only
+    partially overlaps them keeps the largest free part of its original
+    range (its stale word items are dropped); one that is fully covered is
+    dropped because two subtitles cannot share the same timespan.  Returns
+    the fitted segments plus how many were clipped and dropped.
+    """
+
+    check_match_cancelled(is_cancelled)
+    occupied: list[tuple[int, int]] = []
+    for segment in matched_segments:
+        check_match_cancelled(is_cancelled)
+        if not isinstance(segment, dict):
+            continue
+        start = segment.get("start")
+        end = segment.get("end")
+        if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+            occupied.append((round(start), round(end)))
+    occupied.sort()
+    fitted: list[JsonDict] = []
+    clipped = 0
+    dropped = 0
+    first_overlap = 0
+    for piece in sorted(candidates, key=lambda segment: (_integer_field(segment, "start"), _integer_field(segment, "end"))):
+        check_match_cancelled(is_cancelled)
+        start = _integer_field(piece, "start")
+        end = _integer_field(piece, "end")
+        while first_overlap < len(occupied) and occupied[first_overlap][1] <= start:
+            check_match_cancelled(is_cancelled)
+            first_overlap += 1
+        cursor = start
+        best = (start, start)
+        for index in range(first_overlap, len(occupied)):
+            check_match_cancelled(is_cancelled)
+            occupied_start, occupied_end = occupied[index]
+            if occupied_start >= end or cursor >= end:
+                break
+            if occupied_start - cursor > best[1] - best[0]:
+                best = (cursor, occupied_start)
+            cursor = max(cursor, occupied_end)
+        if end - cursor > best[1] - best[0]:
+            best = (cursor, end)
+        if best[1] <= best[0]:
+            dropped += 1
+            if issues is not None:
+                issues[(start, end)] = "dropped"
+            continue
+        if best != (start, end):
+            clipped += 1
+            if issues is not None:
+                issues[(start, end)] = "clipped"
+            piece = copy.deepcopy(piece)
+            piece["start"] = best[0]
+            piece["end"] = best[1]
+            # 原 items / 帧号对应的时间范围已不再成立。
+            piece.pop("items", None)
+            piece.pop("start_frame", None)
+            piece.pop("end_frame", None)
+        fitted.append(piece)
+    return fitted, clipped, dropped
+
+
 def _merge_disabled_segments(
     source_segments: list[JsonValue],
     matched: JsonDict,
-) -> list[JsonValue]:
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+    issues: dict[tuple[int, int], str] | None = None,
+) -> tuple[list[JsonValue], int, int]:
     matched_segments = matched.get("segments")
     if not isinstance(matched_segments, list):
         raise ValueError("character matcher returned invalid segments")
@@ -349,14 +549,17 @@ def _merge_disabled_segments(
         for segment in source_segments
         if isinstance(segment, dict) and segment.get("disabled") is True
     ]
-    combined = [*matched_segments, *disabled_segments]
+    fitted, clipped, dropped = _fit_segments_into_gaps(
+        disabled_segments, matched_segments, is_cancelled=is_cancelled, issues=issues,
+    )
+    combined: list[JsonValue] = [*matched_segments, *fitted]
     combined.sort(
         key=lambda segment: (
             segment.get("start", 0) if isinstance(segment, dict) else 0,
             segment.get("end", 0) if isinstance(segment, dict) else 0,
         )
     )
-    return combined
+    return combined, clipped, dropped
 
 
 def _merge_unmatched_source_segments(
@@ -365,15 +568,18 @@ def _merge_unmatched_source_segments(
     report: Mapping[str, object],
     *,
     is_cancelled: Callable[[], bool] | None = None,
-) -> int:
-    """Keep complete source cues covered only by ASR-side deletions.
+    issues: dict[tuple[int, int], str] | None = None,
+) -> tuple[int, int, int]:
+    """Keep complete source cues without a reliable character match.
 
     The timed matcher intentionally builds output cues from manuscript
     characters.  A source cue that is deleted by the character alignment has
     no manuscript character to anchor it, so it would otherwise disappear
     from the regenerated project.  Keep those complete cues at their source
     timestamps; gaps around them are already left by the neighbouring
-    manuscript character timings.
+    manuscript character timings.  Cues whose timestamps collide with a
+    manuscript cue are narrowed into the free gaps (or dropped when fully
+    covered) so the merged project stays valid.
     """
 
     check_match_cancelled(is_cancelled)
@@ -382,48 +588,128 @@ def _merge_unmatched_source_segments(
         raise ValueError("character matcher returned invalid segments")
     raw_indexes = report.get("unmatched_source_segment_indexes")
     if not isinstance(raw_indexes, list):
-        return 0
-    extras: list[JsonValue] = []
+        return 0, 0, 0
+    extras: list[JsonDict] = []
     for raw_index in raw_indexes:
         check_match_cancelled(is_cancelled)
         if type(raw_index) is not int or raw_index < 0 or raw_index >= len(matcher_segments):
             continue
         source_segment = matcher_segments[raw_index]
-        if isinstance(source_segment, dict):
+        if isinstance(source_segment, dict) and str(source_segment.get("text", "")).strip():
+            if issues is not None:
+                issues[_cue_range(source_segment)] = "unmatched"
             extras.append(copy.deepcopy(source_segment))
     if not extras:
-        return 0
-    matched["segments"] = [*matched_segments, *extras]
+        return 0, 0, 0
+    fitted, clipped, dropped = _fit_segments_into_gaps(
+        extras, matched_segments, is_cancelled=is_cancelled, issues=issues,
+    )
+    matched["segments"] = [*matched_segments, *fitted]
     matched["segments"].sort(
         key=lambda segment: (
             segment.get("start", 0) if isinstance(segment, dict) else 0,
             segment.get("end", 0) if isinstance(segment, dict) else 0,
         )
     )
-    return len(extras)
+    return len(fitted), clipped, dropped
 
 
-def _preserve_equal_count_segment_metadata(
-    source: JsonDict,
+def _inherit_timed_metadata(
+    source: list[JsonDict],
     matched: JsonDict,
+    report: dict[str, object],
     *,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> None:
     check_match_cancelled(is_cancelled)
-    source_segments = source.get("segments")
-    matched_segments = matched.get("segments")
-    if not isinstance(source_segments, list) or not isinstance(matched_segments, list):
-        return
-    if len(source_segments) != len(matched_segments):
-        return
-    for source_segment, matched_segment in zip(source_segments, matched_segments, strict=True):
+    cue_sources = report.get("cue_source_counts")
+    if not isinstance(cue_sources, list):
+        raise ValueError("character matcher did not report cue sources")
+    source_use_counts: Counter[int] = Counter()
+    for counts in cue_sources:
         check_match_cancelled(is_cancelled)
-        if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
+        if not isinstance(counts, list) or not counts:
+            raise ValueError("character matcher returned an invalid cue source")
+        source_use_counts.update(index for index, _count in counts)
+    for cue, counts in zip(_reviewable_segments(matched), cue_sources, strict=True):
+        check_match_cancelled(is_cancelled)
+        contributors = [source[i] for i, _count in counts]
+        first = contributors[0]
+        _inherit_majority_speaker(cue, source, counts)
+        for key in ("assStyle", "assOverride"):
+            if key in first and all(segment.get(key) == first[key] for segment in contributors):
+                cue[key] = copy.deepcopy(first[key])
+        if len(contributors) == 1 and source_use_counts[counts[0][0]] == 1:
+            source_start, source_end = _cue_range(first)
+            start, end = _cue_range(cue)
+            if not source_start <= start < end <= source_end:
+                continue
+            for key in ("id", "sticker", "color"):
+                if key in first:
+                    cue[key] = copy.deepcopy(first[key])
+            if (start, end) == (source_start, source_end):
+                for key in ("start_frame", "end_frame"):
+                    if key in first:
+                        cue[key] = first[key]
+
+
+def _inherit_majority_speaker(
+    cue: JsonDict, source: Sequence[JsonDict], counts: Sequence[tuple[int, int]],
+) -> None:
+    # Unlabelled aligned characters count towards the total, not towards a
+    # speaker. Punctuation and inserted characters have no alignment vote.
+    total = 0
+    votes: dict[str, int] = {}
+    for index, count in counts:
+        total += count
+        speaker = source[index].get("speaker")
+        if isinstance(speaker, str) and speaker.strip():
+            votes[speaker] = votes.get(speaker, 0) + count
+    cue.pop("speaker", None)
+    for speaker, count in votes.items():
+        if count * 2 > total:
+            cue["speaker"] = speaker
+            break
+
+
+def _remap_segment_references(
+    before: Sequence[JsonValue],
+    after: list[JsonValue],
+    *,
+    match_by_id: bool = False,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> None:
+    """Keep grouped styles only when both the original cue and its head survive."""
+    def identity(cue: JsonDict) -> str | tuple[int, int] | None:
+        if not match_by_id:
+            return _cue_range(cue)
+        value = cue.get("id")
+        return value if isinstance(value, str) else None
+
+    after_by_identity = {key: i for i, cue in enumerate(after) if isinstance(cue, dict) and (key := identity(cue)) is not None}
+    source_by_identity = {key: cue for cue in before if isinstance(cue, dict) and (key := identity(cue)) is not None}
+    for i, cue in enumerate(after):
+        check_match_cancelled(is_cancelled)
+        if not isinstance(cue, dict):
             continue
-        for key in ("id", "speaker", "disabled", "sticker", "sticker_ref", "color", "color_ref"):
-            check_match_cancelled(is_cancelled)
-            if key in source_segment:
-                matched_segment[key] = copy.deepcopy(source_segment[key])
+        source = source_by_identity.get(identity(cue), {})
+        for head_field in ("sticker", "color"):
+            field = f"{head_field}_ref"
+            cue.pop(field, None)
+            ref = source.get(field)
+            if not isinstance(ref, dict):
+                continue
+            head_index = ref.get("headIdx")
+            if type(head_index) is not int or not 0 <= head_index < len(before):
+                continue
+            original_head = before[head_index]
+            if not isinstance(original_head, dict):
+                continue
+            new_index = after_by_identity.get(identity(original_head))
+            if new_index is not None and new_index < i:
+                new_head = after[new_index]
+                if isinstance(new_head, dict) and head_field in new_head and head_field not in cue:
+                    cue[field] = {**ref, "headIdx": new_index}
 
 
 def _match_project(
@@ -434,6 +720,7 @@ def _match_project(
     match_mode: str = "script",
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    trace: ScriptMatchTrace | None = None,
 ) -> tuple[JsonDict, tuple[str, ...]]:
     check_match_cancelled(is_cancelled)
     if match_mode not in {"script", "text"}:
@@ -472,7 +759,8 @@ def _match_project(
     opcodes = tuple(matcher.get_opcodes())
     blocks = tuple(block for block in matcher.get_matching_blocks() if block.size)
     matched_chars = sum(block.size for block in blocks)
-    coverage = matched_chars / max(1, min(len(source_text), len(script.value)))
+    rate, coverage_note = _match_coverage(matched_chars, len(source_text), len(script.value), trace)
+    source_match_ranges = [(block.a, block.a + block.size) for block in blocks]
 
     has_manuscript_boundaries = len(punctuation_segments) > 1 and (
         "\n" in script_text or "\r" in script_text or any(symbol in script_text for symbol in split_punctuation)
@@ -490,10 +778,16 @@ def _match_project(
         and j1 in script_boundary_positions
         for tag, i1, i2, j1, j2 in opcodes
     )
-    if (
-        match_mode == "script"
-        and has_manuscript_boundaries
-        and (len(punctuation_segments) != len(spans) or has_boundary_source_only_text)
+    explicit_newlines = "\n" in script_text or "\r" in script_text
+    same_aligned_lines = len(punctuation_segments) == len(spans) and all(
+        _normalize_text(line, is_cancelled=is_cancelled).value == source_text[span.normalized_start:span.normalized_end]
+        for span, line in zip(spans, punctuation_segments)
+    )
+    boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
+    kept_source_segmentation = False
+    if has_manuscript_boundaries and (
+        len(punctuation_segments) != len(spans) or has_boundary_source_only_text
+        or (explicit_newlines and not same_aligned_lines)
     ):
         result = _resegment_project(
             project,
@@ -502,52 +796,23 @@ def _match_project(
             punctuation_segments,
             source_text,
             script,
-            _alignment_boundaries(len(source_text), len(script.value), blocks),
+            boundaries,
             opcodes,
             blocks[-1].a + blocks[-1].size if blocks else 0,
             is_cancelled=is_cancelled,
+            trace=trace,
         )
         if result is not None:
-            return result, (f"文稿匹配度：{coverage:.0%}；已按文稿换行更新，未匹配的文稿/字幕部分保留原样。",)
+            return result, (f"{rate}；已按文稿换行更新。", coverage_note)
+        kept_source_segmentation = True
 
-    if match_mode == "script" and ("\n" in script_text or "\r" in script_text) and len(punctuation_segments) == len(spans):
-        result = copy.deepcopy(project)
-        result_segments = result.get("segments")
-        if not isinstance(result_segments, list):
-            raise ValueError("project segments must be an array")
-        changed = 0
-        for span, replacement in zip(spans, punctuation_segments):
-            check_match_cancelled(is_cancelled)
-            source_segment = segments[span.segment_index]
-            target_segment = result_segments[span.segment_index]
-            if not isinstance(source_segment, dict) or not isinstance(target_segment, dict):
-                continue
-            original_text = source_segment.get("text")
-            if not isinstance(original_text, str):
-                continue
-            if replacement != original_text:
-                target_segment["text"] = replacement
-                reconciled_items = _reconcile_items(original_text, target_segment.get("items"), replacement)
-                if reconciled_items is None:
-                    target_segment.pop("items", None)
-                else:
-                    reconciled_items_value: list[JsonValue] = []
-                    reconciled_items_value.extend(reconciled_items)
-                    target_segment["items"] = reconciled_items_value
-                changed += 1
-        return normalize_project(result), (f"文稿匹配度：100%；已按文稿换行更新 {changed} 个字幕段。",)
-
-    if coverage < MIN_MATCH_COVERAGE:
-        raise MatchCoverageError(coverage)
-
-    boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
     result = copy.deepcopy(project)
     result_segments = result.get("segments")
     if not isinstance(result_segments, list):
         raise ValueError("project segments must be an array")
     unmatched = 0
     changed = 0
-    for span in spans:
+    for index, span in enumerate(spans):
         check_match_cancelled(is_cancelled)
         script_start = _map_boundary(span.normalized_start, boundaries)
         script_end = _map_boundary(span.normalized_end, boundaries)
@@ -559,9 +824,30 @@ def _match_project(
         original_text = source_segment.get("text")
         if not isinstance(original_text, str):
             continue
-        replacement = _slice_normalized(alignment_text, script, script_start, script_end)
+        replacement = (
+            punctuation_segments[index] if explicit_newlines and same_aligned_lines
+            else _slice_normalized(alignment_text, script, script_start, script_end)
+        )
+        if trace is not None and replacement:
+            trace.candidates[_cue_range(source_segment)] = replacement
         if not replacement:
+            if trace is not None:
+                trace.issues[_cue_range(source_segment)] = "unmatched"
             unmatched += 1
+            continue
+        replacement_length = len(_normalize_text(replacement, is_cancelled=is_cancelled).value)
+        source_length = span.normalized_end - span.normalized_start
+        if not _plausible_replacement(replacement_length, source_length):
+            # 边界插值把文稿新增内容摊到了不相干的字幕段上（例如整句被
+            # 替换成单个字母）；保留原字幕，避免破坏正确文本。
+            unmatched += 1
+            if trace is not None:
+                trace.issues[_cue_range(source_segment)] = "fragment"
+            continue
+        if not _range_has_match(source_match_ranges, span.normalized_start, span.normalized_end):
+            unmatched += 1
+            if trace is not None:
+                trace.issues[_cue_range(source_segment)] = "unmatched"
             continue
         if replacement != original_text:
             target_segment["text"] = replacement
@@ -578,7 +864,9 @@ def _match_project(
                 target_segment["items"] = items_value
             changed += 1
 
-    warnings: list[str] = [f"文稿匹配度：{coverage:.0%}；已更新 {changed} 个字幕段。"]
+    warnings: list[str] = [f"{rate}；已更新 {changed} 个字幕段。", coverage_note]
+    if kept_source_segmentation:
+        warnings.append("无法可靠地按文稿重建全部分段，已保留原字幕分段。")
     if unmatched:
         warnings.append(f"{unmatched} 个字幕段未找到对应文稿，已保留原字幕文字。")
     disabled_count = sum(
@@ -603,6 +891,7 @@ def _resegment_project(
     matched_source_end: int,
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    trace: ScriptMatchTrace | None = None,
 ) -> JsonDict | None:
     check_match_cancelled(is_cancelled)
     if any(isinstance(segment, dict) and segment.get("disabled") is True for segment in segments):
@@ -621,6 +910,12 @@ def _resegment_project(
         offset += len(_normalize_text(value, is_cancelled=is_cancelled).value)
         script_offsets.append(offset)
     script_boundaries = (0, *script_offsets)
+    equal_runs = [(j1, j2, i1) for tag, i1, _i2, j1, j2 in opcodes if tag == "equal"]
+    script_match_ranges = [(start, end) for start, end, _ in equal_runs]
+    if any(not _range_has_match(script_match_ranges, start, end) for start, end in zip(script_boundaries, script_offsets)):
+        # No line-level match: fall back to cue-preserving corrections rather
+        # than building timestamps for the unmatched manuscript line.
+        return None
     source_offsets = [
         _map_script_boundary(boundary, boundaries, source_length)
         for boundary in script_boundaries
@@ -650,38 +945,60 @@ def _resegment_project(
                 min(source_start, matched_source_end),
             )
 
-    def source_time(position: int) -> int:
-        for span in spans:
+    span_ends = [span.normalized_end for span in spans]
+
+    def source_span(position: int, *, start_boundary: bool) -> _CueSpan:
+        # In the flattened text, the end of A and start of B share the same
+        # offset even when they are separated by silence on the timeline.
+        find = bisect_right if start_boundary else bisect_left
+        return spans[min(find(span_ends, position), len(spans) - 1)]
+
+    def source_time(position: int, *, start_boundary: bool) -> int:
+        span = source_span(position, start_boundary=start_boundary)
+        segment = original_segments[span.segment_index]
+        ratio = (position - span.normalized_start) / (span.normalized_end - span.normalized_start)
+        start, end = _cue_range(segment)
+        return round(start + ratio * (end - start))
+
+    def aligned_counts(script_start: int, script_end: int) -> list[tuple[int, int]]:
+        counts: list[tuple[int, int]] = []
+        run_index = bisect_right(equal_runs, script_start, key=lambda run: run[1])
+        for j in range(run_index, len(equal_runs)):
             check_match_cancelled(is_cancelled)
-            if position <= span.normalized_end:
-                segment = original_segments[span.segment_index]
-                ratio = (position - span.normalized_start) / max(1, span.normalized_end - span.normalized_start)
-                start = _integer_field(segment, "start")
-                end = _integer_field(segment, "end")
-                return round(start + ratio * (end - start))
-        segment = original_segments[-1]
-        return _integer_field(segment, "end")
+            run_start, run_end, source_start = equal_runs[j]
+            if run_start >= script_end:
+                break
+            source_left = source_start + max(run_start, script_start) - run_start
+            source_right = source_start + min(run_end, script_end) - run_start
+            span_index = bisect_right(span_ends, source_left)
+            while source_left < source_right:
+                check_match_cancelled(is_cancelled)
+                span = spans[span_index]
+                right = min(span.normalized_end, source_right)
+                counts.append((span.segment_index, right - source_left))
+                source_left = right
+                span_index += 1
+        return counts
 
     rebuilt: list[tuple[int, int, JsonDict]] = []
     for index, text in enumerate(manuscript_segments):
         check_match_cancelled(is_cancelled)
-        start = source_time(source_starts[index])
-        end = source_time(source_ends[index + 1])
+        start = source_time(source_starts[index], start_boundary=True)
+        end = source_time(source_ends[index + 1], start_boundary=False)
         if end <= start:
             return None
-        source_index = min(
-            len(original_segments) - 1,
-            next(
-                (span.segment_index for span in spans if span.normalized_end > source_starts[index]),
-                0,
-            ),
-        )
+        source_index = source_span(source_starts[index], start_boundary=True).segment_index
         segment = copy.deepcopy(original_segments[source_index])
         segment["id"] = f"main-matched-{index + 1:03d}"
         segment["start"] = start
         segment["end"] = end
         segment["text"] = text
         segment.pop("items", None)
+        segment.pop("start_frame", None)
+        segment.pop("end_frame", None)
+        _inherit_majority_speaker(
+            segment, original_segments, aligned_counts(script_boundaries[index], script_boundaries[index + 1]),
+        )
         rebuilt.append((source_starts[index], source_ends[index + 1], segment))
 
     delete_ranges = [
@@ -727,14 +1044,16 @@ def _resegment_project(
             piece = copy.deepcopy(source_segment)
             is_full_segment = local_start == 0 and local_end == len(normalized_source.value)
             if not is_full_segment:
-                start = source_time(overlap_start)
-                end = source_time(overlap_end)
+                start = source_time(overlap_start, start_boundary=True)
+                end = source_time(overlap_end, start_boundary=False)
                 if end <= start:
                     continue
                 piece["start"] = start
                 piece["end"] = end
                 piece["text"] = text
                 piece.pop("items", None)
+                piece.pop("start_frame", None)
+                piece.pop("end_frame", None)
                 base_id = str(piece.get("id") or f"main-{span.segment_index + 1:03d}")
                 suffix = f"-unmatched-{extra_piece_index:03d}"
                 piece["id"] = f"{base_id[:160 - len(suffix)]}{suffix}"
@@ -748,8 +1067,33 @@ def _resegment_project(
         for start, end, segment in extra_segments
     ]
     entries.sort(key=lambda item: (item[0], item[1], item[2]))
-    result["segments"] = [segment for _start, _end, _kind, segment in entries]
-    return normalize_project(result)
+    new_segments: list[JsonValue] = [segment for _start, _end, _kind, segment in entries]
+    _remap_segment_references(segments, new_segments, is_cancelled=is_cancelled)
+    result["segments"] = new_segments
+    normalized = normalize_project(result)
+    if trace is not None:
+        for _start, _end, segment in rebuilt:
+            trace.candidates[_cue_range(segment)] = str(segment["text"])
+    return normalized
+
+
+def _range_has_match(ranges: Sequence[tuple[int, int]], start: int, end: int) -> bool:
+    index = bisect_right(ranges, start, key=lambda pair: pair[1])
+    return start < end and index < len(ranges) and ranges[index][0] < end
+
+
+def _plausible_replacement(replacement_length: int, source_length: int) -> bool:
+    """Reject boundary-interpolated slices whose size is implausible.
+
+    Inside a replace region the manuscript slice assigned to a source cue is
+    a linear interpolation, not a correspondence.  When the slice is far
+    shorter (or longer) than the cue's own text it is smearing unrelated
+    manuscript characters onto the cue, so the original text must win.
+    """
+
+    if source_length <= 0:
+        return replacement_length > 0
+    return replacement_length * 2 >= source_length and replacement_length <= source_length * 2 + 2
 
 
 def _map_script_boundary(script_index: int, boundaries: tuple[tuple[int, int], ...], source_length: int) -> int:

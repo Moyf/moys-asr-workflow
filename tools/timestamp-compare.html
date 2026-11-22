@@ -529,6 +529,10 @@
     transition: background 120ms ease;
   }
   .row-cell:last-child { border-right: 0; }
+  .cue-group { padding: 0 !important; }
+  .cue-group > .row-cell { border-right: 0; }
+  .cue-group > .row-cell + .row-cell { border-top: 1px solid var(--border-subtle); }
+  .cue-number { display: block; margin-bottom: 8px; font: 11px/1.4 var(--mono); color: var(--muted); }
   .row-cell.cell-empty-items {
     background:
       repeating-linear-gradient(135deg, rgba(241, 187, 110, 0.055) 0 5px, transparent 5px 10px),
@@ -911,7 +915,7 @@
 </style>
 </head>
 <body>
-<header class="topbar" data-tool-sticky>
+<header class="topbar compare-topbar" data-tool-sticky>
   <div class="brand" aria-label="MAW 时间码对比">
     <span class="brand-mark" aria-hidden="true"></span>
     <div class="brand-copy">
@@ -940,8 +944,8 @@
     <input id="search" class="search" type="search" aria-label="搜索字幕文本" placeholder="搜索字幕文本…" disabled>
     <button id="resetFilters" class="btn" type="button" disabled>重置筛选</button>
     <label class="switch tool-density"><input type="checkbox" data-tool-compact role="switch"><span class="switch-track" aria-hidden="true"></span>精简显示</label>
-    <button class="tool-theme" data-tool-theme type="button">◐ 主题</button>
   </div>
+  <button class="tool-theme" data-tool-theme type="button">◐ 主题</button>
 </header>
 
 <main>
@@ -949,7 +953,7 @@
     <div>
       <p class="eyebrow">TIMEBASE INSPECTOR / MS</p>
       <h1 id="heading">把时间码差异摊开看</h1>
-      <p id="heroSubtitle" class="hero-subtitle">拖入一个工程查看字词时间码，或再加入一个工程按段序号对照。</p>
+      <p id="heroSubtitle" class="hero-subtitle">拖入一个工程查看字词时间码，或再加入一个工程按时间区间对照。</p>
     </div>
     <div class="hero-note"><b>比较真源</b><br>段与字词均按整数毫秒比较；帧字段不会替代毫秒投影。</div>
   </section>
@@ -963,7 +967,7 @@
     <div id="dropzone" class="dropzone">
       <div class="drop-icon" aria-hidden="true">⌁</div>
       <h2>拖入 SRT 或 .mosp 工程</h2>
-      <p>一次最多两个文件：A / B 按段序号对齐，点击行可展开字词明细。</p>
+      <p>一次最多两个文件：A / B 按时间区间分组，点击行可展开字词明细。</p>
       <button id="emptyAddBtn" class="btn primary" type="button">选择文件</button>
       <p class="hint">SRT 没有字词时间码，只会参与段级起止时间和文本比较。</p>
     </div>
@@ -1410,24 +1414,52 @@ function comparePair(left, right) {
   };
 }
 
+// Connected time intervals form one group. Touching subtitles are not
+// overlapping; zero-duration items can pair at the same isolated instant.
+function groupIntervals(sides) {
+  if (sides.length === 1) return sides[0].map(value => ({ start: value.start, end: value.end, sides: [[value]] }));
+  const intervals = sides.flatMap((values, side) => values.map(value => ({ value, side })));
+  intervals.sort((a, b) => a.value.start - b.value.start || a.value.end - b.value.end || a.side - b.side);
+  const groups = [];
+  let group;
+  for (const { value, side } of intervals) {
+    const samePoint = group && group.start === group.end && group.end === value.start && value.start === value.end;
+    if (!group || (value.start >= group.end && !samePoint)) {
+      group = { start: value.start, end: value.end, sides: [[], []] };
+      groups.push(group);
+    }
+    group.end = Math.max(group.end, value.end);
+    group.sides[side].push(value);
+  }
+  return groups;
+}
+
+let cachedFiles = [];
+let cachedRows = [];
 function buildRows() {
-  const count = state.files.reduce(function maxCount(maximum, entry) {
-    return Math.max(maximum, entry.segments.length);
-  }, 0);
-  const rows = [];
-  for (let index = 0; index < count; index += 1) {
-    const cells = state.files.map(function getCell(entry) { return entry.segments[index] || null; });
-    const comparison = state.files.length === 2 ? comparePair(cells[0], cells[1]) : { changes: [], itemStatus: 'single', exact: true };
-    rows.push({
-      index: index,
-      cells: cells,
-      comparison: comparison,
-      searchText: cells.filter(Boolean).map(function getText(cell) {
+  if (cachedFiles.length === state.files.length && cachedFiles.every((file, index) => state.files[index] === file)) return cachedRows;
+  cachedFiles = [...state.files];
+  cachedRows = groupIntervals(state.files.map(entry => entry.segments)).map((group, index) => {
+    const [left, right] = group.sides;
+    const paired = left.length === 1 && right?.length === 1;
+    let comparison = { changes: [], itemStatus: 'single', exact: true };
+    if (right) {
+      if (paired || !left.length || !right.length) {
+        comparison = comparePair(left[0], right[0]);
+      } else {
+        const changes = ['structure'];
+        if ([...left, ...right].some(hasOutOfRangeItems)) changes.push('overflow');
+        comparison = { changes, itemStatus: 'structure', exact: false };
+      }
+    }
+    return {
+      index, start: group.start, sides: group.sides, paired, comparison,
+      searchText: group.sides.flat().map(function getText(cell) {
         return [cell.text, cell.items.map(function getItem(item) { return item.text; }).join('')].join('\n');
       }).join('\n'),
-    });
-  }
-  return rows;
+    };
+  });
+  return cachedRows;
 }
 
 function rowMatchesSearch(row) {
@@ -1437,10 +1469,10 @@ function rowMatchesSearch(row) {
 
 function rowMatchesItemFilter(row) {
   if (state.itemFilter === 'empty') {
-    return row.cells.some(hasEmptyItems);
+    return row.sides.some(side => side.some(hasEmptyItems));
   }
   if (state.itemFilter === 'overflow') {
-    return row.cells.some(hasOutOfRangeItems);
+    return row.sides.some(side => side.some(hasOutOfRangeItems));
   }
   return true;
 }
@@ -1456,21 +1488,22 @@ function chipLabel(type, row) {
   if (type === 'time') return '时间';
   if (type === 'items') return '字词码';
   if (type === 'count') {
-    const left = row.cells[0] ? row.cells[0].items.length : 0;
-    const right = row.cells[1] ? row.cells[1].items.length : 0;
+    const left = row.sides[0][0].items.length;
+    const right = row.sides[1][0].items.length;
     return '词数 ' + left + '→' + right;
   }
   if (type === 'text') return '文本';
   if (type === 'wordTime') return '词时';
   if (type === 'overflow') return 'items 越界';
   if (type === 'missing') return '缺段';
+  if (type === 'structure') return row.sides[0].length + ' 对 ' + row.sides[1].length;
   return type;
 }
 
 function chipClass(type) {
   if (type === 'time' || type === 'wordTime') return 'time';
   if (type === 'items') return 'items';
-  if (type === 'count') return 'count';
+  if (type === 'count' || type === 'structure') return 'count';
   if (type === 'missing') return 'missing';
   if (type === 'overflow') return 'overflow';
   return 'text';
@@ -1539,21 +1572,21 @@ function renderSummary(rows) {
   els.summary.textContent = '';
   els.summary.hidden = state.files.length !== 2;
   if (state.files.length !== 2) return;
-  const pairCount = Math.min(state.files[0].segments.length, state.files[1].segments.length);
-  const segmentEqual = rows.slice(0, pairCount).filter(function isSegmentEqual(row) {
-    return row.cells[0] && row.cells[1] && row.cells[0].start === row.cells[1].start &&
-      row.cells[0].end === row.cells[1].end;
-  }).length;
-  const exact = rows.slice(0, pairCount).filter(function isExact(row) { return row.comparison.exact; }).length;
+  const pairs = rows.filter(row => row.paired);
+  const pairCount = pairs.length;
+  const segmentEqual = pairs.filter(row => !row.comparison.changes.includes('time')).length;
+  const exact = pairs.filter(row => row.comparison.exact).length;
   const counts = { none: 0, onlyA: 0, onlyB: 0, count: 0, text: 0, time: 0, same: 0 };
-  rows.slice(0, pairCount).forEach(function countStatus(row) { counts[row.comparison.itemStatus] += 1; });
+  pairs.forEach(function countStatus(row) { counts[row.comparison.itemStatus] += 1; });
 
   const intro = makeElement('div', 'summary-intro');
-  intro.appendChild(makeElement('strong', '', 'A / B 段序号对照'));
-  intro.appendChild(makeElement('span', '', pairCount + ' 对 · 末尾缺段会在表格中标记'));
+  intro.appendChild(makeElement('strong', '', 'A / B 时间区间对照'));
+  intro.appendChild(makeElement('span', '', '时间重叠归为一组；段级差值与一致性只统计一对一'));
   els.summary.appendChild(intro);
   const metrics = [
-    ['配对段', pairCount + ' / ' + rows.length, ''],
+    ['一对一组', pairCount + ' / ' + rows.length, ''],
+    ['拆分／合并组', String(rows.filter(row => row.comparison.itemStatus === 'structure').length), ''],
+    ['单侧组', String(rows.filter(row => row.comparison.itemStatus === 'missing').length), ''],
     ['段级时间一致', String(segmentEqual), segmentEqual === pairCount ? 'good' : 'warn'],
     ['双侧无 items', String(counts.none), ''],
     ['仅 A 有', String(counts.onlyA), counts.onlyA ? 'warn' : ''],
@@ -1583,7 +1616,7 @@ function renderWarnings() {
     });
     if (entry.stats.outOfOrder) {
       messages.push((state.files.length === 2 ? (index === 0 ? 'A' : 'B') + '：' : '') +
-        '有 ' + entry.stats.outOfOrder + ' 处段起点逆序，仍按原数组序号对齐。');
+        '有 ' + entry.stats.outOfOrder + ' 处段起点逆序，对照按时间排序。');
     }
     if (entry.stats.overflowItems) {
       messages.push((state.files.length === 2 ? (index === 0 ? 'A' : 'B') + '：' : '') +
@@ -1591,7 +1624,7 @@ function renderWarnings() {
     }
   });
   if (state.files.length === 2 && state.files[0].segments.length !== state.files[1].segments.length) {
-    messages.push('A / B 段数不同；比较按原数组序号进行，超出的一侧显示为缺段。');
+    messages.push('A / B 段数不同；时间区间不重叠的一侧会单独显示，不顺延配对。');
   }
   els.warning.textContent = '';
   els.warning.hidden = !messages.length;
@@ -1645,10 +1678,11 @@ function renderCell(segment, fileIndex, row) {
   const cell = makeElement('div', cellClasses.join(' '));
   cell.style.setProperty('--file-color', state.files[fileIndex].color);
   if (!segment) {
-    cell.appendChild(makeElement('div', 'cell-missing', '本文件缺少第 ' + (row.index + 1) + ' 段'));
+    cell.appendChild(makeElement('div', 'cell-missing', '此时间区间没有对应字幕'));
     cell.appendChild(renderItemStrip({ start: 0, end: 1, items: [], missing: true }, state.files[fileIndex].color));
     return cell;
   }
+  if (state.files.length === 2) cell.appendChild(makeElement('span', 'cue-number', '原第 ' + (segment.originalIndex + 1) + ' 段'));
   const text = makeElement('div', 'subtitle-text');
   text.innerHTML = highlightHtml(segment.text, state.search);
   cell.appendChild(text);
@@ -1656,13 +1690,13 @@ function renderCell(segment, fileIndex, row) {
   const timeLine = makeElement('div', 'time-line');
   timeLine.appendChild(makeElement('code', '', formatTime(segment.start) + ' — ' + formatTime(segment.end)));
   timeLine.appendChild(makeElement('span', 'subtitle-duration', '时长 ' + formatDuration(segment.end - segment.start)));
-  if (state.files.length === 2 && row.cells[0] && row.cells[1]) {
+  if (row.paired) {
     if (fileIndex === 0) {
       timeLine.appendChild(makeElement('span', 'ref-line', '基准 A'));
     } else {
       timeLine.appendChild(makeElement('span', 'delta-line',
-        'Δ 起 ' + formatDelta(segment.start - row.cells[0].start) +
-        ' · 止 ' + formatDelta(segment.end - row.cells[0].end)));
+        'Δ 起 ' + formatDelta(segment.start - row.sides[0][0].start) +
+        ' · 止 ' + formatDelta(segment.end - row.sides[0][0].end)));
     }
   }
   cell.appendChild(timeLine);
@@ -1702,14 +1736,12 @@ function renderDetails(row) {
   const details = makeElement('div', 'details');
   details.style.setProperty('--file-count', String(state.files.length));
   const head = makeElement('div', 'details-head');
-  head.appendChild(makeElement('strong', '', '第 ' + (row.index + 1) + ' 段 · 字词明细'));
-  head.appendChild(makeElement('span', '', state.files.length === 2 ? '同序号逐项配对；数量不同处不计算 Δ' : '原始 item 顺序'));
+  head.appendChild(makeElement('strong', '', '第 ' + (row.index + 1) + ' 组 · 字词明细'));
+  head.appendChild(makeElement('span', '', state.files.length === 2 ? '按字词时间区间分组；仅一对一计算 Δ' : '原始 item 顺序'));
   details.appendChild(head);
 
-  const count = Math.max.apply(null, state.files.map(function getCount(entry, index) {
-    return row.cells[index] ? row.cells[index].items.length : 0;
-  }));
-  if (!count) {
+  const itemGroups = groupIntervals(row.sides.map(side => side.flatMap(segment => segment.items)));
+  if (!itemGroups.length) {
     details.appendChild(makeElement('div', 'details-empty', '当前行没有可展开的字词时间码。'));
     return details;
   }
@@ -1726,39 +1758,39 @@ function renderDetails(row) {
   else header.appendChild(makeElement('div', '', '说明'));
   table.appendChild(header);
 
-  for (let index = 0; index < count; index += 1) {
+  itemGroups.forEach((group, index) => {
     const itemRow = makeElement('div', 'item-row');
     itemRow.style.setProperty('--file-count', String(state.files.length));
-    const items = state.files.map(function getItem(entry, fileIndex) {
-      return row.cells[fileIndex] ? row.cells[fileIndex].items[index] || null : null;
-    });
+    const [left, right] = group.sides;
+    const paired = left.length === 1 && right?.length === 1;
     itemRow.appendChild(makeElement('div', 'item-seq', String(index + 1).padStart(2, '0')));
     const textCell = makeElement('div', 'item-text');
-    if (state.files.length === 2 && items[0] && items[1] && items[0].text !== items[1].text) {
-      const left = makeElement('span', 'side');
-      left.innerHTML = '<b>A</b> ' + highlightHtml(items[0].text, state.search);
-      const right = makeElement('span', 'side');
-      right.innerHTML = '<b>B</b> ' + highlightHtml(items[1].text, state.search);
-      textCell.appendChild(left);
-      textCell.appendChild(right);
+    if (state.files.length === 2 && (!paired || left[0].text !== right[0].text)) {
+      group.sides.forEach((side, sideIndex) => {
+        if (!side.length) return;
+        const label = makeElement('span', 'side');
+        label.innerHTML = (sideIndex === 0 ? '<b>A</b> ' : '<b>B</b> ') + side.map(item => highlightHtml(item.text, state.search)).join(' · ');
+        textCell.appendChild(label);
+      });
     } else {
-      const item = items.find(Boolean);
-      textCell.innerHTML = highlightHtml(item ? item.text : '—', state.search);
+      textCell.innerHTML = highlightHtml(left[0].text, state.search);
     }
     itemRow.appendChild(textCell);
-    items.forEach(function addItemTime(item) {
-      itemRow.appendChild(renderItemTime(item));
+    group.sides.forEach(side => {
+      const times = makeElement('div');
+      (side.length ? side : [null]).forEach(item => times.appendChild(renderItemTime(item)));
+      itemRow.appendChild(times);
     });
-    const delta = makeElement('div', 'item-delta' + (items[0] && items[1] ? '' : ' missing'));
-    if (items[0] && items[1]) {
-      delta.textContent = formatDelta(items[1].start - items[0].start) + ' / ' +
-        formatDelta(items[1].end - items[0].end);
+    const delta = makeElement('div', 'item-delta' + (paired ? '' : ' missing'));
+    if (paired) {
+      delta.textContent = formatDelta(right[0].start - left[0].start) + ' / ' +
+        formatDelta(right[0].end - left[0].end);
     } else {
       delta.textContent = '—';
     }
     itemRow.appendChild(delta);
     table.appendChild(itemRow);
-  }
+  });
   details.appendChild(table);
   return details;
 }
@@ -1785,7 +1817,7 @@ function renderTable(rows) {
   table.style.setProperty('--columns', columns);
   const header = makeElement('div', 'table-head');
   header.style.setProperty('--columns', columns);
-  const indexHead = makeElement('div', 'head-cell index-head', '序号 / 段级时间');
+  const indexHead = makeElement('div', 'head-cell index-head', '组号 / 时间');
   header.appendChild(indexHead);
   state.files.forEach(function addHead(entry, index) {
     const head = makeElement('div', 'head-cell');
@@ -1810,18 +1842,27 @@ function renderTable(rows) {
     rowGrid.setAttribute('aria-expanded', String(state.expanded.has(row.index)));
     const indexCell = makeElement('div', 'row-cell index-cell');
     indexCell.appendChild(makeElement('div', 'row-no', String(row.index + 1).padStart(3, '0')));
-    const first = row.cells.find(Boolean);
-    indexCell.appendChild(makeElement('div', 'row-range', first ? formatTime(first.start) : '—'));
+    indexCell.appendChild(makeElement('div', 'row-range', formatTime(row.start)));
     indexCell.appendChild(renderChips(row));
     rowGrid.appendChild(indexCell);
-    state.files.forEach(function addCell(entry, index) {
-      rowGrid.appendChild(renderCell(row.cells[index], index, row));
+    row.sides.forEach((side, index) => {
+      if (side.length < 2) {
+        rowGrid.appendChild(renderCell(side[0], index, row));
+        return;
+      }
+      const cell = makeElement('div', 'row-cell cue-group');
+      side.forEach(segment => cell.appendChild(renderCell(segment, index, row)));
+      rowGrid.appendChild(cell);
     });
     const toggleRow = function toggleRow() {
-      if (state.expanded.has(row.index)) state.expanded.delete(row.index);
-      else state.expanded.add(row.index);
-      renderTable(rows);
-      els.tableWrap.querySelector('[data-row="' + row.index + '"] .row-grid')?.focus({preventScroll:true});
+      if (state.expanded.has(row.index)) {
+        state.expanded.delete(row.index);
+        rowGrid.nextElementSibling?.remove();
+      } else {
+        state.expanded.add(row.index);
+        wrapper.appendChild(renderDetails(row));
+      }
+      rowGrid.setAttribute('aria-expanded', String(state.expanded.has(row.index)));
     };
     rowGrid.addEventListener('click', function(event) {
       if (String(window.getSelection()) || event.target.closest('button,a,input,select,textarea')) return;
@@ -1845,7 +1886,7 @@ function renderStatus(rows) {
   els.status.hidden = !state.files.length;
   if (!state.files.length) return;
   const visible = shownRows(rows);
-  els.status.appendChild(makeElement('span', '', state.files.length + ' 个文件 · 显示 ' + visible.length + '/' + rows.length + ' 段'));
+  els.status.appendChild(makeElement('span', '', state.files.length + ' 个文件 · 显示 ' + visible.length + '/' + rows.length + ' 组'));
   if (state.files.length === 2) {
     els.status.appendChild(makeElement('span', '', '点击行展开字词明细'));
   }
@@ -1876,7 +1917,7 @@ function render() {
     state.itemFilter = 'all';
     els.itemFilter.value = 'all';
     els.heading.textContent = '把时间码差异摊开看';
-    els.heroSubtitle.textContent = '拖入一个工程查看字词时间码，或再加入一个工程按段序号对照。';
+    els.heroSubtitle.textContent = '拖入一个工程查看字词时间码，或再加入一个工程按时间区间对照。';
     els.cards.hidden = true;
     els.summary.hidden = true;
     els.warning.hidden = true;
@@ -1891,7 +1932,7 @@ function render() {
     : '时间码对比 · A / B';
   els.heroSubtitle.textContent = state.files.length === 1
     ? '按原工程顺序浏览段级范围与字词分布；点击一行展开明细。'
-    : '按段序号对齐；黄色看时间，紫色看字词码，红色看文本或缺段。';
+    : '按重叠时间区间分组；不相交的段单独显示，不强行配对。';
   document.title = state.files.length === 1 ? '时间码查看 · ' + state.files[0].name : 'MAW 时间码对比';
   renderCards();
   renderSummary(rows);
@@ -1942,6 +1983,7 @@ async function addFiles(fileList) {
     return;
   }
   if (accepted.length > room) toast('最多两个文件，超出的文件不会加载。', 'warn');
+  const countBefore = state.files.length;
   for (const file of accepted.slice(0, room)) {
     try {
       state.files.push(await buildFileEntry(file));
@@ -1949,6 +1991,7 @@ async function addFiles(fileList) {
       toast((error && error.message) || String(error), 'error');
     }
   }
+  if (state.files.length !== countBefore) state.expanded.clear();
   assignColors();
   render();
 }
@@ -2039,6 +2082,25 @@ if (window.__MAW_TS_EMBED__) {
     toast((error && error.message) || String(error), 'error');
   }
 }
+
+// Launcher 原生窗口：pywebview 就绪后拉取预载工程。离线双击打开时该入口不触发。
+function initLauncherPreload() {
+  const api = window.pywebview && window.pywebview.api;
+  if (!api || typeof api.compare_preload !== 'function') return;
+  Promise.resolve(api.compare_preload()).then((payload) => {
+    if (!payload) return;
+    if (Array.isArray(payload.files) && payload.files.length) {
+      try {
+        loadProjectObjects(payload);
+      } catch (error) {
+        toast((error && error.message) || String(error), 'error');
+      }
+    }
+    if (payload.warning) toast(payload.warning, 'warn');
+  }).catch(() => {});
+}
+if (window.pywebview && window.pywebview.api) initLauncherPreload();
+else window.addEventListener('pywebviewready', initLauncherPreload, { once: true });
 </script>
 </body>
 </html>
