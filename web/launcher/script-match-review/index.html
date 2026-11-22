@@ -14,11 +14,18 @@
   <header class="topbar compare-topbar">
     <div class="brand"><span class="logo" aria-hidden="true">◑</span><span data-copy="title">MAW 文稿匹配对照</span></div>
     <div id="toolbar" class="toolbar" hidden>
-      <select id="filter" aria-label="筛选差异" aria-describedby="filter-hint"></select>
-      <input id="search" type="search" aria-label="搜索字幕或文稿" placeholder="搜索字幕或文稿…">
-      <button id="reset" class="btn" type="button" data-copy="reset">重置筛选</button>
-      <button id="export" class="btn primary" type="button" data-copy="export">导出调整后的 MOSP</button>
-      <p id="filter-hint" class="filter-hint hint" role="status"></p>
+      <div class="filter-stack">
+        <div class="filter-controls">
+          <select id="filter" aria-label="筛选差异" aria-describedby="filter-hint"></select>
+          <input id="search" type="search" aria-label="搜索字幕或文稿" placeholder="搜索字幕或文稿…">
+          <button id="reset" class="btn" type="button" data-copy="reset">重置筛选</button>
+        </div>
+        <p id="filter-hint" class="hint" role="status"></p>
+      </div>
+      <div class="export-stack">
+        <button id="export" class="btn primary" type="button" data-copy="export" aria-describedby="export-hint">导出调整后的 MOSP</button>
+        <p id="export-hint" class="hint" data-copy="exportHint">建议优先使用启动台的「文稿修正」操作</p>
+      </div>
     </div>
     <button class="tool-theme" data-tool-theme type="button">◐</button>
   </header>

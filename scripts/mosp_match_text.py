@@ -574,7 +574,9 @@ def align_character_timings(
         check_match_cancelled(is_cancelled)
         if tag == "equal":
             continue
-        if tag == "delete":
+        # Anchor-required matching can omit a manuscript line altogether.
+        # Retain original cues whose characters were all deleted or replaced.
+        if tag == "delete" or (anchor_sources is not None and tag == "replace"):
             unmatched_source_char_indexes.update(range(i1, i2))
         region: dict[str, object] = {
             "operation": tag,

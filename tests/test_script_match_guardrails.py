@@ -65,6 +65,46 @@ class ScriptMatchGuardrailTests(unittest.TestCase):
         self.assertIn("1 个文稿段没有对应的原字幕字符，未生成字幕。", result.warnings)
         self.assertIn("覆盖率：文稿 50%，原字幕 100%（按可匹配字符计算）。", result.warnings)
 
+    def test_timed_matching_keeps_fully_replaced_source_cue_without_anchor(self) -> None:
+        original = [cue(0, 900, "欢迎", timed=True), cue(1000, 1900, "猫猫", timed=True), cue(2500, 3000, "再见", timed=True)]
+        result = self.match(original, "欢迎\n狗狗\n再见")
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual([(s["start"], s["end"], s["text"]) for s in segments], [
+            (0, 900, "欢迎"), (1000, 1900, "猫猫"), (2500, 3000, "再见"),
+        ])
+        self.assertEqual(segments[1]["items"], original[1]["items"])
+        self.assertIn("1 个文稿段没有对应的原字幕字符，未生成字幕。", result.warnings)
+
+    def test_timed_matching_keeps_styles_and_remaps_style_heads_after_narrowing(self) -> None:
+        styles = {"color": {"name": "红色"}, "sticker": {"name": "贴图"}}
+        result = self.match([
+            cue(0, 900, "起头两句", timed=True),
+            {**cue(1000, 2000, "你好"), **styles, "items": [cue(1100, 1900, "你好")],
+             "start_frame": 25, "end_frame": 50, "id": "style-head"},
+            {**cue(2100, 3000, "再见", timed=True), "start_frame": 53, "end_frame": 75,
+             "color_ref": {"headIdx": 1, "name": "红色"}, "sticker_ref": {"headIdx": 1, "name": "贴图"}},
+            {**cue(3100, 4000, "回头见"), "items": [cue(3200, 3900, "回头见")],
+             "color_ref": {"headIdx": 1, "name": "红色"}, "sticker_ref": {"headIdx": 1, "name": "贴图"}},
+        ], "起头\n两句\n你好！\n再见\n回头见")
+        assert result.project_path is not None
+        _intro1, _intro2, head, unchanged, narrowed = read_project(result.project_path)["segments"]
+        self.assertEqual((head["id"], head["start"], head["end"]), ("style-head", 1100, 1900))
+        for key, style in styles.items():
+            self.assertEqual(head[key], style)
+            for follower in (unchanged, narrowed):
+                self.assertEqual(follower[f"{key}_ref"], {"headIdx": 2, "name": style["name"]})
+        self.assertNotIn("start_frame", head)
+        self.assertNotIn("end_frame", head)
+        self.assertEqual((unchanged["start_frame"], unchanged["end_frame"]), (53, 75))
+
+    def test_timed_matching_does_not_copy_styles_to_split_outputs(self) -> None:
+        result = self.match([{**cue(0, 1200, "甲乙丙丁", timed=True), "color": {"name": "红色"}}], "甲乙\n丙丁")
+        assert result.project_path is not None
+        segments = read_project(result.project_path)["segments"]
+        self.assertEqual(len(segments), 2)
+        self.assertTrue(all("color" not in segment for segment in segments))
+
     def test_timed_matching_accepts_zero_duration_punctuation(self) -> None:
         result = self.match([
             {**cue(0, 1000, "你好。"), "items": [cue(100, 900, "你好"), cue(900, 900, "。")]},

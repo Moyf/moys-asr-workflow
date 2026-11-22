@@ -37,6 +37,9 @@ test('review filters preserve edits, timeline locates hidden groups and export s
     }, fixture);
     await page.goto(url);
     await page.locator('#workspace').waitFor();
+    const exportHint = page.locator('#export-hint');
+    assert.equal(await exportHint.textContent(), '建议优先使用启动台的「文稿修正」操作');
+    assert.ok(await exportHint.evaluate(hint => hint.getBoundingClientRect().top - document.querySelector('#export').getBoundingClientRect().bottom >= 8));
     assert.equal(await page.locator('#rows tr').count(), 4);
     if (process.env.MAW_REVIEW_SCREENSHOTS) await page.screenshot({ path: `${process.env.MAW_REVIEW_SCREENSHOTS}/review-dark.png`, fullPage: true });
     if (process.env.MAW_REVIEW_SCREENSHOTS) {
@@ -461,5 +464,16 @@ test('zoom presets show exact time spans and support subsecond zoom on a long pr
     assert.equal(await page.getByRole('button', { name: '10 秒窗口' }).getAttribute('aria-pressed'), 'true');
     assert.equal((await measure()).left, 0);
     assert.match(await page.locator('#rows tr[data-active]').textContent(), /欢迎收看今天的比赛/);
+    const firstJump = page.locator('#rows tr[data-active]').getByRole('button', { name: '跳转到时间线位置' });
+    await page.getByRole('button', { name: '1 分钟窗口' }).click();
+    await firstJump.click();
+    assert.equal(await page.getByRole('button', { name: '30 秒窗口' }).getAttribute('aria-pressed'), 'true');
+    const jumpSpan = await measure();
+    assert.equal(jumpSpan.total, jumpSpan.width * duration / 30_000);
+    await firstJump.click();
+    assert.deepEqual(await measure(), jumpSpan);
+    await page.getByRole('button', { name: '10 秒窗口' }).click();
+    await firstJump.click();
+    assert.equal(await page.getByRole('button', { name: '10 秒窗口' }).getAttribute('aria-pressed'), 'true');
   } finally { await browser.close(); }
 });

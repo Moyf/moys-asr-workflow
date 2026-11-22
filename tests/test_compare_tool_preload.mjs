@@ -66,6 +66,13 @@ test('transcript compare preloads Launcher bytes without touching the offline fl
       const ratio = await page.locator('.wave-cue').first().evaluate(block => (block.getBoundingClientRect().width + 1.5) / block.parentElement.clientWidth);
       assert.ok(Math.abs(ratio - 900 / ms) < 0.002);
     }
+    await jump.click();
+    assert.equal(await page.getByRole('button', { name: '30 秒窗口' }).getAttribute('aria-pressed'), 'true');
+    await jump.click();
+    assert.equal(await page.getByRole('button', { name: '30 秒窗口' }).getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: '10 秒窗口' }).click();
+    await jump.click();
+    assert.equal(await page.getByRole('button', { name: '10 秒窗口' }).getAttribute('aria-pressed'), 'true');
     const screenshots = process.env.MAW_REVIEW_SCREENSHOTS;
     if (screenshots) await page.screenshot({ path: `${screenshots}/transcript-compare-aligned.png` });
     page.on('dialog', dialog => dialog.accept());

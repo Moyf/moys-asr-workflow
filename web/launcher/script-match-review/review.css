@@ -5,10 +5,13 @@ body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: 
 .topbar { display: flex; flex: none; align-items: center; gap: 16px; padding: 10px 16px; flex-wrap: wrap; background: var(--bg-panel); border-bottom: 1px solid var(--border-subtle); }
 .brand { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
 .logo { color: var(--accent); margin-right: 6px; }
-.toolbar, .pager, .wave-head, .wave-tools, .seek { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.toolbar { flex: 1; min-width: 0; }
-.toolbar .primary { margin-inline-start: auto; }
-.toolbar .filter-hint { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; }
+.filter-controls, .pager, .wave-head, .wave-tools, .seek { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px); align-items: start; gap: 8px; min-width: 0; }
+.filter-stack, .export-stack { display: flex; min-width: 0; flex-direction: column; align-items: start; gap: 8px; }
+.filter-controls { width: 100%; }
+#filter { max-width: 100%; }
+.export-stack { align-items: end; text-align: end; }
+.toolbar .hint { margin: 0; overflow-wrap: anywhere; }
 .btn, input, select, textarea { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 5px 12px; color: var(--text-primary); background: var(--bg-input); }
 .btn { color: var(--btn-text); background: var(--btn-bg); cursor: pointer; }
 .btn:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--border-strong); }
@@ -96,8 +99,10 @@ canvas { display: block; position: sticky; left: 0; height: 76px; cursor: crossh
 }
 @media (max-width: 640px) {
   .topbar { justify-content: space-between; gap: 8px; }
-  .toolbar { order: 1; flex-basis: 100%; gap: 8px; }
-  .toolbar .primary, .wave-tools { margin-inline-start: 0; }
+  .toolbar { order: 1; grid-template-columns: minmax(0, 1fr) minmax(0, 46%); }
+  .filter-controls { gap: 8px; }
+  .export-stack .primary { white-space: normal; }
+  .wave-tools { margin-inline-start: 0; }
   .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .card { padding-inline: 8px; }
   main { padding-inline: 10px; }
@@ -106,6 +111,8 @@ canvas { display: block; position: sticky; left: 0; height: 76px; cursor: crossh
 @media (max-width: 400px) {
   .topbar { padding-block: 8px; }
   main { padding-top: 6px; }
+  .wave-head, .seek { padding-block: 4px; }
+  .wave-head { row-gap: 8px; }
 }
 @media (max-width: 700px), (max-height: 560px) {
   .wave-hints:not(:has(.wave-error:not(:empty))) { display: none; }

@@ -9,6 +9,7 @@
   const NOTES_GAP = 8;
   const zh = {
     title: 'MAW 文稿匹配对照', reset: '重置筛选', export: '导出调整后的 MOSP', warnings: '匹配说明',
+    exportHint: '建议优先使用启动台的「文稿修正」操作',
     range: '时间 / 差异', before: '原始字幕', script: '文稿候选', after: '调整后的字幕',
     noResults: '没有符合条件的差异。', prev: '上一页', next: '下一页', timeline: '时间分布',
     timelineHint: '滚轮平移 · Ctrl+滚轮横向缩放 · 点击字幕块定位', fit: '重置缩放', seek: '定位时间（秒）', locate: '定位',
@@ -39,6 +40,7 @@
   };
   const en = {
     title: 'MAW Script Match Review', reset: 'Reset filters', export: 'Export adjusted MOSP', warnings: 'Match notes',
+    exportHint: 'Prefer using Script Correction in Launcher.',
     range: 'Time / differences', before: 'Original subtitles', script: 'Manuscript candidates', after: 'Adjusted subtitles',
     noResults: 'No differences match the filters.', prev: 'Previous', next: 'Next', timeline: 'Timeline',
     timelineHint: 'Scroll to pan · Ctrl+scroll to zoom · click a cue to locate', fit: 'Reset zoom', seek: 'Go to time (seconds)', locate: 'Go',
@@ -283,7 +285,7 @@
     const range = wrap();
     range.append(create('span', `${time(group.start)}\n${time(group.end)}`, 'time range-text'), create('div', null, 'badges'));
     const actions = create('div', null, 'actions');
-    const jump = button('', () => selectTimeline(group, group.start, { center: true }), 'btn jump-timeline');
+    const jump = button('', () => selectTimeline(group, group.start, { center: true, maxSpan: SEEK_MAX_TIMELINE_SPAN }), 'btn jump-timeline');
     window.MAWToolPage.setActionIcon(jump, 'locate', text.jump);
     actions.append(jump);
     range.append(actions);
@@ -481,14 +483,16 @@
       ctx.fillRect(x(selectedTime), 21, 2, 51);
     }
   }
-  function selectTimeline(group, ms, { center = false } = {}) {
+  function selectTimeline(group, ms, { center = false, maxSpan = Infinity } = {}) {
     if (selected !== null) rendered.get(selected)?.removeAttribute('data-active');
     selected = group.id;
     selectedTime = ms;
     rendered.get(selected)?.setAttribute('data-active', '');
     $('seek-feedback').textContent = '';
     $('seek').value = `${ms / 1000}`;
-    if (center || ms < windowStart || ms >= windowStart + windowSpan) {
+    const narrowed = windowSpan > maxSpan;
+    if (narrowed) setWindowSpan(maxSpan);
+    if (center || narrowed || ms < windowStart || ms >= windowStart + windowSpan) {
       windowStart = ms - windowSpan / 2;
       syncTimelineScroll();
     }

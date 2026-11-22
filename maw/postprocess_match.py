@@ -9,6 +9,7 @@ import difflib
 import json
 import unicodedata
 from bisect import bisect_left, bisect_right
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
@@ -415,7 +416,7 @@ def _match_project_with_character_timings(
     combined, clipped_disabled, dropped_disabled = _merge_disabled_segments(
         source_segments, raw_matched, is_cancelled=is_cancelled, issues=trace.issues if trace is not None else None,
     )
-    _remap_segment_references(source_segments, combined, is_cancelled=is_cancelled)
+    _remap_segment_references(source_segments, combined, match_by_id=True, is_cancelled=is_cancelled)
     raw_matched["segments"] = combined
     matched = normalize_project(raw_matched)
     warnings: list[str] = [
@@ -569,7 +570,7 @@ def _merge_unmatched_source_segments(
     is_cancelled: Callable[[], bool] | None = None,
     issues: dict[tuple[int, int], str] | None = None,
 ) -> tuple[int, int, int]:
-    """Keep complete source cues covered only by ASR-side deletions.
+    """Keep complete source cues without a reliable character match.
 
     The timed matcher intentionally builds output cues from manuscript
     characters.  A source cue that is deleted by the character alignment has
@@ -595,6 +596,8 @@ def _merge_unmatched_source_segments(
             continue
         source_segment = matcher_segments[raw_index]
         if isinstance(source_segment, dict) and str(source_segment.get("text", "")).strip():
+            if issues is not None:
+                issues[_cue_range(source_segment)] = "unmatched"
             extras.append(copy.deepcopy(source_segment))
     if not extras:
         return 0, 0, 0
@@ -622,20 +625,32 @@ def _inherit_timed_metadata(
     cue_sources = report.get("cue_source_counts")
     if not isinstance(cue_sources, list):
         raise ValueError("character matcher did not report cue sources")
-    for cue, counts in zip(_reviewable_segments(matched), cue_sources, strict=True):
+    source_use_counts: Counter[int] = Counter()
+    for counts in cue_sources:
         check_match_cancelled(is_cancelled)
         if not isinstance(counts, list) or not counts:
             raise ValueError("character matcher returned an invalid cue source")
+        source_use_counts.update(index for index, _count in counts)
+    for cue, counts in zip(_reviewable_segments(matched), cue_sources, strict=True):
+        check_match_cancelled(is_cancelled)
         contributors = [source[i] for i, _count in counts]
         first = contributors[0]
         _inherit_majority_speaker(cue, source, counts)
         for key in ("assStyle", "assOverride"):
             if key in first and all(segment.get(key) == first[key] for segment in contributors):
                 cue[key] = copy.deepcopy(first[key])
-        if len(contributors) == 1 and _cue_range(first) == _cue_range(cue):
-            for key in ("id", "sticker", "color", "start_frame", "end_frame"):
+        if len(contributors) == 1 and source_use_counts[counts[0][0]] == 1:
+            source_start, source_end = _cue_range(first)
+            start, end = _cue_range(cue)
+            if not source_start <= start < end <= source_end:
+                continue
+            for key in ("id", "sticker", "color"):
                 if key in first:
                     cue[key] = copy.deepcopy(first[key])
+            if (start, end) == (source_start, source_end):
+                for key in ("start_frame", "end_frame"):
+                    if key in first:
+                        cue[key] = first[key]
 
 
 def _inherit_majority_speaker(
@@ -661,16 +676,23 @@ def _remap_segment_references(
     before: Sequence[JsonValue],
     after: list[JsonValue],
     *,
+    match_by_id: bool = False,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> None:
     """Keep grouped styles only when both the original cue and its head survive."""
-    by_range = {_cue_range(cue): i for i, cue in enumerate(after) if isinstance(cue, dict)}
-    source_by_range = {_cue_range(cue): cue for cue in before if isinstance(cue, dict)}
+    def identity(cue: JsonDict) -> str | tuple[int, int] | None:
+        if not match_by_id:
+            return _cue_range(cue)
+        value = cue.get("id")
+        return value if isinstance(value, str) else None
+
+    after_by_identity = {key: i for i, cue in enumerate(after) if isinstance(cue, dict) and (key := identity(cue)) is not None}
+    source_by_identity = {key: cue for cue in before if isinstance(cue, dict) and (key := identity(cue)) is not None}
     for i, cue in enumerate(after):
         check_match_cancelled(is_cancelled)
         if not isinstance(cue, dict):
             continue
-        source = source_by_range.get(_cue_range(cue), {})
+        source = source_by_identity.get(identity(cue), {})
         for head_field in ("sticker", "color"):
             field = f"{head_field}_ref"
             cue.pop(field, None)
@@ -683,7 +705,7 @@ def _remap_segment_references(
             original_head = before[head_index]
             if not isinstance(original_head, dict):
                 continue
-            new_index = by_range.get(_cue_range(original_head))
+            new_index = after_by_identity.get(identity(original_head))
             if new_index is not None and new_index < i:
                 new_head = after[new_index]
                 if isinstance(new_head, dict) and head_field in new_head and head_field not in cue:

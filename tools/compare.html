@@ -620,7 +620,8 @@ for (const id of ['addBtn', 'addBtn2', 'fileInput', 'clearBtn', 'diffOnly', 'sea
 const WAVE_LAYOUT_KEY = 'moy.compare.waveLayout.v1';
 els.resetFilters = document.getElementById('resetFilters');
 const WAVE_ZX_LIMITS = [1, 2000];
-const WAVE_SPANS = [10000, 30000, 60000];
+const WAVE_JUMP_MAX_SPAN = 30_000;
+const WAVE_SPANS = [10000, WAVE_JUMP_MAX_SPAN, 60000];
 const WAVE_ZY_LIMITS = [0.5, 5];
 const WAVE_HEIGHT_LIMITS = [140, 2000];
 const WAVE_LABEL_PX = 130;
@@ -1366,6 +1367,8 @@ function updateWaveMarker() {
 
 function jumpToWave(ms) {
   if (!waveRenderInfo) return;
+  const visibleSpan = waveLayout.span ?? waveRenderInfo.spanMs * waveRenderInfo.baseWidth / waveRenderInfo.laneWidth;
+  if (visibleSpan > WAVE_JUMP_MAX_SPAN) setWaveZoom(null, null, null, WAVE_JUMP_MAX_SPAN);
   waveMarkerMs = ms;
   selectWaveRow(ms);
   updateWaveMarker();
