@@ -2,7 +2,7 @@
 
 <!-- log-release-baseline: 1.11.2 -->
 
-新共享日志放在 `docs/logs/release1.11.2/<YYMMDD_<主题>/`，表示 **1.11.2 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
+新共享日志放在 `docs/logs/release1.11.2/<YYMMDD>_<主题>/`，表示 **1.11.2 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
 
 此表是可选的查阅入口，漏登记只提示；关键指南、方案和工程文档仍必须登记[主索引](../INDEX.md)。当前仍有参考价值或未决事项的记录可精选进 [CURRENT](CURRENT.md)。
 
@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.2 之后；2.0dev | 2026-11-22 | [Agent 文档整理自审](release1.11.2/261122_Agent文档整理/REVIEW_FINDINGS.md) | 汇总根规则、技能授权、共享工作树提交和快照边界的复核 |
 | 1.11.2 之后；2.0dev | 2026-11-20 | [PR 349 合并前复核](release1.11.2/261120_PR349合并前核验/REVIEW_FINDINGS.md) / [人工验收](release1.11.2/261120_PR349合并前核验/工程样式与字体.checklist.md) | 轨道样式、字体覆盖及烧录验证 |
 | 1.11.2 之后；2.0dev | 2026-11-20 | [ASS 样式库迁移复核](release1.11.2/261120_ASS样式库迁移2.0/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261120_ASS样式库迁移2.0/ASS样式库迁移.checklist.md) | 整库迁移、满额旧库和 v2 工程样式快照 |
 | 1.11.2 之后；2.0 | 2026-11-15 | [波形保存与文本焦点](release1.11.2/261115_波形保存与文本焦点/TEST_FEEDBACK_波形保存与文本焦点.md) / [人工核验](release1.11.2/261115_波形保存与文本焦点/波形保存与文本焦点.checklist.md) / [独立审查](release1.11.2/261115_波形保存与文本焦点/REVIEW_FINDINGS.md) | 波形手势与保存交错保护；文本弹窗焦点及关闭重开定位 |
@@ -24,7 +25,7 @@
 | 1.11.2 之后；2.0dev | 2026-11-20 | [G16-B/G/D 接线迁移](release1.11.2/261120_G16接线迁移/IMPLEMENTATION.md) / [独立自审](release1.11.2/261120_G16接线迁移/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261120_G16接线迁移/G16_BGD.checklist.md) | 播放消费者、媒体与导入事件、导出及烧录接线，含真实 Server 门槛与基线对照 |
 | 1.11.2 之后；2.0dev | 2026-11-18 | [集中报错审阅](release1.11.2/261118_集中报错/REVIEW_FINDINGS.md) | 独立组继续、准备范围复核及失败证据 |
 | 1.11.2 之后；2.0dev | 2026-11-18 | [模块依赖选测审阅](release1.11.2/261118_模块依赖选测/REVIEW_FINDINGS.md) | 共享影响计划、有限准入兼容、按需辅助消费者与过度选择清理；真实失败和后续集中报错边界单列 |
-| 1.11.2 之后；2.0dev | 2026-11-17 | [CI 门禁纠偏实施](release1.11.2/261117_2devCI门禁纠偏/实施记录.md) / [审查边界](release1.11.2/261117_2devCI门禁纠偏/REVIEW_FINDINGS.md) / [远端核验](release1.11.2/261117_2devCI门禁纠偏/CI准入.checklist.md) | 有限契约准入、范围预览、旧完整能力仅手动；未变更正式发布，独立审查及远端状态迁移待协调会话 |
+| 1.11.2 之后；2.0dev | 2026-11-17 | [CI 门禁纠偏实施](release1.11.2/261117_2devCI门禁纠偏/实施记录.md) / [审查边界](release1.11.2/261117_2devCI门禁纠偏/REVIEW_FINDINGS.md) / [远端核验](release1.11.2/261117_2devCI门禁纠偏/CI准入.checklist.md) | 已随 #398 合入，完整检查保留手动辅助入口。最终 PR head 的准入与工件已核对，远端分支保护待维护者确认。 |
 | 2.0dev；P1收口 | 2026-11-16 | [P1收口与P2交接](release1.10.0-beta.2/261112_MAW2整合/P1整合记录.md#p1-closeout) | PR373已合入3b431e0b，最终head b6996f58的8项CI成功；P2待安排，人工/ACL/跨平台边界保留 |
 | 1.11.2 之后；PR 373 | 2026-11-16 | [整合 PR 合并审阅](release1.11.2/261116_PR373合并审阅/REVIEW_FINDINGS.md) / [成组修复台账](release1.11.2/261116_PR373合并审阅/TEST_FEEDBACK_审阅修复.md) / [人工核验](release1.11.2/261116_PR373合并审阅/审阅修复.checklist.md) | 两项P1与绑定索引P2成组修复；已随PR373合入，历史审查结论按当时head保留，最新状态见收口记录 |
 | 1.11.2 之后；PR 373 | 2026-11-13 | [审查评论与 CI 核对](release1.11.2/261113_PR373审查CI/TEST_FEEDBACK_PR373审查CI.md) / [独立复核](release1.11.2/261113_PR373审查CI/REVIEW_FINDINGS.md) | 主题等待超时及Windows长路径图片夹具已修，本地7工具页65/65；失败证据上传补齐，远端门禁另核对，不宣称完整审查放行 |
@@ -33,7 +34,7 @@
 | 1.11.2 之后 | 2026-11-12 | [合并后副轨颜色引用损坏](release1.11.2/261112_合并后颜色引用损坏/TEST_FEEDBACK_合并后颜色引用损坏.md) / [独立自审](release1.11.2/261112_合并后颜色引用损坏/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261112_合并后颜色引用损坏/颜色引用修复.checklist.md) | 双语工程合并/删除/整理副轨时 `color_ref.headIdx` 不平移导致保存校验失败；补充跨组同色合并保色，含用户工程对照与保存/撤销回归 |
 | 1.11.2 之后 | 2026-11-12 | [报错输出到控制台提交前自审](release1.11.2/261112_报错输出到控制台/REVIEW_FINDINGS.md) | 报错类 toast / 错误面板镜像到 DevTools 控制台；warning→warn 映射守住 e2e 零 error 契约，1 major（6 处 error 透传遗漏）已修复复验 |
 | 1.11.2 之后 | 2026-11-12 | [OCR 路径回归补充](release1.11.2/261112_OCR路径回归/验证记录.md) / [独立自审](release1.11.2/261112_OCR路径回归/REVIEW_FINDINGS.md) | 发布故障注入命中断言、路径别名回归及精确平台 skip，不重复已合并修复 |
-| 1.11.2 之后 | 2026-11-12 | [G12 标记领域 ESM](release1.11.2/261112_G12标记领域ESM/IMPLEMENTATION.md) / [人工核验](release1.11.2/261112_G12标记领域ESM/G12标记领域.checklist.md) | 编辑逻辑、面板和波形消费边迁移；classic 桥与人工验收边界记录 |
+| 1.11.2 之后 | 2026-11-12 | [G12 标记领域 ESM](release1.11.2/261112_G12标记领域ESM/IMPLEMENTATION.md) / [独立复核](release1.11.2/261112_G12标记领域ESM/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261112_G12标记领域ESM/G12标记领域.checklist.md) | 编辑逻辑、面板和波形消费边迁移；classic 桥与人工验收边界记录 |
 | 1.11.2 之后 | 2026-11-11 | [断句标点持久化独立盲审](release1.11.2/261111_断句标点持久化/REVIEW_FINDINGS.md) | 无 blocker/major；env 优先级补测试守护、mock 快照语义对齐，含 8 项变异反向验证 |
 | 1.11.2 之后 | 2026-11-11 | [官网发布收尾](release1.11.2/261111_官网发布收尾/TEST_FEEDBACK_官网发布收尾.md) / [独立复核](release1.11.2/261111_官网发布收尾/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261111_官网发布收尾/官网发布收尾.checklist.md) | 有界等待、旧索引防护与发包收尾门槛 |
 | 1.11.0 之后 | 2026-11-11 | [ASS 默认动画与 1.11.2 发布](release1.11.0/261111_ASS默认动画与1.11.2发布/TEST_FEEDBACK_ASS默认动画.md) / [独立复核](release1.11.0/261111_ASS默认动画与1.11.2发布/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261111_ASS默认动画与1.11.2发布/1.11.2.checklist.md) | 默认开关溯源、补丁 Release Notes 规则与发布核验 |
@@ -52,6 +53,7 @@
 | 1.11.0 之后 | 2026-11-10 | [G09 样式域 ESM 迁移](release1.11.0/261110_G09样式域ESM/G09_ASS_STYLE_ESM.md) / [独立自审](release1.11.0/261110_G09样式域ESM/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_G09样式域ESM/G09样式域ESM.checklist.md) | ASS 样式与预览静态依赖、classic 接线兼容与分层验证 |
 | 1.11.0 之后 | 2026-11-10 | [G11 与 G16-F ESM 迁移](release1.11.0/261110_G11与G16F迁移/G11_G16F_ESM.md) / [独立自审](release1.11.0/261110_G11与G16F迁移/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_G11与G16F迁移/G11_G16F.checklist.md) | 导入导出、媒体控制与 ASS 预览接线的模块迁移和回归证据 |
 | 1.10.0-beta.2 之后 | 2026-11-09 | [G08-b 播放头与 PR 反馈](release1.10.0-beta.2/261109_G08B播放头与PR反馈/TEST_FEEDBACK_G08B.md) / [独立自审](release1.10.0-beta.2/261109_G08B播放头与PR反馈/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261109_G08B播放头与PR反馈/G08B反馈.checklist.md) | 旧线清理、正确 PR 分支 rebase、字词转换误选修复；播放头归因为跳转目标设置 |
+| 1.10.0-beta.2 之后 | 2026-11-09 | [字词码双击播放反馈](release1.10.0-beta.2/261109_字词码双击播放/TEST_FEEDBACK_字词码双击播放.md) · [波形显示设置反馈](release1.10.0-beta.2/261109_波形显示设置/TEST_FEEDBACK_波形显示设置.md) | 两项实测与处置记录 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |
@@ -91,7 +93,8 @@
 | 1.10.0-beta.2 之后 | 2026-10-26 | [本地模型目录误判修复](release1.10.0-beta.2/261026_本地模型目录误判/本地模型目录误判修复.checklist.md) / [独立复核](release1.10.0-beta.2/261026_本地模型目录误判/REVIEW_FINDINGS.md) | 运行时根目录误判为已安装、切换模型串写 localModelPaths 两类修复；仓库根选择解析到可用修订层；新增清除自定义目录自救按钮，自动化与独立复核通过待人工验收 |
 | 1.10.0-beta.2 之后 | 2026-10-26 | [对齐模型联网反馈](release1.10.0-beta.2/261026_对齐模型联网/TEST_FEEDBACK_对齐模型联网.md) | 加载路径离线核实与 HF-first 准备路径溯源；下载源顺序改进待拍板 |
 | 1.10.0-beta.2 之后 | 2026-10-25 | [PR239 同步 main](release1.10.0-beta.2/261025_PR239同步main/整合记录.md) / [独立审阅](release1.10.0-beta.2/261025_PR239同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261025_PR239同步main/PR239同步.checklist.md) | ESM 领域迁移与稳定组、完整保存检查点组合；保持 Draft 与 2.0dev |
-| 1.10.0-beta.2 之后 | 2026-10-24 | [G10 状态域 ESM 修复与复核](release1.10.0-beta.2/261024_G10状态域ESM/REVIEW_FINDINGS.md) / [人工核对清单](release1.10.0-beta.2/261024_G10状态域ESM/G10状态域ESM.checklist.md) | rebase 后修复工程加载作用域错误，更新 ESM VM 测试装载并复验 |
+| 1.10.0-beta.2 之后 | 2026-10-24 | [G10 状态域 ESM 修复与复核](release1.10.0-beta.2/261024_G10状态域ESM/REVIEW_FINDINGS.md) / [首轮反馈](release1.10.0-beta.1/261024_G10状态域ESM/TEST_FEEDBACK_G10.md) / [人工核对清单](release1.10.0-beta.2/261024_G10状态域ESM/G10状态域ESM.checklist.md) | rebase 后修复工程加载作用域错误，更新 ESM VM 测试装载并复验 |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [测试反馈](release1.10.0-beta.1/261023_测试反馈/TEST_FEEDBACK_测试反馈.md) / [字词时间码切换白屏排查](release1.10.0-beta.1/261023_测试反馈/TEST_FEEDBACK_测试反馈-investigation-字词时间码切换白屏.md) / [人工核验](release1.10.0-beta.1/261023_测试反馈/261023测试反馈.checklist.md) | 分项反馈、调查和人工状态见原文 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [编辑器显示与像素组合验证](release1.10.0-beta.1/261023_编辑器显示与像素验证/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_编辑器显示与像素验证/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261023_编辑器显示与像素验证/编辑器显示.checklist.md) | 斜体字形、真实像素准备复用与动态双语提示；最新 main 组合和旧红新绿 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [测试夹具组合验证](release1.10.0-beta.1/261023_测试夹具组合/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_测试夹具组合/REVIEW_FINDINGS.md) / [核验清单](release1.10.0-beta.1/261023_测试夹具组合/测试基础设施.checklist.md) | H/L/C 组合、Windows 同一完整报告承接；真实符号链接与 Launcher 浏览器验收分别记录 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [服务生命周期夹具复核](release1.10.0-beta.1/261023_服务生命周期夹具/REVIEW_FINDINGS.md) | Windows supervisor/application 环境隔离、合成期限与实际默认期限分开、进程树/端口/旁观进程断言保留 |

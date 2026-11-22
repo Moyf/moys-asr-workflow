@@ -2,7 +2,9 @@
 
 第一次使用从[工作流](INDEX.md#user-workflow)开始，再按需阅读 [Launcher](INDEX.md#user-launcher)、[编辑器](INDEX.md#user-editor)和[常见问题](INDEX.md#user-faq)。
 
-开发者先看[开发概览](INDEX.md#engineering-development)和[贡献指南](../CONTRIBUTING.md)。完整专题见[文档索引](INDEX.md)，阶段证据见[日志索引](logs/INDEX.md)，当前相关参考与未决事项见 [CURRENT](logs/CURRENT.md)。
+使用成品 MAW 做自动化，从[用户 CLI 指南](INDEX.md#user-cli)进入。通过 MCP 连接 MAW 的交付状态见[用户 MCP 指南](INDEX.md#user-mcp)。
+
+开发者先确认目标分支并读[根 AGENTS](../AGENTS.md)。涉及子目录时同时读该目录的约定。若稀疏检出未展开根文件，可用 `git show <目标引用>:AGENTS.md` 从 Git 树读取。环境和常用入口见[开发概览](INDEX.md#engineering-development)，对外贡献见[贡献指南](../CONTRIBUTING.md)。阶段证据见[日志索引](logs/INDEX.md)，交接状态见 [CURRENT](logs/CURRENT.md)。
 
 <a name="doc-policy"></a>
 ## 文档约定
@@ -23,6 +25,12 @@
 | 仓库根 `.artifacts/<task-id>/` | 本地原始输出与临时预览，由 Git 忽略。 |
 
 同一读者、主题和支持范围维护一份明确的现行说明。适用范围写在正文，人工回看状态以维护者确认结果为准。源码、配置、测试夹具与必要持久证据按项目用途入库。共用资源保留在 `assets/`；`archived/` 用于维护者选定的历史资料。
+
+### 规则放在哪里
+
+- 仓库及子目录的 `AGENTS.md` 只维护开发与维护规则。面向用户 Agent 的安装包操作由 CLI 和 MCP 用户指南承接。
+- 当前操作和架构以工程说明、实际脚本及配置为准。面向贡献者的步骤放 `CONTRIBUTING.md`，任务专属流程由仓库技能指到相应契约。
+- `logs/CURRENT.md` 维护当前交接，原始验收证据留在日志。需要从其他入口提及时，简述结论并链接到该规则的正文。
 
 ### 入口与参考
 

@@ -1,6 +1,6 @@
 ---
 name: maw-subtitle-pipeline
-description: 基于 MAW 的批量字幕流水线：长视频无损切分成多份 → Qwen 云端转写生成 SRT 与 .mosp 工程 → 用公开 CLI --burn 把字幕硬烧进视频（保留全部音轨）。当用户要求"切分/拆分视频""生成字幕""转写""烧录字幕""压字幕""硬字幕""批量出片"，提到 MAW、OBS 录像加字幕、长视频出多份成片，或要求在本仓库运行完整 ASR → 烧录流程时使用。转写与烧录均通过公开 CLI（源码入口 uv run --no-sync python maw_gui.py，或含 --burn 的 MAW.exe 发布包）；本技能以源码环境为准，需要 uv sync 与带 libass 的 FFmpeg。
+description: 在 MAW 执行长视频切分、Qwen 转写和硬字幕烧录，支持完整批量流程或其中指定步骤。首轨转写与烧录使用公开 CLI，指定非首轨转写使用 Qwen 源码模块。成片保留全部音轨。
 ---
 
 # maw-subtitle-pipeline
@@ -11,13 +11,13 @@ description: 基于 MAW 的批量字幕流水线：长视频无损切分成多�
 
 1. **依赖**：仓库根目录已 `uv sync`；`ffmpeg` / `ffprobe` 在 PATH（需带 libass，gyan.dev full/essentials 与 BtbN 构建均满足；`ffmpeg -version` 的 configuration 里查 `--enable-libass`）。
 2. **ASR Key**：先检查 `<仓库根>/.env` 是否存在（只查存在性，绝不读取或打印内容）。不存在时向用户询问 `DASHSCOPE_API_KEY`（阿里云百炼），把 `DASHSCOPE_API_KEY=<key>` 写入 `.env`（UTF-8、LF，`.env` 已在 .gitignore）。其他供应商见 `docs/user/PROVIDERS.md`。改用环境变量传入也可以，但不要把 key 放进命令行参数。
-3. **GPU → 烧录编码器**：`powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name)"` 判断厂商，烧录步骤按映射显式传编码器：
-   - AMD → `amf`；NVIDIA → `nvenc`；Intel 核显 → `qsv`；查不到 → `auto`（auto 按 nvenc → qsv → amf → cpu 顺序尝试、失败自动回退，AMD 机器显式指定可省去失败的尝试）。
+3. **GPU → 烧录编码器**：`powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name)"` 可在 Windows 查看显卡厂商，供需要指定编码器时参考：
+   - 默认用 `auto`，它在当前 FFmpeg 列出的硬件编码器中依次尝试，硬件编码失败后回退 CPU。指定硬件时，AMD 用 `amf`，NVIDIA 用 `nvenc`，Intel 核显用 `qsv`。
 
 ## 任务目录与防覆盖
 
 - 默认新建任务目录：`<源媒体同名>_full/`；已存在时改用带日期后缀的新目录（如 `<源媒体同名>_full-1103/`），不要在旧任务目录里用不同切点重跑。
-- 覆盖行为差异：切分（ffmpeg）与转写（`-o`）会直接覆盖同名文件，只有烧录输出 `<原名>.压字幕.mp4` 自动编号避让。
+- 切分用 `ffmpeg -n`，目标已存在时退出。转写的 `-o` 会覆盖同名 SRT / MOSP。烧录输出 `<原名>.压字幕.mp4` 自动编号避让。
 - 复用已有产物前逐文件向用户确认；切点变了必须全部重新生成——旧 SRT/MOSP 对应的是旧切点，混用会让字幕指到不同画面。
 - 断点续跑的前提：目录里的既有产物来自同一次切点，且抽验时长完整，才可跳过已完成的份。
 
@@ -30,7 +30,7 @@ ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,c
 ```
 
 - 记录：时长（秒）、分辨率、音轨数。
-- 预算基准（实测，可据此设超时与告知用户）：转写费用 ≈ **0.00022 元/秒**（Qwen，RTF ≈ 0.02，约 60x 实时，每份几分钟）；4K AMF 烧录 ≈ **0.65x 实时**（30 分钟片段约 20 分钟）；无损切分 ≈ 磁盘读写速度（51 GB 约 7 分钟）。
+- 2026-11-03 的单机案例可参考文末实测。根据本次素材、服务计价和硬件估计费用与超时。
 - 磁盘空间：切分产物 ≈ 源文件大小，烧录产物另计，确认目标盘剩余空间足够。
 
 **音轨核验**（多音轨必做）：OBS 等录像常见 Mix / Voice / OriginSound 之类的分轨，转写基于哪条必须由用户决定：
@@ -54,7 +54,7 @@ ffmpeg -hide_banner -loglevel error -n -ss <起点秒> -i "<源媒体>" -map 0 -
 - `-n` 遇到已存在的目标文件会直接报错退出，防止静默覆盖旧片段；确需覆盖时先向用户确认，再对该份单独改用 `-y`。
 - 产出目录遵循「任务目录与防覆盖」。
 
-### Step 2 逐份转写（MAW 公开 CLI 的源码入口）
+### Step 2 逐份转写
 
 ```sh
 uv run --no-sync python maw_gui.py -i "<part>.mkv" -o "<part>.srt" "<part>.mosp"
@@ -72,9 +72,9 @@ uv run --no-sync python maw_gui.py -i "<part>.mkv" -o "<part>.srt" "<part>.mosp"
 uv run --no-sync python maw_gui.py --burn "<part>.srt" -i "<part>.mkv" --encoder <encoder>
 ```
 
-- `--burn` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程：SRT 与工程按样式库样式转换，PlayRes 取视频实际分辨率，字体名归一化，缺字中止，与工具箱「烧录字幕」同一套转换与编码逻辑。
+- `--burn` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程：SRT 使用样式库的烧录样式，工程读取工程内的轨道和单句样式，ASS/SSA 使用内嵌样式。字体名归一化，缺字中止。工程的轨道范围与导出限制见[用户 CLI 指南](../../../docs/user/CLI.md#烧录字幕)。
 - 输出自动写入媒体同目录 `<原名>.压字幕.mp4`，重名自动避让，不覆盖任何文件；默认 CRF 21、音频 AAC 192k，保留全部音轨。
-- `<encoder>` 传首次配置里确定的值（如 `amf`）；`--encoder` 仅限 `auto|cpu|nvenc|amf|qsv`，显式值不存在于当前 FFmpeg 时报错，此时回退 `auto`。
+- `<encoder>` 传首次配置里确定的值（如 `amf`）；`--encoder` 仅限 `auto|cpu|nvenc|amf|qsv`，当前 FFmpeg 缺少显式指定的编码器时会报错，可改用 `auto` 重新运行。
 - 成功判据：退出码 0 +「视频已烧录字幕:」行 + 输出文件真实存在；失败时 stderr 说明原因（含字幕文件缺失、格式不支持）。
 - 超时建议：媒体时长 ÷ 0.5（4K CPU 编码更慢，必要时换硬件编码器或告知用户耗时）。
 
