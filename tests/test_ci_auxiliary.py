@@ -25,6 +25,28 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
         self.assertEqual(aux_film['e2e_specs'], ['tests/e2e/filmstrip-real.spec.mjs'])
         self.assertTrue(aux_film['preparation']['real_media'])
 
+    def test_browser_shards_follow_selected_file_count(self):
+        specs = [f'tests/e2e/case-{index}.spec.mjs' for index in range(118)]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for count, job_count in ((0, 1), (1, 1), (2, 1), (3, 2), (99, 2), (100, 3), (118, 3)):
+                with self.subTest(count=count):
+                    output = root / f'outputs-{count}'
+                    plan = {'python_tests': ['tests/test_asr_presets.py'], 'node_tests': [],
+                            'e2e_specs': specs[:count], 'reasons': []}
+                    env = {'GITHUB_OUTPUT': str(output), 'GITHUB_STEP_SUMMARY': str(root / 'summary')}
+                    with mock.patch.dict(os.environ, env):
+                        ci_auxiliary.write_plan(plan, root / 'plan.json')
+                    values = dict(line.split('=', 1) for line in output.read_text(encoding='utf-8').splitlines())
+                    self.assertEqual(json.loads(values['aux_browser_shards']), list(range(1, job_count + 1)))
+                    written = json.loads((root / 'plan.json').read_text(encoding='utf-8'))
+                    groups = written['browser_file_groups']
+                    self.assertEqual(len(groups), job_count if count else 0)
+                    self.assertTrue(all(groups))
+                    self.assertCountEqual([spec for group in groups for spec in group], specs[:count])
+                    self.assertEqual(values['aux_python'], 'true')
+                    self.assertEqual(values['aux_browser'], str(bool(count)).lower())
+
     def test_only_selected_complete_admissions_are_removed(self):
         blocking = {'trusted_diff': True, 'paths': ['maw/project.py'], 'base': 'a' * 40,
                     'head': 'b' * 40, 'checks': ['data']}
@@ -57,6 +79,8 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
     def test_failed_auxiliary_layer_does_not_skip_later_selected_layers(self):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/editor-checks.yml').read_text(encoding='utf-8')
         auxiliary = workflow.split('\n  auxiliary:\n', 1)[1].split('\n  checks:\n', 1)[0]
+        self.assertIn('aux_browser_shards: ${{ steps.scope.outputs.aux_browser_shards }}', workflow)
+        self.assertIn("fromJSON(needs.selection.outputs.aux_browser_shards || '[1]')", auxiliary)
         for layer, label in (('python', 'Python'), ('node', 'Node'), ('browser', 'browser')):
             step = auxiliary.split(f'- name: Selected additional {label} tests\n', 1)[1].split('\n      - ', 1)[0]
             self.assertIn("!cancelled() &&", step)
@@ -111,11 +135,8 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
         self.assertNotIn('--blocked-preparation', run.call_args.args[0])
 
     def test_browser_layer_passes_ci_matrix_shard(self):
-        self.assertEqual(ci_auxiliary.browser_shards(0), [1])
-        self.assertEqual(ci_auxiliary.browser_shards(99), [1, 2])
-        self.assertEqual(ci_auxiliary.browser_shards(100), [1, 2, 3])
         plan = {'python_tests': [], 'node_tests': [],
-                'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(20)],
+                'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(100)],
                 'preparation': {}}
         with mock.patch.dict(os.environ, {'CI_PREPARATION': '{}'}), \
                 mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \

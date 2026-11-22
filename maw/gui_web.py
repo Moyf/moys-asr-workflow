@@ -2135,9 +2135,10 @@ class LauncherApi:
         owned_server_running = self.server_process is not None and self.server_process.poll() is None
         if _wait_for_server(
             url,
-            timeout=0.25,
+            timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
+            retry=False,
         ):
             if not _is_editor_listener(url, port):
                 return _error_result("port", "server_port_occupied", url)
@@ -4749,10 +4750,10 @@ def _probe_server(
         return False, f"{error.__class__.__name__}: {detail}"
 
 
-def _server_startup_status(url: str) -> str:
+def _server_startup_status(url: str, *, timeout: float = 0.25) -> str:
     """Read project readiness separately from HTTP liveness (including older servers)."""
     try:
-        with urlopen(f"{url.rstrip('/')}/api/startup-status", timeout=0.25) as response:
+        with urlopen(f"{url.rstrip('/')}/api/startup-status", timeout=timeout) as response:
             payload = json.loads(response.read(4096))
         if not isinstance(payload, dict) or payload.get("ok") is not True:
             return ""
@@ -4770,7 +4771,7 @@ def _server_startup_status(url: str) -> str:
 
 
 def _is_editor_listener(url: str, port: int) -> bool:
-    return bool(_server_startup_status(url)) or _maw_server_process_id(port) is not None
+    return bool(_server_startup_status(url, timeout=EDITOR_HEALTH_PROBE_TIMEOUT)) or _maw_server_process_id(port) is not None
 
 
 def _wait_for_server(
@@ -4779,6 +4780,7 @@ def _wait_for_server(
     timeout: float,
     probe_path: str = "/",
     probe_timeout: float = 0.25,
+    retry: bool = True,
 ) -> bool:
     deadline = time.monotonic() + max(0.0, timeout)
     request_budget = max(0.01, probe_timeout)
@@ -4793,6 +4795,8 @@ def _wait_for_server(
         )
         if ready:
             return True
+        if not retry:
+            return False
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
@@ -4841,11 +4845,12 @@ def _maw_server_process_id(port: int) -> int | None:
     if pid is None:
         return None
     command = _process_command_line(pid).lower().replace("/", "\\")
-    is_frozen_maw = any(flag in command for flag in ("--serve", "--server")) and bool(
+    has_serve_flag = bool(re.search(r'(?:^|[\s"])--(?:serve|server)(?=$|[\s"])', command))
+    is_frozen_maw = has_serve_flag and bool(
         re.search(r"(?:^|[\\\"\s])maw\.exe(?:[\\\"\s]|$)", command)
     )
     is_source_maw = "server-editor\\serve.py" in command or (
-        "maw_gui.py" in command and "--server" in command
+        "maw_gui.py" in command and bool(re.search(r'(?:^|[\s"])--server(?=$|[\s"])', command))
     )
     return pid if is_frozen_maw or is_source_maw else None
 

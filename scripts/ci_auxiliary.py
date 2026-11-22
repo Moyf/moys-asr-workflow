@@ -38,14 +38,15 @@ def auxiliary_plan(blocking: dict, *, impact=None, validated=False) -> dict:
             'node_tests': [p for p in impact['node_tests'] if p not in admitted_node]}
 
 
-def browser_shards(spec_count: int) -> list[int]:
-    # The 118-spec selection exceeded the 900s browser deadline on two runners.
-    if spec_count >= 100:
-        return [1, 2, 3]
-    return [1, 2] if spec_count else [1]
-
-
 def write_plan(plan: dict, output: Path) -> None:
+    specs = plan['e2e_specs']
+    # A job already uses two Playwright workers. Keep a pair in one job.
+    groups = [specs] if specs else []
+    if len(specs) > 2:
+        # Large selections exceeded the 900-second deadline on two runners.
+        count = 3 if len(specs) >= 100 else 2
+        groups = [specs[index::count] for index in range(count)]
+    plan = {**plan, 'browser_file_groups': groups}
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, ensure_ascii=True, indent=2) + '\n', encoding='utf-8', newline='\n')
     values = auxiliary_flags(plan)
@@ -53,7 +54,8 @@ def write_plan(plan: dict, output: Path) -> None:
         with Path(output).open('a', encoding='utf-8', newline='\n') as stream:
             for name, value in values.items():
                 stream.write(f'aux_{name}={str(value).lower()}\n')
-            stream.write('aux_shards=' + json.dumps(browser_shards(len(plan['e2e_specs']))) + '\n')
+            shards = list(range(1, len(groups) + 1)) or [1]
+            stream.write(f'aux_browser_shards={json.dumps(shards)}\n')
             stream.write('aux_error=false\n')
     message = 'Targeted auxiliary scope: ' + ', '.join(
         f'{layer}={len(plan[field])}' for layer, field in

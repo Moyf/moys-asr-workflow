@@ -230,6 +230,13 @@ def read_selection(path: Path) -> dict:
                 raise ValueError(f"invalid concrete test path: {target}")
     if set(plan["packs"]) - set(PACKS) or len(plan["packs"]) != len(set(plan["packs"])):
         raise ValueError("selection plan contains unknown or duplicate packs")
+    if "browser_file_groups" in plan:
+        groups = plan["browser_file_groups"]
+        if not isinstance(groups, list) or any(not isinstance(group, list) or not group or any(
+                not isinstance(spec, str) for spec in group) for group in groups):
+            raise ValueError("invalid browser file groups")
+        if sorted(spec for group in groups for spec in group) != sorted(plan["e2e_specs"]):
+            raise ValueError("browser file groups must cover each selected spec exactly once")
     return plan
 
 
@@ -253,7 +260,7 @@ def execute_browser(name, command, timeout, report):
             os.environ[key] = previous
 
 
-def prepare_browser(name, command, directory, specs, selection, results):
+def prepare_browser(name, command, directory, results, *, expected_specs=()):
     full = None
     # A single shard already discovers every selected case. Only a real split
     # needs a separate unsharded collection for a later union check.
@@ -294,6 +301,12 @@ def prepare_browser(name, command, directory, specs, selection, results):
         validate_shard_partition(full, shards, total)
         if not collection(listed, allow_empty=True):
             return None
+    if expected_specs:
+        expected = {path.removeprefix("tests/e2e/") for path in expected_specs}
+        actual = {file for file, _, _ in collection(listed)}
+        if listed.get("errors") or actual != expected:
+            raise ValueError(f"browser discovery files differ from its assignment: "
+                             f"missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}")
     return listed
 
 
@@ -385,7 +398,10 @@ def run_steps(steps, output_dir, plan, *, metadata, blocked_preparation=()):
             process = None
             try:
                 if browser:
-                    listed = prepare_browser(name, command, output_dir, (), "", discovers)
+                    expected_specs = ()
+                    if "browser_file_group" in metadata:
+                        expected_specs = tuple(arg for arg in command if arg.startswith("tests/e2e/"))
+                    listed = prepare_browser(name, command, output_dir, discovers, expected_specs=expected_specs)
                     reports["browser_listing"] = output_dir / f"{name}-list.json"
                     if listed is None:
                         process = {"gate": name, "command": command, "exit_code": 0,
@@ -449,12 +465,13 @@ def main(argv=None) -> int:
     parser.add_argument("--selection-plan", type=Path, help="execute a saved concrete selection for this commit")
     parser.add_argument("--layer", choices=("all", "docs", "website", "python", "node", "browser", "prepare"), default="all")
     parser.add_argument("--report-dir", type=Path, help="fresh evidence directory (default: unique local run)")
-    parser.add_argument("--shard", default="1/1", help="browser shard CURRENT/TOTAL; all other layers stay unchanged")
+    parser.add_argument("--shard", help="browser shard CURRENT/TOTAL; all other layers stay unchanged")
     parser.add_argument("--blocked-preparation", action="append", choices=PREPARATIONS, default=[],
                         help="A failed preparation from the calling workflow (repeatable)")
     args = parser.parse_args(argv)
+    shard = args.shard if args.shard is not None else "1/1"
     try:
-        current, total = (int(value) for value in args.shard.split("/"))
+        current, total = (int(value) for value in shard.split("/"))
         if not 1 <= current <= total:
             raise ValueError
     except ValueError:
@@ -500,6 +517,14 @@ def main(argv=None) -> int:
     head = plan.get("head") or subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     plan.update(head=head, stage=args.stage, changed_paths=paths, deleted_paths=deleted, packs=packs, e2e_specs=specs,
                 tools_scope=tools_scope, requested_layer=args.layer, preparation=prep)
+    browser_file_group = None
+    groups = plan.get("browser_file_groups")
+    if args.layer == "browser" and args.shard and groups:
+        if total != len(groups):
+            parser.error("browser shard count differs from the saved file groups")
+        specs = groups[current - 1]
+        browser_file_group = {"current": current, "total": total}
+        current, total = 1, 1
     if args.pack or args.component:
         plan["mode"] = "explicit-pack" if args.pack else "development-kernel"
     output_dir = (args.report_dir or ROOT / ".artifacts/test-workflow" / uuid.uuid4().hex[:12]).resolve()
@@ -527,6 +552,8 @@ def main(argv=None) -> int:
         return 1
     metadata = {"head": head, "selection_fingerprint": selection_fingerprint, "shard": {"current": current, "total": total},
                 "requested_layer": args.layer, "blocked_preparation": sorted(set(args.blocked_preparation))}
+    if browser_file_group:
+        metadata["browser_file_group"] = browser_file_group
     summary = run_steps(steps, output_dir, plan, metadata=metadata, blocked_preparation=args.blocked_preparation)
     return summary["exit_code"]
 
