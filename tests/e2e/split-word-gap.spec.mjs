@@ -35,7 +35,8 @@ test.afterAll(async () => {
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false }));
+    // These cases exercise trimming as well as timing; the current default keeps punctuation.
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false, splitTrimSymbols: ['、'] }));
   });
 });
 

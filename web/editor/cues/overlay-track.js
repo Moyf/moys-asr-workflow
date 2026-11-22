@@ -309,15 +309,25 @@ function detachColorFromGroup(idx) {
   const groupColor = headIdx >= 0 ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segment, 'color') : null;
   if (!segment || !groupColor) return false;
 
-  // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
+  // 显式退出会在该字幕处切开主轨的颜色组；普通删除与换轨仍保留组归属。
   const detachedColor = {
     ...groupColor,
     start: segment.start,
     end: segment.end,
   };
-    return MaweCommands.run('移出颜色组', () => {
+  return MaweCommands.run('移出颜色组', () => {
+    const segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const groupId = segment.color_group_id;
+    const tail = segments.flatMap((cue, index) => index > idx && cue.color_group_id === groupId ? [index] : []);
+    const metadata = tail.map(index => segments[index].color_group_metadata);
+    if (tail.length) {
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, tail, 'color', detachedColor);
+      tail.forEach((index, offset) => {
+        if (metadata[offset] !== undefined) segments[index].color_group_metadata = metadata[offset];
+      });
+    }
     MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
-    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [idx], 'color', detachedColor);
+    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, [idx], 'color', detachedColor);
     MaweColorFilter.refreshColorAssignmentUi();
     MaweHint.flashHint('已移出颜色组', 'success');
     return true;
