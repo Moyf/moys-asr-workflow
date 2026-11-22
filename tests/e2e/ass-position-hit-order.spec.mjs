@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEditorModule } from '../helpers/editor-module-loader.mjs';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 
 let tempDir, server;
 
@@ -122,6 +123,7 @@ test('overlapping hit targets follow Canvas order when secondary position is set
 
 test('secondary remains selectable, draggable and wheel-scalable with main preview off', async ({ page }) => {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
   await page.goto(server.url);
   await page.waitForFunction(() => window.MaweCoreState?.player?.videoWidth > 0 && window.MaweAssCuePosition);
@@ -165,6 +167,7 @@ test('secondary remains selectable, draggable and wheel-scalable with main previ
   });
   await expect(box).toBeVisible();
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride)).toEqual(positioned);
+  await waitForAssFonts(page);
   expect(await page.evaluate(() => MaweExportSrt.buildAss())).not.toContain('SECONDARY');
   await page.evaluate(() => { MaweMultiSubtitleCore.getActiveExtensionTrack().export.enabled = true; });
   expect(await page.evaluate(() => MaweExportSrt.buildAss())).toContain('SECONDARY');

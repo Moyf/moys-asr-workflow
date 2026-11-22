@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson, generateWav, makeTempDir, startServer } from './helpers.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 
 let directory, server;
 test.beforeAll(async () => {
@@ -72,8 +73,10 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 
 test('preview and exported names independently use real identity with collapsed extra color and no category group', async ({ page }, info) => {
   await disableOnboarding(page);
+  await stubAssFontCoverage(page);
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweSpeakerLabels && window.MawePlaybackLoop));
+  await waitForAssFonts(page);
   await page.evaluate(() => {
     MaweSettings.updateEditorSettings({ autoSaveProject: false, assMode: false, exportSpeakerLabels: false });
     MaweBoot.DATA.speakers = [{ id: 'person', name: 'Host<&>', color: '#49c5c1' }];

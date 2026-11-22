@@ -5,6 +5,7 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 import {
   makeTempDir,
   cleanupTempDir,
@@ -18,7 +19,7 @@ import {
 } from './helpers.mjs';
 
 // ---------------------------------------------------------------------------
-// Fixture: five cues packed into a 12s basic-mode window (plus one outside it),
+// Fixture: four cues in a 20s basic-mode window (plus one outside it),
 // so a horizontal marquee can deterministically hit a known subset.
 // ---------------------------------------------------------------------------
 const MARQUEE_DURATION_MS = 30_000;
@@ -27,20 +28,20 @@ const MARQUEE_SEGMENTS = [
   { start: 2500, end: 4500, text: 'Two', items: [{ start: 2500, end: 4500, text: 'Two' }] },
   { start: 5000, end: 7000, text: 'Three', items: [{ start: 5000, end: 7000, text: 'Three' }] },
   { start: 7500, end: 9500, text: 'Four', items: [{ start: 7500, end: 9500, text: 'Four' }] },
-  { start: 20000, end: 22000, text: 'Later', items: [{ start: 20000, end: 22000, text: 'Later' }] },
+  { start: 25000, end: 27000, text: 'Later', items: [{ start: 25000, end: 27000, text: 'Later' }] },
 ];
 
 function generateMarqueeProject(filePath) {
-  const project = {
+  const project = createProjectTracks().importProject({
     media: 'synthetic.wav',
     segments: MARQUEE_SEGMENTS,
     waveform: generateWaveformPayload(MARQUEE_DURATION_MS),
-  };
+  }).project;
   writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf-8');
   return filePath;
 }
 
-// Basic (single-row) mode with a 12s window; dragPlayhead stays ON so the
+// Basic (single-row) mode with a supported 20s window; dragPlayhead stays ON so the
 // "Shift+drag does not seek" assertions actually exercise the marquee path
 // instead of passing because seeking was disabled anyway.
 async function configureBasicMode(page) {
@@ -48,7 +49,7 @@ async function configureBasicMode(page) {
     const settings = {
       mode: 'basic',
       layout: 'wave-right',
-      visibleSeconds: 12,
+      visibleSeconds: 20,
       secondsPerRow: 5,
       rowHeight: 96,
       side: 'left',
@@ -68,6 +69,7 @@ async function configureBasicMode(page) {
 
 async function waitForWaveformCues(page) {
   await page.waitForSelector('.waveform-cue-block', { state: 'visible', timeout: 15_000 });
+  await expect(page.locator('#waveform-window-label')).toHaveText('20 秒');
 }
 
 async function getSelectedIndices(page) {
@@ -89,10 +91,17 @@ async function marqueeGeometry(page) {
   const b1 = await page.locator('.waveform-cue-block[data-idx="1"]').first().boundingBox();
   const b2 = await page.locator('.waveform-cue-block[data-idx="2"]').first().boundingBox();
   if (!rowBox || !b1 || !b2) throw new Error('marquee geometry unavailable');
-  return {
+  const geometry = {
     start: { x: b1.x + b1.width / 2, y: rowBox.y + 4 },
     end: { x: b2.x + b2.width / 2, y: b2.y + b2.height + 6 },
   };
+  // A transient media-loaded toast can cover the waveform despite the cue
+  // blocks being visible. Wait until this precise point hits blank waveform.
+  await page.waitForFunction(({ x, y }) => {
+    const hit = document.elementFromPoint(x, y);
+    return Boolean(hit?.closest('.waveform-row') && !hit.closest('.waveform-cue-block'));
+  }, geometry.start);
+  return geometry;
 }
 
 // Real Shift+left-drag between two viewport points, in small steps.

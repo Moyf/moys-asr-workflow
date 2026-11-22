@@ -1,4 +1,5 @@
 """Consumer selection: actual dependencies, bounded dynamic assembly and unions."""
+from hashlib import sha256
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,57 @@ from scripts import local_test_impact as impact
 
 
 class ConsumerSelectionTests(unittest.TestCase):
+    def test_marker_migration_rejects_changed_optional_call_semantics(self):
+        path = 'web/editor/markers/editor-markers-panel.js'
+        before = "(function initMaweMarkersPanel(global) {\n})(typeof window !== 'undefined' ? window : globalThis);\n"
+        after = ("import * as markerEditing from './editor-marker-editing.js';\n"
+                 "export function initMaweMarkersPanel() {\n(function initMaweMarkersPanel(global) {\n})(window);\n}\n"
+                 "export function resetSelection(...args) { return window.MaweMarkersPanel?.resetSelection?.(...args); }\n"
+                 "export function refreshAiCleanupReviewMuteButtons(...args) { return window.MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.(...args); }\n")
+        pair = (sha256(before.encode()).hexdigest(), sha256(after.encode()).hexdigest())
+        with mock.patch.dict(impact.MARKER_MIGRATION_FILES, {path: pair}), \
+                mock.patch.object(impact.subprocess, 'check_output', return_value=before.encode()):
+            with mock.patch.object(Path, 'read_bytes', return_value=after.encode()):
+                self.assertTrue(impact.marker_migration_only(path, 'base'))
+            changed = after.replace('?.resetSelection?.', '.resetSelection')
+            with mock.patch.object(Path, 'read_bytes', return_value=changed.encode()):
+                self.assertFalse(impact.marker_migration_only(path, 'base'))
+
+    def test_marker_migration_proof_rejects_unrelated_same_line_edits(self):
+        path = 'web/editor/state/editor-history.js'
+        before = 'function restore() {\n  MaweMarkerEditing.afterExternalMarkersChange(); MaweState.saved = true;\n}\n'
+        after = "import { afterExternalMarkersChange } from '../markers/editor-marker-editing.js';\n" \
+                'function restore() {\n  afterExternalMarkersChange(); MaweState.saved = true;\n}\n'
+        pair = (sha256(before.encode()).hexdigest(), sha256(after.encode()).hexdigest())
+        with mock.patch.dict(impact.MARKER_MIGRATION_FILES, {path: pair}), \
+                mock.patch.object(impact.subprocess, 'check_output', return_value=before.encode()):
+            with mock.patch.object(Path, 'read_bytes', return_value=after.encode()):
+                self.assertTrue(impact.marker_migration_only(path, 'base'))
+                self.assertFalse(impact.marker_migration_only(path, None))
+            changed = after.replace('; MaweState.saved = true;', ';')
+            with mock.patch.object(Path, 'read_bytes', return_value=changed.encode()):
+                self.assertFalse(impact.marker_migration_only(path, 'base'))
+
+    def test_marker_migration_selects_runtime_contracts_and_falls_back_on_behavior_change(self):
+        path = 'web/editor/io/editor-project-load.js'
+        with mock.patch.object(impact, 'marker_migration_only', return_value=True):
+            selected = impact.select_packs([path], base_ref='base')
+        self.assertIn('tests/e2e/marker-editing-gate.spec.mjs', selected['e2e_specs'])
+        self.assertIn('tests/e2e/gap-removed-audio-export.spec.mjs', selected['e2e_specs'])
+        with mock.patch.object(impact, 'marker_migration_only', return_value=False):
+            fallback = impact.select_packs([path], base_ref='base')
+        self.assertIn('tests/e2e/gap-removed-audio-export.spec.mjs', fallback['e2e_specs'])
+        self.assertGreater(set(fallback['e2e_specs']), set(selected['e2e_specs']) - {
+            f'tests/e2e/{name}.spec.mjs' for name in impact.MARKER_RUNTIME_SPECS
+        })
+
+    def test_marker_migration_keeps_direct_browser_consumers(self):
+        path = 'web/editor/markers/editor-marker-editing.js'
+        with mock.patch.object(impact, 'marker_migration_only', return_value=True):
+            selected = impact.select_packs([path], base_ref='base')
+        self.assertIn('tests/e2e/editor-i18n-save.spec.mjs', selected['e2e_specs'])
+        self.assertIn('tests/e2e/editor-help-srt-burn.spec.mjs', selected['e2e_specs'])
+
     def test_engineering_docs_use_curated_site_sources(self):
         ordinary = impact.select_packs(['docs/engineering/DEBUG_WORKFLOW.md'])
         self.assertEqual(ordinary['mode'], 'targeted')

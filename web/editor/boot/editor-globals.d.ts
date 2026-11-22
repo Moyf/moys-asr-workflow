@@ -60,6 +60,7 @@ interface ProjectTrack {
   name: string;
   enabled: boolean;
   segments: ProjectSegment[];
+  style?: { font_default?: boolean; [key: string]: any };
   language?: string;
   language_source?: string;
   split_mode?: string;
@@ -148,6 +149,7 @@ interface MaweBootApi {
 }
 
 interface MaweExportSrtApi {
+  cleanupSegments: (segments: ProjectSegment[]) => ProjectSegment[];
   cleanupMainSegments: () => ProjectSegment[];
   cleanupPreviewSegment: (segment: ProjectSegment) => ProjectSegment;
   setCleanupProjectionCacheEnabled: (enabled: boolean) => void;
@@ -227,7 +229,6 @@ interface Window {
   MaweOverlaySplitMerge: any;
   MaweAssStorageWiring: any;
   MaweAssManagerWiring: any;
-  MaweKeyboardGuards: any;
   MaweStickerPreviewWiring: any;
   MaweInitialConfigWiring: any;
   MaweAssPreview: any;
@@ -256,6 +257,7 @@ interface Window {
   // 服务端 ASS 字体别名表门面（editor-wiring-ass-font-aliases.js 注入）；
   // 便携模式/旧服务器下不存在，消费点按可选访问降级。
   MaweAssFontAliases?: any;
+  MaweProjectFontCheck?: { schedule(): void };
   showSaveFilePicker?: any;
 }
 
@@ -318,11 +320,14 @@ interface MaweStateApi {
   readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean; processingOverridesDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   readonly projectEpoch: number;
+  readonly projectLoadGeneration: number;
+  readonly projectLoadPending: boolean;
   projectFingerprint(value?: any): string;
   persistenceSnapshot(value: any): any;
   setSnapshotReader(reader: () => any): void;
   beginProjectSession(): void;
   establishProjectCheckpoint(options?: { repaired?: boolean }): void;
+  includeProjectStyleDefaults(applyDefaults: (project: any) => boolean): void;
   rememberSessionHighlights(): void;
   restoreSessionHighlights(): void;
   segmentsFingerprint(): string;
@@ -336,6 +341,7 @@ interface MaweStateApi {
 declare var MaweState: MaweStateApi;
 interface Window {
   MaweState: MaweStateApi;
+  MaweProjectSettings?: { syncTrackControls(): void; syncControls(): void };
   MAWE: { register(name: string, factory: (...args: any[]) => unknown): void; resolve(name: string, ...args: any[]): any };
 }
 

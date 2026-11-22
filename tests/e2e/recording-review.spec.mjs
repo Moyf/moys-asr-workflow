@@ -87,7 +87,7 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
     const before=JSON.parse(readFileSync(result.projectPath,'utf8'));
     server=await startServer(result.projectPath,media,await findFreePort());
     await disableOnboarding(page);await page.goto(server.url);
-    await page.waitForFunction(()=>window.MAWE_EDITOR_BRIDGE?.data?.segments.length===2);
+    await page.waitForFunction(()=>window.MAWE_EDITOR_BRIDGE?.data && AsrEditorUtils.getMainTrack(window.MAWE_EDITOR_BRIDGE.data).segments.length===2);
     const take=()=>page.evaluate(()=>({
       segments:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({id,text,start,end,items})=>({id,text,start,end,items:items||[]})),
       gap:MaweBoot.DATA.gap_remove,recording:MaweBoot.DATA.script_alignment.recording,
@@ -95,9 +95,11 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
     const initial=await take();
     expect(initial.segments.map(c=>c.text)).toEqual(['你好，世界。','额外说明']);
     expect(initial.segments[0].items.map(c=>[c.start,c.end])).toEqual([[600,800],[800,1000],[1100,1300],[1300,1600]]);
+    expect(initial.recording).toEqual(before.script_alignment.recording);
+    expect(initial.recording).toMatchObject({sourceEvidence:'asr-confirmed',replacedSourceIds:['source-1']});
     const saved=page.waitForResponse(r=>r.url().endsWith('/api/project')&&r.request().method()==='POST');
     await page.locator('#save-project').click();expect((await saved).ok()).toBe(true);
-    await page.reload();await page.waitForFunction(()=>window.MAWE_EDITOR_BRIDGE?.data?.segments.length===2);
+    await page.reload();await page.waitForFunction(()=>window.MAWE_EDITOR_BRIDGE?.data && AsrEditorUtils.getMainTrack(window.MAWE_EDITOR_BRIDGE.data).segments.length===2);
     expect(await take()).toEqual(initial);
     expect(JSON.parse(readFileSync(source,'utf8')).segments[0].text).toBe('你好世界');
     expect(before.gap_remove.gaps).toEqual(initial.gap.gaps);

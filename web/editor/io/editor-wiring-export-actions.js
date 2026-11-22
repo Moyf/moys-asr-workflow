@@ -1,13 +1,4 @@
-
-
-
-
-
-
-
-
-
-
+export function initMaweExportActionsWiring() {
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
 
 
@@ -300,14 +291,47 @@ function announceAssFontAliasReplacements() {
     }`, 'info');
   }
 }
+// A cold coverage request may outlive browser transient activation. Acquire
+// the handle on the original click, not after awaiting the font inventory.
+async function downloadPreparedAss(build, filename, desc) {
+  window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
+  const bindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
+  const fonts = window.MaweAssFontAliases;
+  const loading = fonts?.ensureCoverage?.();
+  const defer = fonts?.pending?.();
+  const accept = { desc, types: { 'text/plain': ['.ass'] } };
+  let handle = null;
+  let pickerAttempted = false;
+  if (defer && MaweHost.files.hasSavePicker()) {
+    pickerAttempted = true;
+    try {
+      handle = await MaweHost.files.pickSaveFile({ suggestedName: filename,
+        types: [{ description: desc, accept: accept.types }] });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      // Preserve the existing non-cancellation fallback for an unavailable
+      // picker, but never cause that fallback by consuming user activation.
+    }
+  }
+  await loading;
+  await fonts?.whenReady?.();
+  if (bindingEpoch !== window.MaweProjectLoad?.projectBindingEpoch) {
+    throw new Error('工程已切换，请重新导出 ASS 字幕。');
+  }
+  const payload = buildAssWithFontAliasCapture(build);
+  announceAssFontAliasReplacements();
+  if (!payload) return;
+  if (handle) {
+    await MaweHost.files.writeBlob(handle, () => new Blob([payload], { type: 'text/plain;charset=utf-8' }));
+    return;
+  }
+  await MaweExportTimeline.downloadFile(payload, filename, 'text/plain', accept,
+    { usePicker: !pickerAttempted });
+}
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   try {
-    const payload = buildAssWithFontAliasCapture(() => MaweExportSrt.buildAss());
-    announceAssFontAliasReplacements();
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
-      desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
-    });
+    await downloadPreparedAss(() => MaweExportSrt.buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, '完整 ASS 字幕文件');
   } catch (error) {
     MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
@@ -324,12 +348,7 @@ document.getElementById('download-plain-text')?.addEventListener('click', async 
     desc: '纯文本字幕文件', types: { 'text/plain': ['.txt'] }
   });
 });
-document.getElementById('download-json')?.addEventListener('click', async () => {
-  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
-    desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
-  });
-});
+document.getElementById('download-json')?.addEventListener('click', () => MaweProjectSave.exportProjectToFile());
 MaweDom.saveProjectButton?.addEventListener('click', () => MaweProjectSave.saveCurrentProject());
 MaweDom.saveProjectAsButton?.addEventListener('click', () => MaweProjectSave.saveProjectAsToFile());
 // Project-level save shortcuts intentionally override the browser page-save
@@ -385,13 +404,10 @@ document.getElementById('download-gap-removed-color-srt')?.addEventListener('cli
 document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   try {
-    const payload = buildAssWithFontAliasCapture(() => MaweExportSrt.buildGapRemovedAss());
-    announceAssFontAliasReplacements();
-    if (payload) {
-      await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
-        desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
-      });
-    }
+    // Preserve the no-gap early return without opening an empty save dialog.
+    if (!MaweGapRemoveData.getRemovedGapRanges().length) { MaweExportSrt.buildGapRemovedAss(); return; }
+    await downloadPreparedAss(() => MaweExportSrt.buildGapRemovedAss(),
+      `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, '去空隙带样式 ASS 字幕');
   } catch (error) {
     MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
@@ -1133,3 +1149,4 @@ MaweExportTimeline.updateStickerExportButtons();
 MaweExportTimeline.updateTimelineOtiozExportButtons();
 MaweDynamicExports.updateLottieExportButton();
 MaweDynamicExports.updateOgrafExportButton();
+}

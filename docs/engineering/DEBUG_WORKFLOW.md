@@ -1,10 +1,10 @@
 # 有界输出与分层调试
 
-目标：失败时保留足够证据，同时避免生成文件、单行巨型断言和重复日志吞掉上下文。运行器只负责执行与记录，不安装环境、不判断产品正确性、不把 skip 当作功能已验证。
+用有界输出定位失败并保留生成物、测试结果和退出码。运行器负责执行与记录，环境准备、覆盖范围和产品结论由验证者判断。
 
 ## 开始前只做一次环境确认
 
-1. 确认当前 worktree、分支、`git status --short`、`git log -1 --oneline`，记录任务基线。
+1. 确认当前工作树、实际目标仓库和分支、`git status --short`、`git log -1 --oneline`。记录任务基线。
 2. 检查已安装的 Python / Node 与依赖。Python 测试优先直接指定现有解释器；若复用另一 worktree 的 venv，先比较 `uv.lock`，不得同步修改共享环境。给 Node 设置 `MAW_TEST_PYTHON`，给 e2e 设置 `MAW_E2E_PYTHON`。两者用途不同。
 3. 需要 Node 依赖时在当前 worktree 执行一次 `pnpm install --frozen-lockfile`。只有浏览器层需要 Chromium；不要为纯日志、Python 标准库或 Node 标准库测试安装整套环境。
 4. `uv run --no-sync` 不负责准备依赖；冷环境缺包时先记录缺什么，再选择现有环境或一次性同步。不要通过换临时目录、缓存目录、重装环境来反复试同一功能失败。
@@ -15,7 +15,8 @@ Windows 沙箱的系统临时目录若不可写，可为**当前测试进程**�
 
 - `pnpm run dev` / `pnpm run dev:editor`：先构建编辑器 bundle，再启动编辑器并监听源码变化。
 - `pnpm run dev:launcher` / `pnpm run devl`：先依次构建编辑器与 Launcher 两套 bundle，全部成功后启动 Launcher，并同时运行两个 watcher；在 Launcher 中打开编辑器时无需补做首次构建。
-- `pnpm run launcher`：同样预构建两套 bundle 后启动 Launcher，但不挂 watcher。任一构建失败都不会启动 Python 入口；开发模式下 watcher 异常退出会结束会话，避免继续使用未更新的产物。
+- `pnpm run editor` 或 `pnpm run launcher` 预构建后启动相应应用，不挂 watcher。任一必需构建失败时停止启动。开发模式下 watcher 异常退出会结束会话，避免继续使用旧产物。
+- 用 `--` 透传 Python 参数，例如 `pnpm run dev -- "project.mosp" --port 8251`。Editor 默认打开空白页，显式传入端口等参数时按 Server 自身规则处理。Launcher 默认启用调试，`pnpm run dev:launcher -- --devtools` 可在启动后打开 DevTools。
 - 关闭 Python 入口或按 Ctrl+C 会回收会话的所有 watcher。两个 watcher 都忽略双方的 bundle、构建信息、原子发布临时文件和现存目录的变更事件，避免互相触发重建；源码文件修改与删除仍会触发构建。修改构建脚本后仍需重启开发会话。
 
 ## 默认查源码，生成物按需验证
@@ -24,7 +25,7 @@ Windows 沙箱的系统临时目录若不可写，可为**当前测试进程**�
 - 先 `rg -l '符号' web/editor web/shared`，再在选定文件用 `rg -n --max-columns 240 --max-columns-preview '符号' <文件>`。
 - 依赖问题需要显式查锁文件；bundle 问题先查清单、源码和 `.meta.json`，运行 `check:editor` 验证。必要时显式指定生成文件路径进行窄范围搜索。
 - Git 不使用 `.rgignore`。先看 `git diff --stat` / `git diff --name-status`，随后 `git diff -- <选定源码文件>`；暂存改动同理加 `--cached`。不要默认输出整份 diff，也不要读取完整便携 HTML。
-- bundle 冲突通过源码与清单解决后重建；不要手动合并生成 JS。`blank-editor.html` 仅在 1.x 发布或维护者明确要求时重建；2.0+ 停止生成，保留历史文件。
+- bundle 冲突在源码与清单中解决，再重新构建。独立 HTML 的生成限制见[版本边界](DEVELOPMENT.md#独立编辑入口的版本边界)。
 - `debug.log` 已从版本索引移除并忽略，本 worktree 的原文件保留；不会清理其他工作区的日志。
 
 ## 有界执行入口
@@ -60,6 +61,14 @@ Windows 超时使用本次 PID 的 `taskkill /T`，POSIX 使用新进程组；�
 
 e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解码 UTF-8；退出与启动超时错误含短尾部。进程管理继续使用 `server-process.mjs`：Windows Job supervisor 的 stdin 必须保持管道，以便 owner 消失时回收后代；不得以本通用运行器的 stdin=ignore 配置覆盖它。浏览器 trace、截图与 HTML 报告依然按需读取，不应整份加入对话。
 
+unittest 使用 `scripts/run_tests.py`。页面或内联脚本的成员断言使用 `CompactContainerAssertions`，避免失败时打印完整页面。
+
+## 长命令与后台服务
+
+- 长命令分开执行，按本次集合设置超时。Windows 后台服务在独立终端启动，或用 `Start-Process -WindowStyle Hidden` 并将输出重定向到文件。探活后继续操作，用完从原入口停止。避免 `-NoNewWindow` 或 bash 的 `&` 让长驻进程继承命令管道。
+- 遇到残留按 [E2E 进程归属与清理](E2E_SERVER_HANG.md#残留进程清理)核对本次 PID、启动时间与命令行。超时后的清理结果以运行器和进程实况为准。
+- PowerShell 中的复杂或多层引号命令写成临时 UTF-8 脚本。输出为空或参数异常时先检查传参。使用 Paseo 发送命令时以 `\r` 结束，再根据进程或日志确认已执行。Paseo 拉取 fork PR 失败时，可从 PR 所属仓库读取 `pull/<N>/head`，用普通 Git 工作树检出。
+
 ## 按变化选择测试层
 
 | 变化 | 首轮验证 | 扩大验证的条件 |
@@ -80,10 +89,10 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 python scripts/test_workflow.py --plan-only
 python scripts/test_workflow.py --changed maw/energy_valley.py --plan-only
 python scripts/test_workflow.py --changed tests/e2e/filmstrip-real.spec.mjs
-python scripts/test_workflow.py --base-ref origin/2.0dev
+python scripts/test_workflow.py --base-ref upstream/2.0dev
 ```
 
-默认读取已暂存、未暂存及未忽略的新文件；`--base-ref` 改为读取基线到当前分支的提交差异，`--changed` 可重复指定文件。`pnpm run test:dev` 与 `pnpm run test:merge` 使用同一影响选择；两者都不自动等于完整回归。选择器依据源码依赖与功能边界生成具体 Python、Node 和浏览器文件，代码与文档混改取并集。
+上例假设 `upstream` 对应目标仓库。按实际 PR 选择远端。默认读取已暂存、未暂存及未忽略的新文件，`--base-ref` 改为读取基线到当前分支的提交差异，`--changed` 可重复指定文件。`pnpm run test:dev` 与 `pnpm run test:merge` 使用同一影响选择；两者都不自动等于完整回归。选择器依据源码依赖与功能边界生成具体 Python、Node 和浏览器文件，代码与文档混改取并集。
 
 `--plan-only` 保存计划而不运行测试。每次证据写入新的 `.artifacts/test-workflow/<id>/`，包含选择理由、准备需求、命令结果和完整日志位置。缺少实际依赖或报告时如实失败；运行器不自动安装环境。Python 和 Node 逻辑测试无需因此安装 Chromium，真实浏览器或媒体消费者才需要相应能力。
 
@@ -93,11 +102,13 @@ python scripts/test_workflow.py --base-ref origin/2.0dev
 
 ### CI 范围与重跑
 
+辅助浏览器检查按文件分配作业。选中 1–2 个 spec 文件时使用一个作业，3–99 个使用两个，达到 100 个时使用三个。每个作业使用两个 worker、零重试和 900 秒执行时限，只发现并核对分配给它的用例。
+
 `Change checks` 保留有限准入与 `Change acceptance` 回执。它读取同一影响计划，将已准入消费者映射到对应检查组；其他选中 Python、Node 和浏览器消费者由独立辅助检查执行，并扣除本次准入已完整覆盖的文件。只准入个别方法的 Python 文件仍在辅助检查中执行整文件，避免漏掉其余消费者。
 
-辅助检查的失败保持可见，不加入有限准入的依赖，也不表示整体回归已通过。浏览器按本次具体文件发现并核对实际结果，默认一片，不另起完整浏览器矩阵。差异不可确认或需要整体审查时显示扩大范围的理由；完整 Editor 和 Windows 检查保留手动入口，Windows 预览仍按打包、启动与 runtime 范围触发。UI 拖动、听感和布局仍需人工核验。
+辅助检查与有限准入分别结算，失败保留并分诊。只有其他辅助层时使用一片。完整 Editor 和 Windows 检查保留手动入口。日常准入、Windows 预览与人工核验边界见[开发概览](DEVELOPMENT.md#日常变更准入与手动辅助检查20dev)。
 
-准入失败时查看 `blocking-failures` 工件。辅助检查在 `targeted-auxiliary-results` 保存各层汇总。手动巡检的各组按自己的前置条件运行，浏览器报告与 trace 分开保存。
+准入失败时查看 `blocking-failures` 工件。每个辅助分片的结果保存在 `targeted-auxiliary-results-<分片号>` 工件中。手动巡检各组按自己的前置条件运行，浏览器报告与 trace 分开保存。 [CI 工作流](../../.github/workflows/editor-checks.yml)
 
 GitHub Actions 的 **Re-run failed jobs** 和 **Re-run all jobs** 都会重新执行所选作业。[文件级接续](TEST_GOVERNANCE.md#执行与结果真实性)仍待实现。
 

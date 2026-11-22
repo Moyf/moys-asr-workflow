@@ -22,9 +22,14 @@ source: "docs/INDEX.md"
 [打开正文](../ass-styles/)
 
 <a name="user-cli"></a>
-### MAW 命令行与自动化
+### 用户 CLI 指南
 
-[打开正文](../cli/)
+[MAW 命令行与自动化](../cli/)
+
+<a name="user-mcp"></a>
+### 用户 MCP 指南（规划中）
+
+[查看接入状态](../cli/#maw-mcp)
 
 <a name="user-editor"></a>
 ### MAWE 编辑器指南
@@ -93,7 +98,7 @@ source: "docs/INDEX.md"
 <a name="engineering-long-commands"></a>
 ### Agent 长命令防卡死指南（Windows / PowerShell 5.1）
 
-[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/AGENT_LONG_COMMAND_GUIDE.md)
+[有界输出与分层调试](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md) · [旧版 PowerShell 排障记录](https://github.com/Moyf/moys-asr-workflow/blob/6589c283770d24f593fd66c4801d2f2c41db084f/docs/engineering/AGENT_LONG_COMMAND_GUIDE.md)
 
 <a name="engineering-development"></a>
 ### MAW 开发概览
@@ -103,7 +108,7 @@ source: "docs/INDEX.md"
 <a name="engineering-e2e-lifecycle"></a>
 ### E2E 服务进程生命周期
 
-[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/E2E_PROCESS_LIFECYCLE.md)
+[E2E 服务排障](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/E2E_SERVER_HANG.md) · [首次复现与验证记录](https://github.com/Moyf/moys-asr-workflow/blob/6589c283770d24f593fd66c4801d2f2c41db084f/docs/engineering/E2E_PROCESS_LIFECYCLE.md)
 
 <a name="engineering-e2e-hang"></a>
 ### E2E 残留服务进程与长命令挂起：排查与预防
@@ -175,7 +180,7 @@ source: "docs/INDEX.md"
 <a name="engineering-track-unification"></a>
 ### 字幕轨道统一设计调研（2026-10-27）
 
-[当前三容器数据模型证据、统一 Track/Binding 契约提案与 v1→v1.5→v2 分期迁移边界](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/research/2026-10-27-track-unification.md)
+[统一轨道迁移前的三容器证据、统一 Track/Binding 契约提案与 v1→v1.5→v2 分期迁移边界](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/research/2026-10-27-track-unification.md)
 
 ## 共享计划
 
@@ -202,6 +207,8 @@ source: "docs/INDEX.md"
 ### 统一字幕轨道实施方案
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/UNIFIED_TRACKS_PLAN.md)
+
+[工程轨道样式草案](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/TRACK_STYLES_DRAFT.md)
 
 [v2 整合与验证](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) · [人工核验](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md)
 
@@ -285,7 +292,7 @@ source: "docs/INDEX.md"
 <a name="engineering-releases"></a>
 ### 版本更新文档与发布管线
 
-[生成、校验与发布](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/releases/README.md)
+[2.0dev 版本准备](https://github.com/Moyf/moys-asr-workflow/blob/2.0dev/docs/releases/preparation/README.md) · [正文生成、校验与发布](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/releases/README.md)
 
 <a name="logs"></a>
 ## 日志与历史

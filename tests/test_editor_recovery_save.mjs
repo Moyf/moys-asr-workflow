@@ -49,6 +49,133 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
   return {context, calls, save: options => context.MaweProjectSave.saveProjectToServer(options)};
 }
 
+for (const entry of ['current', 'server', 'handle', 'backup']) {
+  test(`${entry} silent save does not flush a held waveform drag`, async () => {
+    const {context, calls} = fixture({failure: null});
+    let scheduled = 0, flushed = 0;
+    context.MaweSettings.EDITOR_SETTINGS.projectBackupEnabled = true;
+    context.MaweServerSave.scheduleAutoSaveFlush = () => { scheduled++; };
+    context.MaweCuePanel.commitCuePanelEdit = () => { flushed++; };
+    context.MaweCoreState.waveformEditor = {drag: {pointerId: 7}};
+    if (entry === 'handle') context.MaweServerSave.projectFileHandle = {name: 'saved.mosp'};
+    const save = entry === 'current' ? () => context.MaweProjectSave.saveCurrentProject({silent: true})
+      : entry === 'handle' ? () => context.MaweProjectSave.saveProjectToHandle({silent: true})
+        : () => context.MaweProjectSave.saveProjectToServer({silent: true, backupOnly: entry === 'backup'});
+    assert.equal(await save(), false);
+    assert.equal(scheduled, entry === 'backup' ? 0 : 1);
+    assert.equal(flushed, 0);
+    assert.deepEqual(calls.build, []);
+    assert.deepEqual(calls.posted, []);
+  });
+}
+
+for (const entry of ['current', 'server', 'handle', 'save-as', 'migration']) {
+  test(`${entry} finishes a held waveform drag before flushing`, async () => {
+    const {context, calls} = fixture({failure: null});
+    const order = [];
+    const drag = {pointerId: 7, changed: true, lastPointerPosition: {clientX: 120, clientY: 45}};
+    context.MaweCoreState.waveformEditor = {drag, endCueDrag(event) {
+      order.push('end');
+      assert.equal(event.type, 'pointerup');
+      assert.equal(event.pointerId, 7);
+      assert.equal(event.clientX, 120);
+      assert.equal(event.clientY, 45);
+      this.drag = null;
+    }};
+    context.MaweCuePanel.commitCuePanelEdit = () => { order.push('flush'); };
+    context.MaweHost.files = {hasSavePicker: () => false, writeBlob: async (_handle, build) => { build(); }};
+    if (entry === 'handle') context.MaweServerSave.projectFileHandle = {name: 'saved.mosp'};
+    if (entry === 'migration') context.MaweServerSave.requiresMigrationSaveAs = true;
+    if (entry === 'server') await context.MaweProjectSave.saveProjectToServer();
+    else if (entry === 'handle') await context.MaweProjectSave.saveProjectToHandle();
+    else if (entry === 'save-as') await context.MaweProjectSave.saveProjectAsToFile();
+    else await context.MaweProjectSave.saveCurrentProject();
+    assert.deepEqual(order, ['end', 'flush']);
+    assert.equal(calls.build.length, 1);
+    if (entry === 'migration' || entry === 'save-as') assert.equal(calls.downloaded.length, 1);
+  });
+}
+
+test('an unchanged waveform gesture is cancelled without triggering a click', async () => {
+  const {context} = fixture({failure: null});
+  let eventType;
+  context.MaweCoreState.waveformEditor = {drag: {pointerId: 7, changed: false}, endCueDrag(event) {
+    eventType = event.type;
+    this.drag = null;
+  }};
+  assert.equal(await context.MaweProjectSave.saveCurrentProject(), true);
+  assert.equal(eventType, 'pointercancel');
+});
+
+test('saving without a destination leaves the held waveform gesture alone', async () => {
+  const {context, calls} = fixture({failure: null});
+  context.MaweServerSave.serverProjectSavingEnabled = () => false;
+  context.MaweCoreState.waveformEditor = {drag: {pointerId: 7, changed: true}, endCueDrag() {
+    assert.fail('drag must remain active when there is no save destination');
+  }};
+  assert.equal(await context.MaweProjectSave.saveCurrentProject(), false);
+  assert.deepEqual(calls.posted, []);
+});
+
+test('a migration or busy save does not finish or reschedule a held waveform drag', async () => {
+  for (const condition of ['migration', 'save', 'checkpoint']) {
+    const {context, calls} = fixture({failure: null});
+    let scheduled = 0;
+    context.MaweCoreState.waveformEditor = {drag: {pointerId: 7}, endCueDrag() { assert.fail('drag must remain active'); }};
+    context.MaweServerSave.scheduleAutoSaveFlush = () => { scheduled++; };
+    if (condition === 'migration') context.MaweServerSave.requiresMigrationSaveAs = true;
+    if (condition === 'save') context.MaweServerSave.projectSaveInFlight = true;
+    if (condition === 'checkpoint') context.MaweServerSave.projectCheckpointInFlight = true;
+    assert.equal(await context.MaweProjectSave.saveCurrentProject({silent: condition === 'migration'}), false);
+    assert.equal(scheduled, 0);
+    assert.deepEqual(calls.build, []);
+  }
+});
+
+test('save-as finishes a new drag started while the writable is pending', async () => {
+  const {context} = fixture({failure: null});
+  const order = [];
+  let release;
+  context.MaweCuePanel.commitCuePanelEdit = () => { order.push('flush'); };
+  context.MaweHost.files = {
+    hasSavePicker: () => true,
+    pickSaveFile: async () => ({name: 'saved.mosp'}),
+    writeBlob: async (_handle, build) => {
+      await new Promise(resolve => { release = resolve; });
+      build();
+    },
+  };
+  context.MaweServerSave.configureServerSaveControls = () => {};
+  context.MaweServerSave.scheduleAutoSave = () => {};
+  const pending = context.MaweProjectSave.saveProjectAsToFile();
+  await new Promise(resolve => setImmediate(resolve));
+  context.MaweCoreState.waveformEditor = {
+    drag: {pointerId: 8},
+    endCueDrag() { order.push('end'); this.drag = null; },
+  };
+  release();
+  await pending;
+  assert.deepEqual(order, ['flush', 'end', 'flush']);
+});
+
+test('connection recovery finishes a drag started after the server request', async () => {
+  const {context, calls} = fixture();
+  const order = [];
+  let fail;
+  context.MaweHost.server.fetch = () => new Promise((_resolve, reject) => { fail = reject; });
+  const build = context.MaweJsonRepair.buildJson;
+  context.MaweJsonRepair.buildJson = options => { order.push('build'); return build(options); };
+  const pending = context.MaweProjectSave.saveCurrentProject();
+  context.MaweCoreState.waveformEditor = {
+    drag: {pointerId: 8},
+    endCueDrag() { order.push('end'); this.drag = null; },
+  };
+  fail(new TypeError('offline'));
+  await pending;
+  assert.deepEqual(order, ['build', 'end', 'build']);
+  assert.equal(calls.downloaded.length, 1);
+});
+
 test('connection-loss recovery downloads use a file-export reference without changing server saves', async () => {
   const {context, calls, save} = fixture();
   assert.equal(await save(), false);

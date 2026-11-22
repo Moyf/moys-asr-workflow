@@ -41,7 +41,9 @@ export function initMaweMultiSubtitleCore() {
   }
 
   function ensureEmptyExtensionTrack(project = MaweBoot.DATA) {
-    return window.AsrEditorUtils.ensureExtensionTrack(project);
+    const track = window.AsrEditorUtils.ensureExtensionTrack(project);
+    if (project === MaweBoot.DATA) window.MaweAssManagerWiring?.initializeProjectStyles?.();
+    return track;
   }
 
   function getTrackStore() { return projectTracks; }

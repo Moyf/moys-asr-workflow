@@ -1,3 +1,5 @@
+import { enableForProjectMarkers } from '../markers/editor-marker-editing.js';
+import { resetSelection } from '../markers/editor-markers-panel.js';
 // 工程加载：规范化应用、检查点、SRT 解析与主轨替换。
 // ESM init 模块：initMaweProjectLoad 在原清单位次执行原 IIFE 体（挂
 // window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
@@ -105,8 +107,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweJsonRepair.setMarkerContainer(data.markers);
   MaweState.changes.processingOverridesDirty = false;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
-  window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
-  window.MaweMarkersPanel?.resetSelection?.();
+  enableForProjectMarkers(MaweBoot.DATA.markers);
+  resetSelection();
   MaweHistory.gapRemoveDirty = false;
   MaweState.changes.markersDirty = false;
   MaweAppearance.previewGeometryDirty = false;
@@ -138,6 +140,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
   }
   MaweGapRemoveUi.updateGapRemoveUi();
+  window.MaweAssManagerWiring?.initializeProjectStyles?.();
+  window.MaweAssManagerWiring?.syncAssStyleManager?.();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
   window.MaweAssManagerWiring?.updateAssStyleLibraryStatus();
@@ -159,6 +163,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweServerSave.projectCheckpointed = true;
   MaweServerSave.configureServerSaveControls();
   MaweServerSave.scheduleAutoSave();
+  if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
 }
 
 
@@ -349,6 +354,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
     const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
     const overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    window.MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.segments = overlayLayer.map(segment => ({ ...segment }));
     overlay.enabled = overlayLayer.length > 0;
     overlay._dirty = true;

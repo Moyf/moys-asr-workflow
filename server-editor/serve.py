@@ -60,9 +60,10 @@ from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
+from maw.ass_font_coverage import font_coverage_payload, refresh_font_inventory  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
-from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
+from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_style_state, save_ass_style_state  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
@@ -1766,6 +1767,7 @@ def build_server_page(
             "textProcessingPresetsUrl": "/api/text-processing-presets",
             "assFrameUrl": "/api/ass-frame",
             "assFontAliasesUrl": "/api/ass-font-aliases",
+            "assFontCoverageUrl": "/api/ass-font-coverage",
             "autoOpenLastProject": settings.auto_open_last_project,
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
@@ -2040,6 +2042,7 @@ class EditorServer(ThreadingHTTPServer):
         with self.startup_lock:
             return {
                 "ok": True,
+                "service": "maw-editor",
                 "status": self.startup_status,
                 "stage": self.startup_stage,
                 "progress": self.startup_progress,
@@ -3016,6 +3019,12 @@ def _restore_runtime_inline_caches(previous: dict | None, incoming: dict) -> Non
 class EditorRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def end_headers(self) -> None:
+        instance = os.environ.get("MAW_SERVER_INSTANCE_ID", "")
+        if instance.isascii() and instance.isalnum():
+            self.send_header("X-MAW-Instance", instance)
+        super().end_headers()
+
     def handle(self) -> None:
         """Ignore a browser closing a keep-alive connection while reading it.
 
@@ -3062,6 +3071,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
+        elif path == "/api/ass-font-aliases":
+            self.refresh_ass_font_aliases()
         elif path == "/api/text-processing-presets":
             self.update_text_processing_presets()
         elif path == "/api/ass-frame":
@@ -3203,6 +3214,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         token = request.get("requestToken")
         if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
+
+    def refresh_ass_font_aliases(self) -> None:
+        try:
+            request = self.read_json_request(max_bytes=8192)
+            self._check_request_token(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, refresh_font_inventory())
 
     def measure_audio_loudness(self) -> None:
         """Poll analysis of the current preview, never a client-supplied path."""
@@ -3906,7 +3929,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             # 共享样式库会覆盖用户级配置；与其它状态变更接口一样要求页面请求令牌，
             # 防止任意网页用 CORS-safelisted POST 直接改写本机 ass-styles.json。
             self._check_request_token(request)
-            library = save_ass_style_library(request)
+            library = save_ass_style_state(request, request.get("_revision"), backup=request.get("_backup") is True)
+        except AssStyleConflict as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -4093,14 +4119,29 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/waveform":
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return
+        if path == "/api/ass-styles-backup":
+            try:
+                self.send_json(HTTPStatus.OK, read_ass_style_backup())
+            except (OSError, ValueError, UnicodeError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
         if path == "/api/ass-styles":
-            self.send_json(HTTPStatus.OK, load_ass_style_library())
+            try:
+                self.send_json(HTTPStatus.OK, read_ass_style_state())
+            except (OSError, ValueError, UnicodeError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         if path == "/api/text-processing-presets":
             try:
                 self.send_json(HTTPStatus.OK, load_text_presets())
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        if path == "/api/ass-font-coverage":
+            self.send_json(HTTPStatus.OK, font_coverage_payload() or {
+                "schema": "moy.asr.font_coverage.v1", "faces": [], "cmaps": [],
+                "fallbacks": [], "complete": False,
+            })
             return
         if path == "/api/ass-font-aliases":
             self.send_json(HTTPStatus.OK, font_alias_payload())

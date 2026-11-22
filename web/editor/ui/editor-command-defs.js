@@ -30,7 +30,7 @@ export function registerBuiltinCommands(palette, win, doc) {
     ['file.import-media', '导入媒体', click('load-media')],
     ['file.import-subtitles', '导入字幕', click('load-srt'), null, ['SRT']],
     ['file.import-lyrics', '导入歌词', click('load-lrc'), null, ['LRC']],
-    ['file.export', '导出工程', click('download-json'), null, ['JSON', 'MOSP']],
+    ['file.export', '导出工程', { when: () => usable(byId('download-json')()), run: () => win.MaweProjectSave.exportProjectToFile() }, null, ['JSON', 'MOSP']],
   ]);
   add('播放与导航', [
     ['playback.toggle', '播放/暂停', click('media-play-toggle', seekable), 'Space'],

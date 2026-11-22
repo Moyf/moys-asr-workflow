@@ -1,3 +1,4 @@
+export function initMaweBurnVideoWiring() {
 // === 编辑器「烧录视频」：当前 ASS 或按库样式转换的 SRT，复用同一媒体任务 ===
 // 与「去空隙导出 → 重组后视频」同一套媒体任务生命周期（准入令牌 / 轮询 / 流式下载 /
 // 取消与临时文件确认），但只支持 jobs API：烧录总是重新编码并输出 MP4。
@@ -77,15 +78,25 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const snapshot = { jobsUrl, requestToken, bindingGeneration, sourceMediaId, sourceName, bindingEpoch, greenScreen };
   const isBindingCurrent = () => burnVideoBindingCurrent(config, snapshot);
 
+  // Start lazily, but keep the save picker inside the original user gesture.
+  // Only defer building ASS when inventory is still pending.
+  const needsAssFonts = greenScreen || MaweSettings.EDITOR_SETTINGS.assMode === true;
+  const fontsReady = needsAssFonts ? window.MaweAssFontAliases?.ensureCoverage?.() : null;
+  const deferRequest = needsAssFonts && window.MaweAssFontAliases?.pending?.();
+  const audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
   let request;
-  try {
+  const prepareRequest = () => {
     request = buildRequest();
-    if (request) request.audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
-  } catch (error) {
-    MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error });
-    return;
+    if (request) request.audioGainDb = audioGainDb;
+  };
+  if (!deferRequest) {
+    try { prepareRequest(); }
+    catch (error) {
+      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error });
+      return;
+    }
+    if (!request) return;
   }
-  if (!request) return; // buildRequest 已经提示过原因（如没有可用的去空隙区间）。
 
   MaweHint.flashHint(tr(startHint), 'info');
   let handle;
@@ -98,6 +109,20 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     if (error?.name === 'AbortError') return;
     MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${burnVideoSafeError(error, '请检查保存位置权限后重试')}`, 'warning', { error });
     return;
+  }
+  if (deferRequest) {
+    await fontsReady;
+    await window.MaweAssFontAliases?.whenReady?.();
+    if (!isBindingCurrent()) {
+      MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频烧录'), 'warning');
+      return;
+    }
+    try { prepareRequest(); }
+    catch (error) {
+      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error });
+      return;
+    }
+    if (!request) return;
   }
   // 选择器等待期间工程或绑定可能已切换；绝不混合旧字幕快照与新绑定。
   if (!isBindingCurrent()) {
@@ -480,3 +505,4 @@ function invalidateBurnVideoBinding() {
 }
 updateBurnVideoButton();
 window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });
+}

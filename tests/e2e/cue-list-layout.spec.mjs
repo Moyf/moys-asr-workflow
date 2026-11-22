@@ -34,13 +34,31 @@ test('subtitle toolbar label returns after the pane is widened', async ({ page }
   const toolbar = page.locator('.cues-container > .cue-list-toolbar');
   const label = toolbar.locator(':scope > .layout-toolbar-label');
   await toolbar.evaluate(element => { element.style.width = '180px'; });
-  await expect(label).toBeHidden();
+  await expect(label).toHaveCSS('white-space', 'nowrap');
+  await expect(label).toHaveCSS('overflow', 'hidden');
+  const narrow = await label.evaluate(element => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return [...range.getClientRects()].map(rect => rect.top);
+  });
+  expect(narrow.length).toBeGreaterThan(0);
+  expect(new Set(narrow).size).toBe(1);
+  const settings = toolbar.locator('#cue-list-settings-toggle');
+  await settings.click();
+  await expect(toolbar.locator('#cue-list-settings-panel')).toBeVisible();
+  await settings.click();
   await toolbar.evaluate(element => { element.style.width = '1100px'; });
   await expect(label).toBeVisible();
-  await toolbar.evaluate(element => { element.style.width = '180px'; });
-  await expect(label).toBeHidden();
-  await toolbar.evaluate(element => { element.style.width = '1100px'; });
-  await expect(label).toBeVisible();
+  const wideTextFits = await label.evaluate(element => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    const labelRect = element.getBoundingClientRect();
+    const toolbarRect = element.parentElement.getBoundingClientRect();
+    return text.width > 0 && text.left >= Math.max(labelRect.left, toolbarRect.left) - 1
+      && text.right <= Math.min(labelRect.right, toolbarRect.right) + 1;
+  });
+  expect(wideTextFits).toBe(true);
   await toolbar.screenshot({ path: testInfo.outputPath('subtitle-label-restored.png') });
 });
 

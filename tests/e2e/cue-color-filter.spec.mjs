@@ -16,26 +16,23 @@ import {
 
 let tempDir;
 let server;
-let projectPath;
 
 const FIRST_SEGMENT_END_MS = 58000;
 
-test.beforeAll(async () => {
+// Color edits may autosave, so each case starts with its own uncolored project.
+test.beforeEach(async ({ page }) => {
   tempDir = makeTempDir('colorfilter');
   const mediaPath = join(tempDir, 'synthetic.wav');
-  projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
-  generateProjectJson(projectPath);
+  const projectPath = generateProjectJson(join(tempDir, 'project.json'));
   server = await startServer(projectPath, mediaPath, await findFreePort());
-});
-
-test.afterAll(async () => {
-  await server?.stop();
-  cleanupTempDir(tempDir);
-});
-
-test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
+});
+
+test.afterEach(async () => {
+  await server?.stop();
+  server = undefined;
+  cleanupTempDir(tempDir);
 });
 
 async function waitEditorReady(page) {
@@ -125,9 +122,19 @@ test('detaches a cue from a color group while keeping its color and limiting the
   await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
   await expect(detachItem).toHaveCount(0);
   await page.keyboard.press('Escape');
+  await page.evaluate(() => MaweHistory.performUndo());
+  expect(await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id).map(({ color, color_ref }) => ({
+    color: color ? { name: color.name, start: color.start, end: color.end } : null,
+    color_ref: color_ref ? { ...color_ref } : null,
+  })))).toEqual([
+    { color: { name: 'yellow', start: 0, end: 3000 }, color_ref: null },
+    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+  ]);
 
   // 组头脱离：组头本身变为独立颜色，剩余成员整体提升新 head。
   await setColorGroup();
+  const originalGroupId = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].color_group_id);
   await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
   await expect(detachItem).toBeVisible();
   await detachItem.click();
@@ -139,6 +146,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
     { color: { name: 'yellow', start: 1000, end: 3000 }, color_ref: null },
     { color: null, color_ref: { name: 'yellow', headIdx: 1 } },
   ]);
+  expect(await page.evaluate(() => MaweBoot.DATA.subtitle_groups.color.map(group => group.id))).not.toContain(originalGroupId);
   await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
   await expect(detachItem).toHaveCount(0);
 });
@@ -154,10 +162,38 @@ test('colored subtitle indexes remain readable against tinted rows', async ({ pa
   await waitEditorReady(page);
   await paintFirstSegmentRed(page);
 
-  await expect(page.locator('.cue[data-idx="0"] .index')).toHaveCSS(
-    'color',
-    'rgb(168, 177, 192)',
-  );
+  const index = page.locator('.cue[data-idx="0"] .index');
+  const { color, secondary, contrast } = await index.evaluate((element) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.height = 1;
+    const row = element.closest('.cue');
+    const ancestors = [];
+    for (let node = row; node; node = node.parentElement) ancestors.unshift(node);
+    for (const node of ancestors) {
+      ctx.fillStyle = getComputedStyle(node).backgroundColor;
+      ctx.fillRect(0, 0, 1, 1);
+    }
+    const background = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    const color = getComputedStyle(element).color;
+    ctx.clearRect(0, 0, 1, 1);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 1, 1);
+    const foreground = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    const luminance = (rgb) => rgb.map((value) => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, channel, i) => sum + channel * [0.2126, 0.7152, 0.0722][i], 0);
+    const levels = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--text-secondary)';
+    element.appendChild(probe);
+    const secondary = getComputedStyle(probe).color;
+    probe.remove();
+    return { color, secondary, contrast: (levels[0] + 0.05) / (levels[1] + 0.05) };
+  });
+  expect(color).toBe(secondary);
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
 });
 
 test('clicking a row shows only that color; checkboxes multi-select; clear restores all', async ({ page }) => {
@@ -377,18 +413,19 @@ test('split trim chips and extra input drive shared trim behavior and persist', 
   const reset = page.locator('#split-trim-symbols-reset');
   await expect(reset).toBeHidden();
   const extra = page.locator('#split-trim-extra-symbols');
-  // 文本框默认预填半角逗号句点（延续历史行为）。
-  await expect(extra).toHaveValue(', .');
+  // 默认保留标点，其他符号为空。
+  await expect(extra).toHaveValue('');
 
-  // 关闭全角逗号 chip 后，拆分修剪不再移除右缘全角逗号（半角逗号仍由文本框生效）。
-  const fullwidthCommaChip = grid.locator('label[data-title="全角逗号"]');
+  // 明确开启全角逗号，并验证默认行为及修改后的修剪行为。
   const fullwidthComma = grid.locator('input[value="，"]');
-  await expect(fullwidthComma).toBeChecked();
-  await fullwidthCommaChip.click();
+  await expect(grid.locator('input:checked')).toHaveCount(0);
   await expect(fullwidthComma).not.toBeChecked();
-  await expect(reset).toBeVisible();
   expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('世界，', 'end'))).toBe('世界，');
-  expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('ok,', 'end'))).toBe('ok');
+  await fullwidthComma.locator('..').locator('span').click();
+  await expect(fullwidthComma).toBeChecked();
+  await expect(reset).toBeVisible();
+  expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('世界，', 'end'))).toBe('世界');
+  expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('ok,', 'end'))).toBe('ok,');
 
   // 文本框输入即时生效：改为省略号后存储与修剪行为同时体现。
   await extra.fill('…');
@@ -396,17 +433,27 @@ test('split trim chips and extra input drive shared trim behavior and persist', 
   await expect(extra).toHaveValue('…');
   const storedSymbols = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1')).splitTrimSymbols);
-  expect(storedSymbols).not.toContain('，');
-  expect(storedSymbols).toContain('。');
+  expect(storedSymbols).toContain('，');
+  expect(storedSymbols).not.toContain('。');
   expect(storedSymbols).toContain('…');
   expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('真的……', 'end'))).toBe('真的');
 
-  // 恢复默认符号：chip 全部回勾、文本框回到预填值、行为还原。
-  await reset.click();
+  await page.reload();
+  await waitEditorReady(page);
+  await page.evaluate(() => window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true));
+  await openSettingsPage(page, 'split-merge');
   await expect(fullwidthComma).toBeChecked();
-  await expect(extra).toHaveValue(', .');
+  await expect(extra).toHaveValue('…');
+  expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('真的……', 'end'))).toBe('真的');
+
+  // 恢复默认：chip 全部取消、文本框清空，保留标点。
+  await reset.click();
+  await expect(fullwidthComma).not.toBeChecked();
+  await expect(grid.locator('input:checked')).toHaveCount(0);
+  await expect(extra).toHaveValue('');
   await expect(reset).toBeHidden();
-  expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('世界，', 'end'))).toBe('世界');
+  expect(await page.evaluate(() => window.AsrEditorUtils.applySplitEdgeTrim('世界，', 'end'))).toBe('世界，');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1')).splitTrimSymbols)).toEqual([]);
 });
 
 test('merge join hint shows detected main type; clicking pins and syncs the multi-subtitle dropdown', async ({ page }) => {

@@ -38,6 +38,7 @@ else:
                 threading.Event().wait(60)
                 return
             self.send_response(200)
+            self.send_header('X-MAW-Instance', os.environ['MAW_SERVER_INSTANCE_ID'])
             self.end_headers()
             status = {'startup-error': 'error', 'wrapper-exit': 'loading'}.get(mode, 'ready')
             self.wfile.write(json.dumps({'status': status}).encode())

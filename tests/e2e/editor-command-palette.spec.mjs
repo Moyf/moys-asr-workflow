@@ -172,3 +172,73 @@ test('Save As is recent after a fallback download without a save picker', async 
   await entry.click();
   await expect(saveAs.getByText('最近使用', { exact: true })).toBeVisible();
 });
+
+test('Export project records recent only after a download, and button shares export behavior', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    window.exportPickerCalls = 0;
+    window.showSaveFilePicker = async options => {
+      window.exportPickerCalls++;
+      window.exportPickerOptions = options;
+      throw new DOMException('Save picker cancelled', 'AbortError');
+    };
+  });
+
+  const entry = page.locator('#command-palette-open');
+  const palette = page.locator('#command-palette');
+  const exportProject = palette.getByRole('option', { name: /导出工程/ });
+  const recent = exportProject.getByText('最近使用', { exact: true });
+  const runExport = async () => {
+    await entry.click();
+    await palette.getByRole('combobox').fill('导出工程');
+    await exportProject.click();
+    await expect(palette).not.toBeVisible();
+  };
+
+  await runExport();
+  await expect.poll(() => page.evaluate(() => window.exportPickerCalls)).toBe(1);
+  await entry.click();
+  await expect(recent).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.evaluate(() => {
+    window.exportedProjects = [];
+    window.showSaveFilePicker = async options => {
+      window.exportPickerOptions = options;
+      return { createWritable: async () => ({
+        write: async blob => window.exportedProjects.push(JSON.parse(await blob.text())),
+        close: async () => {},
+      }) };
+    };
+  });
+  await runExport();
+  await expect.poll(() => page.evaluate(() => window.exportedProjects.length)).toBe(1);
+  await entry.click();
+  await expect(recent).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.locator('#download-json').dispatchEvent('click');
+  await expect.poll(() => page.evaluate(() => window.exportedProjects.length)).toBe(2);
+  const result = await page.evaluate(() => ({ projects: window.exportedProjects, options: window.exportPickerOptions }));
+  expect(result.projects[1]).toEqual(result.projects[0]);
+  expect(result.options.suggestedName).toMatch(/\.mosp$/);
+});
+
+
+test('Export project records recent after a fallback download', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+  await page.goto(server.url);
+
+  const entry = page.locator('#command-palette-open');
+  const palette = page.locator('#command-palette');
+  const exportProject = palette.getByRole('option', { name: /导出工程/ });
+  await entry.click();
+  await palette.getByRole('combobox').fill('导出工程');
+  const [download] = await Promise.all([page.waitForEvent('download'), exportProject.click()]);
+  expect(download.suggestedFilename()).toMatch(/\.mosp$/);
+  expect(await download.failure()).toBeNull();
+  await entry.click();
+  await expect(exportProject.getByText('最近使用', { exact: true })).toBeVisible();
+});

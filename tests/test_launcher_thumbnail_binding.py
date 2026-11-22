@@ -15,7 +15,9 @@ class LauncherThumbnailBindingTests(unittest.TestCase):
     def test_explicit_project_never_silently_reuses_another_editors_media(self):
         class ExistingEditor(BaseHTTPRequestHandler):
             def do_GET(self):
-                body = json.dumps({"ok": True, "status": "ready"}).encode()
+                # Existing editors from before the service tag publish the full startup payload.
+                body = json.dumps({"ok": True, "status": "ready", "stage": "ready",
+                                   "progress": 100, "error": ""}).encode()
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()

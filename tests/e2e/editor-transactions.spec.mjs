@@ -129,6 +129,8 @@ for (const unsavedLayout of [false, true]) {
 test('no-op command and clearing an uncolored cue preserve redo with project styles', async ({ page }) => {
   await page.evaluate(() => {
     MaweBoot.DATA.styles = [];
+    // The empty style table has no track references.
+    for (const track of MaweBoot.DATA.tracks) delete track.style;
     AsrEditorUtils.importProject(MaweBoot.DATA);
     MaweState.establishProjectCheckpoint();
   });
@@ -137,6 +139,7 @@ test('no-op command and clearing an uncolored cue preserve redo with project sty
   expect(before.dirty).toBe(false);
   expect(before.redo).toBe(1);
   expect(before.content.styles).toEqual([]);
+  expect(before.tracks.every(track => track.style === undefined)).toBe(true);
   expect(before.segments[0].color_group_id).toBeUndefined();
   await page.evaluate(() => MaweCommands.run('no-op test', () => {}));
   expect(await snapshot(page)).toEqual(before);
@@ -149,6 +152,7 @@ test('no-op command and clearing an uncolored cue preserve redo with project sty
 test('returning a waveform drag to its origin preserves redo for a project with styles', async ({ page }) => {
   await page.evaluate(() => {
     MaweBoot.DATA.styles = [{ id: 'custom-style', name: 'Custom', fontSize: 86 }];
+    for (const track of MaweBoot.DATA.tracks) track.style = { style_id: 'custom-style', forked: true };
     // Exercise a valid existing v2 project with preserved extension data.
     AsrEditorUtils.importProject(MaweBoot.DATA);
     MaweState.establishProjectCheckpoint();
@@ -157,6 +161,7 @@ test('returning a waveform drag to its origin preserves redo for a project with 
   const before = await snapshot(page);
   expect(before.dirty).toBe(false);
   expect(before.content.styles).toEqual([{ id: 'custom-style', name: 'Custom', fontSize: 86 }]);
+  expect(before.tracks[0].style).toEqual({ style_id: 'custom-style', forked: true });
   const point = await beginDrag(page);
   await page.mouse.move(point.x, point.y, { steps: 5 });
   await page.mouse.up();

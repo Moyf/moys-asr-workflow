@@ -1,4 +1,6 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 
+export function initMaweMediaInputsWiring() {
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
@@ -92,7 +94,7 @@ MaweDom.multiSubtitleImportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleImportModal) MaweMultiImport.closeMultiSubtitleImportModal();
 });
 MaweDom.multiSubtitleSplitCancel?.addEventListener('click', MaweSplitCore.closeLinkedSplitModal);
-window.MaweDomPanelsWiring.multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
+getMaweDomPanels().multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
 MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', MaweSplitCore.confirmLinkedSplit);
 MaweDom.multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleSplitModal) MaweSplitCore.closeLinkedSplitModal();
@@ -206,3 +208,4 @@ MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) =
 MaweProjectMediaInputs.loadMediaFileInput.addEventListener('cancel', () => {
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
 });
+}

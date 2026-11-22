@@ -19,6 +19,19 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('legacy full ASS library retains its 65th style and references', () => {
+  const base = helpers.defaultAssStyleLibrary();
+  const oldStyles = base.styles.filter(style => style.id !== 'ass-extension');
+  for (let i = 0; i < 62; i++) oldStyles.push({ ...base.styles[1], id: `custom-${i}`, name: `Custom ${i}`, builtin: false });
+  const normalized = helpers.normalizeAssStyleLibrary({
+    ...base, version: 1, styles: oldStyles,
+    assProfiles: [{ ...base.assProfiles[0], styleId: 'custom-61' }],
+  });
+  assert.equal(normalized.styles.length, 65);
+  assert.ok(normalized.styles.some(style => style.id === 'custom-61'));
+  assert.equal(normalized.assProfiles[0].styleId, 'custom-61');
+});
+
 test('green screen audio is opt-in and survives settings normalization', () => {
   assert.equal(helpers.normalizeEditorSettings().greenScreenIncludeAudio, false);
   assert.equal(helpers.normalizeEditorSettings({ greenScreenIncludeAudio: true }).greenScreenIncludeAudio, true);
@@ -354,6 +367,7 @@ test('buildAssPayload rewrites Style Fontname through the alias table and leaves
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('尚未与服务器同步；请检查当前样式并重试保存。', 'en'), 'Not synced with the server yet; check the current styles and try saving again.');
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
   assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
@@ -4441,6 +4455,27 @@ test('default-off ASS switches retain single-cue fade and pop marker effects', (
   assert.equal(state.popScale, 0.85);
 });
 
+test('keeps all 64 legacy ASS styles and their references when adding the extension builtin', () => {
+  const legacy = {
+    version: 1,
+    styles: [
+      { id: 'default', name: 'SRT 默认' }, { id: 'ass', name: 'ASS' },
+      ...Array.from({ length: 62 }, (_, index) => ({ id: `custom-${index}`, name: `Custom ${index}` })),
+    ],
+    assProfiles: [{ id: 'last-profile', name: 'Last profile', styleId: 'custom-61' }],
+    assignments: { srtBurnStyleId: 'custom-61', assExtensionStyleId: 'custom-61' },
+  };
+  const migrated = helpers.normalizeAssStyleLibrary(legacy);
+  assert.equal(migrated.styles.length, 65);
+  assert.ok(migrated.styles.some(style => style.id === 'ass-extension'));
+  assert.ok(migrated.styles.some(style => style.id === 'custom-61'));
+  assert.equal(migrated.assProfiles.find(profile => profile.id === 'last-profile').styleId, 'custom-61');
+  assert.equal(migrated.assignments.srtBurnStyleId, 'custom-61');
+  assert.equal(migrated.assignments.assExtensionStyleId, 'custom-61');
+  const reopened = helpers.normalizeAssStyleLibrary(JSON.parse(JSON.stringify(migrated)));
+  assert.deepEqual(JSON.parse(JSON.stringify(reopened)), JSON.parse(JSON.stringify(migrated)));
+});
+
 test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
   // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
   const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233', backColor: '#000000' });
@@ -7912,4 +7947,13 @@ test('AI cleanup export projection respects active ownership, restoration and pu
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
   gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+});
+
+test('Canvas emoji hint replaces VS16 only on simple clusters without rewriting complex emoji', () => {
+  assert.equal(helpers.assCanvasPreviewText('❤️ ☀ 😀 🤔'), '❤︎ ☀︎ 😀︎ 🤔︎');
+  for (const text of ['123 #* 中文，。', '❤︎', '👩‍👩‍👧‍👧', '👍🏽', '🇨🇳', '1️⃣', '🏳️‍🌈']) {
+    assert.equal(helpers.assCanvasPreviewText(text), text);
+  }
+  assert.ok(helpers.assManagedFontText('( •̀ ω •́ )y 中文╬'));
+  for (const text of ['مرحبا', 'कर्म', '𞤀𞤢', '𑀓𑀭', 'a\u200db']) assert.equal(helpers.assManagedFontText(text), false);
 });

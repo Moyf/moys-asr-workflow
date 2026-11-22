@@ -1,5 +1,18 @@
 import { observeAssSubtitlePreviewPlayer, scheduleAssSubtitlePreviewRefresh } from './editor-ass-preview-refresh.js';
 
+export function isPlaybackActive() {
+  const player = MaweCoreState.player;
+  return Boolean(MaweJklPlayback.jklReversePlaying || (player && !player.paused) || window.MaweGapPlayback?.pendingPlayback);
+}
+
+export function pausePlaybackAfterMouseClick() {
+  if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
+  if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
+  window.MaweGapPlayback?.cancelPendingPlayback();
+  MaweCoreState.player?.pause();
+  MaweMediaPlayback.syncMediaControls();
+}
+
 export function initMediaPlaybackModule() {
 // 媒体播放：播放器事件、占位符、速率与 seek 控制。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
@@ -141,8 +154,7 @@ export function initMediaPlaybackModule() {
   const hasMedia = hasLoadedMedia();
   const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0 ? MaweCoreState.player.duration : 0;
   const current = Number.isFinite(MaweCoreState.player.currentTime) ? Math.max(0, MaweCoreState.player.currentTime) : 0;
-  const active = hasMedia && (MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused
-    || window.MaweGapPlayback?.pendingPlayback);
+  const active = hasMedia && isPlaybackActive();
   MaweDom.mediaPlayToggle.disabled = !hasMedia;
   MaweDom.mediaStepBack.disabled = !hasMedia;
   MaweDom.mediaStepForward.disabled = !hasMedia;

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
+import { invokedInitModuleSource } from '../helpers/init-module-source.mjs';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -9,7 +10,7 @@ const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export
 const first = source.indexOf("document.getElementById('download-gap-removed-video')");
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
 const handler = source.slice(first, last);
-const projectLoad = fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8');
+const projectLoad = invokedInitModuleSource('editor/io/editor-project-load.js', 'initMaweProjectLoad');
 const i18n = fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8');
 
 async function fixture(page, mode, run) {
@@ -51,6 +52,7 @@ async function fixture(page, mode, run) {
       window.applyMediaSizeToResolutionModal = () => {};
       window.dynamicExportCanvasSize = () => {};
       window.MaweInlineEdit = {};
+      window.MaweCoreState = {};
       window.MaweProjectLoad = { projectBindingEpoch: 1 };
       window.MaweBoot = { FILENAME_BASE: 'music', DATA: { media: 'source.mp3' }, SERVER_CONFIG: {
         canGapRemovedVideoExport: false, gapRemovedVideoSourceName: null,
@@ -199,7 +201,9 @@ test('detach clears all capabilities and label follows media and language change
   await fixture(page, 'save', async () => {
     await page.addScriptTag({ content: projectLoad });
     await page.addScriptTag({ content: i18n });
+    const bindingEpoch = await page.evaluate(() => MaweProjectLoad.projectBindingEpoch);
     await page.evaluate(() => MaweProjectLoad.detachServerProjectSaving());
+    expect(await page.evaluate(() => MaweProjectLoad.projectBindingEpoch)).toBe(bindingEpoch + 1);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport, MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport])).toEqual([false, false]);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.gapRemovedMediaKind, MaweBoot.SERVER_CONFIG.gapRemovedMediaSourceName,
       MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension, MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime,

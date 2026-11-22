@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { get } from 'node:http';
 
 const driver = fileURLToPath(new URL('./fixtures/e2e-lifecycle-driver.mjs', import.meta.url));
 const synthetic = fileURLToPath(new URL('./fixtures/e2e-process-tree.py', import.meta.url));
@@ -128,8 +129,16 @@ async function runScenario(kind, scenario, action = 'stop') {
     }
     await portFree(port);
     assert.equal(alive(bystander.proc.pid), true, 'unrelated process must remain alive');
-    const response = await fetch(`http://127.0.0.1:${bystander.port}`, { signal: AbortSignal.timeout(1000) });
-    assert.equal(await response.text(), 'bystander');
+    // The bystander only proves process ownership; its OS-assigned port may
+    // be intentionally unavailable to browser Fetch (for example 10080).
+    const body = await new Promise((resolve, reject) => {
+      get(`http://127.0.0.1:${bystander.port}`, { signal: AbortSignal.timeout(1000) }, response => {
+        let text = '';
+        response.setEncoding('utf8').on('data', chunk => { text += chunk; });
+        response.on('end', () => resolve(text)).on('error', reject);
+      }).on('error', reject);
+    });
+    assert.equal(body, 'bystander');
   } finally {
     clearTimeout(timer);
     for (const name of readdirSync(evidence)) {

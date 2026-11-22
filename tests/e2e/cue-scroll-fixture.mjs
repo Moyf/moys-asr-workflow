@@ -2,9 +2,11 @@
 // the installed app, existing project files, user settings, or a real .env.
 import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
 import { createOutputTail } from './output-tail.mjs';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 
 export function syntheticScrollProject(count = 107, mode = 'main', paired = false) {
@@ -14,7 +16,7 @@ export function syntheticScrollProject(count = 107, mode = 'main', paired = fals
     id: `synthetic-${i}`, start: i * 2000, end: i * 2000 + 1800,
     text: `${samples[i % samples.length]} ${i + 1}`, items: [],
   }));
-  return {
+  const legacy = {
     media: 'synthetic.wav', segments, waveform: generateWaveformPayload(count * 2000 + 10000),
     multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: mode !== 'main',
       display_mode: mode === 'main' ? 'both' : mode, active_track_id: 'synthetic-ext',
@@ -25,6 +27,9 @@ export function syntheticScrollProject(count = 107, mode = 'main', paired = fals
         extension_segment_ids: [`ext-${s.id}`], start_offset_ms: 0, end_offset_ms: 0,
       })) : [] },
   };
+  // Server fixtures save in place, so they must already be canonical v2; the
+  // legacy shape above only feeds the shared importer like a real 1.x file.
+  return createProjectTracks().importProject(legacy).project;
 }
 
 export async function startScrollFixture({ count = 107, mode = 'main', paired = false, blank = false, readinessTimeoutMs = 45_000 } = {}) {
@@ -51,7 +56,10 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     ...(blank ? ['--blank'] : [projectPath, '--media', mediaPath]),
     '--no-open', '--no-waveform', '--port', String(port)];
   const log = createWriteStream(join(directory, 'server.log'));
+  // Frozen acceptance may run an older binary without the instance header.
+  const instance = app ? undefined : randomBytes(16).toString('hex');
   const child = spawnServerProcess(command, args, { env: {
+    ...(instance ? { MAW_SERVER_INSTANCE_ID: instance } : {}),
     PATH: process.env.PATH, LANG: 'zh_CN.UTF-8', PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1',
     PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8',
     ...(process.platform === 'win32' ? {
@@ -90,7 +98,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (serverHasExited(child)) throw new Error(`Synthetic server exited: ${child.exitCode ?? child.signalCode}. Output tail: ${output.text()}`);
-      const status = await serverRequest(`${url}api/startup-status`, { json: true })
+      const status = await serverRequest(`${url}api/startup-status`, { json: true, instance })
         .then(r => r.ok ? r.body : null).catch(() => null);
       if (status?.status === 'error') throw new Error(JSON.stringify(status));
       if (status?.status === 'ready') return { url, directory, stop, project, projectPath, pid: child.pid };
