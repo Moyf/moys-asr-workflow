@@ -24,6 +24,7 @@ jobs:
       aux_python: ${{ steps.scope.outputs.aux_python }}
       aux_node: ${{ steps.scope.outputs.aux_node }}
       aux_browser: ${{ steps.scope.outputs.aux_browser }}
+      aux_browser_shards: ${{ steps.scope.outputs.aux_browser_shards }}
       aux_application: ${{ steps.scope.outputs.aux_application }}
       aux_editor_bundle: ${{ steps.scope.outputs.aux_editor_bundle }}
       aux_launcher_bundle: ${{ steps.scope.outputs.aux_launcher_bundle }}
@@ -67,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.selection.outputs.aux_browser == 'true' && '[1,2]' || '[1]') }}
+        shard: ${{ fromJSON(needs.selection.outputs.aux_browser_shards || '[1]') }}
     steps:
       - uses: actions/checkout@v5
         with:
