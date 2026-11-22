@@ -10,7 +10,7 @@ Playwright 超时、Ctrl+C 或测试进程异常退出后，`serve.py` 或包装
 
 ## 残留进程清理
 
-1. 查本次 `result.json`、fixture 的服务输出和端口，确认退出、超时及运行器清理结果。还在运行的服务优先通过原终端或 fixture 正常停止。
+1. 查本次记录、fixture 的服务输出和端口，确认退出、超时及清理结果。通过 `run_check.py` 启动时查 `result.json`。通过 `run-e2e-bg.ps1` 启动时，去启动输出的运行目录查 `meta.json` 中的 PID 和开始时间，以及 `e2e-run.log`。调用 `poll-e2e.ps1` 时用 `-RunDir` 指定该目录。还在运行的服务优先通过原终端或 fixture 正常停止。
 2. 对残留进程，以本次记录的 PID、启动时间、父子关系和命令行中的工作树及 fixture 路径核对归属。Windows 可用 `Get-CimInstance Win32_Process` 查看。提权进程的 `CommandLine` 可能为空，归属不明时保留并报告。
 3. 只终止明确属于本次运行的残留进程，再核对本次监听端口和输出管道已释放。进程名、端口或工作树路径本身都无法区分同机并行任务。
 
