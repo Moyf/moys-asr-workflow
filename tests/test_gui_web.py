@@ -4714,6 +4714,39 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "srtPath")
         self.assertEqual(result["code"], "output_missing")
 
+    def test_launcher_returns_transcription_without_waiting_for_thumbnail_builder(self) -> None:
+        from maw.thumbnail_jobs import ThumbnailCoordinator
+
+        video = self.root / "video.mp4"
+        video.write_bytes(b"fixture")
+        result = TranscriptionResult(srt_path=self.root / "video.srt", json_path=self.root / "video.mosp", html_path=None)
+        result.srt_path.write_text("subtitle", encoding="utf-8")
+        result.json_path.write_text("{}", encoding="utf-8")
+        request = TranscriptionRequest(media_path=video, srt_path=result.srt_path, generate_keyframes=True, generate_thumbnails=True)
+        self.api.thumbnail_queue.coordinator = ThumbnailCoordinator(self.root / "jobs.sqlite3")
+        started = threading.Event()
+
+        def build(_path, *, cancel, **kwargs):
+            started.set()
+            cancel.wait(5)
+
+        with mock.patch("maw.thumbnail_jobs.cleanup_base_cache"), mock.patch(
+            "maw.gui_web.run_transcription", return_value=result
+        ) as transcribe, mock.patch(
+            "maw.thumbnail_jobs.build_base", side_effect=build
+        ):
+            try:
+                self.assertEqual(self.api._transcribe_with_background_thumbnails(request), result)
+                self.assertTrue(started.wait(3))
+                self.assertTrue(self.api.thumbnail_queue.thread.is_alive())
+                self.assertFalse(transcribe.call_args.args[0].generate_keyframes)
+                self.assertFalse(transcribe.call_args.args[0].generate_thumbnails)
+            finally:
+                thread = self.api.thumbnail_queue.thread
+                self.api.thumbnail_queue.close()
+                if thread:
+                    thread.join(5)
+
     def test_default_output_avoids_existing_srt_and_reports_rename(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")

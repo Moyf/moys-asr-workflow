@@ -70,6 +70,8 @@ from maw.gui_config import (
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
 from maw.gui_workflow import TEST_RUN_LENGTH_LIMIT, TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
+from maw.gui_workflow import TEST_RUN_KEYFRAME_LIMIT_SEC
+from maw.thumbnail_jobs import LauncherThumbnailQueue
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
 from maw.diagnostics import app_version, error_context
@@ -548,6 +550,7 @@ class LauncherApi:
         self._postprocess_operations_lock = Lock()
         self._postprocess_operations: dict[str, _PostprocessOperation] = {}
         self.pump = EventPump(window_getter=self.window_getter)
+        self.thumbnail_queue = LauncherThumbnailQueue(lambda message: self._emit({"type": "log", "message": message}))
         _sync_local_runtime_root(self.paths.env_path)
 
     def _begin_postprocess_operation(
@@ -2842,6 +2845,7 @@ class LauncherApi:
                 manifest_path=manifest_path,
                 cancel_event=cancel_event,
                 on_event=self._emit,
+                transcribe=self._transcribe_with_background_thumbnails,
                 env_path=self.paths.env_path,
                 ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
                 ocr_runtime_root=self._ocr_runtime_status().path,
@@ -3334,6 +3338,7 @@ class LauncherApi:
         # closing runs on the GUI thread. Stop UI delivery before cancellation
         # wakes workers. Joining a worker here could block the GUI thread.
         self.pump.shutdown()
+        self.thumbnail_queue.close()
         self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
@@ -3355,6 +3360,23 @@ class LauncherApi:
                     stream.flush()
             self._log_sink.close()
 
+    def _transcribe_with_background_thumbnails(self, request: TranscriptionRequest, **kwargs) -> TranscriptionResult:
+        result = run_transcription(replace(request, generate_keyframes=False, generate_thumbnails=False), **kwargs)
+        if (request.generate_keyframes and os.environ.get("MAW_MEDIA_KEYFRAMES", "1") != "0"
+                and not (kwargs.get("cancel_event") and kwargs["cancel_event"].is_set())):
+            try:
+                ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
+                queued = self.thumbnail_queue.submit(
+                    request.media_path, ffmpeg_path=str(ffmpeg) if ffmpeg else None,
+                    exact=request.generate_thumbnails and os.environ.get("MAW_MEDIA_THUMBNAILS", "1") != "0",
+                    duration_limit_sec=TEST_RUN_KEYFRAME_LIMIT_SEC if request.test_run else None,
+                )
+                if not queued:
+                    self._emit({"type": "log", "message": "[thumbnails] 后台队列已满或已关闭；可在编辑器中按需补帧。"})
+            except Exception as error:  # noqa: BLE001 - optional cache must not hide saved subtitles
+                self._emit({"type": "log", "message": f"[thumbnails] 无法安排后台画面缓存：{error}"})
+        return result
+
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
         flow_t0 = time.perf_counter()
@@ -3364,7 +3386,7 @@ class LauncherApi:
             self._emit({"type": "log", "message": redact_asr_text(line, request.api_key)})
 
         try:
-            result = run_transcription(
+            result = self._transcribe_with_background_thumbnails(
                 request,
                 on_event=on_child_event,
                 cancel_event=cancel_event,

@@ -6,6 +6,7 @@ The database contains hashed identities and ephemeral control state, never paths
 from __future__ import annotations
 
 from contextlib import contextmanager
+from collections import deque
 import hashlib
 import os
 import secrets
@@ -21,6 +22,8 @@ LEASE_SECONDS = 8.0
 FLIGHT_SECONDS = 30.0
 INTERVALS = (250, 500, 1000, 2000, 5000, 10000)
 MAX_TARGETS = 512
+BACKGROUND_LEASE_SECONDS = 1200
+BACKGROUND_HEARTBEAT_SECONDS = 30
 
 
 def source_key(path: Path) -> str:
@@ -51,6 +54,7 @@ class ThumbnailCoordinator:
         with self._db() as db:
             db.execute("CREATE TABLE IF NOT EXISTS leases (id TEXT PRIMARY KEY, source TEXT, playing INTEGER, visible INTEGER, expires REAL)")
             db.execute("CREATE TABLE IF NOT EXISTS flights (id TEXT PRIMARY KEY, source TEXT, owner TEXT, expires REAL)")
+            db.execute("CREATE TABLE IF NOT EXISTS background_jobs (source TEXT, owner TEXT, expires REAL, PRIMARY KEY (source, owner))")
 
     @contextmanager
     def _db(self):
@@ -111,8 +115,141 @@ class ThumbnailCoordinator:
         with self._db() as db:
             db.execute("DELETE FROM flights WHERE owner=?", (owner,))
 
+    def mark_background(self, source, owner, *, pending):
+        with self._db() as db:
+            db.execute("DELETE FROM background_jobs WHERE expires < ?", (time.time(),))
+            if pending:
+                db.execute("INSERT OR REPLACE INTO background_jobs VALUES(?,?,?)", (source, owner, time.time() + BACKGROUND_LEASE_SECONDS))
+            else:
+                db.execute("DELETE FROM background_jobs WHERE source=? AND owner=?", (source, owner))
 
-def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordinator=None, background=False, ffmpeg_path=None, threads: int = 2):
+    def background_pending(self, source):
+        with self._db() as db:
+            return db.execute("SELECT 1 FROM background_jobs WHERE source=? AND expires >= ? LIMIT 1",
+                              (source, time.time())).fetchone() is not None
+
+    def renew_background(self, owner, sources):
+        with self._db() as db:
+            expiry = time.time() + BACKGROUND_LEASE_SECONDS
+            db.executemany("INSERT OR REPLACE INTO background_jobs VALUES(?,?,?)",
+                           ((source, owner, expiry) for source in sources))
+
+    def clear_background(self, owner):
+        with self._db() as db:
+            db.execute("DELETE FROM background_jobs WHERE owner=?", (owner,))
+
+
+class LauncherThumbnailQueue:
+    """One bounded worker per Launcher. The editor may read frames as they land."""
+
+    def __init__(self, progress, *, coordinator=None):
+        self.progress = progress
+        self.coordinator = coordinator
+        self.owner = secrets.token_hex(16)
+        self.cancel = threading.Event()
+        self.lock = threading.Lock()
+        self.pending = deque()
+        self.active = None
+        self.thread = None
+        self.heartbeat = None
+
+    def submit(self, path, *, exact, duration_limit_sec=None, ffmpeg_path=None):
+        path = Path(path)
+        identity = source_key(path)
+        with self.lock:
+            if self.cancel.is_set():
+                return False
+            key = (identity, exact, duration_limit_sec)
+            if key == self.active or any(item[0] == key for item in self.pending):
+                return True
+            if len(self.pending) >= 32:
+                return False
+            if self.coordinator is None:
+                self.coordinator = ThumbnailCoordinator()
+            self.coordinator.mark_background(identity, self.owner, pending=True)
+            self.pending.append((key, path, ffmpeg_path))
+            if self.heartbeat is None:
+                self.heartbeat = threading.Thread(target=self._renew, name="thumbnail-queue-lease", daemon=True)
+                self.heartbeat.start()
+            if self.thread is None:
+                # Shutdown signals cancel; a non-daemon worker lets the FFmpeg
+                # cancellation/finally run before the interpreter exits.
+                self.thread = threading.Thread(target=self._run, name="launcher-thumbnails", daemon=False)
+                self.thread.start()
+            return True
+
+    def _renew(self):
+        while not self.cancel.wait(BACKGROUND_HEARTBEAT_SECONDS):
+            with self.lock:
+                if self.cancel.is_set():
+                    return
+                sources = {item[0][0] for item in self.pending}
+                if self.active is not None:
+                    sources.add(self.active[0])
+                if sources:
+                    try:
+                        self.coordinator.renew_background(self.owner, sources)
+                    except (OSError, sqlite3.Error):
+                        pass  # retry on the next heartbeat
+
+    def _run(self):
+        while True:
+            with self.lock:
+                if not self.pending:
+                    self.thread = None
+                    return
+                key, path, ffmpeg_path = self.pending.popleft()
+                self.active = key
+            identity, exact, limit = key
+            try:
+                if not self.cancel.is_set() and source_key(path) == identity:
+                    cleanup_base_cache(path, self.progress)
+                    build_base(path, exact=exact, duration_limit_sec=limit, ffmpeg_path=ffmpeg_path,
+                               coordinator=self.coordinator, cancel=self.cancel, progress=self.progress)
+            except (OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+                if not self.cancel.is_set():
+                    self.progress(f"[thumbnails] 后台画面缓存未完成：{error}")
+            finally:
+                with self.lock:
+                    self.active = None
+                    if not any(item[0][0] == identity for item in self.pending):
+                        try:
+                            self.coordinator.mark_background(identity, self.owner, pending=False)
+                        except (OSError, sqlite3.Error):
+                            pass  # bounded lease expires on its own
+
+    def close(self):
+        self.cancel.set()
+        with self.lock:
+            self.pending.clear()
+            if self.coordinator is not None:
+                try:
+                    self.coordinator.clear_background(self.owner)
+                except (OSError, sqlite3.Error):
+                    pass  # bounded lease expires on its own
+
+
+def cleanup_base_cache(path, progress):
+    from maw import thumbnail_cache
+
+    current = [*thumbnail_cache.base_candidates(path),
+               thumbnail_cache.cache_root() / "bases" / (thumbnail_cache._source_key(path) + ".mothumbs")]
+    cleaned = thumbnail_cache.cleanup_registered(inactive_before=time.time() - 30 * 86400,
+                                                 limit=8, exclude_paths=current)
+    if cleaned["removed_count"]:
+        progress(f"[thumbnails] 已回收 {cleaned['removed_count']} 份过期画面缓存")
+
+
+def launcher_thumbnails_pending(path):
+    if not path:
+        return False
+    try:
+        return ThumbnailCoordinator().background_pending(source_key(Path(path)))
+    except (OSError, ValueError, sqlite3.Error):
+        return False
+
+
+def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordinator=None, background=False, ffmpeg_path=None, threads: int = 2, profile=None):
     """Publish frames before relinquishing claims; playback stops active FFmpeg too."""
     from maw import thumbnail_cache as cache, thumbnails
     coordinator = coordinator or ThumbnailCoordinator()
@@ -157,7 +294,18 @@ def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordi
                     raise thumbnails.ThumbnailCancelled("thumbnail request cancelled")
                 if source_key(path) != identity:
                     return []
-                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, info=info, threads=threads)
+                metrics = {"profile": profile} if profile is not None else {}
+                options = dict(stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, info=info, threads=threads, **metrics)
+                wide = background and selected[-1] - selected[0] > thumbnails.MAX_BATCH_SPAN_MS
+                try:
+                    frames = thumbnails.extract_frames(path, selected, **options,
+                        **({"max_span_ms": thumbnails.BACKGROUND_BATCH_SPAN_MS} if wide else {}))
+                except thumbnails.ThumbnailCancelled:
+                    raise
+                except thumbnails.ThumbnailError:
+                    if not wide:
+                        raise
+                    frames = thumbnails.extract_frames(path, selected, **options)
             except thumbnails.ThumbnailCancelled:
                 if cancel is not None and cancel.is_set():
                     raise
@@ -165,7 +313,10 @@ def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordi
             if source_key(path) != identity:
                 return []
             if not stop.is_set():
+                started = time.monotonic()
                 cache.register_frames(path, frames, ffmpeg_path=ffmpeg_path, expected_source=signature)
+                if profile is not None:
+                    profile["cache_write"] += time.monotonic() - started
                 fresh = {frame.requested_ms: frame for frame in frames}
         if not background:
             return [frame for frame in cache.lookup_frames(path, targets, stream_index=stream_index, ffmpeg_path=ffmpeg_path) if frame is not None]
@@ -241,11 +392,13 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
     path = Path(path)
     coordinator = coordinator or ThumbnailCoordinator()
     identity = source_key(path)
-    threads = min(16, max(2, os.cpu_count() or 4))
+    threads = min(8, max(2, os.cpu_count() or 4))
     deadline = time.monotonic() + timeout_s
+    profile = dict.fromkeys(("probe", "decode_jpeg", "jpeg_read", "cache_write", "pack", "pause", "keyframes"), 0.0)
 
     def before_batch(_targets):
         yielded = False
+        started = time.monotonic()
         while coordinator.paused(identity, background=True):
             if not yielded and progress is not None:
                 progress("[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停")
@@ -259,12 +412,14 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
             time.sleep(.05)
         if yielded and progress is not None:
             progress("[thumbnails] 同源优先需求已释放，继续生成基础画面")
+        if yielded:
+            profile["pause"] += time.monotonic() - started
 
     def extract(media, targets, **kwargs):
         while True:
             before_batch(targets)
             result = coordinated_extract(media, targets, coordinator=coordinator, background=True,
-                                         ffmpeg_path=ffmpeg_path, threads=threads, **kwargs)
+                                         ffmpeg_path=ffmpeg_path, threads=threads, profile=profile, **kwargs)
             if len(result) == len(targets):
                 return result
             if cancel is not None and cancel.is_set():
@@ -275,8 +430,12 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
             time.sleep(.05)
 
     def pack(jpegs, **kwargs):
-        return coordinated_pack(path, jpegs, coordinator=coordinator, before_batch=before_batch,
-                                ffmpeg_path=ffmpeg_path, **kwargs)
+        started, paused = time.monotonic(), profile["pause"]
+        try:
+            return coordinated_pack(path, jpegs, coordinator=coordinator, before_batch=before_batch,
+                                    ffmpeg_path=ffmpeg_path, **kwargs)
+        finally:
+            profile["pack"] += max(0, time.monotonic() - started - (profile["pause"] - paused))
 
     def keyframe_extract():
         """Pause-aware keyframe pass; playback and visible demand win."""
@@ -308,6 +467,7 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
 
             watcher = threading.Thread(target=watch, name="thumbnail-keyframe-cancel", daemon=True)
             watcher.start()
+            started = time.monotonic()
             try:
                 return thumbnails.extract_keyframes(path, cancel=kf_cancel, threads=threads,
                     ffmpeg_path=ffmpeg_path, timeout_s=min(600, remaining),
@@ -317,13 +477,20 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
                     raise
                 # before_batch waits for playback before starting a fresh pass.
             finally:
+                profile["keyframes"] += time.monotonic() - started
                 done.set()
                 watcher.join(.2)
 
-    return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
-        before_batch=before_batch, batch_extract=extract, batch_pack=pack,
-        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads,
-        keyframe_extract=keyframe_extract, duration_limit_sec=duration_limit_sec)
+    try:
+        return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
+            before_batch=before_batch, batch_extract=extract, batch_pack=pack, batch_frames_registered=True,
+            background_batches=True,
+            ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads,
+            keyframe_extract=keyframe_extract, duration_limit_sec=duration_limit_sec)
+    finally:
+        if progress is not None and any(profile.values()):
+            spans = " ".join(f"{name}={seconds:.2f}s" for name, seconds in profile.items())
+            progress(f"[thumbnails] CPU threads={threads} {spans}")
 
 
 def plan_targets(ranges, interval, duration, representatives=(), playhead=None):

@@ -108,6 +108,8 @@ test('display mode defaults to keyframe marks and falls back to hidden without a
     [{thumbnailBaseReady:false},{},{},'hidden','no base and no preference starts hidden'],
     [{thumbnailBaseReady:false},{'mawe-filmstrip-mode':'strip'},{},'strip','an explicit mode wins over the missing base'],
     [{thumbnailBaseReady:false},{'mawe-filmstrip-mode':'hidden'},{},'hidden','an explicit opt-out still hides'],
+    [{thumbnailBaseReady:false,thumbnailAutoPending:true},{},{},'strip','a cold background build starts visible demand'],
+    [{thumbnailBaseReady:false,thumbnailAutoPending:true},{'mawe-filmstrip-mode':'hidden'},{},'hidden','a cold background build respects explicit hiding'],
     [{thumbnailBaseReady:true},{},{},'marks','a persisted base defaults to keyframe marks'],
     [{},{},{},'marks','unknown readiness defaults to keyframe marks'],
   ];

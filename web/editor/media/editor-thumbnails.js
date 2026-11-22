@@ -75,12 +75,19 @@ export function createThumbnailModule(dependencies) {
     const clientId = browser.crypto?.randomUUID?.() || `filmstrip-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let controlRequest = null;
     const protectedKeys = new Set();
-    let mode = 'marks';
+    let mode = 'marks', modeExplicit = false;
+    function applyDefaultMode() {
+      if (modeExplicit) return;
+      const config = getConfig();
+      mode = config?.thumbnailAutoPending === true ? 'strip'
+        : config?.thumbnailBaseReady === false ? 'hidden' : 'marks';
+    }
     try {
       const stored = storage.getItem('mawe-filmstrip-mode');
-      mode = stored === 'strip' || stored === 'marks' || stored === 'hidden' ? stored
-        : getConfig()?.thumbnailBaseReady === false ? 'hidden' : 'marks';
+      modeExplicit = stored === 'strip' || stored === 'marks' || stored === 'hidden';
+      if (modeExplicit) mode = stored;
     } catch (_) {}
+    applyDefaultMode();
     const displayOn = () => mode !== 'hidden';
     let decodeEnabled = true;
     try { decodeEnabled = storage.getItem('mawe-filmstrip-decode') !== 'false'; } catch (_) {}
@@ -370,6 +377,7 @@ export function createThumbnailModule(dependencies) {
       setBinding(next) {
         if (String(next || '') === binding) return;
         release(); binding = String(next || ''); source = ''; samples = []; fallbackSamples = []; keyframesData = []; state = 'idle'; persisted = true;
+        applyDefaultMode();
         combinedSamples = null;
         available = !!binding && !!urls().status; networkSuspended = false;
         failures.status = failures.demand = failures.control = 0;
@@ -383,10 +391,12 @@ export function createThumbnailModule(dependencies) {
         controller.setMode(next === false ? 'hidden' : (mode === 'hidden' ? 'marks' : mode));
       },
       setMode(next) {
-        if ((next !== 'strip' && next !== 'marks' && next !== 'hidden') || next === mode) return;
+        if (next !== 'strip' && next !== 'marks' && next !== 'hidden') return;
+        modeExplicit = true;
+        try { storage.setItem('mawe-filmstrip-mode', next); } catch (_) {}
+        if (next === mode) return;
         const wasOn = displayOn();
         mode = next;
-        try { storage.setItem('mawe-filmstrip-mode', mode); } catch (_) {}
         if (wasOn && !displayOn()) {
           release(false); onChange(true); return;
         }
