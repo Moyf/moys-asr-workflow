@@ -492,7 +492,10 @@
           <p id="jsonPathError" class="field-error"></p>
         </div>
         <div id="recentProjectsField" class="field recent-projects-field hidden">
-          <span class="recent-projects-label" data-i18n="recent_projects">最近工程</span>
+          <div class="recent-projects-header">
+            <span class="recent-projects-label" data-i18n="recent_projects">最近工程</span>
+            <button id="recentProjectsToggle" class="recent-projects-toggle hidden" type="button" aria-expanded="false" aria-controls="recentProjectsList" data-i18n="recent_projects_show_more">显示更多</button>
+          </div>
           <div id="recentProjectsList" class="recent-projects-list"></div>
         </div>
         <div id="serverMediaField" class="field hidden">
