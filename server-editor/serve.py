@@ -1037,7 +1037,7 @@ def _burn_interval_filter(
     shifts = [_burn_seconds(intervals[0][0])]
     for (_, previous_end), (start, _) in zip(intervals, intervals[1:]):
         shifts.append(f'if(gte(T,{_burn_seconds(start)}),{_burn_seconds(start - previous_end)},0)')
-    head = f"[0:v:0]select='{selected}',setpts='PTS-({'+'.join(shifts)})/TB'"
+    head = f"[0:v:0]select='{selected}',settb=AVTB,setpts='PTS-({'+'.join(shifts)})/TB'"
     if stickers:
         graph = [head + '[burn_base]'] + _burn_sticker_chain_lines(stickers, '[burn_base]')
     else:
@@ -1186,10 +1186,10 @@ def burn_ass_video(
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
                                 f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
-        # Preserve sub-frame cut times instead of rounding them to 1/fps.
+        # Match the filter's microsecond clock using syntax supported by FFmpeg 5.1+.
         # Older encoders omit packet duration; retain valid durations and fill
         # missing ones from the decode clock so the final frame is not lost.
-        filter_args.extend(("-fps_mode", "vfr", "-enc_time_base:v", "filter",
+        filter_args.extend(("-fps_mode", "vfr", "-enc_time_base:v", "1:1000000",
                             "-bsf:v", "setts=pts=PTS:dts=DTS:duration='if(gt(DURATION,0),DURATION,if(gt(NEXT_DTS,DTS),NEXT_DTS-DTS,PREV_OUTDURATION))'",
                             "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
     elif stickers:
