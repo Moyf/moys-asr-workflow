@@ -1,4 +1,4 @@
-import { applyCharCount, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort, speakerName } from './editor-cue-elements.js';
+import { applyCharCount, buildBoundExtensionIds, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort, speakerName } from './editor-cue-elements.js';
 import { captureCueListRenderAnchor, invalidateCueListVisualAnchorRestore, restoreCueListRenderAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
 import { startEdit } from './editor-inline-edit.js';
 import { openExtensionSplitModal, splitAtCursor, splitTimeForTextOffset } from './editor-split-core.js';
@@ -59,14 +59,16 @@ export function initMaweCuePanel() {
     track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
+    const bindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings;
+    const boundExtensionIds = buildBoundExtensionIds(bindings, track.id);
+    const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, track.segments, bindings);
     displayRows.forEach((row) => {
       const mainSeg = row.mainIndex == null ? null : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[row.mainIndex];
       const extensionSeg = row.extensionIndex == null ? null : track.segments[row.extensionIndex];
       rows.push({
         start: mainSeg ? mainSeg.start : (extensionSeg ? extensionSeg.start : 0),
         order: 0,
-        el: buildDualCueEl(row.mainIndex, row.extensionIndex, track),
+        el: buildDualCueEl(row.mainIndex, row.extensionIndex, track, boundExtensionIds),
       });
     });
   }

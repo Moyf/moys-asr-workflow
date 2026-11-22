@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { cleanupTempDir, makeTempDir } from './helpers.mjs';
+import { cleanupTempDir, getMainTrack, makeTempDir } from './helpers.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -32,7 +32,7 @@ test('cleanup comparison stays searchable and complete offline after the project
     await expect(page.locator('#rows article')).toHaveCount(1);
     const snapshot = readFileSync(artifact.comparison, 'utf8');
     const project = JSON.parse(readFileSync(artifact.project, 'utf8'));
-    project.segments[0].text = '后续工程修改';
+    getMainTrack(project).segments[0].text = '后续工程修改';
     writeFileSync(artifact.project, JSON.stringify(project), 'utf8');
     await page.reload();
     await expect(page.locator('#rows article')).toHaveCount(3);
