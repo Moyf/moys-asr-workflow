@@ -134,7 +134,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '播放与导航', '微调字幕', '空隙操作', '批量操作']);
+  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '快捷编辑', '播放与导航', '微调字幕', '空隙操作', 'ASS 字幕样式', '字词时间码', '双语字幕', '导出与烧录', '标记与区段', '批量操作']);
   await expect(helpPanel.getByRole('tab').first()).toHaveCSS('font-size', '13px');
   await expect(helpPanel.locator('.editor-settings-nav')).toHaveAttribute('aria-orientation', 'vertical');
   await expect(helpPanel.locator('.help-nav-group-label')).toHaveText('进阶');
@@ -165,12 +165,14 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   const waveformPanel = helpPanel.locator('#help-tab-panel-waveform');
   await expect(waveformPanel).toBeVisible();
   await expect(helpPanel.getByRole('tab', { name: '波形区', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(waveformPanel.locator('.help-subtitle')).toHaveText(['字词时间码', '空白波形区', '波形区字幕操作']);
+  await expect(waveformPanel.locator('.help-subtitle')).toHaveText(['空白波形区', '波形区字幕操作']);
   await expect(waveformPanel).toContainText('按当前时间基准拆分字幕');
   await expect(waveformPanel).not.toContainText('红色播放指针');
   await expect(waveformPanel.locator('.help-important').filter({ hasText: 'Shift+拖拽空白处' })).toHaveCount(1);
-  await expect(waveformPanel.locator('.help-important').filter({ hasText: '绑定到主副字幕（自动匹配）' })).toHaveCount(1);
-  await expect(waveformPanel.locator('.help-important').filter({ hasText: '将选中的副字幕的时长对齐到绑定主字幕' })).toHaveCount(1);
+  await helpPanel.getByRole('tab', { name: '双语字幕', exact: true }).click();
+  const multiPanel = helpPanel.locator('#help-tab-panel-multi');
+  await expect(multiPanel).toContainText('自动匹配并绑定主副字幕');
+  await expect(multiPanel).toContainText('将选中的副字幕时长对齐到绑定的主字幕');
   await helpPanel.getByRole('tab', { name: '微调字幕', exact: true }).click();
   const fineTuningPanel = helpPanel.locator('#help-tab-panel-fine-tuning');
   await expect(fineTuningPanel).toBeVisible();
@@ -184,7 +186,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(gapPanel.locator('.help-title')).toHaveText(['空隙操作']);
   await expect(gapPanel.locator('.help-subgroup')).toHaveCount(4);
   await expect(gapPanel.locator('.help-subtitle')).toHaveText(['空隙状态', '移动与调整', '清理空隙', '批量操作']);
-  await expect(helpPanel.locator('.help-title')).toHaveText(['基础操作', '快捷操作', '波形区操作', '双语字幕', '波形外观调整', '微调字幕', '空隙操作', '批量操作', '播放与导航']);
+  await expect(helpPanel.locator('.help-title')).toHaveText(['基础操作', '快捷操作', '波形区操作', '波形外观调整', '微调字幕', '空隙操作', '批量操作', '播放与导航', 'ASS 字幕样式', '快捷编辑', '字词时间码', '双语字幕', '导出与烧录', '标记与区段']);
   await expect(helpPanel).toContainText('波形区字幕操作');
   await expect(helpPanel).toContainText('波形外观调整');
   await expect(helpPanel).toContainText('空隙操作');
@@ -209,7 +211,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(batchPanel).toBeVisible();
   await expect(batchPanel.locator('.help-title')).toHaveText(['批量操作']);
   await expect(batchPanel.locator('.help-subtitle')).toHaveText(['字幕列表', '处理范围']);
-  await expect(batchPanel).toContainText('批量替换');
+  await expect(batchPanel).toContainText('字幕处理');
   await expect(batchPanel).toContainText('纯文本编辑');
   await expect(batchPanel).toContainText('文本处理');
   await expect(batchPanel).toContainText('仅处理选中的字幕');
