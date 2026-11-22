@@ -108,24 +108,38 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
 test('Launcher recording mode reuses selected ASR settings and opens its raw project',async({page})=>{
   await page.goto(pathToFileURL(resolve('web/launcher/index.html')).href);
   await page.waitForFunction(()=>window.MAWLauncher?.config?.postprocessProviders?.length>0);
+  await expect(page.locator('#mediaPath')).toHaveValue('');
   await page.locator('#toolboxFab').click();await page.locator('#toolboxUtilitiesPrimaryTab').click();await page.locator('#toolboxAlignmentTab').click();
   await page.locator('#toolboxRecordingInputMode').selectOption('recording');
   await expect(page.locator('#toolboxAlignmentProjectDropZone')).toBeHidden();
   await page.locator('#toolboxAlignmentScriptPath').fill('/tmp/script.txt');
+  await page.locator('#toolboxUtilityMediaPath').fill('/tmp/audio.wav');
   await page.evaluate(()=>{
     const original=window.MAWLauncher.callBackend;
+    let polls=0;
+    window.recordingStarts=0;
     window.MAWLauncher.callBackend=async(method,payload)=>{
-      if(method==='start_recording_review'){window.recordingPayload=payload;return {ok:true,status:'running'};}
-      if(method==='recording_review_status')return {ok:true,status:'ready',projectPath:'/tmp/raw.mosp',scriptPath:'/tmp/script.txt',mediaPath:'/tmp/audio.wav'};
+      if(method==='start_recording_review'){window.recordingStarts++;window.recordingPayload=payload;return {ok:true,status:'running'};}
+      if(method==='recording_review_status'){
+        if(++polls<=3)return {ok:false,error:'Temporary status error'};
+        return {ok:true,status:'ready',projectPath:'/tmp/raw.mosp',scriptPath:'/tmp/script.txt',mediaPath:'/tmp/audio.wav'};
+      }
       if(method==='start_alignment_server'){window.recordingServerPayload=payload;return {ok:true,url:'http://127.0.0.1:8260/'};}
       if(method==='open_url')return {ok:true};
       return original(method,payload);
     };
   });
   await page.locator('#runToolboxAlignment').click();
+  await expect(page.locator('#toolboxResultText')).toHaveText('Temporary status error');
+  await expect(page.locator('#cancelRecordingPreparation')).toBeVisible();
+  await expect(page.locator('#toolboxResultText')).toContainText('再次点击可重新查询');
+  await page.locator('#runToolboxAlignment').click();
   await expect(page.locator('#toolboxAlignmentProjectPath')).toHaveValue('/tmp/raw.mosp');
+  await expect(page.locator('#cancelRecordingPreparation')).toBeHidden();
   expect(await page.evaluate(()=>window.recordingPayload.scriptPath)).toBe('/tmp/script.txt');
+  expect(await page.evaluate(()=>window.recordingStarts)).toBe(1);
   expect(await page.evaluate(()=>window.recordingPayload.transcription.providerId)).toBeTruthy();
+  expect(await page.evaluate(()=>window.recordingPayload.transcription)).toMatchObject({mediaPath:'/tmp/audio.wav',srtPath:''});
   expect(await page.evaluate(()=>window.recordingServerPayload.projectPath)).toBe('/tmp/raw.mosp');
   const gap=await page.locator('#toolboxAlignmentInputs').evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(8);

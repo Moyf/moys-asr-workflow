@@ -2643,23 +2643,32 @@ class LauncherApi:
             if not isinstance(config, Mapping):
                 raise ValueError("缺少所选 ASR 配置。")
             request = _request_from_payload({**dict(config), "testRun": False,
-                                            "autoPostprocess": None}, self.paths.env_path)
+                                             "autoPostprocess": None}, self.paths.env_path,
+                                            default_output_if_missing=True)
             ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
             if ffmpeg_error:
                 return ffmpeg_error
             job = RecordingPreparation(request, script)
-        except (OSError, ValueError, PreflightError) as error:
+        except PreflightError as error:
+            return error.as_result()
+        except (OSError, ValueError) as error:
             return {"ok": False, "error": str(error)}
         self._recording_preparation = job
         self.worker = job.thread
         job.thread.start()
         return {"ok": True, **job.snapshot()}
 
-    def recording_review_status(self) -> dict[str, object]:
+    def recording_review_status(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         job = self._recording_preparation
-        return {"ok": True, **job.snapshot()} if job else {"ok": True, "status": "idle"}
+        if job is None:
+            return {"ok": True, "status": "idle"}
+        snapshot = job.snapshot()
+        # Do not offer a retry until the worker has actually released the transcription slot.
+        if snapshot["status"] != "running" and job.thread.is_alive():
+            return {"ok": True, "status": "running"}
+        return {"ok": True, **snapshot}
 
-    def cancel_recording_review(self) -> dict[str, object]:
+    def cancel_recording_review(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         job = self._recording_preparation
         if job:
             job.cancel.set()
@@ -4178,7 +4187,9 @@ def _transcribe_extra_strong_punct(env_path: Path) -> str:
     return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
-def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
+def _request_from_payload(
+    payload: Mapping[str, object], env_path: Path, *, default_output_if_missing: bool = False,
+) -> TranscriptionRequest:
     media_text = str(payload.get("mediaPath") or "").strip()
     srt_text = str(payload.get("srtPath") or "").strip()
     media = Path(media_text).expanduser()
@@ -4258,7 +4269,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     runtime_python = ""
     if not media_text or not media.exists():
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
-    if not srt_text or not srt.name:
+    if not srt_text and default_output_if_missing:
+        srt = default_srt_path(media, provider=provider.id, model=model.id, test_run=test_run)
+    elif not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
     raw_audio_track_count = payload.get("audioTrackCount")
     audio_track_count = (

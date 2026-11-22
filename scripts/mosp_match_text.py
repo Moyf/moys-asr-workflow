@@ -291,30 +291,43 @@ def _raw_manuscript_segments(
     check_match_cancelled(is_cancelled)
     segments: list[str] = []
     current: list[str] = []
+    multi_by_first: dict[str, list[str]] = {}
+    single = {symbol for symbol in split_punctuation if len(symbol) == 1}
+    for symbol in sorted(split_punctuation, key=len, reverse=True):
+        if len(symbol) > 1:
+            multi_by_first.setdefault(symbol[0], []).append(symbol)
+
+    def separator_at(index: int) -> str:
+        char = text[index]
+        for symbol in multi_by_first.get(char, ()):
+            if text.startswith(symbol, index):
+                return symbol
+        return char if char in single else ""
+
     index = 0
     while index < len(text):
         check_match_cancelled(is_cancelled)
-        character = text[index]
-        if character in split_punctuation:
-            if character in preserve_punctuation:
-                current.append(character)
-            index += 1
-            while index < len(text) and (
-                text[index] in split_punctuation or text[index] in CLOSING_PUNCTUATION
-            ):
+        symbol = separator_at(index)
+        if symbol:
+            if symbol in preserve_punctuation:
+                current.append(symbol)
+            index += len(symbol)
+            while index < len(text):
                 check_match_cancelled(is_cancelled)
-                if (
-                    text[index] in preserve_punctuation
-                    or text[index] in CLOSING_PUNCTUATION
-                ):
-                    current.append(text[index])
-                index += 1
+                following = separator_at(index)
+                if not following:
+                    if text[index] not in CLOSING_PUNCTUATION:
+                        break
+                    following = text[index]
+                if following in preserve_punctuation or following in CLOSING_PUNCTUATION:
+                    current.append(following)
+                index += len(following)
             value = "".join(current).strip()
             if value:
                 segments.append(value)
             current = []
             continue
-        current.append(character)
+        current.append(text[index])
         index += 1
     value = "".join(current).strip()
     if value:
@@ -328,6 +341,7 @@ def split_manuscript(
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    merge_punctuation_only: bool = True,
 ) -> tuple[str, list[ManuscriptSegment]]:
     check_match_cancelled(is_cancelled)
     display_text = _clean_manuscript_for_display(text)
@@ -346,6 +360,8 @@ def split_manuscript(
     for raw in raw_segments:
         check_match_cancelled(is_cancelled)
         if not normalize_text(raw, is_cancelled=is_cancelled):
+            if not merge_punctuation_only:
+                continue
             if merged:
                 merged[-1] += raw
             else:
@@ -767,6 +783,7 @@ def _align_mosp_and_manuscript(
     normalized_manuscript, segments = split_manuscript(
         manuscript_text, split_punctuation, preserve_punctuation,
         is_cancelled=is_cancelled,
+        merge_punctuation_only=not require_cue_anchor,
     )
     anchor_sources: list[int | None] | None = [] if require_cue_anchor else None
     timings, report = align_character_timings(

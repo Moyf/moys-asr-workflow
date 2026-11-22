@@ -4714,6 +4714,69 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "srtPath")
         self.assertEqual(result["code"], "output_missing")
 
+    def test_recording_review_defaults_to_recording_output_and_avoids_collision(self) -> None:
+        media = self.root / "recording.wav"
+        media.write_bytes(b"media")
+        script = self.root / "script.txt"
+        script.write_text("你好世界", encoding="utf-8")
+        config = SimpleNamespace(output_subfolder=True, per_video_subfolder=False, attach_model_name=True)
+        output_dir = self.root / "_maw"
+        output_dir.mkdir(exist_ok=True)
+        existing = output_dir / "recording.qwen-audio.srt"
+        existing.write_text("existing", encoding="utf-8")
+        expected = output_dir / "recording.qwen-audio-1.srt"
+        result = TranscriptionResult(srt_path=expected, json_path=expected.with_suffix(".mosp"), html_path=None)
+
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config), mock.patch(
+            "maw.recording_preparation.run_transcription", return_value=result
+        ) as run:
+            started = self.api.start_recording_review({"scriptPath": str(script), "transcription": {
+                "mediaPath": str(media), "srtPath": " ", "providerId": "qwen",
+                "modelId": "qwen-audio-3.0-asr-flash-filetrans", "apiKey": "sk-test", "testRun": True,
+            }})
+            self.assertTrue(started["ok"], started)
+            self.api.worker.join(timeout=5)
+            request = run.call_args.args[0]
+            self.assertEqual(request.srt_path, expected)
+
+        self.assertEqual(self.api.recording_review_status()["srtPath"], str(expected))
+        self.assertEqual(existing.read_text(encoding="utf-8"), "existing")
+
+    def test_recording_review_bridge_can_poll_cancel_and_retry(self) -> None:
+        media = self.root / "recording.wav"
+        media.write_bytes(b"media")
+        script = self.root / "script.txt"
+        script.write_text("你好世界", encoding="utf-8")
+        output = self.root / "recording.srt"
+        payload = {"scriptPath": str(script), "transcription": {
+            "mediaPath": str(media), "srtPath": str(output), "apiKey": "sk-test",
+        }}
+
+        def wait_for_cancel(_request, *, on_event, cancel_event):
+            if not cancel_event.wait(timeout=5):
+                raise RuntimeError("test did not receive cancellation")
+            raise RuntimeError("cancelled")
+
+        with mock.patch("maw.recording_preparation.run_transcription", side_effect=wait_for_cancel):
+            started = self.api.start_recording_review(payload)
+            self.assertTrue(started["ok"], started)
+            try:
+                # Launcher bridge always calls Python with a positional payload, even for empty requests.
+                self.assertEqual(self.api.recording_review_status({})["status"], "running")
+                self.assertTrue(self.api.cancel_recording_review({})["ok"])
+            finally:
+                self.api.cancel_recording_review()
+                self.api.worker.join(timeout=5)
+            self.assertEqual(self.api.recording_review_status({})["status"], "cancelled")
+
+        with mock.patch("maw.recording_preparation.run_transcription", side_effect=RuntimeError("ASR model failed")):
+            retried = self.api.start_recording_review(payload)
+            self.assertTrue(retried["ok"], retried)
+            self.api.worker.join(timeout=5)
+        failed = self.api.recording_review_status({})
+        self.assertEqual(failed["status"], "error")
+        self.assertEqual(failed["message"], "ASR model failed")
+
     def test_default_output_avoids_existing_srt_and_reports_rename(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")

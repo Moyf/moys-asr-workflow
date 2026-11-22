@@ -1218,6 +1218,38 @@ test('keeps local runtime events working after the page learns that installation
   await expect.poll(() => page.locator('#localRuntimeProgressBar').getAttribute('style')).toContain('37%');
   await expect(page.locator('#localRuntimeProgressMessage')).toHaveText('正在安装本地运行环境……');
 
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory .runtime-inventory-meta')).toBeVisible();
+  const updates = await page.evaluate(() => {
+    const inventory = document.querySelector('#localRuntimeInventory .runtime-inventory-meta');
+    const progress = document.querySelector('#localRuntimeProgressMessage');
+    const log = document.querySelector('#log');
+    const observer = new MutationObserver(() => {});
+    observer.observe(progress, { childList: true });
+    observer.observe(log, { childList: true });
+    window.MAWLauncher.onBackendEvents(Array.from({ length: 200 }, (_, index) => [
+      { type: 'localRuntimeProgress', percent: 70, message: `Installing ${index}` },
+      { type: 'log', message: `[runtime] Installing ${index}` },
+    ]).flat());
+    const records = observer.takeRecords();
+    observer.disconnect();
+    return {
+      inventoryUnchanged: inventory === document.querySelector('#localRuntimeInventory .runtime-inventory-meta'),
+      progressUpdates: records.filter(record => record.target === progress).length,
+      logUpdates: records.filter(record => record.target === log).length,
+      logLines: log.textContent.match(/^\[runtime\] Installing \d+$/gm)?.length,
+    };
+  });
+  expect(updates).toEqual({ inventoryUnchanged: true, progressUpdates: 1, logUpdates: 1, logLines: 200 });
+  await expect(page.locator('#localRuntimeProgressMessage')).toHaveText('Installing 199');
+  const settingsScroll = page.locator('.settings-scroll');
+  await settingsScroll.evaluate(node => { node.scrollTop = 0; });
+  await settingsScroll.hover();
+  await page.mouse.wheel(0, 350);
+  await expect.poll(() => settingsScroll.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory')).toBeHidden();
+
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady' }));
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
 });

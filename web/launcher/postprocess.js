@@ -1435,6 +1435,7 @@
     return paths;
   }
 
+  let resumeRecordingPreparation = false;
   async function runToolboxAlignment() {
     if (busy) return;
     const paths = validateAlignmentInputs();
@@ -1444,22 +1445,39 @@
     try {
       let inputs = paths;
       if ($("toolboxRecordingInputMode").value === "recording") {
-        const transcription = window.MAWLauncher.getTranscriptionPayload();
-        if (paths.mediaPath) {
-          transcription.mediaPath = paths.mediaPath;
-          transcription.audioTrack = window.MAWLauncher.getAudioTrackForMedia(paths.mediaPath);
+        if (!resumeRecordingPreparation) {
+          const transcription = window.MAWLauncher.getRecordingReviewTranscriptionPayload(paths.mediaPath);
+          const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
+          if (!started.ok) { setResult(postprocessErrorText(started), "error"); return; }
+          resumeRecordingPreparation = true;
         }
-        const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
-        if (!started.ok) { setResult(started.error || postprocessErrorText(started), "error"); return; }
         $("cancelRecordingPreparation").classList.remove("hidden");
         let prepared;
         try {
-          do {
-            await new Promise(resolve => setTimeout(resolve, 400));
+          let pollDelay = 400;
+          let pollFailures = 0;
+          for (;;) {
+            await new Promise(resolve => setTimeout(resolve, pollDelay));
             prepared = await bridge("recording_review_status");
-            setResult(prepared.message || "", "info");
-          } while (prepared.status === "running");
-        } finally { $("cancelRecordingPreparation").classList.add("hidden"); }
+            if (!prepared.ok) {
+              if (++pollFailures >= 3) {
+                const hint = document.documentElement.lang === "en"
+                  ? "ASR may still be running. Click again to reconnect, or cancel below."
+                  : "转写可能仍在后台运行。再次点击可重新查询，也可以取消准备。";
+                setResult(`${postprocessErrorText(prepared)}\n${hint}`, "error");
+                return;
+              }
+              setResult(postprocessErrorText(prepared), "error");
+              pollDelay = 1500;
+              continue;
+            }
+            if (prepared.status !== "running") break;
+            pollFailures = 0;
+            pollDelay = 400;
+            if (prepared.message) setResult(prepared.message, "info");
+          }
+          resumeRecordingPreparation = false;
+        } finally { $("cancelRecordingPreparation").classList.toggle("hidden", !resumeRecordingPreparation); }
         if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
         inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
         $("toolboxAlignmentProjectPath").value = prepared.projectPath;
@@ -3033,7 +3051,10 @@
   $("toolboxRecordingInputMode").addEventListener("change", () => {
     $("toolboxAlignmentProjectDropZone").classList.toggle("hidden", $("toolboxRecordingInputMode").value === "recording");
   });
-  $("cancelRecordingPreparation").addEventListener("click", () => { void bridge("cancel_recording_review"); });
+  $("cancelRecordingPreparation").addEventListener("click", async () => {
+    const result = await bridge("cancel_recording_review");
+    if (!result.ok) setResult(postprocessErrorText(result), "error");
+  });
   $("runToolboxAlignment").addEventListener("click", () => { void runToolboxAlignment(); });
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runTimestampAlignment").addEventListener("click", () => { void runTimestampAlignment(); });

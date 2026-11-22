@@ -275,6 +275,29 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(processed_script_text("甲<cut>乙\n丙", extra_split_punctuation=("<cut>",), preserve_punctuation=("<cut>",)), "甲<cut>\n乙\n丙")
         self.assertEqual(processed_script_text("甲<cut>乙\n丙", extra_split_punctuation=("<cut>",), preserve_punctuation=()), "甲\n乙\n丙")
 
+    def test_multichar_script_separator_preserves_word_timings(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [{
+            "start": 0, "end": 1300, "text": "甲乙",
+            "items": [{"start": 50, "end": 200, "text": "甲"},
+                      {"start": 800, "end": 1000, "text": "乙"}],
+        }]}), encoding="utf-8")
+        source = "——\n甲——乙"
+        self.script_path.write_text(source, encoding="utf-8")
+        for preserve, first_text in [((), "甲"), (("——",), "甲——")]:
+            with self.subTest(preserve=preserve):
+                result = run_script_match(ScriptMatchRequest(
+                    project_path=self.project_path, srt_path=None, script_path=self.script_path,
+                    output_mode=OutputMode.JSON,
+                    extra_split_punctuation=("—", "——"), preserve_punctuation=preserve,
+                ))
+                segments = read_project(result.project_path)["segments"]
+                self.assertEqual([segment["text"] for segment in segments], [first_text, "乙"])
+                self.assertEqual(processed_script_text(source, extra_split_punctuation=("—", "——"),
+                                                      preserve_punctuation=preserve), f"{first_text}\n乙")
+                self.assertEqual([(item["start"], item["end"]) for segment in segments
+                                  for item in segment.get("items", []) if item["end"] > item["start"]],
+                                 [(50, 200), (800, 1000)])
+
     def test_processed_script_text_keeps_common_closing_marks(self) -> None:
         text = "\n".join((
             "「甲？」",
