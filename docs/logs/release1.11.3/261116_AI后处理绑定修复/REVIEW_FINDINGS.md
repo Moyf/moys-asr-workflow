@@ -171,3 +171,13 @@ while preserving this contribution's existing review link.
 Ruff passed for both implementation files and both changed test modules.
 No Debian runtime, GPU encoder, packaged installation or human acceptance was
 performed; fresh remote checks must apply to the new pushed head.
+
+The contribution was synchronized with `main@a3121f0d4de725d50fb9fb56775ca9589caaf847`
+without conflicts after retaining both incoming log-index entries. The upstream
+script-match and recent-project features were merged unchanged; they are not
+part of this compatibility repair's test claims.
+
+After integration, the documentation checker found zero new broken links and
+zero structure errors across 1772 files; 14 registered historical broken links
+remain unchanged. Its 22 regression tests passed. Verification stayed scoped:
+no full test suite, release, package or installation was run.
