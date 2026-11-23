@@ -39,10 +39,12 @@ class LauncherThumbnailBindingTests(unittest.TestCase):
                     self.assertEqual(result["code"], "server_media_busy")
                     self.assertNotIn("url", result)
                     spawn.assert_not_called()
-                    # An explicit request to open the existing editor still works.
+                    # Without a selected project, the launcher must not reuse that server either.
                     existing = api.start_server({"port": port})
-                    self.assertTrue(existing["ok"])
-                    self.assertTrue(existing["serverAlreadyRunning"])
+                    self.assertFalse(existing["ok"])
+                    self.assertEqual(existing["code"], "server_project_required")
+                    self.assertNotIn("url", existing)
+                    spawn.assert_not_called()
             finally:
                 server.shutdown()
                 thread.join(3)

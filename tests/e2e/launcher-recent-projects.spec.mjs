@@ -26,8 +26,13 @@ async function openLauncher(page, entries = projects) {
       }
       if (method === 'check_server_media') {
         window.__mediaChecks.push(payload.jsonPath);
-        const exists = !payload.jsonPath.includes('missing');
-        return {ok: exists, hasMedia: exists, mediaExists: exists};
+        if (payload.jsonPath.endsWith('/missing.mosp')) {
+          return {ok: false, field: 'jsonPath', code: 'json_not_found', hasMedia: false, mediaExists: false};
+        }
+        if (payload.jsonPath.endsWith('/moved-media.mosp')) {
+          return {ok: false, status: 'missing', hasMedia: true, mediaExists: false};
+        }
+        return {ok: true, hasMedia: true, mediaExists: true};
       }
       if (method === 'get_server_status') {
         window.__statusReads++;
@@ -55,14 +60,19 @@ test('recent projects select paths, check media and translate missing badges', a
   await expect(page.locator('#serverMediaField')).toBeHidden();
   await items.last().click();
   await expect(page.locator('#jsonPath')).toHaveValue(projects[1].path);
-  await expect(page.locator('#serverMediaField')).toBeVisible();
+  await expect(page.locator('#jsonPathError')).toHaveText('工程文件不存在，请检查路径。');
+  await expect(page.locator('#serverMediaField')).toBeHidden();
   await expect(items.last()).toHaveClass(/is-missing/);
   await expect(items.last()).toContainText('已失效');
   expect(await page.evaluate(() => window.__mediaChecks)).toEqual(projects.map(item => item.path));
-  const spacing = await page.locator('#recentProjectsField').evaluate(field => ({
-    above: field.getBoundingClientRect().top - field.previousElementSibling.getBoundingClientRect().bottom,
-    below: field.nextElementSibling.getBoundingClientRect().top - field.getBoundingClientRect().bottom,
-  }));
+  const spacing = await page.locator('#recentProjectsField').evaluate(field => {
+    let next = field.nextElementSibling;
+    while (next && !next.getClientRects().length) next = next.nextElementSibling;
+    return {
+      above: field.getBoundingClientRect().top - field.previousElementSibling.getBoundingClientRect().bottom,
+      below: next.getBoundingClientRect().top - field.getBoundingClientRect().bottom,
+    };
+  });
   expect(spacing.above).toBeGreaterThanOrEqual(8);
   expect(spacing.below).toBeGreaterThanOrEqual(8);
   await testInfo.attach('recent-project-spacing', {body: JSON.stringify(spacing), contentType: 'application/json'});
@@ -71,6 +81,32 @@ test('recent projects select paths, check media and translate missing badges', a
   await expect(page.locator('.recent-projects-label')).toHaveText('Recent projects');
   await expect(items.last()).toContainText('Missing');
   await page.locator('#serverCard').screenshot({path: testInfo.outputPath('recent-projects-en.png')});
+});
+
+test('launcher distinguishes a missing project from missing project media', async ({page}) => {
+  await openLauncher(page);
+  const path = page.locator('#jsonPath');
+  const projectError = page.locator('#jsonPathError');
+  const mediaField = page.locator('#serverMediaField');
+  const mediaError = page.locator('#serverMediaPathError');
+
+  await page.locator('#openMawe').click();
+  await expect(projectError).toHaveText('请先选择或拖入工程文件，再打开编辑器。');
+  expect(await page.evaluate(() => window.__serverStarted)).toBe(false);
+
+  await path.fill('D:/Demo/missing.mosp');
+  await page.locator('#openMawe').click();
+  await expect(projectError).toHaveText('工程文件不存在，请检查路径。');
+  await expect(mediaField).toBeHidden();
+  await expect(mediaError).toBeEmpty();
+  expect(await page.evaluate(() => window.__serverStarted)).toBe(false);
+
+  await path.fill('D:/Demo/moved-media.mosp');
+  await page.locator('#openMawe').click();
+  await expect(projectError).toBeHidden();
+  await expect(mediaField).toBeVisible();
+  await expect(mediaError).toHaveText('工程无可用媒体，请手动选择媒体文件。');
+  expect(await page.evaluate(() => window.__serverStarted)).toBe(false);
 });
 
 test('recent projects refresh after slow project readiness and when the launcher regains focus', async ({page}) => {

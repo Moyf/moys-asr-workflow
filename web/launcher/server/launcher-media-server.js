@@ -123,7 +123,9 @@ async function refreshServerMedia() {
   // 快速切换工程时，旧路径的慢响应不能覆盖当前工程的媒体提示。
   if (requestId !== serverMediaRequest || jsonPath !== $("jsonPath").value.trim()) return result;
   state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists);
-  $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath);
+  const projectError = result.field === "jsonPath";
+  $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath || projectError);
+  if (jsonPath && projectError) setError("jsonPath", errText(result.code, result.detail));
   return result;
 }
 async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
