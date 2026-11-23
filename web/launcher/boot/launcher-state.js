@@ -13,6 +13,8 @@ const ERROR_TEXT = {
   zh: {
     json_not_found: "工程文件不存在，请检查路径。",
     media_not_found: "媒体文件不存在，请重新选择。",
+    server_project_required: "请先选择或拖入工程文件，再打开编辑器。",
+    server_project_unreadable: "无法读取工程文件，请选择有效的 MAW 工程。",
     server_media_missing: "工程无可用媒体，请手动选择媒体文件。",
     server_media_busy: "该端口已有其他编辑器实例，无法打开所选工程或应用新的媒体关联；请关闭该实例或更换端口。",
     server_stop_not_maw: "当前端口上的进程不是 MAW 字幕编辑服务器，未执行停止。",
@@ -110,6 +112,8 @@ const ERROR_TEXT = {
   en: {
     json_not_found: "Project file does not exist. Check the path.",
     media_not_found: "Media file does not exist. Choose it again.",
+    server_project_required: "Choose or drop a project file before opening the editor.",
+    server_project_unreadable: "Could not read the project file. Choose a valid MAW project.",
     server_media_missing: "The project has no usable media. Choose the media file manually.",
     server_media_busy: "Another editor is using this port. Close it or choose another port to open the selected project or apply the new media association.",
     server_stop_not_maw: "The current port is not used by a MAW subtitle editor server, so it was not stopped.",
