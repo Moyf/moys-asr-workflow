@@ -3803,6 +3803,37 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
                 )
         self.assertNotIn("private-source", str(context.exception))
 
+    def test_srt_conversion_reports_ffmpeg_disk_full_without_a_private_path(self) -> None:
+        def failed_conversion(command, **kwargs):
+            process = self._fake_process(command, **kwargs)
+            process.stderr = StringIO("Error opening output file private-source.ass: No space left on device\n")
+            process.wait = lambda: 1
+            return process
+
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=failed_conversion) as popen:
+            with self.assertRaisesRegex(MediaToolError, "输出目录空间") as context:
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+        self.assertEqual(popen.call_count, 1)
+        self.assertNotIn("private-source", str(context.exception))
+        self.assertFalse(list(self.root.glob("*.ass")))
+
+    def test_srt_conversion_preserves_subtitle_input_errors(self) -> None:
+        def failed_conversion(command, **kwargs):
+            process = self._fake_process(command, **kwargs)
+            process.stderr = StringIO("Error opening input: Invalid data found when processing input\n")
+            process.wait = lambda: 1
+            return process
+
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=failed_conversion):
+            with self.assertRaisesRegex(MediaToolError, "Error opening input"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+
     def test_auto_burn_prefers_an_available_hardware_encoder(self) -> None:
         encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
         with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(

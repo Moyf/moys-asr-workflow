@@ -14,7 +14,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from threading import Event, Thread
 from pathlib import Path
-from typing import Callable, Final, Mapping
+from typing import Callable, Final, Literal, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
 from maw.ass_fonts import normalize_ass_text_fontnames
@@ -629,7 +629,7 @@ def run_burn_subtitles(
                     cancel_event=cancel_event,
                     on_process=on_process,
                     on_progress=on_progress,
-                    burning_subtitles=True,
+                    subtitle_operation="burn",
                 )
             except (MediaToolCancelled, SubtitleFontGlyphMissingError, BurnFileError):
                 raise
@@ -928,7 +928,7 @@ def convert_srt_to_ass(
         if run_command is None:
             _run_ffmpeg_process(
                 command, cwd=subtitle.parent, cancel_event=cancel_event,
-                on_process=on_process, on_progress=on_progress,
+                on_process=on_process, on_progress=on_progress, subtitle_operation="convert",
             )
         else:
             completed = run_command(command, cwd=subtitle.parent)
@@ -1015,7 +1015,7 @@ def _run_ffmpeg_process(
     cancel_event: Event | None,
     on_process: Callable[[subprocess.Popen[str]], None] | None,
     on_progress: Callable[[Mapping[str, str]], None] | None,
-    burning_subtitles: bool = False,
+    subtitle_operation: Literal["burn", "convert"] | None = None,
 ) -> None:
     try:
         process = subprocess.Popen(
@@ -1074,15 +1074,16 @@ def _run_ffmpeg_process(
     stderr = "".join(stderr_chunks)
     if cancel_event is not None and cancel_event.is_set():
         raise MediaToolCancelled("ffmpeg operation cancelled")
-    if burning_subtitles:
+    if subtitle_operation == "burn":
         for glyph, family in libass_missing_glyphs(stderr):
             raise SubtitleFontGlyphMissingError(
                 f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框。"
                 "请安装或更换为包含该字符的字体后重试。"
             )
     if returncode != 0:
-        if burning_subtitles and (kind := ffmpeg_failure_kind(stderr)):
-            raise BurnFileError(kind)
+        if subtitle_operation and (kind := ffmpeg_failure_kind(stderr)):
+            if subtitle_operation == "burn" or kind != "media-decode":
+                raise BurnFileError(kind)
         detail = (stderr or "ffmpeg operation failed").strip()
         raise MediaToolError(detail[-4000:])
 
