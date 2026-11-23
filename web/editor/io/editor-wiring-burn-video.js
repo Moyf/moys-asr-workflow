@@ -147,10 +147,10 @@ function showBurnVideoFailure(error, { stage, mode, jobId, diagnostic, received,
   const saving = stage === 'write' || stage === 'picker' || error?.name === 'QuotaExceededError';
   const diskFull = saving
     ? '保存位置空间或配额不足，请释放空间或换一个保存位置'
-    : '烧录临时目录空间或配额不足，请释放临时盘空间后重试';
+    : '源媒体所在盘空间或配额不足，请释放空间后重试';
   const permission = saving
     ? '无法写入保存位置，请检查权限或更换目录'
-    : '没有访问权限，请检查烧录文件和临时目录的权限';
+    : '没有访问权限，请检查源媒体及其所在目录的权限';
   const knownSummary = {
     'disk-full': diskFull,
     permission,

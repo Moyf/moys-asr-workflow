@@ -6,6 +6,7 @@ from tests.compact_assertions import CompactContainerAssertions
 import importlib.util
 import errno
 import json
+import os
 import shutil
 import struct
 import subprocess
@@ -453,6 +454,57 @@ class BurnVideoJobHttpTests(unittest.TestCase):
     def tools(self):
         return mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
 
+    def test_burn_job_uses_source_folder_instead_of_system_temp(self):
+        system_temp = self.root / "system-temp"
+        system_temp.mkdir()
+        self.server.media_jobs.temp_root = system_temp
+
+        def burn(source, intervals, ass, output, **kwargs):
+            output.write_bytes(b"burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            status, started = self.request(self.base, self.payload())
+            self.assertEqual(status, 202, started)
+            self.wait(started["jobId"], "ready")
+
+        job = self.server.media_jobs.get(started["jobId"])
+        self.assertEqual(job.output.parent.parent.resolve(), self.source.parent.resolve())
+        self.assertEqual(list(system_temp.iterdir()), [])
+        status, output = self.request(f"{self.base}/{job.id}/download")
+        self.assertEqual((status, output), (200, b"burned"))
+        self.assertTrue(self.wait(job.id, "completed")["cleanupComplete"])
+        self.assertFalse(job.directory.exists())
+        self.assertEqual(self.source.read_bytes(), b"unchanged source")
+
+    def test_burn_job_does_not_clean_a_replacement_directory(self):
+        def burn(source, intervals, ass, output, **kwargs):
+            output.write_bytes(b"burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            status, started = self.request(self.base, self.payload())
+            self.assertEqual(status, 202, started)
+            self.wait(started["jobId"], "ready")
+
+        job = self.server.media_jobs.get(started["jobId"])
+        retained = job.directory.with_name("retained")
+        job.directory.rename(retained)
+        job.directory.mkdir()
+        unrelated = job.directory / "unrelated.mp4"
+        unrelated.write_bytes(b"unrelated")
+        try:
+            status, _ = self.request(f"{self.base}/{job.id}/download")
+            self.assertEqual(status, 409)
+            self.request(f"{self.base}/{job.id}/cancel", self.payload())
+            self.assertEqual(unrelated.read_bytes(), b"unrelated")
+        finally:
+            if job.directory.exists():
+                job.directory.rename(self.root / "replacement")
+            retained.rename(job.directory)
+
     def test_http_gain_validation_and_job_snapshot(self):
         for gain in (True, '6', None, -61, 25, float('nan'), float('inf'), 10**400):
             with self.subTest(gain=gain):
@@ -598,8 +650,34 @@ class BurnVideoJobHttpTests(unittest.TestCase):
                             side_effect=OSError(number, "fixture failure", str(self.root / "private-dir"))):
                 status, body = self.request(self.base, self.payload())
                 self.assertEqual((status, body["code"]), (503, code))
+                self.assertIn("源媒体", body["error"])
                 self.assertNotIn("private-dir", json.dumps(body))
                 self.assertIsNone(self.server.media_jobs.active)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX source directory permissions")
+    def test_burn_job_rejects_an_unprotected_shared_source_folder(self):
+        self.root.chmod(0o777)
+        try:
+            with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+                 mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True):
+                status, body = self.request(self.base, self.payload())
+                self.assertEqual((status, body["code"]), (503, "permission"))
+                self.assertIsNone(self.server.media_jobs.active)
+        finally:
+            self.root.chmod(0o700)
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS directory ACLs")
+    def test_burn_job_rejects_an_acl_that_allows_replacing_work_directories(self):
+        subprocess.run(["chmod", "+a", "nobody allow search,add_subdirectory,delete_child", str(self.root)], check=True)
+        try:
+            self.assertEqual(self.root.stat().st_mode & 0o777, 0o700)
+            with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+                 mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True):
+                status, body = self.request(self.base, self.payload())
+                self.assertEqual((status, body["code"]), (503, "permission"))
+                self.assertIsNone(self.server.media_jobs.active)
+        finally:
+            subprocess.run(["chmod", "-N", str(self.root)], check=True)
 
     def test_http_admission_preserves_authorization_guidance(self):
         native = self.server_editor.NativeBurnJobs(self.server_editor.BurnSessions(mock.Mock()))

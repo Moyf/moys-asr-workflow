@@ -84,7 +84,7 @@ async function fixture(mode, run) {
       res.end('test'); job.state = 'completed';
       return;
     }
-    if (mode === 'temp-disk-full' && job.state === 'running') {
+    if (mode === 'source-disk-full' && job.state === 'running') {
       job.state = 'failed'; job.cleanupComplete = true;
       job.error = 'FFmpeg 编码异常退出';
       job.burnDiagnostic = { failure: { kind: 'disk-full', stage: 'burning' } };
@@ -226,9 +226,9 @@ test('burn diagnostics card expands, copies, and leaves room between controls', 
   });
 });
 
-test('burn failure points to the temporary disk or save destination as appropriate', async ({ page }) => {
+test('burn failure points to the source disk or save destination as appropriate', async ({ page }) => {
   for (const [mode, message] of [
-    ['temp-disk-full', '烧录临时目录空间或配额不足'],
+    ['source-disk-full', '源媒体所在盘空间或配额不足'],
     ['ready', '保存位置空间或配额不足'],
   ]) {
     await fixture(mode, async (origin, state) => {

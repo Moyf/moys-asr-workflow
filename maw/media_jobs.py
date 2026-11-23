@@ -11,17 +11,20 @@ import re
 import secrets
 import signal
 import shutil
+import stat
 import subprocess
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 from maw.gui_platform import (popen_process_tree, process_group_kwargs,
                               release_process_tree, terminate_process_tree)
 from maw.local_log import LocalLogSink
 from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic
+from maw.native_burn_output import _pin_directory, validate_burn_workspace_parent
 
 MAX_MEDIA_JOB_STDOUT_BYTES = 2 * 1024 * 1024
 MAX_MEDIA_JOB_STDERR_BYTES = 64 * 1024
@@ -60,13 +63,21 @@ class MediaJobUnavailable(RuntimeError):
 
 
 class MediaJob:
-    def __init__(self, manager, source: Path, binding: tuple[int, str], intervals, *, output_extension=None):
+    def __init__(self, manager, source: Path, binding: tuple[int, str], intervals, *, output_extension=None,
+                 temp_root: Path | None = None):
         self.manager = manager
         self.id = secrets.token_urlsafe(24)
         self.source = source
         self.binding = binding
         self.intervals = tuple(intervals)
-        self.directory = Path(tempfile.mkdtemp(prefix="maw-media-job-", dir=manager.temp_root))
+        if temp_root is not None:
+            # The encoder opens files by path. In a non-sticky shared parent,
+            # another user can replace our directory despite its private mode.
+            validate_burn_workspace_parent(temp_root)
+        self.directory = Path(tempfile.mkdtemp(
+            prefix="maw-media-job-", dir=temp_root if temp_root is not None else manager.temp_root,
+        ))
+        self.directory_identity = self.directory.lstat() if temp_root is not None else None
         self.output = self.directory / ("restructured" + (output_extension or source.suffix.lower()))
         self.state = "running"
         self.stage = "preparing"
@@ -100,6 +111,39 @@ class MediaJob:
     def check_cancelled(self):
         if self.cancelled.is_set():
             raise MediaJobCancelled("媒体重组已停止")
+
+    def check_directory(self) -> None:
+        if self.directory_identity is not None:
+            try:
+                current = self.directory.lstat()
+                if stat.S_ISDIR(current.st_mode) and os.path.samestat(self.directory_identity, current):
+                    return
+            except FileNotFoundError:
+                pass
+            raise MediaJobUnavailable("烧录任务目录已变更，请重新导出")
+
+    @contextmanager
+    def hold_directory(self) -> Iterator[None]:
+        self.check_directory()
+        if self.directory_identity is not None and os.name == "nt":
+            identity = (self.directory_identity.st_dev, self.directory_identity.st_ino)
+            with _pin_directory(self.directory, identity):
+                yield
+        else:
+            yield
+
+    def remove_directory(self) -> None:
+        if self.directory_identity is None:
+            shutil.rmtree(self.directory)
+            return
+        # Burn artifacts are flat. Never recurse into a directory found inside
+        # a source-adjacent workspace. On Windows the pin protects the workspace
+        # while its files are removed; the final rmdir only removes an empty dir.
+        with self.hold_directory():
+            for artifact in self.directory.iterdir():
+                artifact.unlink(missing_ok=True)
+        self.check_directory()
+        self.directory.rmdir()
 
     def update(self, stage: str, progress: float | None = None):
         with self.manager.lock:
@@ -273,7 +317,7 @@ class MediaJobManager:
 
     def start(self, source: Path, binding: tuple[int, str], intervals,
               runner: Callable[[MediaJob], object], *, output_extension: str | None = None,
-              admission_token: str | None = None) -> MediaJob:
+              admission_token: str | None = None, temp_root: Path | None = None) -> MediaJob:
         with self.lock:
             if admission_token is not None:
                 self.validate_admission_token(admission_token)
@@ -294,7 +338,7 @@ class MediaJobManager:
             if not self.slot.acquire(blocking=False):
                 raise MediaJobBusy("另一个媒体导出任务正在进行，请完成或停止后再试")
             try:
-                job = MediaJob(self, source, binding, intervals, output_extension=output_extension)
+                job = MediaJob(self, source, binding, intervals, output_extension=output_extension, temp_root=temp_root)
             except BaseException:
                 self.slot.release()
                 raise
@@ -310,7 +354,8 @@ class MediaJobManager:
             def work():
                 try:
                     job.check_cancelled()
-                    runner(job)
+                    with job.hold_directory():
+                        runner(job)
                     with self.lock:
                         job.check_cancelled()
                         if job.no_output:
@@ -341,7 +386,7 @@ class MediaJobManager:
                             # Free-form burn errors can echo subtitles, filenames or command lines.
                             if isinstance(error, OSError):
                                 job.error = {
-                                    "disk-full": "烧录临时目录空间不足，请释放空间后重试",
+                                    "disk-full": "源媒体所在盘空间不足，请释放空间后重试",
                                     "permission": "无法访问烧录文件，请检查文件权限",
                                 }.get(kind, "烧录文件读写失败")
                             job.error_details = None
@@ -409,6 +454,7 @@ class MediaJobManager:
             if job.state != "ready":
                 raise MediaJobUnavailable("媒体任务尚未完成或已停止")
             job.check_cancelled()
+            job.check_directory()
             # Registration and download admission are atomic with cancellation.
             job.abort_download = abort_download
             job.state = "downloading"
@@ -428,8 +474,8 @@ class MediaJobManager:
         if job.timer:
             job.timer.cancel()
         try:
-            shutil.rmtree(job.directory)
-        except OSError as error:
+            job.remove_directory()
+        except (OSError, ValueError, MediaJobUnavailable) as error:
             job.state = "failed"
             job.cleanup_error = "临时导出文件尚未清理，请重试停止任务"
             job.cleanup_error_details = str(error)[-4000:]

@@ -1329,7 +1329,7 @@ def burn_ass_video(
         if completed.returncode != 0:
             kind = ffmpeg_failure_kind(stderr)
             message = {
-                "disk-full": "烧录临时目录空间不足，请释放空间后重试",
+                "disk-full": "源媒体所在盘空间不足，请释放空间后重试",
                 "permission": "无法访问烧录文件，请检查文件权限",
                 "media-decode": "无法解码源媒体，请检查源文件能否正常播放",
             }.get(kind, "FFmpeg 编码异常退出")
@@ -3716,7 +3716,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 target = native.require_target(request, binding, source) if native else None
                 with self.editor_server.media_jobs.lock:
                     job = self.editor_server.media_jobs.start(source, binding, intervals, burn,
-                        output_extension=".mp4", admission_token=admission_token)
+                        output_extension=".mp4", admission_token=admission_token, temp_root=source.parent.resolve())
                     job.native_burn = target
                 if target is not None:
                     del native.targets[request["nativeTarget"]]
@@ -3727,7 +3727,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                                close_connection=True)
             else:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False, "code": "permission", "error": "无法访问烧录文件，请检查文件权限",
+                    "ok": False, "code": "permission", "error": "无法创建烧录任务，请检查源媒体目录的写入权限",
                 })
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
@@ -3740,9 +3740,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.media_jobs.cancel(job.id)
             kind = burn_error_kind(error)
             message = {
-                "disk-full": "烧录临时目录空间不足，请释放空间后重试",
-                "permission": "无法访问烧录文件，请检查文件权限",
-            }.get(kind, "无法创建烧录任务，请检查临时目录")
+                "disk-full": "源媒体所在盘空间不足，请释放空间后重试",
+                "permission": "无法创建烧录任务，请检查源媒体目录的写入权限",
+            }.get(kind, "无法创建烧录任务，请检查源媒体目录")
             self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
                 "ok": False, "code": kind or "burn-admission-unavailable", "error": message,
             })
@@ -3814,7 +3814,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         success = False
         try:
-            success = self.send_video_attachment(job.output, download_name(job), job=job)
+            with job.hold_directory():
+                success = self.send_video_attachment(job.output, download_name(job), job=job)
+        except (OSError, ValueError, MediaJobUnavailable):
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": "无法读取媒体导出文件，请重新导出"})
         finally:
             manager.finish_download(job, success=success)
 
