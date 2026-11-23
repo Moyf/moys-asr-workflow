@@ -15,19 +15,20 @@ function fixture(transport) {
   const calls = [], hints = [];
   let detached = 0, reloads = 0;
   const context = vm.createContext({
-    document: { getElementById: () => null },
+    document: { getElementById: () => null, body: { inert: false } },
     MaweBoot: { DATA: { segments: [] }, SERVER_CONFIG: {
       canSave: true, attachUrl: '/api/project/attach', projectSwitchPageId: 'page-a',
       requestToken: 'page-token', bindingGeneration: 1, sourceMediaId: 'original',
     } },
     MaweProjectLoad: { projectBindingEpoch: 0, detachServerProjectSaving() { detached++; } },
+    MaweProjectSave: { inlineEditHasUncommittedText: () => false },
     MaweHint: { flashHint: message => hints.push(message) },
     MaweHost: { server: { fetch(url, options) {
       const body = JSON.parse(options.body);
       calls.push({ url, body });
       return transport(url, body);
     } } },
-    window: { location: { reload() { reloads++; } } },
+    window: { location: { reload() { reloads++; } }, addEventListener() {}, removeEventListener() {} },
   });
   context.window.MaweBoot = context.MaweBoot;
   vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
@@ -128,4 +129,40 @@ test('late failed notification cannot detach or warn in a newer local project', 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.detached(), 0);
   assert.deepEqual(f.hints, []);
+});
+
+test('native switch asks to discard a project settings edit that settled after picking', async () => {
+  const settingsSettling = deferred(), entered = deferred();
+  const f = fixture(url => {
+    assert.equal(url, '/api/project/native-pick');
+    return response({ selection: 'selected' });
+  });
+  f.context.window.MaweStickerRoot = { waitForPending() { entered.resolve(); return settingsSettling.promise; } };
+  let confirms = 0;
+  f.context.confirm = () => { confirms++; return false; };
+  const opening = f.api.openNativeProject('session');
+  // Yield for the picker response (the old flow does not await settings).
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.calls.length, 1);
+  await entered.promise;
+  f.state.changes.projectImportDirty = true;
+  settingsSettling.resolve();
+  await opening;
+  assert.equal(confirms, 1);
+  assert.equal(f.reloads(), 0);
+  assert.equal(f.detached(), 0);
+  assert.equal(f.context.document.body.inert, false);
+});
+
+test('native switch never binds if the ASS style library could not be saved', async () => {
+  const f = fixture(url => {
+    assert.equal(url, '/api/project/native-pick');
+    return response({ selection: 'selected' });
+  });
+  f.context.window.MaweAssStorageWiring = { flushBeforeProjectSwitch: async () => false };
+  await f.api.openNativeProject('session');
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.reloads(), 0);
+  assert.equal(f.context.document.body.inert, false);
+  assert.match(f.hints[0], /ASS 样式库/);
 });

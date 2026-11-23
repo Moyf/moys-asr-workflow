@@ -471,6 +471,72 @@ export function initMaweServerSave() {
     return task;
   }
 
+  let nativeProjectOpening = false;
+  let nativeProjectReload = false;
+  async function openNativeProject(connection) {
+    if (nativeProjectOpening || MaweState.projectLoadPending) return;
+    nativeProjectOpening = true;
+    const beforePick = MaweState.projectLoadGeneration;
+    const requestToken = MaweBoot.SERVER_CONFIG.requestToken;
+    let generation = beforePick;
+    const current = () => generation === MaweState.projectLoadGeneration;
+    try {
+      const nativeSession = await connection;
+      if (!current()) return;
+      if (!nativeSession) throw new Error('启动器编辑器会话无效，请从启动器重新打开');
+      const response = await MaweHost.server.fetch('/api/project/native-pick', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestToken, nativeSession, language: window.MAWE_I18N?.language === 'en' ? 'en' : 'zh',
+        }),
+      });
+      const result = await response.json();
+      if (!current()) return;
+      if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+      if (result.cancelled) return;
+      if (typeof result.selection !== 'string' || !result.selection) throw new Error('工程选择响应无效');
+      // Let users keep editing while the picker and media preparation run.
+      // Once selected, prevent new input while project settings settle.
+      const body = document.body;
+      const wasInert = body.inert;
+      const blockInput = event => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+      const blockedEvents = ['keydown', 'keyup', 'dragover', 'drop'];
+      body.inert = true;
+      blockedEvents.forEach(type => window.addEventListener(type, blockInput, true));
+      try {
+        await window.MaweStickerRoot?.waitForPending();
+        if (!current()) return;
+        const stylesReady = await window.MaweAssStorageWiring?.flushBeforeProjectSwitch();
+        if (!current()) return;
+        if (stylesReady === false) throw new Error('ASS 样式库尚未保存，请先处理样式库保存错误');
+        const discardMessage = '当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。';
+        if (hasUnsavedProjectChanges() && !confirm(window.MAWE_I18N?.translateText?.(discardMessage) || discardMessage)) return;
+        generation = MaweState.beginProjectLoad();
+        const outcome = await MaweState.waitForProjectLoad(
+          queueServerProjectSwitch('/api/project/native-bind', { requestToken, nativeSession, selection: result.selection }, current),
+          generation);
+        if (!outcome || !current()) return;
+        if (!outcome.response.ok || !outcome.result.ok) {
+          throw new Error(outcome.result.error || `服务器返回 ${outcome.response.status}`);
+        }
+        MaweProjectLoad.detachServerProjectSaving();
+        nativeProjectReload = true; // The user already approved discarding these edits.
+        window.location.reload();
+      } finally {
+        MaweState.finishProjectLoad(generation);
+        body.inert = wasInert;
+        blockedEvents.forEach(type => window.removeEventListener(type, blockInput, true));
+      }
+    } catch (error) {
+      if (current()) MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning', { error });
+    } finally {
+      nativeProjectOpening = false;
+    }
+  }
+
   async function openRecentProject(project) {
     if (!MaweBoot.SERVER_CONFIG?.recentProjectsUrl) return;
     if (hasUnsavedProjectChanges()
@@ -668,6 +734,9 @@ export function initMaweServerSave() {
     scheduleAutoSave,
     configureServerAutoSave,
     hasUnsavedProjectChanges,
+    get currentServerBinding() { return { ...serverBinding }; },
+    get nativeProjectReload() { return nativeProjectReload; },
+    openNativeProject,
     scheduleAutoSaveFlush,
     openRecentProject,
     attachProjectToServer,

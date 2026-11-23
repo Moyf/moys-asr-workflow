@@ -1,12 +1,10 @@
 MaweStickerRoot.syncControls();
-MaweStickerRoot.defaultButton.addEventListener('click', () =>
-  MaweStickerRoot.applyRoot('default', MaweStickerRoot.defaultInput.value));
-MaweStickerRoot.projectButton.addEventListener('click', () =>
-  MaweStickerRoot.applyRoot('project', MaweStickerRoot.projectInput.value));
+launcherSessionConnection?.then(session => MaweStickerRoot.connectNativePicker(session));
+MaweStickerRoot.defaultButton.addEventListener('click', () => MaweStickerRoot.applyInputRoot('default'));
+MaweStickerRoot.projectButton.addEventListener('click', () => MaweStickerRoot.applyInputRoot('project'));
 MaweStickerRoot.overrideToggle.addEventListener('change', () => {
   if (!MaweStickerRoot.overrideToggle.checked) { MaweStickerRoot.applyRoot('project', ''); return; }
-  MaweStickerRoot.projectInput.disabled = false;
-  MaweStickerRoot.projectButton.disabled = false;
+  MaweStickerRoot.syncControls(false);
   MaweStickerRoot.projectInput.value = MaweBoot.STICKER_ROOT || MaweStickerRoot.getDefaultRoot();
   MaweStickerRoot.projectInput.focus();
 });

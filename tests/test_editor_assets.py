@@ -470,7 +470,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("window.addEventListener('pagehide', flushAssStyleLibraryOnUnload)", script)
         self.assertIn("if (document.visibilityState === 'hidden') {\n    flushAssStyleLibraryOnUnload();", script)
 
-    def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
+    def test_sticker_root_uses_server_validation_and_launcher_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
         script = self.source_contract_text()
         sticker_root = edit.read_web_asset("editor/io/editor-sticker-root.js")
@@ -478,7 +478,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="sticker-root-input"', template)
         self.assertIn('id="sticker-root-read"', template)
         self.assertIn('id="sticker-root-status"', template)
-        self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
+        self.assertIn('id="sticker-root-browse" hidden', template)
+        self.assertIn('id="project-sticker-root-browse" hidden', template)
+        self.assertIn("'/api/stickers/native-pick-root'", sticker_root)
+        self.assertIn("const { stickerRootUrl, requestToken } = MaweBoot.SERVER_CONFIG", sticker_root)
+        self.assertIn("MaweHost.server.fetch(stickerRootUrl", sticker_root)
+        self.assertIn("...MaweServerSave.currentServerBinding", sticker_root)
         self.assertIn("MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers)", script)
         self.assertIn('id="project-sticker-root-override"', template)
         self.assertIn('id="project-sticker-root-input"', template)

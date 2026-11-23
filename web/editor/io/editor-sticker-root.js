@@ -5,39 +5,81 @@ export function initStickerRootModule() {
   const DEFAULT_ROOT_KEY = 'moy.asr.editor.sticker-root.v1';
   const defaultInput = document.getElementById('sticker-root-input');
   const defaultButton = document.getElementById('sticker-root-read');
+  const defaultBrowse = document.getElementById('sticker-root-browse');
   const defaultStatus = document.getElementById('sticker-root-status');
   const projectInput = document.getElementById('project-sticker-root-input');
   const projectButton = document.getElementById('project-sticker-root-read');
+  const projectBrowse = document.getElementById('project-sticker-root-browse');
   const projectStatus = document.getElementById('project-sticker-root-status');
   const overrideToggle = document.getElementById('project-sticker-root-override');
   const serverEnabled = Boolean(MaweBoot.SERVER_CONFIG?.stickerRootUrl);
   let epoch = 0, busy = false, pending = Promise.resolve();
+  let picking = false;
+  const nativePaths = new WeakMap();
   function normalizeRoot(value) {
     const root = String(value || '').trim().replace(/\\/g, '/');
     return root === '/' || /^[A-Za-z]:\/$/.test(root) ? root : root.replace(/\/+$/, '');
   }
   function getDefaultRoot() {
-    try { return normalizeRoot(MaweHost.storage.getItem(DEFAULT_ROOT_KEY)); } catch (_) { return ''; }
+    try { return MaweHost.storage.getItem(DEFAULT_ROOT_KEY) || ''; } catch (_) { return ''; }
   }
-  function projectRoot() { return normalizeRoot(MaweBoot.DATA.sticker_root); }
-  function syncControls() {
-    if (!busy) {
+  function projectRoot() { return MaweBoot.DATA.sticker_root || ''; }
+  function syncBrowseControls() {
+    defaultBrowse.disabled = busy || picking;
+    projectBrowse.disabled = busy || picking || !overrideToggle.checked;
+  }
+  function syncControls(refreshValues = true) {
+    if (!busy && refreshValues) {
       defaultInput.value = getDefaultRoot(); projectInput.value = projectRoot();
       overrideToggle.checked = Boolean(projectRoot());
     }
     projectInput.disabled = busy || !overrideToggle.checked;
     projectButton.disabled = busy || !overrideToggle.checked;
     defaultInput.disabled = busy; defaultButton.disabled = busy; overrideToggle.disabled = busy;
+    syncBrowseControls();
     if (!serverEnabled) {
       defaultStatus.textContent = '便携编辑器保存目录配置；读取本地图片需要 Server 编辑器。';
       projectStatus.textContent = defaultStatus.textContent;
     }
   }
+  function connectNativePicker(nativeSession) {
+    if (!serverEnabled || !nativeSession) return;
+    defaultBrowse.hidden = projectBrowse.hidden = false;
+    for (const [button, input] of [[defaultBrowse, defaultInput], [projectBrowse, projectInput]]) {
+      button.addEventListener('click', async () => {
+        if (picking || busy || input.disabled) return;
+        const generation = MaweState.projectLoadGeneration, initialValue = input.value, rootEpoch = epoch;
+        const current = () => generation === MaweState.projectLoadGeneration && rootEpoch === epoch
+          && !input.disabled && input.value === initialValue;
+        picking = true;
+        syncBrowseControls();
+        try {
+          const response = await MaweHost.server.fetch('/api/stickers/native-pick-root', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, nativeSession }),
+          });
+          const result = await response.json();
+          if (!current()) return;
+          if (!response.ok || !result.ok) throw new Error(result.error || String(response.status));
+          if (!result.cancelled && typeof result.root === 'string') {
+            input.value = result.root;
+            nativePaths.set(input, input.value);
+          }
+        } catch (error) {
+          if (current()) MaweHint.flashHint(`选择表情包目录失败：${error.message || error}`, 'warning', { error });
+        } finally {
+          picking = false;
+          syncBrowseControls();
+        }
+      });
+    }
+  }
   async function requestRoot(root, activate) {
     if (!serverEnabled) return null;
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
+    const { stickerRootUrl, requestToken } = MaweBoot.SERVER_CONFIG;
+    const response = await MaweHost.server.fetch(stickerRootUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path: root, activate }),
+      body: JSON.stringify({ requestToken, path: root, activate, ...MaweServerSave.currentServerBinding }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || String(response.status));
@@ -54,8 +96,13 @@ export function initStickerRootModule() {
     MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }
-  async function applyRoot(scope, value) {
-    const root = normalizeRoot(value), generation = ++epoch;
+  function applyInputRoot(scope) {
+    const input = scope === 'default' ? defaultInput : projectInput;
+    const saved = scope === 'default' ? getDefaultRoot() : projectRoot();
+    return applyRoot(scope, input.value, { exact: nativePaths.get(input) === input.value || saved === input.value });
+  }
+  async function applyRoot(scope, value, { exact = false } = {}) {
+    const root = exact ? value : normalizeRoot(value), generation = ++epoch;
     const status = scope === 'default' ? defaultStatus : projectStatus;
     busy = true; syncControls(); status.textContent = '正在读取并验证表情包目录…';
     try {
@@ -92,7 +139,8 @@ export function initStickerRootModule() {
   }
   if (typeof MaweBoot.DATA.sticker_root !== 'string') MaweBoot.DATA.sticker_root = '';
   global.MaweStickerRoot = Object.freeze({
-    getDefaultRoot, projectRoot, syncControls, applyRoot, activateProjectRoot,
+    getDefaultRoot, projectRoot, syncControls, applyRoot, applyInputRoot, activateProjectRoot, connectNativePicker,
+    waitForPending: () => pending.catch(() => {}),
     defaultInput, defaultButton, projectInput, projectButton, overrideToggle,
   });
 })(window);

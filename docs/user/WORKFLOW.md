@@ -79,6 +79,8 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 uv run --no-sync python server-editor/serve.py "example.mosp"
 ```
 
+从 Launcher 打开的编辑器里，点击「打开工程」可用系统文件选择器选择 `.mosp` 或 `.json`。工程不必与媒体放在同一个目录：编辑器会解析工程的媒体引用；无法自动定位时，可以选择原始音视频继续打开。`Ctrl/Cmd+S` 写回选中的工程，并保存更新后的媒体引用。选好后如有未保存的改动，编辑器会先确认再切换；取消选择、拒绝切换或加载失败都保留当前工程。独立启动的编辑器仍使用浏览器文件选择器；拖放和字幕导入方式不变。
+
 Server 只监听 `127.0.0.1`，会根据工程的 `media` 引用加载媒体，并显示工程、媒体和波形准备进度。媒体已移动时，用 `-m` 指定新位置：
 
 ```sh

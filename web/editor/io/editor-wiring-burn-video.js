@@ -27,7 +27,8 @@ async function nativeBurnPost(url, requestToken, fields) {
   return data;
 }
 
-function connectNativeBurn() {
+// Reuse the per-tab Launcher grant for native file dialogs, not just exports.
+function connectLauncherSession() {
   const config = MaweBoot.SERVER_CONFIG;
   if (config?.nativeBurnAvailable !== true) return null;
   const { hash, pathname, search } = window.location;
@@ -170,7 +171,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     MaweHint.flashHint(tr('请从启动器打开关联源媒体的工程，再烧录视频'), 'warning');
     return;
   }
-  const nativeSession = nativeBurnConnection ? await nativeBurnConnection : null;
+  const nativeSession = launcherSessionConnection ? await launcherSessionConnection : null;
   if (window.__maweBurnVideoTask || nativeBurnPicking) return;
   if (!nativeSession && !MaweHost.files.hasSavePicker()) {
     MaweHint.flashHint(tr('当前浏览器或环境不支持烧录视频保存'), 'warning');
@@ -651,6 +652,10 @@ function invalidateBurnVideoBinding() {
   // Cancel through the task's captured URL/token, not the invalidated config.
   window.__maweBurnVideoTask?.requestStop?.();
 }
-const nativeBurnConnection = connectNativeBurn();
+let launcherSessionRejected = false;
+const launcherSessionConnection = connectLauncherSession()?.then(session => {
+  launcherSessionRejected = !session;
+  return session;
+});
 updateBurnVideoButton();
 window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });

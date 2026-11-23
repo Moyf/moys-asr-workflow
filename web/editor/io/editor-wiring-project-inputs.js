@@ -103,6 +103,10 @@ document.getElementById('new-project')?.addEventListener('click', async () => {
 });
 
 document.getElementById('open-project')?.addEventListener('click', () => {
+  if (launcherSessionConnection && !launcherSessionRejected) {
+    void MaweServerSave.openNativeProject(launcherSessionConnection);
+    return;
+  }
   if (MaweServerSave.hasUnsavedProjectChanges()) {
     if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
   }

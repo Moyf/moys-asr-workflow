@@ -71,10 +71,12 @@ from maw.media_jobs import (  # noqa: E402
     MediaJobManager, MediaJobUnavailable,
 )
 from maw.native_burn_api import (  # noqa: E402
-    SESSION_HEADER, NativeBurnJobs, check_native_origin, handle_native_burn,
+    SESSION_HEADER, SESSION_REQUIRED, NativeBurnJobs, check_native_origin, handle_native_burn,
     native_host_proof, require_native_job_session,
 )
-from maw.native_burn_host import BURN_JOBS, BurnHostClient, BurnSessions  # noqa: E402
+from maw.native_burn_host import (  # noqa: E402
+    BURN_JOBS, BurnDialogBusy, BurnDialogUnavailable, BurnHostClient, BurnSessions,
+)
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.media_export_video import (  # noqa: E402
     VideoNoOutput, VideoTimelineError, packet_filter, prepare_video_copy, verify_video_packets,
@@ -181,6 +183,19 @@ class ServerProject:
     reapeaks_path: Path | None = None
     audio_track: int = 0
     default_audio_track: int = 0
+
+
+@dataclass(frozen=True)
+class NativeProjectSelection:
+    expires: float
+    token: str
+    project: ServerProject
+    file_revision: tuple[int, ...]
+
+
+def _project_file_revision(path: Path) -> tuple[int, ...]:
+    info = path.stat()
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -1863,6 +1878,8 @@ class EditorServer(ThreadingHTTPServer):
         self.gap_removed_video_lock = threading.Lock()
         self.media_jobs = MediaJobManager(self.gap_removed_video_lock)
         self.native_burn: NativeBurnJobs | None = None
+        # Prepared native opens are short-lived and never contain a browser-supplied path.
+        self.native_project_selections: dict[str, NativeProjectSelection] = {}
         self.thumbnail_jobs = ThumbnailJobManager()
         self.loudness_analyzer = LoudnessAnalyzer()
         self.thumbnail_jobs.bind(project.source_media_path or project.media_path,
@@ -1911,6 +1928,7 @@ class EditorServer(ThreadingHTTPServer):
                 self.media_jobs.cancel(self.media_jobs.active.id)
         if self.native_burn is not None:
             self.native_burn.targets.clear()
+        self.native_project_selections.clear()
         self.project = project
         self.binding_generation += 1
         self.source_media_id = secrets.token_urlsafe(24)
@@ -2097,11 +2115,14 @@ class EditorServer(ThreadingHTTPServer):
             with self.reapeaks_lock:
                 self.reapeaks_status = "disabled"
 
-    def set_sticker_root(self, raw_path: str) -> tuple[Path | None, list[dict]]:
+    def set_sticker_root(self, raw_path: str, *, binding: dict | None = None) -> tuple[Path | None, list[dict]]:
         """Scan a root before atomically making it the active sticker scope."""
         with self.sticker_lock:
+            with self.settings_lock:
+                self._check_project_binding_locked(binding)
             root, stickers = validate_sticker_root(raw_path) if raw_path else (None, [])
             with self.settings_lock:
+                self._check_project_binding_locked(binding)
                 self.project = replace(self.project, sticker_root=root, stickers=stickers)
             return root, stickers
 
@@ -2317,6 +2338,81 @@ class EditorServer(ThreadingHTTPServer):
                 self.settings = replace(self.settings, preset_workspaces=workspaces)
             self.persist_settings()
 
+    def _load_switch_project(self, path: Path, explicit_media: str | None = None) -> ServerProject:
+        project = load_project(
+            path,
+            explicit_media,
+            self.stickers_dir,
+            no_waveform=self.no_waveform,
+            load_reapeaks=not self.defer_reapeaks,
+            peaks_per_second=self.peaks_per_second,
+        )
+        return without_deferred_reapeaks(project) if self.defer_reapeaks else project
+
+    def prepare_native_project(self, sessions: BurnSessions, session: str, language: str) -> str | None:
+        with self.settings_lock:
+            binding = {"bindingGeneration": self.binding_generation, "sourceMediaId": self.source_media_id}
+            self.native_project_selections.pop(session, None)
+        selected = sessions.host.choose_project()
+        if selected is None:
+            return None
+        if not selected.is_absolute() or selected.suffix.lower() not in {".mosp", ".json"}:
+            raise ValueError("请选择一个 .mosp 或 .json 工程文件。")
+        selected = selected.resolve(strict=True)
+        if selected.suffix.lower() not in {".mosp", ".json"} or not selected.is_file():
+            raise ValueError("请选择一个 .mosp 或 .json 工程文件。")
+        revision = _project_file_revision(selected)
+        try:
+            project = self._load_switch_project(selected)
+        except MediaResolutionError:
+            with self.settings_lock:
+                sessions.require(session)
+                self._check_project_binding_locked(binding)
+            media = sessions.host.choose_media(language)
+            if media is None:
+                return None
+            if not media.is_absolute() or media.suffix.lower() not in MEDIA_EXTENSIONS or not media.is_file():
+                raise ValueError("请选择工程对应的原始音视频文件。")
+            project = self._load_switch_project(selected, str(media))
+        with self.settings_lock:
+            sessions.require(session)
+            self._check_project_binding_locked(binding)
+            now = time.monotonic()
+            pending = self.native_project_selections
+            for key, record in list(pending.items()):
+                if record.expires <= now:
+                    del pending[key]
+            if len(pending) >= 8:
+                del pending[next(iter(pending))]
+            selection = secrets.token_urlsafe(32)
+            pending[session] = NativeProjectSelection(now + 120, selection, project, revision)
+            return selection
+
+    def commit_native_project(self, session: str, request: dict) -> dict:
+        with self.settings_lock:
+            self._check_project_switch_locked(request)
+            self._check_project_binding_locked(request)
+            record = self.native_project_selections.get(session)
+            if record is None or record.expires <= time.monotonic() or record.token != request.get("selection"):
+                raise ProjectBindingChangedError("工程选择已失效，请重新选择")
+            del self.native_project_selections[session]
+            project = record.project
+            assert project.json_path is not None
+            # The current project can still be saved while the picker or
+            # discard prompt is open. Do not publish a snapshot of old bytes.
+            if _project_file_revision(project.json_path) != record.file_revision:
+                raise ProjectBindingChangedError("所选工程在打开期间已变更，请重新选择")
+            if any(not path.is_file() for path in {project.source_media_path, project.media_path} if path is not None):
+                raise ProjectBindingChangedError("关联媒体在打开期间已移动或不存在，请重新选择工程")
+            settings = remember_project(self.settings, project.json_path)
+            if self.settings_path:
+                write_server_settings(self.settings_path, settings)
+            self.settings = settings
+            self._bind_project_locked(project)
+            binding = self._project_binding_payload_locked()
+        self.start_deferred_reapeaks_load()
+        return binding
+
     def open_recent_project(self, project_path: str, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         candidate = Path(project_path).expanduser().resolve()
         with self.settings_lock:
@@ -2325,16 +2421,7 @@ class EditorServer(ThreadingHTTPServer):
             known = next((item for item in self.settings.recent_projects if item.path == candidate), None)
             if not known:
                 raise RecentProjectError("该工程不在本机最近打开记录中")
-        project = load_project(
-            known.path,
-            None,
-            self.stickers_dir,
-            no_waveform=self.no_waveform,
-            load_reapeaks=not self.defer_reapeaks,
-            peaks_per_second=self.peaks_per_second,
-        )
-        if self.defer_reapeaks:
-            project = without_deferred_reapeaks(project)
+        project = self._load_switch_project(known.path)
         with self.settings_lock:
             self._check_project_switch_locked(switch_intent)
             self._check_project_binding_locked(binding)
@@ -2388,16 +2475,7 @@ class EditorServer(ThreadingHTTPServer):
             normalized_browser = normalize_project(browser_data)
         except ProjectValidationFailed as error:
             raise AttachProjectError(f"打开的工程内容无效：{error}") from error
-        project = load_project(
-            project_path,
-            None,
-            self.stickers_dir,
-            no_waveform=self.no_waveform,
-            load_reapeaks=not self.defer_reapeaks,
-            peaks_per_second=self.peaks_per_second,
-        )
-        if self.defer_reapeaks:
-            project = without_deferred_reapeaks(project)
+        project = self._load_switch_project(project_path)
         if not _attach_segments_match(project.data, normalized_browser):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
@@ -3034,6 +3112,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.advance_project_switch()
         elif path == "/api/project/attach":
             self.attach_project()
+        elif path in ("/api/project/native-pick", "/api/project/native-bind"):
+            self.open_native_project(commit=path.endswith("/native-bind"))
         elif path == "/api/recent-projects/open":
             self.open_recent_project()
         elif path == "/api/settings":
@@ -3055,6 +3135,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                            close_connection=not consumed)
         elif path == "/api/stickers/root":
             self.set_sticker_root()
+        elif path == "/api/stickers/native-pick-root":
+            self.pick_native_sticker_root()
         elif path == "/api/exports/sticker-otio":
             self.export_sticker_otio()
         elif path == "/api/exports/sticker-otioz":
@@ -3295,6 +3377,24 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, {"ok": True})
 
+    def pick_native_sticker_root(self) -> None:
+        try:
+            sessions, session, _ = self._read_launcher_picker_request(set())
+            path = sessions.host.choose_sticker_root()
+            sessions.require(session)
+            if path is None:
+                result = {"cancelled": True}
+            elif not path.is_absolute() or not path.is_dir():
+                raise ValueError("所选表情包目录不存在或无法访问")
+            else:
+                # Selection only fills the existing settings field. The
+                # explicit Apply action still validates and scans the folder.
+                result = {"root": path.as_posix()}
+        except (PermissionError, ValueError, BurnDialogUnavailable, OSError) as error:
+            self._send_launcher_picker_error(error)
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, **result})
+
     def set_sticker_root(self) -> None:
         try:
             request = self.read_json_request()
@@ -3306,9 +3406,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(activate, bool):
                 raise ValueError("表情包目录应用方式格式不正确")
             if activate:
-                root, stickers = self.editor_server.set_sticker_root(path)
+                binding = request if "bindingGeneration" in request or "sourceMediaId" in request else None
+                root, stickers = self.editor_server.set_sticker_root(path, binding=binding)
             else:
                 root, stickers = validate_sticker_root(path) if path else (None, [])
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -3892,6 +3996,53 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if int(self.headers.get("Content-Length", "0")) > MAX_UNVERIFIED_ASS_REQUEST_BYTES:
             self._check_request_token({"requestToken": self.headers.get("X-MAW-Request-Token")})
         return self.read_json_request(max_bytes=MAX_ASS_REQUEST_BYTES)
+
+    def _read_launcher_picker_request(self, allowed_fields: set[str]) -> tuple[BurnSessions, str, dict]:
+        check_native_origin(self)
+        native = self.editor_server.native_burn
+        if native is None:
+            raise PermissionError(SESSION_REQUIRED)
+        request = self.read_json_request(max_bytes=4096)
+        self._check_request_token(request)
+        if not request.keys() <= allowed_fields | {"requestToken", "nativeSession"}:
+            raise ValueError("不能通过浏览器指定本地路径")
+        return native.sessions, native.sessions.require(request.get("nativeSession")), request
+
+    def _send_launcher_picker_error(self, error: Exception) -> None:
+        if isinstance(error, PermissionError):
+            status, message = ((HTTPStatus.FORBIDDEN, SESSION_REQUIRED) if error.errno is None
+                               else (HTTPStatus.SERVICE_UNAVAILABLE, "无法访问所选位置，请检查文件权限"))
+        elif isinstance(error, (ProjectBindingChangedError, BurnDialogBusy)):
+            status, message = HTTPStatus.CONFLICT, str(error)
+        elif isinstance(error, ValueError):
+            status, message = HTTPStatus.BAD_REQUEST, str(error)
+        elif isinstance(error, BurnDialogUnavailable):
+            status, message = HTTPStatus.SERVICE_UNAVAILABLE, str(error)
+        else:
+            status, message = HTTPStatus.SERVICE_UNAVAILABLE, "无法读取所选位置"
+        self.send_json(status, {"ok": False, "error": message}, close_connection=True)
+
+    def open_native_project(self, *, commit: bool) -> None:
+        server = self.editor_server
+        try:
+            fields = ({"selection", "switchPageId", "switchGeneration", "bindingGeneration", "sourceMediaId"}
+                      if commit else {"language"})
+            sessions, session, request = self._read_launcher_picker_request(fields)
+            if commit:
+                result = server.commit_native_project(session, request)
+            else:
+                language = request.get("language", "zh")
+                if language not in ("zh", "en"):
+                    raise ValueError("无效的对话框语言")
+                selection = server.prepare_native_project(sessions, session, language)
+                result = {"cancelled": True} if selection is None else {"selection": selection}
+        except FileNotFoundError:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "所选文件已移动或不存在"}, close_connection=True)
+            return
+        except (OSError, RuntimeError, ValueError) as error:
+            self._send_launcher_picker_error(error)
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, **result})
 
     def open_recent_project(self) -> None:
         try:
