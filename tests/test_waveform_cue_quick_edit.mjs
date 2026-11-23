@@ -170,7 +170,7 @@ test('接线契约：选中后 Enter 与叠加轨菜单「编辑文本」也走�
   assert.ok(shortcuts.includes('editor.openCueQuickEditAtIndex('));
   assert.ok(shortcuts.includes("() => MaweCuePanel.focusCuePanelText(),"));
   const menus = fs.readFileSync(
-    path.join(root, 'web/editor/ui/editor-wiring-context-menus.js'), 'utf8');
+    path.join(root, 'web/editor/ui/editor-context-menus.js'), 'utf8');
   assert.ok(menus.includes("openCueQuickEditAtIndex("));
   assert.ok(menus.includes("'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay')"));
 });

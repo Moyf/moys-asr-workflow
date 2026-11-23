@@ -58,10 +58,12 @@ function checkSwatches(source) {
   assert.match(source, /\.title = speakerMode/);
 }
 test('both context menus retain only compact circles and title names; cards fail', () => {
-  for (const path of ['editor/ui/editor-context-menus.js', 'editor/ui/editor-wiring-context-menus.js']) {
-    const source = read(path);
-    checkSwatches(source);
-    assert.throws(() => checkSwatches(source + "\nlabel.className = 'speaker-context-slot-name';"), assert.AssertionError);
+  const source = read('editor/ui/editor-context-menus.js');
+  const overlayStart = source.indexOf('export function showOverlayContextMenu(');
+  assert.ok(overlayStart > 0);
+  for (const menuSource of [source.slice(0, overlayStart), source.slice(overlayStart)]) {
+    checkSwatches(menuSource);
+    assert.throws(() => checkSwatches(menuSource + "\nlabel.className = 'speaker-context-slot-name';"), assert.AssertionError);
   }
   const css = read('editor.css');
   assert.match(css, /grid-template-columns: repeat\(10, 7px\)/);

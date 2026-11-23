@@ -51,8 +51,6 @@ if (!window.AsrEditorUtils) {
   console.error('[MAWE][boot] AsrEditorUtils is unavailable; editor scripts are incomplete or out of order');
 }
 
-const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
-const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 
 
 

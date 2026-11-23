@@ -1,3 +1,4 @@
+import { selectOverlayCueRow, updateSelectionCountText } from './editor-overlay-cue-selection.js';
 // 叠加轨（overlay track）领域模块：轨道查询、主轨 ↔ 叠加轨迁移与叠加轨
 // 编辑动作。ESM 纯模块，不进 editor-scripts.txt 清单：模块求值只有函数与
 // 状态定义、零副作用，共享状态（MaweBoot.DATA、MaweSelection 等）经 window
@@ -181,7 +182,7 @@ function convertMainCueToOverlayForDrag(index) {
   applyCueStickerSnapshot(segment, stickerSnapshot);
   const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('main', index);
   MaweSelection.lastClickedIdx = nextAnchor;
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (panelWasHere) MaweCuePanel.setCuePanelTarget('overlay', newIndex);
   if (wasSelected) {
     MaweState.selection.add('overlay', newIndex);
@@ -213,7 +214,7 @@ function convertOverlayCueToMainForDrag(index) {
   shiftMainGroupRefsAfterInsert(newIndex);
   const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('overlay', index);
   MaweState.selection.overlayAnchor = nextAnchor;
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (panelWasHere) MaweCuePanel.setCuePanelTarget('main', newIndex);
   if (wasSelected && !MaweSelection.isHiddenDisabled(newIndex)) {
     MaweSelection.addMainIndexToSelection(newIndex);
@@ -516,7 +517,7 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
     overlay._dirty = true;
     MaweSelection.clearSelection({ silent: true });
     command.commit({ cueList: true, preserveCueListScroll: false });
-    window.MaweCuePanelWiring.selectOverlayCueRow(index);
+    selectOverlayCueRow(index);
     // 与主/副字幕一致：新建后在字幕块上方弹出快速编辑气泡直接输入；
     // 气泡打不开时回退聚焦下方字幕面板文本框。
     if (MaweCoreState.waveformEditor?.openCueQuickEditAtIndex) {

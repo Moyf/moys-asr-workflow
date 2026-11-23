@@ -1,6 +1,7 @@
+import { getOverlayTrack } from './overlay-track.js';
 import { fmtShort, rememberTemporaryVisibleSplitCues } from './editor-cue-elements.js';
 import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
-import { commitCuePanelEdit } from './editor-cue-panel.js';
+import { commitCuePanelEdit, setCuePanelTarget } from './editor-cue-panel.js';
 import { caretCharFromPoint, finishEdit } from './editor-inline-edit.js';
 import { clearSelection, selectOnly, selectOnlyExtension } from './editor-selection.js';
 
@@ -23,6 +24,7 @@ export function initMaweSplitCore() {
 
   // === 拆分 ===
   let pendingLinkedSplit = null;
+  const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
 
 
 
@@ -826,14 +828,14 @@ export function initMaweSplitCore() {
   // 没有列表文字位置时（例如波形/播放头入口）才按时间寻找最近合法断点。
   const hasInitialTextPosition = Number.isFinite(initial.mainOffset);
   const initialMainOffset = hasInitialTextPosition
-    ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(main.text, initial.mainOffset, mainMode)
-    : window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(main, initialTime, mainMode);
+    ? splitOffsetNearTextPositionForModal(main.text, initial.mainOffset, mainMode)
+    : splitOffsetNearTimeForModal(main, initialTime, mainMode);
   const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
     : splitCutTime(main, initialMainOffset, false));
   const initialOffset = window.AsrEditorUtils.nearestSubtitleSplitOffset(
     extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
-  ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
+  ) ?? splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
   return {
     kind: 'linked',
     splitTextMode: initial.splitTextMode || null,
@@ -876,7 +878,7 @@ export function initMaweSplitCore() {
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
-  const initialOffset = window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(main, initialTime, mainMode);
+  const initialOffset = splitOffsetNearTimeForModal(main, initialTime, mainMode);
   if (initialOffset == null) return null;
   return {
     kind: 'main',
@@ -918,10 +920,10 @@ export function initMaweSplitCore() {
   const fixedCutMs = initial.timeSource === 'text'
     ? null : Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
-    ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
+    ? splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
     : window.AsrEditorUtils.nearestSubtitleSplitOffset(
       extension.text, initialTime, extension.start, extension.end, extensionMode,
-    ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
+    ) ?? splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
   if (!Number.isInteger(initialOffset)) return null;
   return {
     kind: 'extension',
@@ -972,7 +974,7 @@ export function initMaweSplitCore() {
 
   function splitLaneSegment(state, lane) {
     if (lane === 'main') return state?.mainIndex >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex] : null;
-    return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, window.MaweOverlaySplitMerge.splitStateTrack(state));
+    return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, splitStateTrack(state));
   }
 
 
@@ -1521,7 +1523,7 @@ export function initMaweSplitCore() {
   function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
-  const track = window.MaweOverlaySplitMerge.splitStateTrack(state);
+  const track = splitStateTrack(state);
   const main = state.mainIndex >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex] : null;
   const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
   const mainOnly = state.kind === 'main';
@@ -1535,7 +1537,7 @@ export function initMaweSplitCore() {
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
       ), legalOffsets[0])
-      : window.MaweOverlaySplitMerge.fallbackSplitOffset(main.text, requestedOffset);
+      : fallbackSplitOffset(main.text, requestedOffset);
     if (!Number.isInteger(state.mainOffset)) return false;
     const mainHasWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
     state.mainCutMs = Number.isFinite(state.fixedCutMs)
@@ -1553,7 +1555,7 @@ export function initMaweSplitCore() {
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
       ), legalOffsets[0])
-      : window.MaweOverlaySplitMerge.fallbackSplitOffset(extension.text, requestedOffset);
+      : fallbackSplitOffset(extension.text, requestedOffset);
     if (!Number.isInteger(state.offset)) return false;
     state.extensionCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs : splitCutTime(extension, state.offset, false);
@@ -1591,7 +1593,7 @@ export function initMaweSplitCore() {
   state.textValid = textValid;
   state.timingValid = mainTimingValid && extensionTimingValid;
   state.mainTimingValid = Boolean(mainTimingValid);
-  state.duplicateTimingValid = window.MaweOverlaySplitMerge.duplicateSplitTimingIsValid(state);
+  state.duplicateTimingValid = duplicateSplitTimingIsValid(state);
   state.forceCutMs = textValid
     ? forceSplitCutForSegments(forceSegments, state.cutMs)
     : null;
@@ -1747,14 +1749,14 @@ export function initMaweSplitCore() {
   );
   if (!pair) {
     if (!force && !duplicateText) {
-      window.MaweOverlaySplitMerge.flashSplitAlignmentHint(
-        window.MaweOverlaySplitMerge.assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
+      flashSplitAlignmentHint(
+        assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
         { committed: false },
       );
     }
     return false;
   }
-  if (!force && !duplicateText) window.MaweOverlaySplitMerge.flashSplitAlignmentHint(pair.alignment, { committed: true });
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
   return MaweCommands.run(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', (command) => {
     clearSelection({ commitCuePanel: false });
@@ -1844,14 +1846,14 @@ export function initMaweSplitCore() {
   );
   if (!pair) {
     if (!force && !duplicateText) {
-      window.MaweOverlaySplitMerge.flashSplitAlignmentHint(
-        window.MaweOverlaySplitMerge.assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
+      flashSplitAlignmentHint(
+        assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
         { committed: false },
       );
     }
     return false;
   }
-  if (!force && !duplicateText) window.MaweOverlaySplitMerge.flashSplitAlignmentHint(pair.alignment, { committed: true });
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
 
   const oldExtensionId = extension.id;
   const wasBound = Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(extensionIndex, track));
@@ -1944,7 +1946,7 @@ export function initMaweSplitCore() {
     return;
   }
   if (state.kind === 'overlay') {
-    window.MaweOverlaySplitMerge.commitOverlaySplit(state, {
+    commitOverlaySplit(state, {
       force,
       duplicateText,
       successMessage: duplicateText ? '已拆分叠加字幕并保留两侧原文' : undefined,
@@ -1987,8 +1989,8 @@ export function initMaweSplitCore() {
     return;
   }
   if (!force && !duplicateText) {
-    window.MaweOverlaySplitMerge.flashSplitAlignmentHint(mainPair.alignment, { committed: true });
-    window.MaweOverlaySplitMerge.flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
+    flashSplitAlignmentHint(mainPair.alignment, { committed: true });
+    flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
   }
   const oldMainId = main.id;
   const oldExtensionId = extension.id;
@@ -2355,7 +2357,187 @@ export function initMaweSplitCore() {
     }
   }
 
+  function fallbackSplitOffset(text, requestedOffset = null) {
+    const length = String(text || '').length;
+    if (!length) return null;
+    if (length <= 1) return 0;
+    const requested = Number.isFinite(Number(requestedOffset))
+      ? Math.round(Number(requestedOffset)) : Math.floor(length / 2);
+    return Math.max(1, Math.min(length - 1, requested));
+  }
+
+  function splitOffsetNearTimeForModal(segment, timeMs, splitMode) {
+    const offset = splitOffsetNearTime(segment, timeMs, splitMode);
+    if (Number.isInteger(offset)) return offset;
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    const time = Number(timeMs);
+    const ratio = Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(time)
+      ? (time - start) / (end - start) : 0.5;
+    return fallbackSplitOffset(segment?.text, ratio * String(segment?.text || '').length);
+  }
+
+  function splitOffsetNearTextPositionForModal(text, offset, splitMode) {
+    const legalOffsets = window.AsrEditorUtils.subtitleSplitOffsets(text || '', splitMode);
+    const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+    if (legalOffsets.length) {
+      return legalOffsets.reduce((best, candidate) => (
+        Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+      ), legalOffsets[0]);
+    }
+    return fallbackSplitOffset(text, requested);
+  }
+
+  // 拆分对齐的兜底提示（修复③）：文本与词时间戳脱钩、且切分边界明显偏离
+  // 下刀位置时给出警告，杜绝「字拆对、时拆错」的静默错拆与静默失败。强制
+  // 拆分（force）会刻意把切点移出词边界，不适用本提示。
+  function flashSplitAlignmentHint(alignment, { committed = true } = {}) {
+    if (!alignment?.broken) return;
+    const drift = Number(alignment.driftMs);
+    if (!Number.isFinite(drift) || drift <= SPLIT_ALIGNMENT_DRIFT_WARN_MS) return;
+    const message = committed
+      ? `已拆分，但字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；如需贴合语音，可先校正文本或检查词时间戳`
+      : `未完成拆分：字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；请调整切点或校正文本后重试`;
+    MaweHint.flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+  }
+
+  // 拆分失败路径上拿不到 pair，用相同入参重新评估一次对齐质量（纯计算）。
+  function assessSplitAlignment(segment, offset, cutMs, options = {}) {
+    const itemParts = splitItemsAtChar(segment, offset, cutMs, options);
+    return {
+      ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
+      driftMs: window.AsrEditorUtils.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+    };
+  }
+
+  // 拆分弹窗状态对应的轨：叠加轨拆分复用副轨弹窗机制，但轨解析走叠加轨。
+  function splitStateTrack(state) {
+    if (state?.kind === 'overlay') return getOverlayTrack();
+    return MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
+  }
+
+  function splitTimingIsValid(segment, cutMs) {
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    const cut = Number(cutMs);
+    return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(cut)
+      && end - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2
+      && cut - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
+      && end - cut >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
+  }
+
+  function duplicateSplitTimingIsValid(state) {
+    if (!state) return false;
+    if (state.kind === 'main') {
+      return splitTimingIsValid(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex], state.mainCutMs);
+    }
+    const track = splitStateTrack(state);
+    if (state.kind === 'extension' || state.kind === 'overlay') {
+      return splitTimingIsValid(
+        MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track),
+        state.extensionCutMs,
+      );
+    }
+    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex];
+    const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
+    return splitTimingIsValid(main, state.mainCutMs)
+      && splitTimingIsValid(extension, state.extensionCutMs);
+  }
+
+  // 叠加轨拆分：复用副轨的独立拆分弹窗机制（单 lane、无主副联动），
+  // 但组引用（颜色/表情包）按主轨拆分规则在叠加轨数组内维护。
+  function openOverlaySplitModal(index, timeMs, initial = {}) {
+    const track = getOverlayTrack();
+    const segment = track?.segments?.[index];
+    if (!segment) return false;
+    if (segment.end - segment.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2) {
+      MaweHint.flashHint('叠加字幕总时长不足 200ms，无法拆分', 'warning');
+      return false;
+    }
+    const state = extensionOnlySplitState(index, track, { timeMs, ...initial });
+    if (!state) {
+      MaweHint.flashHint('这条叠加字幕没有可用的文字边界', 'invalid');
+      return false;
+    }
+    state.kind = 'overlay';
+    state.feedbackPoint = state.feedbackPoint
+      || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
+    pendingLinkedSplit = state;
+    MaweDom.multiSubtitleSplitModal?.classList.add('show');
+    renderLinkedSplitText(state);
+    return true;
+  }
+
+  function commitOverlaySplit(
+    state,
+    {
+      force = false,
+      duplicateText = false,
+      successMessage = '已按选择的断点拆分叠加字幕',
+    } = {},
+  ) {
+    const track = getOverlayTrack();
+    const overlayIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
+    const segment = track?.segments?.[overlayIndex];
+    if (!track || overlayIndex < 0 || !segment) return false;
+    const splitMs = force
+      ? forceSplitCutForSegments([segment], state.extensionCutMs)
+      : state.extensionCutMs;
+    if (!Number.isFinite(splitMs)) {
+      MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+      return false;
+    }
+    const splitAlignmentOptions = {
+      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+      forceCut: force,
+    };
+    const pair = buildSplitPair(
+      segment,
+      state.offset,
+      splitMs,
+      segment.id || `overlay-${overlayIndex}`,
+      true,
+      state.extensionMode,
+      { ...splitAlignmentOptions, duplicateText, headIndex: overlayIndex },
+    );
+    if (!pair) {
+      if (!force && !duplicateText) {
+        flashSplitAlignmentHint(
+          assessSplitAlignment(segment, state.offset, splitMs, splitAlignmentOptions),
+          { committed: false },
+        );
+      }
+      return false;
+    }
+    if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+    return MaweCommands.run(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', (command) => {
+      clearSelection({ commitCuePanel: false });
+      replaceSegmentWithSplit(track.segments, overlayIndex, pair);
+      track._dirty = true;
+      closeLinkedSplitModal();
+      clearSelection({ commitCuePanel: false });
+      command.commit({ cueList: true });
+      MaweState.selection.clear('overlay');
+      MaweState.selection.add('overlay', overlayIndex + 1);
+      MaweState.selection.overlayAnchor = overlayIndex + 1;
+      setCuePanelTarget('overlay', overlayIndex + 1);
+      MaweViewUpdates.invalidate({ preview: 'update' });
+      flashSplitFeedback({
+        index: overlayIndex,
+        track: 'overlay',
+        splitMs,
+        feedbackPoint: null,
+        listFeedback: false,
+      });
+      MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'overlay'));
+      if (successMessage) MaweHint.flashHint(successMessage, 'success');
+      state.onQuickEditSplitComplete?.(overlayIndex + 1);
+      return true;
+    }, { captureView: true });
+  }
+
   global.MaweSplitCore = Object.freeze({
+    openOverlaySplitModal,
     get pendingLinkedSplit() { return pendingLinkedSplit; },
     set pendingLinkedSplit(v) { pendingLinkedSplit = v; },
     splitTimeForTextOffset,
@@ -2469,3 +2651,5 @@ export function confirmLinkedSplit(...args) { return window.MaweSplitCore.confir
 export function splitAtCursor(...args) { return window.MaweSplitCore.splitAtCursor(...args); }
 export function flashCueSplitAt(...args) { return window.MaweSplitCore.flashCueSplitAt(...args); }
 export function flashSplitFeedback(...args) { return window.MaweSplitCore.flashSplitFeedback(...args); }
+
+export function openOverlaySplitModal(...args) { return window.MaweSplitCore.openOverlaySplitModal(...args); }

@@ -224,7 +224,7 @@ declare const activeExtensionSegments: any;
 // 占位，升级方式同上。
 interface Window {
   MaweExportContext: any;
-  MaweCuePanelWiring: any;
+  MaweCuePanelWiring: { updateSelectionCountText(): void };
   MaweSpeakerLabels: any;
   MaweSpeakerManager: any;
   MaweColors: any;
@@ -241,7 +241,6 @@ interface Window {
   MaweSettingsPanels: any;
   MaweFontGeometryWiring: any;
   MaweBurnVideoExport?: any;
-  MaweContextMenusWiring: any;
   MaweDisplaySettings: any;
   MaweContextMenus: any;
 }

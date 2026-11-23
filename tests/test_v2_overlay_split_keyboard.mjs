@@ -7,7 +7,7 @@ test('keyboard split offsets resolve the overlay track instead of the secondary 
   const overlay = { id: 'overlay', role: 'overlay', segments: [{ id: 'cue', text: 'abcd' }] };
   const state = { kind: 'overlay', trackId: 'overlay', extensionId: 'cue', extensionMode: 'continuous', offset: 2 };
   const c = {
-    MaweOverlaySplitMerge: { splitStateTrack: value => value.kind === 'overlay' ? overlay : null },
+    getOverlayTrack: () => overlay,
     MaweMultiSubtitleCore: {
       getExtensionTrack: () => null,
       extensionSegmentById: (id, track) => track?.segments.find(segment => segment.id === id),

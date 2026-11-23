@@ -1,3 +1,4 @@
+import { updateSelectionCountText } from '../cues/editor-overlay-cue-selection.js';
 // 多重字幕核心：副轨状态、绑定关系、范围钳制与双轨联动计算。
 // ESM init 模块：initMaweMultiSubtitleCore 在原清单位次执行原 IIFE 体
 // （挂 window.MaweMultiSubtitleCore 冻结门面——classic 侧出接口）；
@@ -388,7 +389,7 @@ export function initMaweMultiSubtitleCore() {
   }
   MaweSelection.lastClickedExtensionIdx = snapshot.lastClickedId
     ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
 }
 
 
