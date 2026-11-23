@@ -373,7 +373,7 @@ interface Window {
   MaweViewUpdates: typeof MaweViewUpdates;
   MaweMarkerEditing?: { isEditingEnabled(): boolean };
   MaweHint?: { flashHint(message: string, type?: string): void };
-  MaweAssFrame?: { notifyProjectChanged?(): void };
+  MaweAssFrame?: { notifyProjectChanged?(): void; syncAssFrameControls?(): void };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {
     createCleanupRetainedProjector(gapRemove: unknown): (segments: ProjectSegment[]) => ProjectSegment[];

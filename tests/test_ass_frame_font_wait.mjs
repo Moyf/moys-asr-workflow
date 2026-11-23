@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
+import { createUtilsModule as createProjectTracks } from '../web/shared/utils/project-tracks.js';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture() {
@@ -25,6 +26,7 @@ function fixture() {
     location: { href: 'http://localhost/', origin: 'http://localhost' },
     MaweCoreState: { player }, MaweDom: {},
     MaweBoot: { DATA: {}, SERVER_CONFIG: { assFrameUrl: '/api/ass-frame' } },
+    AsrEditorUtils: createProjectTracks(),
     MaweSettings: { EDITOR_SETTINGS: { assMode: true, assFrameAutoRender: false } },
     MaweProjectLoad: { projectBindingEpoch: 1 },
     MaweExportSrt: { buildAss: () => '[Script Info]' },

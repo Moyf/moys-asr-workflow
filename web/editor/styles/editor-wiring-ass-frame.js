@@ -7,6 +7,7 @@ export function initWiringAssFrameModule() {
   const openButton = document.getElementById('ass-frame-preview-open');
   const quickOpenButton = document.getElementById('ass-frame-quick-open');
   const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
+  const emojiWarning = document.getElementById('ass-emoji-warning');
   const windowEl = document.getElementById('ass-frame-window');
   if (!openButton || !windowEl) return;
   const imageEl = document.getElementById('ass-frame-image');
@@ -38,12 +39,25 @@ export function initWiringAssFrameModule() {
   let capabilityFailure = '';
   let presentedTime = null;
   let presentedCursor = null;
+  let emojiWarningQueued = false;
   const REQUEST_TIMEOUT_MS = 165000;
   const GREEN_SCREEN_HINT = '当前缺少视频画面，使用绿幕预览，可在「更多导出」中导出绿幕视频';
+  const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3/u;
 
   const translate = (text) => global.MAWE_I18N?.translateText?.(text) || text;
   const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
     && global.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
+
+  function hasProjectEmoji() {
+    for (const segment of global.AsrEditorUtils.iterSegments(global.MaweBoot?.DATA)) {
+      if (EMOJI.test(segment.text)) return true;
+    }
+    return false;
+  }
+
+  function syncEmojiWarning() {
+    if (emojiWarning) emojiWarning.hidden = !enabled() || !hasProjectEmoji();
+  }
   // 暂停时把实际帧叠加到播放器画面：默认关闭，窗口内开关控制。
   const stageOverlayEnabled = () => autoRenderEnabled()
     && global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
@@ -308,6 +322,13 @@ export function initWiringAssFrameModule() {
   // capture：进行中不重复请求，期间的再次变化由 finally 合并补查）；
   // 自动渲染关闭时只刷新「画面已过期」提示，不主动渲染。
   function notifyProjectChanged() {
+    if (emojiWarning && enabled() && !emojiWarningQueued) {
+      emojiWarningQueued = true;
+      global.queueMicrotask(() => {
+        emojiWarningQueued = false;
+        syncEmojiWarning();
+      });
+    }
     if (!previewNeeded()) return;
     if (!timer) timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
   }
@@ -424,6 +445,7 @@ export function initWiringAssFrameModule() {
   });
 
   function syncAssFrameControls() {
+    syncEmojiWarning();
     if (global.MaweSettings?.EDITOR_SETTINGS?.assMode === true) {
       void global.MaweAssFontAliases?.ensureCoverage?.();
     }
@@ -546,7 +568,6 @@ export function initWiringAssFrameModule() {
   if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
   document.getElementById('ass-frame-window-close')?.addEventListener('click', () => floatingPanel.close());
-  document.getElementById('ass-mode-toggle')?.addEventListener('change', syncAssFrameControls);
   stageToggle?.addEventListener('change', () => {
     global.MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });
     syncAssFrameControls();

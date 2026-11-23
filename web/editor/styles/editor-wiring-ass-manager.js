@@ -935,6 +935,7 @@ function syncAssModeControl() {
   }
   const quickOpen = document.getElementById('ass-style-quick-open');
   if (quickOpen) quickOpen.hidden = !enabled;
+  window.MaweAssFrame?.syncAssFrameControls?.();
   // 工具栏「烧录视频」按钮只在 ASS 字幕模式下显示。
   window.MaweBurnVideoExport?.syncButton?.();
   syncAssSymbolRule();

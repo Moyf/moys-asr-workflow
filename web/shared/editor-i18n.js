@@ -979,6 +979,7 @@
      '打开 ASS 样式库': 'Open the ASS style library',
     '📷 实际画面预览': '📷 Actual-frame preview',
     '用 FFmpeg (libass) 渲染当前播放位置的实际 ASS 画面': 'Render the actual ASS frame at the playhead with FFmpeg (libass)',
+    '字幕含有 emoji。当前 ASS 烧录不支持彩色 emoji，可能只呈单色或缺字。请用「实际画面预览」检查。': 'The subtitles contain emoji. ASS burn-in does not support color emoji. They may appear in monochrome or be missing. Open Actual frame preview to check.',
     '📷 ASS 实际画面': '📷 ASS actual frame', '关闭 ASS 实际画面预览': 'Close ASS actual-frame preview',
     'ASS 实际画面预览': 'ASS actual-frame preview',
     '如果想要查看当前画面实际的 ASS 字幕效果，可以': 'To see the actual ASS subtitle rendering for the current frame,',

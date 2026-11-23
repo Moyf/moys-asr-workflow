@@ -1095,6 +1095,9 @@
   .waveform-toolbar-controls > * { flex: 0 0 auto; }
   .waveform-toolbar-controls button { white-space: nowrap; }
   .waveform-settings { gap: 8px; }
+  .ass-emoji-warning { display: inline-flex; align-items: center; padding: 4px; color: var(--amber); cursor: help; border-radius: 4px; }
+  .ass-emoji-warning[hidden] { display: none; }
+  .ass-emoji-warning:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .toolbar.waveform-toolbar > .waveform-edit-tools { flex: 0 0 auto; }
   .waveform-edit-tools > button { white-space: nowrap; }
   .toolbar .waveform-settings > #ass-mode-quick-toggle { font-size: 12px; line-height: 1.4; }
