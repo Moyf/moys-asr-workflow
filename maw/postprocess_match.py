@@ -9,6 +9,7 @@ import difflib
 import json
 import unicodedata
 from bisect import bisect_left, bisect_right
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
@@ -17,6 +18,7 @@ from typing import Final
 from maw.project_mutations import fresh_segment_id, replace_main_segments
 from maw.project_tracks import get_main_track, get_tracks_by_role, iter_segments
 from maw.postprocess import OutputMode, _reconcile_items
+from maw.postprocess_ai_cleanup_items import item_text_spans, scoped_item_ranges, verified_scope_indices
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
@@ -217,7 +219,98 @@ def match_script_project(
     new_active_count = sum(not cue.get("disabled") for cue in get_main_track(matched)["segments"])
     if new_active_count != len(old_active) and any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in old_active):
         raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
+    preserve_match_cleanup_scopes(project, matched, is_cancelled=is_cancelled)
     return matched, (punctuation_warning, *warnings)
+
+
+def preserve_match_cleanup_scopes(
+    source: JsonDict, matched: JsonDict, *, is_cancelled: Callable[[], bool] | None = None,
+) -> None:
+    """Carry verified local cleanup words into a new main-track snapshot."""
+    gap = source.get("gap_remove")
+    provenance = gap.get("provenance") if isinstance(gap, dict) else None
+    sources = provenance.get("sources") if isinstance(provenance, dict) else None
+    entries = sources.get("ai_cleanup") if isinstance(sources, dict) else None
+    if not isinstance(entries, list) or not entries:
+        return
+
+    originals = {cue["id"]: cue for cue in get_main_track(source)["segments"]}
+    by_entry = {}
+    for index, entry in enumerate(entries):
+        check_match_cancelled(is_cancelled)
+        scope = entry.get("cleanup_scope") if isinstance(entry, dict) else None
+        segment_id = scope.get("segment_id") if isinstance(scope, dict) else None
+        original = originals.get(segment_id) if isinstance(segment_id, str) else None
+        if original is not None and (indices := verified_scope_indices(entry, original)):
+            by_entry[index] = original, indices
+    if not by_entry:
+        return
+
+    def word_key(item: JsonDict) -> tuple[int, int, str]:
+        return item["start"], item["end"], item["text"].strip()
+
+    # Word separators can move from the start of one item to the end of
+    # another. Equal source time and word content identify the occurrence
+    # without conflating repetitions or accepting a changed spoken word.
+    keys = {word_key(original["items"][i]) for original, indices in by_entry.values() for i in indices}
+    locations: dict[tuple[int, int, str], list[tuple[JsonDict, int]]] = defaultdict(list)
+    target_main = get_main_track(matched)["segments"]
+    targets = {cue["id"]: cue for cue in iter_segments(matched)}
+    for cue in target_main:
+        check_match_cancelled(is_cancelled)
+        items = cue.get("items")
+        if not isinstance(items, list):
+            continue
+        relevant = [(word_key(item), i) for i, item in enumerate(items) if isinstance(item, dict)]
+        relevant = [(key, i) for key, i in relevant if key in keys]
+        if relevant and item_text_spans(cue["text"], items) is not None:
+            for key, i in relevant:
+                locations[key].append((cue, i))
+
+    remapped = []
+    used_ids = {entry["id"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("id"), str)}
+    for index, entry in enumerate(entries):
+        check_match_cancelled(is_cancelled)
+        if index not in by_entry:
+            remapped.append(entry)
+            continue
+        original, indices = by_entry[index]
+        if targets.get(original["id"]) == original:
+            remapped.append(entry)
+            continue
+        target_indices = {}
+        for i in indices:
+            candidates = locations.get(word_key(original["items"][i]), [])
+            if len(candidates) != 1 or bool(candidates[0][0].get("disabled")) != bool(original.get("disabled")):
+                raise ValueError("无法保留已有局部删减的词项与原时间范围，未写出结果。")
+            cue, item_index = candidates[0]
+            target_indices.setdefault(cue["id"], (cue, []))[1].append(item_index)
+
+        scopes = [piece for cue, indexes in target_indices.values() for piece in scoped_item_ranges(cue, indexes)]
+        # Rechunking may split one scope over multiple cues. Keep the pauses
+        # between them inside the audio cut without assigning any text to them.
+        cursor = entry["start"]
+        pieces = []
+        for piece in sorted(scopes, key=lambda value: value["start"]):
+            if piece["start"] > cursor:
+                pieces.append({"start": cursor, "end": piece["start"]})
+            pieces.append(piece)
+            cursor = piece["end"]
+        if cursor < entry["end"]:
+            pieces.append({"start": cursor, "end": entry["end"]})
+        for number, piece in enumerate(pieces):
+            updated = {key: value for key, value in entry.items() if key != "cleanup_scope"}
+            updated.update(piece)
+            if "cleanup_scope" in piece:
+                updated["cleanup_scope"] = {**entry["cleanup_scope"], **piece["cleanup_scope"]}
+            if number and isinstance(entry.get("id"), str):
+                updated["id"] = fresh_segment_id(f"{entry['id'][:130]}-match-{number}", used_ids)
+            remapped.append(updated)
+
+    # The source owns audio cuts and manual overrides. Rebuild only the word
+    # references, including when a review combines matched and original cues.
+    matched["gap_remove"] = copy.deepcopy(gap)
+    matched["gap_remove"]["provenance"]["sources"]["ai_cleanup"] = copy.deepcopy(remapped)
 
 
 def prepare_script_text(

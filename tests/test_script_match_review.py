@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from maw.gui_web import LauncherApi
-from maw.postprocess_io import read_project
+from maw.postprocess import OutputMode
+from maw.postprocess_ai_cleanup import AiCleanupRequest, run_ai_cleanup
+from maw.postprocess_ai_cleanup_items import verified_scope_indices
+from maw.postprocess_io import read_project, render_srt
 from maw.postprocess_match import ScriptMatchTrace
 from maw.project import normalize_project
 from maw.project_mutations import replace_main_segments
 from maw.project_tracks import get_main_track, get_tracks_by_role
+from maw.script_alignment import _gap_ranges_from_provenance
 from maw.script_match_review import ScriptMatchReview, ScriptMatchReviewApi
 
 
@@ -22,6 +27,147 @@ class ScriptMatchReviewTests(unittest.TestCase):
         self.directory = Path(temp.name)
         self.source = self.directory / "original.mosp"
         self.manuscript = self.directory / "script.txt"
+
+    def cleaned_input(self) -> Path:
+        words = [" Hello", " Hello", " world "]
+        self.source.write_text(json.dumps({"segments": [
+            {"id": "greeting", "start": 0, "end": 600, "text": "Hello Hello world", "items": [
+                {"start": i * 200, "end": (i + 1) * 200, "text": word} for i, word in enumerate(words)
+            ]},
+            {"id": "next", "start": 1000, "end": 1400, "text": "Next", "items": [
+                {"start": 1000, "end": 1400, "text": "Next"},
+            ]},
+            {"id": "last", "start": 2000, "end": 2400, "text": "End"},
+        ]}), encoding="utf-8")
+        self.manuscript.write_text("Hello Hello world\nNext\nEnd", encoding="utf-8")
+        cleaned = run_ai_cleanup(
+            AiCleanupRequest(self.source, None, None, OutputMode.BOTH, review_enabled=False),
+            complete=lambda _prompt, rows: {"timeline": "\n".join(
+                f"[{row['id']}] ~~Hello~~ Hello world" if row["asrText"] == "Hello Hello world"
+                else row["sourceLine"] for row in rows
+            )},
+        )
+        self.assertEqual(cleaned.srt_path.read_text(encoding="utf-8-sig").splitlines()[2], "Hello world")
+        return cleaned.project_path
+
+    def test_launcher_match_keeps_spaced_word_cut_and_reversible_source(self) -> None:
+        source = self.cleaned_input()
+        original = source.read_bytes()
+        before = read_project(source)
+        result = LauncherApi().run_script_match({
+            "projectPath": str(source), "scriptPath": str(self.manuscript), "outputMode": "both",
+        })
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(any("缺少字词时间码" in warning for warning in result["warnings"]))
+        rendered = Path(result["srtPath"]).read_text(encoding="utf-8-sig")
+        self.assertEqual(rendered.splitlines()[2], "Hello world")
+        matched = read_project(Path(result["projectPath"]))
+        cue = get_main_track(matched)["segments"][0]
+        self.assertEqual(cue["text"], "Hello Hello world")
+        gap = matched["gap_remove"]
+        entry, = gap["provenance"]["sources"]["ai_cleanup"]
+        self.assertEqual(list(verified_scope_indices(entry, cue)), [0])
+        self.assertEqual(gap["gaps"], before["gap_remove"]["gaps"])
+        self.assertEqual(_gap_ranges_from_provenance(gap["provenance"]), [
+            {"start": 0, "end": 200, "removed": True},
+        ])
+        gap["provenance"]["manual_overrides"].append({"id": "restore", "start": 0, "end": 200, "removed": False})
+        gap["gaps"] = _gap_ranges_from_provenance(gap["provenance"])
+        self.assertEqual(render_srt(matched).splitlines()[2], "Hello Hello world")
+        self.assertEqual(source.read_bytes(), original)
+
+    def test_review_preserves_a_restored_cut_and_rejects_an_unmappable_edit(self) -> None:
+        source = self.cleaned_input()
+        before = read_project(source)
+        gap = before["gap_remove"]
+        gap["provenance"]["manual_overrides"].append({"id": "restore", "start": 0, "end": 200, "removed": False})
+        gap["gaps"] = _gap_ranges_from_provenance(gap["provenance"])
+        source.write_text(json.dumps(before), encoding="utf-8")
+        original = source.read_bytes()
+        payload = {"projectPath": str(source), "scriptPath": str(self.manuscript)}
+        with patch("maw.gui_web._open_script_match_review") as show:
+            result = LauncherApi().open_script_match_review(payload)
+            self.assertTrue(result["ok"], result)
+            review = show.call_args.args[1]
+        for restore in ([], [0]):
+            with self.subTest(restore=restore):
+                target = self.directory / f"reviewed-{len(restore)}.mosp"
+                result = ScriptMatchReviewApi(review, lambda: target).export_review({"restore": restore, "edits": []})
+                self.assertTrue(result["ok"], result)
+                projected = read_project(target)
+                cue = get_main_track(projected)["segments"][0]
+                saved_gap = projected["gap_remove"]
+                entry, = saved_gap["provenance"]["sources"]["ai_cleanup"]
+                self.assertEqual(list(verified_scope_indices(entry, cue)), [0])
+                self.assertEqual(render_srt(projected).splitlines()[2], "Hello Hello world")
+                self.assertEqual(saved_gap["gaps"], [{"start": 0, "end": 200, "removed": False}])
+                self.assertEqual(saved_gap["provenance"]["manual_overrides"], gap["provenance"]["manual_overrides"])
+                saved_gap["provenance"]["manual_overrides"] = []
+                saved_gap["gaps"] = _gap_ranges_from_provenance(saved_gap["provenance"])
+                self.assertEqual(render_srt(projected).splitlines()[2], "Hello world")
+        target = self.directory / "edited.mosp"
+        result = ScriptMatchReviewApi(review, lambda: target).export_review({
+            "restore": [], "edits": [[1, 0, "Hello Hello planet"]],
+        })
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(render_srt(read_project(target)).splitlines()[2], "Hello Hello planet")
+        target = self.directory / "unmappable.mosp"
+        picker = Mock(return_value=target)
+        result = ScriptMatchReviewApi(review, picker).export_review({"restore": [], "edits": [[1, 0, "Goodbye Hello world"]]})
+        self.assertFalse(result["ok"], result)
+        self.assertIn("局部删减", result["error"])
+        picker.assert_not_called()
+        self.assertFalse(target.exists())
+        self.assertEqual(source.read_bytes(), original)
+
+    def test_launcher_rejects_an_unmappable_word_cut_before_writing(self) -> None:
+        source = self.cleaned_input()
+        self.manuscript.write_text("Goodbye Hello world\nNext\nEnd", encoding="utf-8")
+        files = set(self.directory.iterdir())
+        original = source.read_bytes()
+        result = LauncherApi().run_script_match({
+            "projectPath": str(source), "scriptPath": str(self.manuscript), "outputMode": "both",
+        })
+        self.assertFalse(result["ok"], result)
+        self.assertIn("局部删减", result["detail"])
+        self.assertEqual(set(self.directory.iterdir()), files)
+        self.assertEqual(source.read_bytes(), original)
+
+    def test_launcher_match_preserves_an_audio_pause_when_a_cut_spans_new_cues(self) -> None:
+        words = ["这个", "这个", "这个", "方法"]
+        self.source.write_text(json.dumps({"segments": [{
+            "id": "original", "start": 0, "end": 720, "text": "".join(words), "items": [
+                {"start": i * 200, "end": i * 200 + 120, "text": word} for i, word in enumerate(words)
+            ],
+        }]}), encoding="utf-8")
+        cleaned = run_ai_cleanup(
+            AiCleanupRequest(self.source, None, None, OutputMode.BOTH, review_enabled=False),
+            complete=lambda _prompt, _rows: {"timeline": "[c001] ~~这个这个~~这个方法"},
+        )
+        source = cleaned.project_path
+        before = read_project(source)
+        cut, = before["gap_remove"]["provenance"]["sources"]["ai_cleanup"]
+        cut["cleanup_scope"]["vendor"] = {"note": "preserve"}
+        source.write_text(json.dumps(before), encoding="utf-8")
+        self.manuscript.write_text("这个\n这个\n这个方法", encoding="utf-8")
+        result = LauncherApi().run_script_match({
+            "projectPath": str(source), "scriptPath": str(self.manuscript), "outputMode": "both",
+        })
+        self.assertTrue(result["ok"], result)
+        after = read_project(Path(result["projectPath"]))
+        main = get_main_track(after)["segments"]
+        self.assertEqual([cue["text"] for cue in main], ["这个", "这个", "这个方法"])
+        self.assertEqual(Path(result["srtPath"]).read_text(encoding="utf-8-sig").splitlines()[2:], ["这个方法"])
+        provenance = after["gap_remove"]["provenance"]
+        first, pause, second = provenance["sources"]["ai_cleanup"]
+        self.assertEqual(list(verified_scope_indices(first, main[0])), [0])
+        self.assertEqual(list(verified_scope_indices(second, main[1])), [0])
+        self.assertEqual(first["cleanup_scope"]["vendor"], cut["cleanup_scope"]["vendor"])
+        self.assertEqual(second["cleanup_scope"]["vendor"], cut["cleanup_scope"]["vendor"])
+        self.assertEqual((pause["start"], pause["end"]), (120, 200))
+        self.assertNotIn("cleanup_scope", pause)
+        self.assertEqual(_gap_ranges_from_provenance(provenance), [{"start": 0, "end": 320, "removed": True}])
+        self.assertEqual(after["gap_remove"]["gaps"], before["gap_remove"]["gaps"])
 
     def test_restore_whole_overlap_group_and_export_unfiltered_project(self) -> None:
         from maw.media import project_media_reference
@@ -88,7 +234,6 @@ class ScriptMatchReviewTests(unittest.TestCase):
         self.assertEqual(restored["subtitle_groups"], before["subtitle_groups"])
 
     def test_review_moves_disabled_cue_back_to_main_only_when_its_group_is_restored(self):
-        import json
         original = [{"id":"a","start":0,"end":1000,"text":"甲","items":[{"start":0,"end":1000,"text":"甲"}]},
                     {"id":"off","start":1200,"end":1500,"text":"备注","disabled":True},
                     {"id":"b","start":1700,"end":2200,"text":"乙","items":[{"start":1700,"end":2200,"text":"乙"}]}]

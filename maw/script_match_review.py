@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from maw.postprocess import _reconcile_items
-from maw.postprocess_match import ScriptMatchTrace, _cue_range
+from maw.postprocess_match import ScriptMatchTrace, _cue_range, preserve_match_cleanup_scopes
 from maw.project import normalize_project
 from maw.project_io import rebase_project_media, strip_inline_caches
 from maw.project_mutations import fresh_segment_id, replace_main_segments
@@ -72,6 +72,7 @@ class ScriptMatchReview:
         self.warnings = warnings
         self.mode = mode
         self.lang = lang
+        self._source_project = before
         self._project = after
         self._media = media if not str(after.get("media") or "").strip() else None
         self._before = get_main_track(before)["segments"]
@@ -188,7 +189,9 @@ class ScriptMatchReview:
             if not overlay["segments"] and not self._had_overlay:
                 project["tracks"].remove(overlay)
         replace_main_segments(project, sorted(segments, key=_cue_range))
-        return normalize_project(project)
+        project = normalize_project(project)
+        preserve_match_cleanup_scopes(self._source_project, project)
+        return project
 
     def write(self, project: JsonDict, target: Path) -> Path:
         if not target.suffix:
