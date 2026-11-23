@@ -10,6 +10,8 @@ from unittest import mock
 
 from requests.exceptions import ConnectionError as RequestsConnectionError
 
+from tests.compact_assertions import CompactContainerAssertions
+
 from maw.moss import (
     AUDIO_BITRATE,
     AUDIO_FORMAT,
@@ -52,7 +54,7 @@ def _fake_response(
     )
 
 
-class MossConfigTests(unittest.TestCase):
+class MossConfigTests(CompactContainerAssertions, unittest.TestCase):
     def test_load_config_defaults(self) -> None:
         with mock.patch.dict("os.environ", {}, clear=True), \
              mock.patch("maw.moss._load_env_file", return_value={}):
