@@ -65,6 +65,38 @@ def send_with_transient_retry(send, *, retry_transient_get, attempts=2, delay=0.
 
 
 class NativeBurnHostTests(unittest.TestCase):
+    def test_cocoa_save_panel_is_attached_and_can_be_reopened(self):
+        from maw.gui_web import _pick_burn_target
+
+        source = Path(tempfile.mkdtemp(prefix="maw-test-native-sheet-")).resolve() / "source.mp4"
+        source.write_bytes(b"source")
+        output = source.with_name("烧录输出.mp4")
+        window = mock.Mock()
+        window.gui = SimpleNamespace(__name__="webview.platforms.cocoa")
+        window.native.attachedSheet.return_value = None
+        window.native.isMiniaturized.return_value = False
+        window.create_file_dialog.side_effect = AssertionError("Cocoa must use a window-attached save panel")
+        panel = mock.Mock()
+        panel.URL.return_value.path.return_value = str(output)
+        responses = iter([0, 1])
+        panel.beginSheetModalForWindow_completionHandler_.side_effect = (
+            lambda _parent, complete: complete(next(responses))
+        )
+        save_panel = mock.Mock(side_effect=[RuntimeError("panel unavailable"), panel, panel])
+        appkit = SimpleNamespace(NSSavePanel=SimpleNamespace(savePanel=save_panel), NSModalResponseOK=1)
+        foundation = SimpleNamespace(NSURL=SimpleNamespace(fileURLWithPath_=lambda path: path))
+        tools = SimpleNamespace(AppHelper=SimpleNamespace(callAfter=lambda callback: callback()))
+        with mock.patch.dict(sys.modules, {"AppKit": appkit, "Foundation": foundation, "PyObjCTools": tools}):
+            with self.assertRaisesRegex(RuntimeError, "panel unavailable"):
+                _pick_burn_target(window, output.name, source, "en")
+            self.assertIsNone(_pick_burn_target(window, output.name, source, "en"))
+            self.assertEqual(_pick_burn_target(window, output.name, source, "en").path, output)
+
+        panel.setDirectoryURL_.assert_called_with(str(source.parent))
+        panel.setNameFieldStringValue_.assert_called_with(output.name)
+        self.assertIs(panel.beginSheetModalForWindow_completionHandler_.call_args.args[0], window.native)
+        window.create_confirmation_dialog.assert_not_called()
+
     def test_confirmation_language_follows_each_editor_request(self):
         from maw.gui_web import _pick_burn_target
         from maw.native_burn_api import NativeBurnJobs, _choose_target

@@ -415,63 +415,51 @@ document.getElementById('download-gap-removed-ass')?.addEventListener('click', a
     MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
 });
-document.getElementById('download-otio')?.addEventListener('click', async () => {
+async function downloadTimelineWithSrt(basename, saveTimeline, buildSrt, srtDescription) {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = MaweExportTimeline.buildSourceOtio();
-  if (!payload) return;
-  await MaweExportTimeline.downloadFile(payload, MaweBoot.FILENAME_BASE + '.otio', 'application/vnd.opentimelineio+json', {
-    desc: 'OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
+  const srt = MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt ? buildSrt() : null;
+  if (!await saveTimeline() || srt === null) return;
+  // WebKit can replace an earlier download when both links navigate the same frame.
+  await MaweExportTimeline.downloadFile(srt, `${basename}.srt`, 'text/plain', {
+    desc: srtDescription, types: { 'text/plain': ['.srt'] }
+  }, { separateFrame: true });
+}
+
+function downloadTimelineOtio(buildTimeline, basename, description) {
+  const payload = buildTimeline();
+  if (!payload) return false;
+  return MaweExportTimeline.downloadFile(payload, `${basename}.otio`, 'application/vnd.opentimelineio+json', {
+    desc: description, types: { 'application/vnd.opentimelineio+json': ['.otio'] }
   });
-  if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
-      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
-    });
-  }
+}
+
+const gapRemovedOtioBasename = () => `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}`;
+const buildGapRemovedOtioSrt = () => MaweExportSrt.buildGapRemovedSrt() || null;
+
+document.getElementById('download-otio')?.addEventListener('click', async () => {
+  const basename = MaweBoot.FILENAME_BASE;
+  await downloadTimelineWithSrt(basename,
+    () => downloadTimelineOtio(MaweExportTimeline.buildSourceOtio, basename, 'OTIO 工程'),
+    MaweExportSrt.buildSrt, '完整 SRT 字幕文件');
 });
 document.getElementById('download-otioz')?.addEventListener('click', async () => {
-  const saved = await MaweExportTimeline.exportTimelineOtioz(
-    'source',
-    MaweExportTimeline.buildSourceOtio,
-    MaweBoot.FILENAME_BASE + '.otioz',
-    'OTIOZ 打包工程',
-  );
-  if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
-      desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
-    });
-  }
+  const basename = MaweBoot.FILENAME_BASE;
+  await downloadTimelineWithSrt(basename,
+    () => MaweExportTimeline.exportTimelineOtioz('source', MaweExportTimeline.buildSourceOtio, `${basename}.otioz`, 'OTIOZ 打包工程'),
+    MaweExportSrt.buildSrt, '完整 SRT 字幕文件');
 });
 document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
-  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = MaweExportTimeline.buildGapRemovedOtio();
-  if (!payload) return;
-  await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
-    desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
-  });
-  if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    const srtPayload = MaweExportSrt.buildGapRemovedSrt();
-    if (srtPayload) {
-      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
-        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
-      });
-    }
-  }
+  const basename = gapRemovedOtioBasename();
+  await downloadTimelineWithSrt(basename,
+    () => downloadTimelineOtio(MaweExportTimeline.buildGapRemovedOtio, basename, '去空隙 OTIO 工程'),
+    buildGapRemovedOtioSrt, '去空隙字幕 SRT');
 });
 document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
-  const saved = await MaweExportTimeline.exportTimelineOtioz(
-    'gap-removed',
-    MaweExportTimeline.buildGapRemovedOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
-    '去空隙时间线 OTIOZ 打包工程',
-  );
-  if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
-    const srtPayload = MaweExportSrt.buildGapRemovedSrt();
-    if (srtPayload) {
-      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
-        desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
-      });
-    }
-  }
+  const basename = gapRemovedOtioBasename();
+  await downloadTimelineWithSrt(basename,
+    () => MaweExportTimeline.exportTimelineOtioz('gap-removed', MaweExportTimeline.buildGapRemovedOtio,
+      `${basename}.otioz`, '去空隙时间线 OTIOZ 打包工程'),
+    buildGapRemovedOtioSrt, '去空隙字幕 SRT');
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
