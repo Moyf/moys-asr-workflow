@@ -66,6 +66,8 @@ CHANGELOG.md → docs/releases/<正式版本>.md → GitHub Release / 官网 / �
 
 ## 文档格式与链接
 
+准备 Release Markdown 时，粗体闭合标记 `**` 与后续标点或正文之间留一个空格；标点后继续正文也用空格。例如 `- **简短标题** ： 说明`，不用 `- **简短标题**：说明`。
+
 版本文件名不带 `v`，如 `2.0.0.md`。文件为 UTF-8、LF Markdown；第一行是 `maw-release` JSON 注释，包含：
 
 | 字段 | 含义 |
