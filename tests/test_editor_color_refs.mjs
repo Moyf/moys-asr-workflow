@@ -29,7 +29,7 @@ globalThis.MaweCuePanel = {
   commitCuePanelEdit: noop, setCuePanelTarget: noop,
   remapPanelItems: (items) => items,
 };
-globalThis.MaweCuePanelWiring = { updateSelectionCountText: noop };
+globalThis.MaweDom = { selCountEl: {} };
 globalThis.MaweCuePanelState = {
   currentCuePanelIdx: -1, currentCuePanelKind: 'main', currentCuePanelTrackId: null,
 };

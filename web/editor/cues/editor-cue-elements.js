@@ -1,3 +1,4 @@
+import { selectOverlayCueRow } from './editor-overlay-cue-selection.js';
 import { bindCueEvents } from './editor-cue-events.js';
 import { scrollCueToCenter, setCueListIdentity } from './editor-cue-list-anchor.js';
 import { bindExtensionCueEvents } from './editor-inline-edit.js';
@@ -132,7 +133,7 @@ export function initMaweCueElements() {
       if (!head) return;
       scrollCueToCenter(head);
       if (isExtension) selectOnlyExtension(headIndex, extensionTrack);
-      else if (overlayTrack) window.MaweCuePanelWiring.selectOverlayCueRow(headIndex);
+      else if (overlayTrack) selectOverlayCueRow(headIndex);
       else selectOnly(headIndex);
     });
     slotEl.appendChild(refEl);

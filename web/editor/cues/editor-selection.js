@@ -1,3 +1,4 @@
+import { syncOverlaySelectionClasses, updateSelectionCountText } from './editor-overlay-cue-selection.js';
 import { releaseTemporaryVisibleSplitCuesUnless } from './editor-cue-elements.js';
 import { hideCueSplitPreview } from './editor-nav-preview.js';
 import { commitCuePanelEdit, renderCurrentCuePanel, setCurrentCuePanelExtensionIndex, setCurrentCuePanelIndex } from './editor-cue-panel.js';
@@ -226,13 +227,13 @@ export function initMaweSelection() {
     MaweState.selection.mainAnchor = -1;
     MaweState.selection.clear('overlay');
     MaweState.selection.overlayAnchor = -1;
-    window.MaweCuePanelWiring.syncOverlaySelectionClasses();
+    syncOverlaySelectionClasses();
   }
   MaweState.selection.clear('extension');
   MaweState.selection.add('extension', index);
   if (syncPair) syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   MaweState.selection.extensionAnchor = index;
   MaweCoreState.waveformEditor?.updateSelection();
   setCurrentCuePanelExtensionIndex(index, track);
@@ -249,7 +250,7 @@ export function initMaweSelection() {
     syncBoundSelection('extension', index, track);
   }
   updateMultiSelectionClasses();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   MaweState.selection.extensionAnchor = index;
   MaweCoreState.waveformEditor?.updateSelection();
   setCurrentCuePanelExtensionIndex(index, track);
@@ -272,7 +273,7 @@ export function initMaweSelection() {
     lastSelected = index;
   }
   updateMultiSelectionClasses();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (lastSelected < 0) return;
   if (selectedExtensionIdxs.has(b)) MaweState.selection.add('extension', b);
   MaweState.selection.extensionAnchor = lastSelected;
@@ -294,7 +295,7 @@ export function initMaweSelection() {
     if (el) el.classList.add('selected');
     syncBoundSelection('main', idx);
   }
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
   setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
@@ -314,7 +315,7 @@ export function initMaweSelection() {
   }
   if (selectedIdxs.has(b)) MaweState.selection.add('main', b);
   applyMainSelectionClasses((el) => el.classList.add('selected'));
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
   setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
@@ -335,7 +336,7 @@ export function initMaweSelection() {
   if (syncPair) syncBoundSelection('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
   setCurrentCuePanelIndex(idx);
@@ -350,7 +351,7 @@ export function initMaweSelection() {
   syncBoundSelection('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   setCurrentCuePanelIndex(idx);
 }
@@ -362,7 +363,7 @@ export function initMaweSelection() {
   MaweState.selection.add('extension', index);
   syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
   setCurrentCuePanelExtensionIndex(index, track);
 }
@@ -381,7 +382,7 @@ export function initMaweSelection() {
   hideCueSplitPreview();
   added.forEach((idx) => syncBoundSelection('main', idx));
   applyMainSelectionClasses((el) => el.classList.add('selected'));
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   setCurrentCuePanelIndex(added[added.length - 1]);
 }
@@ -397,7 +398,7 @@ export function initMaweSelection() {
   releaseTemporaryVisibleSplitCuesUnless('extension', added[added.length - 1], track);
   added.forEach((index) => syncBoundSelection('extension', index, track));
   updateMultiSelectionClasses();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
   setCurrentCuePanelExtensionIndex(added[added.length - 1], track);
 }
@@ -423,9 +424,9 @@ export function initMaweSelection() {
     if (isHiddenDisabled(idx, getOverlayTrack())) return;
     MaweState.selection.add('overlay', idx);
   });
-  window.MaweCuePanelWiring.syncOverlaySelectionClasses();
+  syncOverlaySelectionClasses();
   updateMultiSelectionClasses();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   const last = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {

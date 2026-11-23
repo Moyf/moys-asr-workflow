@@ -4,6 +4,7 @@ import { TrackPolicy } from './utils/track-policy.js';
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
 import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
+import { createTrackModule } from './utils/tracks.js';
 import * as speakerIdentity from './utils/speaker-identity.js';
 import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
@@ -45,7 +46,7 @@ import { createUtilsModule as createOgrafModule } from './utils/ograf.js';
 export function initEditorUtils() {
   'use strict';
 
-const trackHelpers = window.MAWE.resolve('project-tracks');
+const trackHelpers = createTrackModule();
 const helpers = {
   TrackPolicy,
   gapRemoveCore: window.AsrGapRemoveCore,

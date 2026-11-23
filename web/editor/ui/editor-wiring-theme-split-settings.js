@@ -1,15 +1,4 @@
-
-
-
-
-
-
-
-
-
-
-
-
+export function initMaweThemeSplitSettingsWiring() {
 MaweTheme.applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
 const toastPositionSelect = document.getElementById('editor-toast-position');
@@ -210,3 +199,4 @@ MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((i
 window.MaweThemeSplitWiring = window.MaweThemeSplitWiring || Object.freeze({
   toastPosition,
 });
+}
