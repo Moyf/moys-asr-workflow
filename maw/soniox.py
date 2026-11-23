@@ -37,7 +37,6 @@ from maw.app_paths import default_env_path
 from maw.asr.segmentation import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
-    _zero_duration_range,
     is_cjk_char,
     split_segments_auto,
 )
@@ -500,10 +499,7 @@ def delete_transcription(base_url: str, api_key: str, transcription_id: str, *,
 # ===== tokens → MAW 工程映射 =====
 
 def _token_timestamp(token: Mapping) -> tuple[int, int] | None:
-    start, end = token.get("start_ms"), token.get("end_ms")
-    if isinstance(start, bool) or isinstance(end, bool):
-        return None
-    return normalize_timestamp_range(start, end) or _zero_duration_range(start, end)
+    return normalize_timestamp_range(token.get("start_ms"), token.get("end_ms"), allow_zero=True)
 
 
 def merge_word_fragments(tokens: list[dict]) -> list[dict]:

@@ -211,6 +211,7 @@ def _detail_items(detail: dict[str, object]) -> tuple[list[dict[str, object]], b
         return [], False
     items: list[dict[str, object]] = []
     invalid = False
+    pending_space = False
     for word in words:
         if not isinstance(word, dict):
             invalid = True
@@ -218,12 +219,18 @@ def _detail_items(detail: dict[str, object]) -> tuple[list[dict[str, object]], b
         text = str(word.get("Word") or "")
         if not text:
             continue
+        if text.isspace():
+            pending_space = True
+            continue
         timestamp = normalize_timestamp_range(
-            word.get("OffsetStartMs"), word.get("OffsetEndMs")
+            word.get("OffsetStartMs"), word.get("OffsetEndMs"), allow_zero=True
         )
         if timestamp is None:
             invalid = True
             continue
+        if pending_space and not text[0].isspace():
+            text = " " + text
+        pending_space = False
         item: dict[str, object] = {
             "text": text,
             "start": timestamp[0],
@@ -265,7 +272,7 @@ def parse_result(response: dict[str, object]) -> dict[str, object]:
         if sentence_text.strip():
             sentence_texts.append(sentence_text)
         sentence_range = normalize_timestamp_range(
-            detail.get("StartMs"), detail.get("EndMs")
+            detail.get("StartMs"), detail.get("EndMs"), allow_zero=True
         )
         valid_item_range = (
             min(item["start"] for item in sentence_items),

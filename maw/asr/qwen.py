@@ -46,7 +46,6 @@ from maw.asr.segmentation import (
     WESTERN_MIN_WORDS,
     repair_nonpositive_duration_segments,
     split_coarse_segments,
-    _zero_duration_range,
     build_segments_preserving_speakers,
     build_segments_from_api_sentences,
 )
@@ -703,12 +702,8 @@ def parse_transcription_result(result: dict) -> dict:
                 continue
             raw_word_texts.append(item_text)
             timestamp = normalize_timestamp_range(
-                word.get("begin_time"), word.get("end_time")
+                word.get("begin_time"), word.get("end_time"), allow_zero=True
             )
-            if timestamp is None:
-                timestamp = _zero_duration_range(
-                    word.get("begin_time"), word.get("end_time")
-                )
             if timestamp is None:
                 invalid_word_timestamp = True
                 continue
@@ -746,12 +741,8 @@ def parse_transcription_result(result: dict) -> dict:
             sentence_texts.append(segment_text)
 
         sentence_range = normalize_timestamp_range(
-            sent.get("begin_time"), sent.get("end_time")
+            sent.get("begin_time"), sent.get("end_time"), allow_zero=True
         )
-        if sentence_range is None:
-            sentence_range = _zero_duration_range(
-                sent.get("begin_time"), sent.get("end_time")
-            )
         if sentence_range is None and valid_item_range is not None:
             # Even when one word is malformed, the valid word envelope is a
             # useful conservative sentence range.  Never expose those words
@@ -849,12 +840,8 @@ def parse_funasr_transcription_result(result: dict) -> dict:
                 continue
             raw_word_texts.append(item_text)
             timestamp = normalize_timestamp_range(
-                word.get("begin_time"), word.get("end_time")
+                word.get("begin_time"), word.get("end_time"), allow_zero=True
             )
-            if timestamp is None:
-                timestamp = _zero_duration_range(
-                    word.get("begin_time"), word.get("end_time")
-                )
             if timestamp is None:
                 invalid_word_timestamp = True
                 continue
@@ -894,12 +881,8 @@ def parse_funasr_transcription_result(result: dict) -> dict:
             max(item["end"] for item in raw_items),
         ) if raw_items else None
         sentence_range = normalize_timestamp_range(
-            sentence.get("begin_time"), sentence.get("end_time")
+            sentence.get("begin_time"), sentence.get("end_time"), allow_zero=True
         )
-        if sentence_range is None:
-            sentence_range = _zero_duration_range(
-                sentence.get("begin_time"), sentence.get("end_time")
-            )
         if sentence_range is None and valid_item_range is not None:
             # A malformed word list still has usable outer bounds in some
             # responses.  Keep the sentence as coarse, never partial words.

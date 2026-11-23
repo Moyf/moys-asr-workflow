@@ -195,7 +195,7 @@ class OpenAiAsrTests(unittest.TestCase):
             "text": "The missing word",
             "words": [
                 {"word": "The", "start": 0, "end": 0.3},
-                {"word": "missing", "start": 0.3, "end": 0.3},
+                {"word": "missing", "start": 0.3001, "end": 0.3},
                 {"word": "word", "start": 0.6, "end": 0.9},
             ],
         })
@@ -207,6 +207,49 @@ class OpenAiAsrTests(unittest.TestCase):
             "text": "The missing word",
         }])
         self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_zero_width_top_level_word_on_sentence_boundary_keeps_word_precision(self) -> None:
+        for first_text, second_text in [("Hello there", "friend."), ("Hello", "there friend.")]:
+            with self.subTest(first_text=first_text):
+                result = parse_timestamped_response({
+                    "text": "Hello there friend.",
+                    "segments": [
+                        {"text": first_text, "start": 0, "end": 0.5},
+                        {"text": second_text, "start": 0.5, "end": 1},
+                    ],
+                    "words": [
+                        {"word": "Hello", "start": 0, "end": 0.4},
+                        {"word": "there", "start": 0.5, "end": 0.5},
+                        {"word": "friend.", "start": 0.6, "end": 1},
+                    ],
+                })
+                self.assertEqual(result["timestamp_granularity"], "word")
+                self.assertEqual(result["items"][1], {"text": " there", "start": 500, "end": 500})
+                self.assertEqual([
+                    "".join(item["text"] for item in segment["items"])
+                    for segment in result["segments"]
+                ], [first_text, second_text])
+
+    def test_zero_width_punctuation_stays_with_its_sentence_in_mixed_response(self) -> None:
+        result = parse_timestamped_response({
+            "text": "Hello, there! friend.",
+            "segments": [
+                {"text": "Hello, there!", "start": 0, "end": 0.5},
+                {"text": "friend", "start": 0.5, "end": 1},
+                {"text": ".", "start": 1, "end": 1.2},
+            ],
+            "words": [
+                {"word": "Hello", "start": 0, "end": 0.2},
+                {"word": "there", "start": 0.2, "end": 0.4},
+                {"word": "!", "start": 0.5, "end": 0.5},
+                {"word": "friend", "start": 0.6, "end": 0.95},
+            ],
+        })
+        segments = _segments_from_result(result, max_len=18, min_len=3, gap_split=800)
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual([item["text"] for item in segments[0]["items"]], ["Hello", " there", "!"])
+        self.assertEqual([item["text"] for item in segments[1]["items"]], ["friend"])
 
     def test_parse_timestamped_unranged_mixed_segment_preserves_all_text(self) -> None:
         result = parse_timestamped_response({
