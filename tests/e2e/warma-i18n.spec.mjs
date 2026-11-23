@@ -97,8 +97,24 @@ test('style library footer distinguishes project copies from user sync', async (
   await expect(warning).toHaveText(english);
   await library.locator('footer').screenshot({ path: info.outputPath('ass-style-project-hint-en.png') });
 
+  const cueAndLibrarySizes = () => page.evaluate(() => {
+    const project = MaweBoot.DATA;
+    const cue = AsrEditorUtils.getMainTrack(project).segments[0];
+    const entry = project.cue_styles.find(style => style.id === cue.cue_style_id);
+    const preset = MaweAssStorageWiring.styles().find(style => style.id === entry.library_id);
+    return [entry.style.fontSize, preset.fontSize];
+  });
+  const [projectSize, librarySize] = await cueAndLibrarySizes();
+  expect(projectSize).toBe(librarySize + 3);
   await warning.click();
   await expect(warning).toBeHidden();
+  expect(await cueAndLibrarySizes()).toEqual([librarySize, librarySize]);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect(warning).toBeVisible();
+  expect(await cueAndLibrarySizes()).toEqual([projectSize, librarySize]);
+  await page.evaluate(() => MaweHistory.performRedo());
+  await expect(warning).toBeHidden();
+  expect(await cueAndLibrarySizes()).toEqual([librarySize, librarySize]);
   await reopenStale();
   await expect(warning).toBeVisible();
 

@@ -81,11 +81,11 @@ test('single cue style is independent and undoable', async ({ page }, info) => {
   const select = page.locator('#cue-ass-style');
   await select.selectOption('default');
   await expect(select).toHaveValue('default');
-  await expect(select.locator('option', { hasText: /^SRT 渲染样式$/ })).toHaveCount(1);
-  await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
+  await expect(select.locator('option:checked')).toHaveText('SRT 渲染样式（跟随）');
+  await expect(select.locator('option[value=":saved"]')).toHaveCount(0);
   await select.selectOption('');
   await select.selectOption('ass');
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assStyle?.id)).toBe('ass');
+  await expect(select).toHaveValue('ass');
   const output = await page.evaluate(async () => {
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     await MaweAssFontAliases.ensureCoverage();
@@ -94,9 +94,11 @@ test('single cue style is independent and undoable', async ({ page }, info) => {
   });
   expect(output).toContain('Style: Cue_0,');
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.tracks.find(track => track.role === 'main').segments[0].assStyle.id).toBe('ass');
+  const cue = saved.tracks.find(track => track.role === 'main').segments[0];
+  expect(saved.cue_styles.find(entry => entry.id === cue.cue_style_id)).toMatchObject({ library_id: 'ass', style: { id: 'ass' } });
   await page.evaluate(() => MaweHistory.performUndo());
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assStyle)).toBeUndefined();
+  await expect(select).toHaveValue('');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].cue_style_id)).toBeUndefined();
 });
 
 test('styles on all three tracks survive a project roundtrip', async ({ page }) => {
@@ -115,10 +117,14 @@ test('styles on all three tracks survive a project roundtrip', async ({ page }) 
   const result = await page.evaluate(async () => {
     const serialized = JSON.parse(MaweJsonRepair.buildJson());
     const opened = await MaweMultiImport.openProjectFile(new File([JSON.stringify(serialized)], 'snapshot.mosp', { type: 'application/json' }), { suppressMediaPrompt: true });
-    return { opened, styles: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assStyle, AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].assStyle, AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].assStyle] };
+    return { opened, entries: MaweBoot.DATA.cue_styles, references: ['main', 'secondary', 'overlay'].map(role =>
+      MaweBoot.DATA.tracks.find(track => track.role === role).segments[0].cue_style_id) };
   });
   expect(result.opened).toBe(true);
-  expect(result.styles.map(style => style?.id)).toEqual(['ass', 'ass', 'ass']);
+  expect(result.entries).toHaveLength(1);
+  const [entry] = result.entries;
+  expect(entry).toMatchObject({ library_id: 'ass', style: { id: 'ass' } });
+  expect(result.references).toEqual([entry.id, entry.id, entry.id]);
 });
 
 test('ordered rules preview and apply literal replacement text', async ({ page }) => {
