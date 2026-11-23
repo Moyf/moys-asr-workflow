@@ -108,9 +108,9 @@ class MossRuntimePathTests(unittest.TestCase):
                 root = default_runtime_root()
         self.assertEqual(root, base.with_name(f"{base.name}-moss").resolve())
 
-    def test_local_override_at_drive_root_falls_back_to_default_dir_name(self) -> None:
-        """LOCAL 键指向盘符根时派生不崩溃，回落默认目录名（``D:\\local-runtime-moss``）。"""
-        drive = Path(f"{os.environ.get('SystemDrive', 'C:')}\\")
+    def test_local_override_at_filesystem_root_falls_back_to_default_dir_name(self) -> None:
+        """Use the host filesystem root to exercise its empty final component."""
+        drive = Path(Path.cwd().anchor)
         with mock.patch.dict(os.environ, {
             "MAW_LOCAL_RUNTIME_ROOT": str(drive),
             "MAW_MOSS_RUNTIME_ROOT": "",

@@ -1500,6 +1500,12 @@ def _build_segments(
             _ = segment.pop("items", None)
         elif group_regrouped:
             _ = segment.pop("items", None)
+            if preserve_items_on_equal_text and len(source_ids) > 1:
+                from maw.postprocess_resegment import merged_source_items
+
+                items = merged_source_items(sources, source_indexes, text, start, end)
+                if items is not None:
+                    segment["items"] = items
         elif not unchanged:
             if preserve_items_on_equal_text:
                 reconciled_items = _reconcile_items(

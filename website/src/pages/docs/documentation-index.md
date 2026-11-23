@@ -196,6 +196,8 @@ source: "docs/INDEX.md"
 
 [总计划、阶段进度与验收门槛](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/MAW_2_0_INTEGRATION_PLAN.md) · [执行手册、冲突分组与实现参考](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/MAW_2_0_INTEGRATION_RUNBOOK.md)
 
+执行手册开头的[1.x → 2.0 双基线维护](https://github.com/Moyf/moys-asr-workflow/blob/2.0dev/docs/plans/MAW_2_0_INTEGRATION_RUNBOOK.md#dual-baseline)是跨线迁移的固定入口，链接到当前盘点和未完成项。
+
 包含 main 同步、Launcher 改版、Electron 与 Installer 迁移，以及抢先体验渠道的安全交付边界。计划不代表已实施或已授权发布。
 
 当前P1已随PR373合入`2.0dev@3b431e0b`并收口（合入范围），P2待安排、未启动；[收口证据与未验边界](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261112_MAW2整合/P1整合记录.md#p1-closeout)。P2接手基线和PR235来源约束见总计划8.0。

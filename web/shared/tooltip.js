@@ -13,7 +13,8 @@
 (function initMaweTooltip(global) {
   'use strict';
 
-  const ATTACH_SELECTOR = '[data-title]:not(iframe):not(object):not(embed)';
+  const FOCUS_SELECTOR = '[data-tooltip-focus][aria-label]';
+  const ATTACH_SELECTOR = `:is([data-title],${FOCUS_SELECTOR}):not(iframe):not(object):not(embed)`;
   const FORCE_NATIVE_SELECTOR = '[data-tooltip-force-native]';
   const TITLE_SOURCE_ATTR = 'title';
   const TITLE_STORE_ATTR = 'data-title';
@@ -178,7 +179,8 @@
   }
 
   function currentTitleText(element) {
-    return element.getAttribute(TITLE_STORE_ATTR) || '';
+    return element.getAttribute(TITLE_STORE_ATTR)
+      || (element.matches(FOCUS_SELECTOR) ? element.getAttribute('aria-label') : '');
   }
 
   function hideNow() {
@@ -215,7 +217,12 @@
     return element;
   }
 
+  function targetHasFocus() {
+    return target?.matches(FOCUS_SELECTOR) && document.activeElement === target;
+  }
+
   function onPointerOver(event) {
+    if (targetHasFocus()) return;
     const element = hoverElement(event);
     if (!element) return;
     if (hideTimer) {
@@ -236,7 +243,7 @@
     const current = target || pendingTarget;
     if (!current || (event.relatedTarget && current.contains(event.relatedTarget))) return;
     if (pendingTarget) { hideNow(); return; }
-    if (!target || hideTimer) return;
+    if (!target || hideTimer || targetHasFocus()) return;
     hideTimer = global.setTimeout(() => {
       hideTimer = 0;
       hideNow();
@@ -252,6 +259,14 @@
     storeTitlesInTree(document.documentElement);
     document.addEventListener('pointerover', onPointerOver, true);
     document.addEventListener('pointerout', onPointerOut, true);
+    document.addEventListener('focusin', (event) => {
+      if (!event.target.matches(FOCUS_SELECTOR)) return;
+      hideNow();
+      show(event.target);
+    }, true);
+    document.addEventListener('focusout', (event) => {
+      if (target === event.target && target.matches(FOCUS_SELECTOR)) hideNow();
+    }, true);
     document.addEventListener('keydown', event => { if (event.key === 'Escape') hideNow(); }, true);
     // scroll 不冒泡：capture 才能覆盖内部滚动容器；位置失效立即收起。
     document.addEventListener('scroll', hideNow, true);

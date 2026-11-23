@@ -13,12 +13,14 @@ import tempfile
 import time
 import webbrowser
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from threading import Event, Lock
-from typing import BinaryIO, Final, final
+from typing import TYPE_CHECKING, BinaryIO, Final, final
 
 from send2trash import send2trash
 
@@ -95,7 +97,11 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
+from maw.script_match_review import ScriptMatchReview, ScriptMatchReviewApi
+from maw.tool_windows import open_comparison_window, timestamp_compare_payload, transcript_compare_payload
 from maw.media import probe_audio_tracks, resolve_project_media
+from maw.native_burn_host import BurnDialogBusy, BurnHost
+from maw.native_burn_output import BurnDestination
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
@@ -118,7 +124,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, ScriptMatchTrace, SubtitleMatchError, _read_script, match_script_project, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -147,10 +153,14 @@ from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
 
+if TYPE_CHECKING:
+    from webview import Window
+
 
 OPEN_DIALOG = 10
 SAVE_DIALOG = 30
 FOLDER_DIALOG = 20
+_FILE_DIALOG_LOCK = Lock()
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
@@ -217,6 +227,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "server_port_occupied": "Another service is using this port. Choose another port.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
+    "server_stop_pending": "The editor has not finished shutting down. Wait a moment and retry.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
     "burn_settings_invalid": "压制参数无效：CRF 需为 0–51 整数，预设与音频码率需从列表中选择。",
@@ -468,6 +479,14 @@ def _independent_app_child_environment() -> dict[str, str]:
     return environment
 
 
+def _alignment_server_child_environment() -> dict[str, str]:
+    from maw.ffmpeg import _ALIGNMENT_ORIGINAL_PATH_ENV
+
+    environment = _independent_app_child_environment()
+    environment[_ALIGNMENT_ORIGINAL_PATH_ENV] = os.environ.get("PATH", "")
+    return environment
+
+
 def _launcher_icon_path() -> Path:
     """返回当前平台的 Launcher 图标，避免 macOS 使用 Windows ICO。"""
 
@@ -506,7 +525,11 @@ class LauncherApi:
         self.ocr_runtime_cancel_event: Event | None = None
         self.ocr_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
+        self._stop_server_lock = Lock()
         self.server_log_file: BinaryIO | None = None
+        self._native_burn_picker: Callable[[str, Path, str], BurnDestination | None] | None = None
+        self._native_burn_host: BurnHost | None = None
+        self._native_burn_port: int | None = None
         self._recording_preparation = None
         self.alignment_process: subprocess.Popen[str] | None = None
         self.alignment_log_file: BinaryIO | None = None
@@ -1108,7 +1131,11 @@ class LauncherApi:
             return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
         self._emit_postprocess_status("toolbox_status_reading")
         try:
-            report = check_script_alignment(ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)))
+            tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+            report = check_script_alignment(
+                ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)),
+                ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe,
+            )
             return {"ok": True, "report": report.to_payload()}
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
             return _error_result("toolboxTimestampScriptPath", "alignment_failed", str(error))
@@ -1178,6 +1205,7 @@ class LauncherApi:
                     output_directory=_optional_path(payload.get("outputDirectory")),
                     device=str(payload.get("device") or "auto"),
                     model_cache_root=model_cache_root,
+                    ffmpeg_path=effective_config_value(self.paths.env_path, "FFMPEG_PATH") or None,
                     on_event=lambda line: self._emit({"type": "log", "message": line}),
                     **script_options,
                 )
@@ -1190,6 +1218,7 @@ class LauncherApi:
             if script_mode:
                 from maw.script_timestamp_alignment import ScriptAlignmentRequest, run_script_alignment
 
+                tools = _postprocess_ffmpeg_tools(self.paths.env_path)
                 artifact, report = run_script_alignment(ScriptAlignmentRequest(
                     media_path=media_path,
                     model_path=requested_model_path,
@@ -1197,7 +1226,7 @@ class LauncherApi:
                     device=str(payload.get("device") or "auto"),
                     output_directory=_optional_path(payload.get("outputDirectory")),
                     **script_options,
-                ))
+                ), ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
                 self._emit_postprocess_status("toolbox_status_writing")
                 return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
             artifact, report = process_timestamp_alignment(
@@ -1212,7 +1241,7 @@ class LauncherApi:
                     model_cache_root=Path(model_cache_root) if model_cache_root else None,
                     device=str(payload.get("device") or "auto"),
                     output_directory=_optional_path(payload.get("outputDirectory")),
-                )
+                ), ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path)
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, RuntimeError, TimestampAlignmentError) as error:
@@ -2011,7 +2040,48 @@ class LauncherApi:
         preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
         return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
 
+    def open_compare_tool(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Open a maintained comparison page preloaded with local files."""
+        tool = str(payload.get("tool") or "")
+        lang = "en" if payload.get("lang") == "en" else "zh"
+        paths: list[Path] = []
+        for value in payload.get("paths") or ():
+            text = str(value or "").strip()
+            if text:
+                candidate = Path(text).expanduser()
+                if candidate not in paths:
+                    paths.append(candidate)
+        if not paths:
+            detail = "没有可对比的文件。" if lang != "en" else "No files to compare."
+            return {"ok": False, "detail": detail}
+        titles = {
+            "transcript": ("MAW 转写对比", "MAW Transcript Compare"),
+            "timestamp": ("MAW 时间码对比", "MAW Timestamp Compare"),
+        }
+        if tool not in titles:
+            return {"ok": False, "detail": f"Unknown comparison tool: {tool}"}
+        try:
+            if tool == "transcript":
+                preload = transcript_compare_payload(paths, lang=lang)
+                page = self.paths.root / "tools" / "compare.html"
+            else:
+                preload = timestamp_compare_payload(paths, lang=lang)
+                page = self.paths.root / "tools" / "timestamp-compare.html"
+            if not preload["files"]:
+                detail = "没有可对比的工程文件。" if lang != "en" else "No comparable project files."
+                return {"ok": False, "detail": f"{detail}{preload['warning']}"}
+            open_comparison_window(self.paths.root, page=page, title=titles[tool][lang == "en"], payload=preload)
+            return {"ok": True}
+        except (OSError, RuntimeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
     def preview_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._preview_script_match(payload, open_review=False)
+
+    def open_script_match_review(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._preview_script_match(payload, open_review=True)
+
+    def _preview_script_match(self, payload: Mapping[str, object], *, open_review: bool) -> dict[str, object]:
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         script_path = _optional_path(payload.get("scriptPath"))
@@ -2023,34 +2093,30 @@ class LauncherApi:
             except (PostprocessFileError, ProjectValidationFailed) as error:
                 return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
             try:
-                _, script_text = _read_script(script_path)
+                script_path, script_text = _read_script(script_path)
             except PostprocessFileError as error:
                 return {"ok": False, "preview": "", "errorCode": "script_invalid", "code": "script_invalid", "detail": str(error)}
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value))
             preserve = tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value))
             clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
-            prepared, _warning = prepare_script_text(
-                script_text,
-                extra_split if match_mode == "script" else (),
-                preserve if match_mode == "script" else (),
+            request = ScriptMatchRequest(
+                project_path, srt_path, script_path, OutputMode.JSON,
+                media_path=_optional_path(payload.get("mediaPath")),
+                extra_split_punctuation=extra_split, preserve_punctuation=preserve, match_mode=match_mode,
                 clean_markdown_symbols=clean_markdown_symbols,
             )
-            if match_mode == "script" and project_path is not None and _has_complete_item_timings(project):
-                matched, warnings = _match_project_with_character_timings(
-                    project,
-                    prepared,
-                    extra_split,
-                    preserve,
+            trace = ScriptMatchTrace() if open_review else None
+            matched, warnings = match_script_project(project, project_path is not None, script_text, request, trace=trace)
+            if trace is not None:
+                source_path = project_path or srt_path
+                assert source_path is not None
+                review = ScriptMatchReview(
+                    project, matched, trace, source_path, script_path, warnings, match_mode,
+                    media=request.media_path, lang="en" if payload.get("lang") == "en" else "zh",
                 )
-            else:
-                matched, warnings = _match_project(
-                    project,
-                    prepared,
-                    DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split if match_mode == "script" else ()),
-                    frozenset(preserve if match_mode == "script" else ()),
-                    match_mode,
-                )
+                _open_script_match_review(self.paths.root, review)
+                return {"ok": True}
             segments = get_main_track(matched)["segments"]
             preview = "\n".join(
                 f"{index + 1}. {segment.get('text', '')}"
@@ -2093,8 +2159,8 @@ class LauncherApi:
             return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
         except ValueError as error:
             return {"ok": False, "preview": "", "errorCode": "match_invalid", "code": "match_invalid", "detail": str(error)}
-        except (OSError, UnicodeError):
-            return {"ok": False, "preview": "", "errorCode": "preview_failed"}
+        except (OSError, UnicodeError, RuntimeError) as error:
+            return {"ok": False, "preview": "", "errorCode": "preview_failed", "detail": str(error)}
 
     def choose_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         chosen = _folder_dialog()
@@ -2111,6 +2177,17 @@ class LauncherApi:
         url = str(payload.get("url") or "").strip()
         if not url.startswith(("https://", "http://")):
             return {"ok": False, "error": "Invalid URL."}
+        host, port, process = self._native_burn_host, self._native_burn_port, self.server_process
+        if payload.get("editor") is True and host and port and process and process.poll() is None:
+            parts = urlsplit(url)
+            if (parts.scheme, parts.netloc, parts.path, parts.fragment) == ("http", f"127.0.0.1:{port}", "/", ""):
+                if not host.owns_editor(port):
+                    return _error_result("port", "server_no_response", url)
+                try:
+                    grant = host.launch_grant()
+                except PermissionError:
+                    return _error_result("port", "server_stop_pending")
+                url = parts._replace(fragment=f"maw-burn-host={grant}").geturl()
         _open_external(url)
         return {"ok": True}
 
@@ -2162,20 +2239,35 @@ class LauncherApi:
                 return _error_result("serverMediaPath", "server_media_missing", str(media_state.get("mediaPath") or ""))
             command = build_serve_command(json_path, media_path, port, remember_media=payload.get("rememberMedia") is True)
         command.append("--no-open")
-        _ = self._stop_owned_server()
+        if self._stop_owned_server() is None:
+            return _error_result("port", "server_stop_pending")
         self.server_log_file = tempfile.TemporaryFile(mode="w+b")
         try:
+            environment = _independent_app_child_environment()
+            picker = self._native_burn_picker
+            if picker is not None:
+                self._native_burn_host = BurnHost(picker)
+                self._native_burn_port = port
+                environment.update(self._native_burn_host.environment())
             self.server_process = popen_process_tree(
                 command,
                 stdout=self.server_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_independent_app_child_environment(),
+                env=environment,
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
+            if self._native_burn_host is not None:
+                process, host = self.server_process, self._native_burn_host
+
+                def close_burn_host_after_exit() -> None:
+                    process.wait()
+                    host.close()
+
+                threading.Thread(target=close_burn_host_after_exit, name="maw-burn-host-watch", daemon=True).start()
         except OSError as error:
-            self._close_server_log()
+            _ = self._stop_owned_server()
             detail = f"{url} | {error}"
             context = self._persist_start_failure("server_start_failed", detail)
             return _error_result("port", "server_start_failed", detail, context=context)
@@ -2305,7 +2397,7 @@ class LauncherApi:
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_independent_app_child_environment(),
+                env=_alignment_server_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -2403,20 +2495,38 @@ class LauncherApi:
             "detail": resolution.message,
         }
 
-    def _stop_owned_server(self, *, close_log: bool = True) -> bool:
-        process = self.server_process
-        self.server_process = None
-        stopped = False
-        try:
-            if process and process.poll() is None:
-                terminate_process_tree(process)
-                stopped = True
-            return stopped
-        finally:
-            if process is not None:
-                release_process_tree(process)
-            if close_log:
-                self._close_server_log()
+    def _stop_owned_server(self, *, close_log: bool = True) -> bool | None:
+        """Stop an owned editor, or return None while native cleanup may still be running."""
+        with self._stop_server_lock:
+            process, host, port = self.server_process, self._native_burn_host, self._native_burn_port
+            stopped = process is not None and process.poll() is None
+            stopped_gracefully = False
+            if stopped and host is not None:
+                may_be_saving = host.stop_issuing_grants()
+                acknowledged = port is not None and host.request_editor_shutdown(port)
+                if acknowledged or may_be_saving:
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        # Receipt (or a lost ACK) cannot confirm save cleanup.
+                        if may_be_saving:
+                            return None
+                    else:
+                        stopped_gracefully = True
+            self.server_process = None
+            self._native_burn_host = None
+            self._native_burn_port = None
+            try:
+                if stopped and not stopped_gracefully:
+                    terminate_process_tree(process)
+                return stopped
+            finally:
+                if process is not None:
+                    release_process_tree(process)
+                if host is not None:
+                    host.close()
+                if close_log:
+                    self._close_server_log()
 
     def _read_server_log(self) -> str:
         log_file = self.server_log_file
@@ -2508,7 +2618,10 @@ class LauncherApi:
                 pass
 
     def stop_server(self, payload: Mapping[str, object] | None = None) -> dict[str, object]:
-        if self._stop_owned_server():
+        stopped = self._stop_owned_server()
+        if stopped is None:
+            return _error_result("port", "server_stop_pending")
+        if stopped:
             return {"ok": True, "stopped": True}
         port = _port(payload or {})
         url = f"http://127.0.0.1:{port}/"
@@ -3227,7 +3340,13 @@ class LauncherApi:
             return _error_result("", "sticker_dir_invalid", str(directory))
         return _open_existing_path(directory.resolve())
 
-    def shutdown(self) -> None:
+    def shutdown(self) -> bool | None:
+        native_editor = self._native_burn_host is not None
+        if native_editor and self._stop_owned_server() is None:
+            # pywebview treats False as a veto. Exiting now would close the
+            # Windows Job handle and kill the editor before its save unwinds.
+            self._emit({"type": "editorShutdownPending"})
+            return False
         # closing runs on the GUI thread. Stop UI delivery before cancellation
         # wakes workers. Joining a worker here could block the GUI thread.
         self.pump.shutdown()
@@ -3243,7 +3362,8 @@ class LauncherApi:
             self.local_runtime_cancel_event.set()
         if self.ocr_runtime_cancel_event:
             self.ocr_runtime_cancel_event.set()
-        _ = self.stop_server()
+        if not native_editor:
+            _ = self.stop_server()
         _ = self.stop_alignment_server()
         if self._log_sink is not None:
             for stream in (sys.stdout, sys.stderr):
@@ -3452,6 +3572,7 @@ class LauncherApi:
                 model_path=request.alignment_model_path or None,
                 device=request.device,
                 model_cache_root=model_cache_root,
+                ffmpeg_path=effective_config_value(self.paths.env_path, "FFMPEG_PATH") or None,
                 cancel_event=cancel_event,
                 on_event=lambda line: self._emit({"type": "log", "message": line}),
             )
@@ -3479,7 +3600,7 @@ class LauncherApi:
                     model_path=Path(request.alignment_model_path) if request.alignment_model_path else None,
                     model_cache_root=Path(model_cache_root) if model_cache_root else None,
                     device=request.device,
-                )
+                ), ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path)
             )
             artifact = {
                 "projectPath": str(artifact_obj.project_path or ""),
@@ -3889,6 +4010,60 @@ class LauncherApi:
                 self.pump.flush()
 
 
+def _open_script_match_review(root: Path, review: ScriptMatchReview) -> None:
+    import webview
+
+    page = root / "web" / "launcher" / "script-match-review" / "index.html"
+    if not page.is_file():
+        raise OSError("Script match review page is missing.")
+    window: Window | None = None
+
+    def pick() -> Path | None:
+        if window is None or not _FILE_DIALOG_LOCK.acquire(blocking=False):
+            raise ValueError("文件选择窗口正在使用。" if review.lang != "en" else "A file dialog is already open.")
+        try:
+            suffix = "reviewed" if review.lang == "en" else "文稿核对"
+            selected = window.create_file_dialog(
+                SAVE_DIALOG, directory=str(review.source.parent),
+                save_filename=f"{review.source.stem}.{suffix}.mosp", file_types=("MOSP (*.mosp)",),
+            )
+            return Path(selected[0]) if selected else None
+        finally:
+            _FILE_DIALOG_LOCK.release()
+
+    title = "MAW Script Match Review" if review.lang == "en" else "MAW 文稿匹配对照"
+    window = webview.create_window(
+        title, url=page.resolve().as_uri(), js_api=ScriptMatchReviewApi(review, pick),
+        width=1240, height=830, min_size=(480, 520), background_color="#1c1c20", text_select=True,
+    )
+    if window is None:
+        raise RuntimeError("Could not open the script match review window.")
+
+
+def _pick_burn_target(window: Window, name: str, source: Path, lang: str) -> BurnDestination | None:
+    if not _FILE_DIALOG_LOCK.acquire(blocking=False):
+        raise BurnDialogBusy
+    try:
+        window.show()
+        selected = window.create_file_dialog(SAVE_DIALOG, directory=str(source.parent),
+                                             save_filename=name, file_types=("MP4 (*.mp4)",))
+        if not selected:
+            return None
+        target = BurnDestination.capture(Path(selected[0]), source)
+        if target.original is not None:
+            # The picker reports a path, with no identity or overwrite decision.
+            # Confirm the captured file explicitly, including on GTK backends.
+            title = "Overwrite video?" if lang == "en" else "覆盖视频？"
+            message = (f"Overwrite the existing file {str(target.path)!r}?" if lang == "en"
+                       else f"是否覆盖已有文件 {str(target.path)!r}？")
+            if window.create_confirmation_dialog(title, message) is not True:
+                return None
+            target.validate()
+        return target
+    finally:
+        _FILE_DIALOG_LOCK.release()
+
+
 def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
     import webview
 
@@ -3922,6 +4097,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
         text_select=True,
     )
     if window is not None:
+        api._native_burn_picker = partial(_pick_burn_target, window)
         window.events.closing += lambda: api.shutdown()
         # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
         window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)
@@ -4362,7 +4538,8 @@ def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filenam
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
     extra = {"directory": directory} if directory else {}
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
+    with _FILE_DIALOG_LOCK:
+        selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
     return tuple(selected) if selected else None
 
 
@@ -4371,7 +4548,8 @@ def _folder_dialog() -> tuple[str, ...] | None:
 
     if not webview.windows:
         return None
-    selected = webview.windows[0].create_file_dialog(FOLDER_DIALOG)
+    with _FILE_DIALOG_LOCK:
+        selected = webview.windows[0].create_file_dialog(FOLDER_DIALOG)
     return tuple(selected) if selected else None
 
 

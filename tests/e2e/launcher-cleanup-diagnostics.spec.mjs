@@ -126,7 +126,7 @@ for (const extension of ['mosp', 'srt']) {
     await expect(original.locator('button')).toHaveText(extension === 'srt' ? 'SRT 字幕' : 'MOSP 工程');
     await expect(original.locator('button')).toHaveAttribute('data-artifact-path', source);
     await expect(page.locator('#toolboxChainList > :first-child')).toHaveId('toolboxChainOriginal');
-    await expect(page.locator('.toolbox-chain-heading')).toHaveText('处理结果（点击可切换输入，或查看报告）');
+    await expect(page.locator('[data-i18n="toolbox_chain_heading"]')).toHaveText('处理结果（点击可切换输入，或查看报告）');
     const fonts = await page.locator('.toolbox-chain-source').evaluate(element => ({
       actual: getComputedStyle(element).fontFamily,
       expected: getComputedStyle(document.body).fontFamily,

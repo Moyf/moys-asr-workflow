@@ -50,14 +50,22 @@ test('standalone script tool is before take review and leaves existing subtitle 
 test('script mode sends script and media without a source project, displays artifacts and warnings', async ({ page }) => {
   await openScriptMode(page);
   await page.evaluate(() => {
+    document.getElementById('jsonPath').value = '/tmp/previous.mosp';
     window.MAWLauncher.config.alignmentModels[0].installed = true;
     window.MAWLauncher.config.alignmentModels[0].runtimeAvailable = true;
     document.getElementById('toolboxScriptAlignmentModel').dispatchEvent(new Event('change'));
     const original = window.MAWLauncher.callBackend;
+    window.scriptAlignmentComparisons = [];
     window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'open_compare_tool') {
+        window.scriptAlignmentComparisons.push(payload.paths);
+        return { ok: true };
+      }
+      if (method === 'run_fixed_process') return { ok: true, projectPath: '/tmp/script.script-aligned.reviewed.mosp' };
       if (method !== 'run_timestamp_alignment') return original(method, payload);
       window.scriptAlignmentPayload = payload;
-      return { ok: true, projectPath: '/tmp/script.script-aligned.mosp', srtPath: '/tmp/script.script-aligned.srt', warnings: ['请听审录音'], report: { strategy: 'manual_anchors', scriptLines: 12, chunks: 2, durationMs: 10000, audioTrack: 1 } };
+      // A non-subtitle path in the bridge's source field cannot be a comparison input.
+      return { ok: true, sourceSrtPath: payload.scriptPath, projectPath: '/tmp/script.script-aligned.mosp', srtPath: '/tmp/script.script-aligned.srt', warnings: ['请听审录音'], report: { strategy: 'manual_anchors', scriptLines: 12, chunks: 2, durationMs: 10000, audioTrack: 1 } };
     };
   });
   await page.locator('#toolboxUtilityMediaPath').fill('/tmp/audio.wav');
@@ -77,8 +85,23 @@ test('script mode sends script and media without a source project, displays arti
   await expect(page.locator('#toolboxResult')).toContainText('人工锚点 · 12 行 · 2 个块');
   await page.locator('#toolboxPostprocessPrimaryTab').click();
   await expect(page.locator('#toolboxResult')).toBeHidden();
+  await page.getByRole('button', { name: '时间码对比' }).click();
+  await expect.poll(() => page.evaluate(() => window.scriptAlignmentComparisons)).toEqual([
+    ['/tmp/script.script-aligned.mosp'],
+  ]);
+  await expect(page.locator('#toolboxChainOriginal')).toHaveCount(0);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
   await expect(page.locator('#toolboxResult')).toContainText('人工锚点 · 12 行 · 2 个块');
+  await page.locator('#toolboxPostprocessPrimaryTab').click();
+  await page.locator('#toolboxReplaceTab').click();
+  await page.locator('#postprocessReplacements').fill('old => new');
+  await page.locator('#runFixedProcess').click();
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('/tmp/script.script-aligned.reviewed.mosp');
+  await expect(page.locator('#toolboxChainOriginal button')).toHaveAttribute('data-artifact-path', '/tmp/script.script-aligned.mosp');
+  await page.getByRole('button', { name: '转写对比' }).click();
+  await expect.poll(() => page.evaluate(() => window.scriptAlignmentComparisons.at(-1))).toEqual([
+    '/tmp/script.script-aligned.mosp', '/tmp/script.script-aligned.reviewed.mosp',
+  ]);
 });
 
 test('input check needs no model, keeps current project and invalidates on input changes', async ({ page }) => {

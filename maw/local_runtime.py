@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 
+from maw.ffmpeg import _WORKER_FFPROBE_ENV, resolve_ffmpeg_tools
 from maw.gui_platform import restore_host_library_path
 from maw.runtimes import LOCAL
 from maw.runtimes.base import (
@@ -476,6 +477,8 @@ def run_timestamp_alignment_in_runtime(
     output_directory: str | Path | None = None,
     device: str = "auto",
     model_cache_root: str | Path | None = None,
+    ffmpeg_path: str | Path | None = None,
+    ffmpeg_search_path: str | None = None,
     on_event: Callable[[str], None] | None = None,
     cancel_event: Event | None = None,
     script_path: str | Path | None = None,
@@ -545,9 +548,18 @@ def run_timestamp_alignment_in_runtime(
         if on_event is not None:
             on_event(str(payload.get("message")) if isinstance(payload, dict) and payload.get("type") == "progress" else line)
 
+    env = _runtime_env(model_cache_root, default_runtime_root() if status.ready else None)
+    if ffmpeg_search_path is not None:
+        env["PATH"] = ffmpeg_search_path
+    env.pop(_WORKER_FFPROBE_ENV, None)
+    tools = resolve_ffmpeg_tools(ffmpeg_path, environment=env)
+    if tools.ffmpeg is not None:
+        env["FFMPEG_PATH"] = str(tools.ffmpeg)
+    if tools.ffprobe is not None:
+        env[_WORKER_FFPROBE_ENV] = str(tools.ffprobe)
     _run_process(
         command,
-        env=_runtime_env(model_cache_root, default_runtime_root() if status.ready else None),
+        env=env,
         cancel=cancel_event or Event(),
         on_line=on_line,
         cwd=str(helper.parent),

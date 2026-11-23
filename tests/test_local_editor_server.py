@@ -4,6 +4,7 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import base64
 import importlib.util
+import http.client
 import io
 import json
 import os
@@ -434,8 +435,40 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         handler.server = mock.Mock()
         handler.server.project.media_path = self.media
         handler.server.request_token = 'test-token'
+        handler.headers = {}
         handler.send_json = mock.Mock()
         return handler
+
+    def test_large_ass_request_requires_header_token_before_parsing(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.headers["Content-Length"] = str(16 * 1024 * 1024 + 1)
+        large_ass = "字" * (8 * 1024 * 1024 // 3 + 1)
+        handler.read_json_request = mock.Mock(return_value={
+            "requestToken": "test-token", "ass": large_ass, "timeMs": 0,
+        })
+        for token in ("", "ÿ", "wrong-token"):
+            handler.headers["X-MAW-Request-Token"] = token
+            handler.render_ass_frame()
+            handler.read_json_request.assert_not_called()
+            self.assertEqual(handler.send_json.call_args.args[0], 403)
+            self.assertTrue(handler.send_json.call_args.kwargs["close_connection"])
+
+        handler.headers["X-MAW-Request-Token"] = "test-token"
+        with mock.patch.object(server_editor, "editor_ffmpeg_binary", return_value=Path("ffmpeg")), \
+             mock.patch.object(server_editor, "render_ass_frame_png", return_value=(b"PNG", [])) as render:
+            handler.render_ass_frame()
+        handler.read_json_request.assert_called_once_with(max_bytes=48 * 1024 * 1024)
+        self.assertEqual(handler.send_json.call_args.args[0], 200)
+        self.assertIs(render.call_args.args[1], large_ass)
+
+    def test_srt_burn_keeps_its_existing_text_limit(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={
+            "requestToken": "test-token", "srt": "字" * (8 * 1024 * 1024 // 3 + 1),
+        })
+        handler.start_burn_video_job()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertIn("SRT 字幕内容超过 8 MB", handler.send_json.call_args.args[1]["error"])
 
     def test_ass_frame_endpoint_requires_token_and_valid_payload(self) -> None:
         handler = self._ass_frame_handler()
@@ -1297,6 +1330,30 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertEqual(json.loads(error.read()), server_editor.PRPROJ_CAPABILITY)
                 self.assertFalse(output_path.exists())
             finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_prproj_refusal_preserves_next_keep_alive_request(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            thread.start()
+            connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+            try:
+                connection.request("POST", "/api/prproj", body=b'{"output":"ignored.prproj"}',
+                                   headers={"Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 501)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+                self.assertFalse(response.will_close)
+                connection.request("GET", "/api/prproj-capability")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+            finally:
+                connection.close()
                 server.shutdown()
                 thread.join(timeout=2)
 

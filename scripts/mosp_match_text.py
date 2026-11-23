@@ -2,8 +2,8 @@
 """Align a MAW ``.mosp`` project with a corrected manuscript and emit SRT.
 
 The implementation intentionally uses only Python's standard library.  MAW's
-word/item-level timing is spread uniformly over the normalized characters in
-each item, then difflib anchors those characters to the corrected manuscript.
+word/item-level timing is spread over normalized characters for alignment.
+Launcher matching projects the alignment back onto the original timed items.
 """
 
 from __future__ import annotations
@@ -16,16 +16,18 @@ import math
 import re
 import sys
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
-from maw.project_tracks import get_main_track, iter_segments  # noqa: E402
+from maw.project_tracks import get_main_track, iter_segments, project_tracks  # noqa: E402
 from maw.project import normalize_project  # noqa: E402
 from maw.postprocess_io import render_srt  # noqa: E402
 from maw.project_mutations import replace_main_segments, fresh_segment_id  # noqa: E402
+from maw.project_preview import JsonDict  # noqa: E402
 
 
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
@@ -101,6 +103,7 @@ class TimedChar:
     start_ms: float
     end_ms: float
     cue_index: int
+    item_index: int = -1
 
 
 @dataclass(frozen=True)
@@ -204,8 +207,7 @@ def _milliseconds(value: object, location: str) -> int:
     return milliseconds
 
 
-def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> tuple[list[TimedChar], int, int]:
-    check_match_cancelled(is_cancelled)
+def _load_mosp_project(text: str) -> JsonDict:
     try:
         project = json.loads(text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:
@@ -213,9 +215,20 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
     if not isinstance(project, dict):
         raise AlignmentError("MOSP 顶层必须是 JSON 对象")
     try:
-        project = normalize_project(project)
+        return normalize_project(project)
     except ValueError as error:
         raise AlignmentError(str(error)) from error
+
+
+def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> tuple[list[TimedChar], int, int]:
+    check_match_cancelled(is_cancelled)
+    return _extract_timed_characters(_load_mosp_project(text), is_cancelled=is_cancelled)
+
+
+def _extract_timed_characters(
+    project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None,
+) -> tuple[list[TimedChar], int, int]:
+    check_match_cancelled(is_cancelled)
     segments = get_main_track(project)["segments"]
     if not isinstance(segments, list) or not segments:
         raise AlignmentError("MOSP 缺少非空 segments 数组")
@@ -251,8 +264,8 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
                 raise AlignmentError(f"{item_location}.text 必须是字符串")
             item_start = _milliseconds(item.get("start"), f"{item_location}.start")
             item_end = _milliseconds(item.get("end"), f"{item_location}.end")
-            if item_end <= item_start:
-                raise AlignmentError(f"{item_location}.end 必须晚于 start")
+            if item_end < item_start:
+                raise AlignmentError(f"{item_location}.end 必须大于或等于 start")
             if item_start < segment_start or item_end > segment_end:
                 raise AlignmentError(f"{item_location} 时间超出所属 segment 范围")
             if item_start < previous_item_end:
@@ -266,13 +279,15 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
             ]
             if not characters:
                 continue
+            if item_end == item_start:
+                raise AlignmentError(f"{item_location}.end 必须晚于 start")
             duration = item_end - item_start
             count = len(characters)
             for character_index, character in enumerate(characters):
                 check_match_cancelled(is_cancelled)
                 start = item_start + duration * character_index / count
                 end = item_start + duration * (character_index + 1) / count
-                timed.append(TimedChar(character, start, end, segment_index))
+                timed.append(TimedChar(character, start, end, segment_index, item_count))
     if not timed:
         raise AlignmentError("MOSP items 中没有可用于匹配的文字、字母或数字")
     return timed, len(segments), item_count
@@ -397,12 +412,84 @@ def _allocate_interval(
         timings[index] = (item_start, item_end)
 
 
+def _project_local_edits(
+    asr_chars: Sequence[TimedChar],
+    opcodes: Sequence[tuple[str, int, int, int, int]],
+    segments: Sequence[ManuscriptSegment],
+    timings: list[tuple[float, float] | None],
+    owners: list[int | None],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> int:
+    """Reuse replaced audio, never spend the time between two anchors on an insert."""
+    segment_index = 0
+    for opcode_index, (tag, i1, i2, j1, j2) in enumerate(opcodes):
+        check_match_cancelled(is_cancelled)
+        if tag != "replace":
+            continue
+        while segments[segment_index].normalized_end <= j1:
+            segment_index += 1
+        segment = segments[segment_index]
+        if j2 > segment.normalized_end:
+            continue
+        first, last = asr_chars[i1], asr_chars[i2 - 1]
+        # Like MAWE's text edit, only move timing inside a locally identified
+        # edit. Do not merge across source cues or swallow a timed pause.
+        shares_left = (
+            j1 > segment.normalized_start and i1 > 0
+            and opcodes[opcode_index - 1][0] == "equal"
+            and asr_chars[i1 - 1].cue_index == first.cue_index
+        )
+        shares_right = (
+            j2 < segment.normalized_end and i2 < len(asr_chars)
+            and opcodes[opcode_index + 1][0] == "equal"
+            and asr_chars[i2].cue_index == first.cue_index
+        )
+        if not (shares_left or shares_right) or first.cue_index != last.cue_index:
+            continue
+        if any(asr_chars[index - 1].end_ms < asr_chars[index].start_ms for index in range(i1 + 1, i2)):
+            continue
+        _allocate_interval(timings, j1, j2, first.start_ms, last.end_ms, is_cancelled=is_cancelled)
+        owner = first.item_index if first.item_index == last.item_index else -1 - opcode_index
+        owners[j1:j2] = [owner] * (j2 - j1)
+
+    unplaced = 0
+    for segment in segments:
+        check_match_cancelled(is_cancelled)
+        left, right = segment.normalized_start, segment.normalized_end
+        first_anchor = next((i for i in range(left, right) if timings[i] is not None), None)
+        if first_anchor is None:
+            # Unanchored cues are skipped by the caller; these are placeholders
+            # for the alignment report, not usable subtitle times.
+            timings[left:right] = [(0, 0)] * (right - left)
+            continue
+        anchor_timing = timings[first_anchor]
+        assert anchor_timing is not None
+        edge, owner = anchor_timing[0], owners[first_anchor]
+        for index in range(left, right):
+            check_match_cancelled(is_cancelled)
+            timing = timings[index]
+            if timing is None:
+                # Add the text to a nearby item in the same output cue without
+                # extending that item's time or claiming a new spoken interval.
+                timings[index] = (edge, edge)
+                owners[index] = owner
+                unplaced += 1
+            else:
+                edge, owner = timing[1], owners[index]
+    return unplaced
+
+
 def align_character_timings(
     asr_chars: Sequence[TimedChar],
     manuscript_text: str,
     policy: str,
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    anchor_sources: list[int | None] | None = None,
+    require_cue_anchor: bool = False,
+    manuscript_segments: Sequence[ManuscriptSegment] = (),
+    item_owners: list[int | None] | None = None,
 ) -> tuple[list[tuple[float, float]], dict[str, object]]:
     check_match_cancelled(is_cancelled)
     asr_text = "".join(item.char for item in asr_chars)
@@ -421,6 +508,10 @@ def align_character_timings(
         )
 
     timings: list[tuple[float, float] | None] = [None] * len(manuscript_text)
+    if anchor_sources is not None:
+        anchor_sources.extend([None] * len(manuscript_text))
+    if item_owners is not None:
+        item_owners.extend([None] * len(manuscript_text))
     for tag, i1, i2, j1, _j2 in opcodes:
         check_match_cancelled(is_cancelled)
         if tag != "equal":
@@ -429,6 +520,10 @@ def align_character_timings(
             check_match_cancelled(is_cancelled)
             source = asr_chars[i1 + offset]
             timings[j1 + offset] = (source.start_ms, source.end_ms)
+            if anchor_sources is not None:
+                anchor_sources[j1 + offset] = source.cue_index
+            if item_owners is not None:
+                item_owners[j1 + offset] = source.item_index
 
     global_start = float(asr_chars[0].start_ms)
     global_end = float(asr_chars[-1].end_ms)
@@ -436,7 +531,10 @@ def align_character_timings(
         index for index, timing in enumerate(timings) if timing is not None
     ]
 
-    if policy == "nearest" and anchor_indexes:
+    unplaced = 0
+    if require_cue_anchor and item_owners is not None:
+        unplaced = _project_local_edits(asr_chars, opcodes, manuscript_segments, timings, item_owners, is_cancelled=is_cancelled)
+    elif policy == "nearest" and anchor_indexes:
         previous_anchor: list[int | None] = []
         nearest: int | None = None
         for index in range(len(timings)):
@@ -497,7 +595,9 @@ def align_character_timings(
         check_match_cancelled(is_cancelled)
         if tag == "equal":
             continue
-        if tag == "delete":
+        # Anchor-required matching can omit a manuscript line altogether.
+        # Retain original cues whose characters were all deleted or replaced.
+        if tag == "delete" or (require_cue_anchor and tag == "replace"):
             unmatched_source_char_indexes.update(range(i1, i2))
         region: dict[str, object] = {
             "operation": tag,
@@ -506,7 +606,9 @@ def align_character_timings(
             "asr_text": asr_text[i1:i2],
             "manuscript_text": manuscript_text[j1:j2],
         }
-        if j1 < j2:
+        if j1 < j2 and (
+            not require_cue_anchor or item_owners is None or all(start < end for start, end in resolved[j1:j2])
+        ):
             region["estimated_start_ms"] = round(resolved[j1][0])
             region["estimated_end_ms"] = round(resolved[j2 - 1][1])
         low_confidence.append(region)
@@ -537,6 +639,7 @@ def align_character_timings(
         "manuscript_unmatched_characters": manuscript_unmatched,
         "low_confidence_regions": low_confidence,
         "unmatched_source_segment_indexes": unmatched_source_segment_indexes,
+        "unplaced_manuscript_characters": unplaced,
     }
     return resolved, report
 
@@ -592,6 +695,7 @@ def build_mosp_segments(
     output_cues: Sequence[OutputCue],
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    item_owners: Sequence[int | None] | None = None,
 ) -> list[dict[str, object]]:
     check_match_cancelled(is_cancelled)
     if len(segments) != len(output_cues):
@@ -599,37 +703,46 @@ def build_mosp_segments(
     result: list[dict[str, object]] = []
     for segment, output_cue in zip(segments, output_cues):
         check_match_cancelled(is_cancelled)
-        raw_items: list[tuple[float, float, str]] = []
-        pending_prefix = ""
+        raw_items: list[tuple[float, float, list[str]]] = []
+        pending_prefix: list[str] = []
         normalized_index = segment.normalized_start
+        previous_owner: int | None = None
         for source_character in segment.text:
             check_match_cancelled(is_cancelled)
             normalized = normalize_character(source_character)
             if not normalized:
                 if raw_items:
-                    start, end, item_text = raw_items[-1]
-                    raw_items[-1] = (start, end, item_text + source_character)
+                    raw_items[-1][2].append(source_character)
                 else:
-                    pending_prefix += source_character
+                    pending_prefix.append(source_character)
                 continue
             normalized_end = normalized_index + len(normalized)
             if normalized_end > segment.normalized_end:
                 raise AlignmentError("内部错误：MOSP item 的文稿索引越界")
             start = timings[normalized_index][0]
             end = timings[normalized_end - 1][1]
-            raw_items.append((start, end, pending_prefix + source_character))
-            pending_prefix = ""
+            owner = item_owners[normalized_index] if item_owners is not None else None
+            if item_owners is not None and any(item_owners[i] != owner for i in range(normalized_index, normalized_end)):
+                owner = None
+            if raw_items and owner is not None and owner == previous_owner:
+                item_start, _, item_text = raw_items[-1]
+                item_text.append(source_character)
+                raw_items[-1] = (item_start, end, item_text)
+            else:
+                pending_prefix.append(source_character)
+                raw_items.append((start, end, pending_prefix))
+            previous_owner = owner
+            pending_prefix = []
             normalized_index = normalized_end
         if pending_prefix:
             if not raw_items:
                 raise AlignmentError("内部错误：MOSP segment 没有可计时的 item")
-            start, end, item_text = raw_items[-1]
-            raw_items[-1] = (start, end, item_text + pending_prefix)
+            raw_items[-1][2].extend(pending_prefix)
         if normalized_index != segment.normalized_end:
             raise AlignmentError("内部错误：MOSP item 未覆盖完整文稿分段")
 
         repaired_items = _repair_output_timings(
-            raw_items, output_cue.start_ms, output_cue.end_ms,
+            [(start, end, "".join(text)) for start, end, text in raw_items], output_cue.start_ms, output_cue.end_ms,
             is_cancelled=is_cancelled,
         )
         result.append(
@@ -655,13 +768,16 @@ def generate_srt(cues: Iterable[OutputCue]) -> str:
 
 
 def _align_mosp_and_manuscript(
-    mosp_text: str,
+    project: JsonDict,
     manuscript_text: str,
     policy: str = "fuzzy",
     split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    require_cue_anchor: bool = False,
+    collect_cue_sources: bool = False,
+    item_owners: list[int | None] | None = None,
 ) -> tuple[
     list[OutputCue],
     dict[str, object],
@@ -671,12 +787,44 @@ def _align_mosp_and_manuscript(
     check_match_cancelled(is_cancelled)
     if policy not in {"fuzzy", "strict", "nearest"}:
         raise AlignmentError(f"不支持的错漏策略：{policy}")
-    asr_chars, segment_count, item_count = parse_mosp(mosp_text, is_cancelled=is_cancelled)
+    asr_chars, segment_count, item_count = _extract_timed_characters(project, is_cancelled=is_cancelled)
     normalized_manuscript, segments = split_manuscript(
         manuscript_text, split_punctuation, preserve_punctuation,
         is_cancelled=is_cancelled,
     )
-    timings, report = align_character_timings(asr_chars, normalized_manuscript, policy, is_cancelled=is_cancelled)
+    anchor_sources: list[int | None] | None = [] if require_cue_anchor or collect_cue_sources else None
+    timings, report = align_character_timings(
+        asr_chars, normalized_manuscript, policy, is_cancelled=is_cancelled, anchor_sources=anchor_sources,
+        require_cue_anchor=require_cue_anchor, manuscript_segments=segments, item_owners=item_owners,
+    )
+    if require_cue_anchor:
+        # Punctuation-only source cues have no characters in the alignment.
+        # Give them the same preservation/clipping rules as deleted source cues.
+        represented_sources = {character.cue_index for character in asr_chars}
+        unmatched = report["unmatched_source_segment_indexes"]
+        assert isinstance(unmatched, list)
+        report["unmatched_source_segment_indexes"] = sorted(set(unmatched) | (set(range(segment_count)) - represented_sources))
+    if anchor_sources is not None:
+        retained_segments: list[ManuscriptSegment] = []
+        cue_source_counts: list[list[tuple[int, int]]] = []
+        unanchored_count = 0
+        for segment in segments:
+            check_match_cancelled(is_cancelled)
+            source_counts = Counter(
+                i for i in anchor_sources[segment.normalized_start:segment.normalized_end] if i is not None
+            )
+            if not source_counts and require_cue_anchor:
+                unanchored_count += 1
+                continue
+            retained_segments.append(segment)
+            cue_source_counts.append(sorted(source_counts.items()))
+        segments = retained_segments
+        report["cue_source_counts"] = cue_source_counts
+        if require_cue_anchor:
+            report["unanchored_manuscript_cues"] = unanchored_count
+        if not segments:
+            # Let the app apply its normal low-coverage error before export.
+            return [], report, [], timings
     global_start = round(asr_chars[0].start_ms)
     global_end = round(asr_chars[-1].end_ms)
     output = build_output_cues(segments, timings, global_start, global_end, is_cancelled=is_cancelled)
@@ -694,7 +842,7 @@ def align_mosp_and_manuscript(
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
 ) -> tuple[list[OutputCue], dict[str, object]]:
     output, report, _segments, _timings = _align_mosp_and_manuscript(
-        mosp_text,
+        _load_mosp_project(mosp_text),
         manuscript_text,
         policy,
         split_punctuation,
@@ -712,37 +860,67 @@ def generate_matched_mosp(
     *,
     is_cancelled: Callable[[], bool] | None = None,
     reserved_cue_ids: Iterable[str] = (),
+    require_cue_anchor: bool = False,
 ) -> tuple[list[OutputCue], dict[str, object], str]:
     check_match_cancelled(is_cancelled)
+    project = _load_mosp_project(mosp_text)
+    source_segments = get_main_track(project)["segments"]
+    protected = bool(project["bindings"]) or any(
+        cue.get("color_group_id") or cue.get("sticker_group_id") for cue in source_segments
+    )
+    remap_cleanup = None
+    if not require_cue_anchor and "gap_remove" in project:
+        # The Launcher calls this matcher before it restores the full cue set
+        # and remaps cleanup scopes in its own matching transaction.
+        from maw.postprocess_match import preserve_match_cleanup_scopes, verified_match_cleanup_scopes
+
+        if verified_match_cleanup_scopes(project, is_cancelled=is_cancelled):
+            remap_cleanup = preserve_match_cleanup_scopes
+    keep_item_owners = remap_cleanup is not None or (require_cue_anchor and policy == "fuzzy")
+    item_owners: list[int | None] | None = [] if keep_item_owners else None
     output, report, segments, timings = _align_mosp_and_manuscript(
-        mosp_text,
+        project,
         manuscript_text,
         policy,
         split_punctuation,
         preserve_punctuation,
         is_cancelled=is_cancelled,
+        require_cue_anchor=require_cue_anchor,
+        collect_cue_sources=protected,
+        item_owners=item_owners,
     )
-    try:
-        project = json.loads(mosp_text.lstrip("\ufeff"))
-    except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
-        raise AlignmentError("MOSP JSON 无效") from exc
-    project = normalize_project(project)
-    source_segments = get_main_track(project)["segments"]
-    generated = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
-    grouped = any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in source_segments)
-    if len(generated) != len(source_segments) and (grouped or project["bindings"]):
+    generated = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled, item_owners=item_owners)
+    if protected and len(generated) != len(source_segments):
         raise AlignmentError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
-    if len(generated) == len(source_segments):
-        for original, cue in zip(source_segments, generated, strict=True):
-            for key, value in original.items():
-                if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
-                    cue[key] = copy.deepcopy(value)
+    origins = report.get("cue_source_counts") if require_cue_anchor else report.pop("cue_source_counts", None)
+    if isinstance(origins, list):
+        use_count = Counter(index for row in origins for index, _ in row)
+        single_sources = [row[0][0] if len(row) == 1 and use_count[row[0][0]] == 1 else None for row in origins]
+        if protected and single_sources != list(range(len(source_segments))):
+            raise AlignmentError("文稿重新分段后不能逐句对应已有分组或双语绑定。")
+    elif len(generated) == len(source_segments):
+        single_sources = list(range(len(source_segments)))
     else:
-        reserved = {cue["id"] for cue in iter_segments(project)} | set(reserved_cue_ids)
-        for index, cue in enumerate(generated, 1):
+        single_sources = [None] * len(generated)
+    reserved = {cue["id"] for cue in iter_segments(project)} | set(reserved_cue_ids)
+    for index, (cue, origin) in enumerate(zip(generated, single_sources, strict=True), 1):
+        check_match_cancelled(is_cancelled)
+        if origin is None:
             cue["id"] = fresh_segment_id(f"matched-cue-{index}", reserved)
-    replace_main_segments(project, generated)
-    content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
+            continue
+        original = source_segments[origin]
+        for key, value in original.items():
+            if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                cue[key] = copy.deepcopy(value)
+    matched = project
+    if remap_cleanup is not None:
+        # Replacing main cues mutates the track and project dictionaries.
+        # Keep the original cue set available for checking the cleanup scope.
+        matched = {**project, "tracks": [track.copy() for track in project_tracks(project)]}
+    replace_main_segments(matched, generated)
+    if remap_cleanup is not None:
+        remap_cleanup(project, matched, is_cancelled=is_cancelled)
+    content = json.dumps(matched, ensure_ascii=False, indent=2) + "\n"
     return output, report, content
 
 

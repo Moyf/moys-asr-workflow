@@ -1636,6 +1636,8 @@ textarea::placeholder {
   background: var(--bg-raised);
 }
 
+.match-review-link { margin-top: 8px; }
+.match-preview-pending { margin: 8px 0 0; color: var(--text-secondary); }
 .script-preview pre {
   max-height: 120px;
   margin: 6px 0 0;
@@ -2326,6 +2328,30 @@ textarea::placeholder {
   overflow-y: auto;
 }
 
+.toolbox-compare-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.toolbox-compare-row .toolbox-chain-heading {
+  margin: 0;
+}
+
+.toolbox-compare-row .ghost {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 55%, var(--border-subtle));
+  background: var(--info-tint);
+}
+
+.toolbox-compare-row .ghost:hover:not(:disabled) {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-soft);
+}
+
 .toolbox-chain-item,
 .toolbox-chain-original {
   display: flex;
@@ -2920,6 +2946,25 @@ textarea::placeholder {
   block-size: min(720px, calc(100dvh - 36px));
   max-block-size: calc(100dvh - 36px);
   min-block-size: min(680px, calc(100dvh - 36px));
+}
+
+.settings-scroll > .error-notice {
+  scroll-margin-bottom: 0;
+}
+
+/* Keep the alert title and actions visible while long installer output scrolls. */
+.settings-modal-card .error-notice-details {
+  max-block-size: min(8rem, 18dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-modal-card .error-notice-details:focus-visible {
+  outline-offset: -2px;
+}
+
+.settings-modal-card .error-notice-detail {
+  max-height: none;
 }
 
 .batch-confirm-card {

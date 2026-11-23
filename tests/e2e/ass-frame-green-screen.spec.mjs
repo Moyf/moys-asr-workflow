@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { makeTempDir, cleanupTempDir, generateWav, generateWaveformPayload,
   startServer, startBlankServer, findFreePort, disableOnboarding,
   openSettingsPage, closeSettingsPanels } from './helpers.mjs';
+import { stubAssFontCoverage } from './ass-font-readiness.mjs';
 
 const hint = '当前缺少视频画面，使用绿幕预览，可在「更多导出」中导出绿幕视频';
 
@@ -21,6 +22,7 @@ for (const kind of ['audio', 'blank']) {
         server = await startServer(project, media, await findFreePort());
       } else server = await startBlankServer(await findFreePort(), join(dir, '.settings'));
       await disableOnboarding(page);
+      await stubAssFontCoverage(page);
       await page.goto(server.url);
       await page.waitForFunction(() => window.MaweAssFrame);
       if (kind === 'audio') {

@@ -63,6 +63,7 @@
   let postprocessCancelling = false;
   let postprocessSettingsActionVisible = false;
   let inputManual = false;
+  const comparisonByInput = new Map();
   let utilityMediaManual = false;
   let timestampMediaManual = false;
   let subtitleBurnManual = false;
@@ -359,9 +360,12 @@
 
   function hideSplitPreview() {
     $("postprocessSplitPreview").classList.add("hidden");
+    $("postprocessSplitPreviewPending").classList.add("hidden");
     $("postprocessSplitPreviewText").textContent = "";
     $("postprocessSplitPreviewLabel").textContent = t("toolbox_split_preview");
     $("postprocessScriptPreview")?.classList.add("full-width-preview");
+    $("scriptMatchReviewError").textContent = "";
+    $("scriptMatchReviewError").classList.remove("visible");
   }
 
   function setMatchStats(message, kind = "") {
@@ -373,13 +377,13 @@
   async function refreshScriptPreview() {
     const requestId = ++scriptPreviewRequest;
     splitPreviewRequest += 1;
+    hideSplitPreview();
+    setMatchStats("");
     const path = $("postprocessScriptPath").value.trim();
     const preview = $("postprocessScriptPreview");
     if (!path || !SCRIPT_EXTS.has(extension(path))) {
       preview.classList.add("hidden");
       $("postprocessScriptPreviewText").textContent = "";
-      hideSplitPreview();
-      setMatchStats("");
       return;
     }
     const result = await bridge("read_script_preview", {
@@ -392,8 +396,6 @@
     if (requestId !== scriptPreviewRequest || path !== $("postprocessScriptPath").value.trim()) return;
     if (!result.ok) {
       preview.classList.add("hidden");
-      hideSplitPreview();
-      setMatchStats("");
       return;
     }
     $("postprocessScriptPreviewText").textContent = `${result.preview}${result.truncated ? "\n…" : ""}`;
@@ -407,19 +409,32 @@
     const path = $("postprocessScriptPath").value.trim();
     const mode = $("postprocessMatchMode").value;
     const paths = inputPaths();
-    if (!path || mode !== "script" || !paths || (!paths.projectPath && !paths.srtPath)) {
+    if (!path || !paths || (!paths.projectPath && !paths.srtPath) || !validateMatchPunctuation()) {
       hideSplitPreview();
       setMatchStats("");
       return;
     }
-    const result = await bridge("preview_script_match", {
+    const button = $("openScriptMatchReview");
+    const previewText = $("postprocessSplitPreviewText");
+    const pending = $("postprocessSplitPreviewPending");
+    const previewTitle = t(mode === "script" ? "toolbox_split_preview" : "toolbox_text_match_preview");
+    button.disabled = true;
+    button.classList.add("hidden");
+    previewText.classList.add("hidden");
+    previewText.textContent = "";
+    $("postprocessSplitPreviewLabel").textContent = previewTitle;
+    pending.classList.remove("hidden");
+    preview.classList.remove("hidden");
+    $("postprocessScriptPreview")?.classList.remove("full-width-preview");
+    const payload = {
       ...paths,
       scriptPath: path,
       matchMode: mode,
       extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
       preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
       cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
-    });
+    };
+    const result = await bridge("preview_script_match", payload);
     if (requestId !== splitPreviewRequest) return;
     if (!result.ok) {
       hideSplitPreview();
@@ -432,13 +447,34 @@
       );
       return;
     }
-    $("postprocessSplitPreviewText").textContent = result.preview;
+    pending.classList.add("hidden");
+    previewText.textContent = result.preview;
+    previewText.classList.remove("hidden");
+    button.classList.remove("hidden");
     const matchRate = Number.isFinite(Number(result.matchRate)) ? Math.round(Number(result.matchRate)) : null;
     $("postprocessSplitPreviewLabel").textContent = matchRate === null
-      ? t("toolbox_split_preview")
-      : `${t("toolbox_split_preview")}（${t("toolbox_match_rate")}：${matchRate}%）`;
-    preview.classList.remove("hidden");
-    $("postprocessScriptPreview")?.classList.remove("full-width-preview");
+      ? previewTitle
+      : `${previewTitle}（${t("toolbox_match_rate")}：${matchRate}%）`;
+    button.onclick = async () => {
+      if (requestId !== splitPreviewRequest) return;
+      button.disabled = true;
+      const status = $("scriptMatchReviewError");
+      status.textContent = "";
+      status.classList.remove("visible");
+      try {
+        const review = await bridge("open_script_match_review", { ...payload, lang: document.documentElement.lang });
+        if (requestId !== splitPreviewRequest) return;
+        if (!review.ok) throw new Error(review.detail || t("toolbox_match_preview_failed"));
+      } catch (error) {
+        if (requestId === splitPreviewRequest) {
+          status.textContent = error.message || t("toolbox_match_preview_failed");
+          status.classList.add("visible");
+        }
+      } finally {
+        if (requestId === splitPreviewRequest) button.disabled = false;
+      }
+    };
+    button.disabled = false;
     const originalCount = Number(result.originalSegmentCount);
     const matchedCount = Number(result.matchedSegmentCount);
     if (Number.isInteger(originalCount) && Number.isInteger(matchedCount) && originalCount > 0) {
@@ -671,6 +707,7 @@
     name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
     name.title = path;
     name.classList.toggle("empty", !hasPath);
+    renderChainSource(comparisonByInput.get(path)?.sourcePath);
   }
 
   function syncUtilityMediaName() {
@@ -721,6 +758,7 @@
       const next = autoSourcePath();
       if ($("toolboxInputPath").value !== next) {
         $("toolboxInputPath").value = next;
+        clearChainSelection();
         setFieldError("toolboxInputPath", "");
       }
     }
@@ -1662,31 +1700,77 @@
     list.scrollTop = list.scrollHeight;
   }
 
-  function applySubtitleResult(result, chain) {
-    if (!$("toolboxChainOriginal")) {
-      const input = inputPaths();
-      const path = (input && (input.projectPath || input.srtPath)) || result.sourceProjectPath || result.sourceSrtPath;
-      if (path && SUBTITLE_EXTS.has(extension(path))) {
-        const original = document.createElement("div");
-        original.id = "toolboxChainOriginal";
-        original.className = "toolbox-chain-original";
-        const label = document.createElement("span");
-        label.className = "toolbox-chain-label";
-        label.dataset.i18n = "toolbox_chain_original";
-        label.textContent = t("toolbox_chain_original");
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "toolbox-chain-source";
-        button.dataset.artifactKind = extension(path) === ".srt" ? "srt" : "project";
-        button.dataset.artifactName = fileName(path);
-        button.dataset.artifactPath = path;
-        renderArtifactButton(button);
-        button.addEventListener("click", () => selectChainPath(path, button));
-        button.addEventListener("contextmenu", event => openArtifactMenu(event, path, button));
-        original.append(label, button);
-        $("toolboxChainList").prepend(original);
-      }
+  function comparisonPreloadPaths() {
+    const input = inputPaths();
+    const path = input?.projectPath || input?.srtPath;
+    if (!path) return [];
+    const comparison = comparisonByInput.get(path);
+    if (!comparison) return [path];
+    const { sourcePath, resultPath } = comparison;
+    return sourcePath === resultPath ? [sourcePath] : [sourcePath, resultPath];
+  }
+
+  async function openCompareTool(tool, button) {
+    if (button.disabled) return;
+    const paths = comparisonPreloadPaths();
+    if (!paths.length) {
+      setFieldError("toolboxInputPath", t("toolbox_need_source"));
+      $("toolboxInputPath").focus();
+      return;
     }
+    button.disabled = true;
+    try {
+      const result = await bridge("open_compare_tool", { tool, paths, lang: document.documentElement.lang });
+      if (!result.ok) throw new Error(result.detail || t("failed"));
+    } catch (error) {
+      setResult(error.message || t("failed"), "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function renderChainSource(path) {
+    const original = $("toolboxChainOriginal");
+    if (original?.querySelector("button").dataset.artifactPath === path) return;
+    original?.remove();
+    if (!path) return;
+
+    const item = document.createElement("div");
+    item.id = "toolboxChainOriginal";
+    item.className = "toolbox-chain-original";
+    const label = document.createElement("span");
+    label.className = "toolbox-chain-label";
+    label.dataset.i18n = "toolbox_chain_original";
+    label.textContent = t("toolbox_chain_original");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toolbox-chain-source";
+    button.dataset.artifactKind = extension(path) === ".srt" ? "srt" : "project";
+    button.dataset.artifactName = fileName(path);
+    button.dataset.artifactPath = path;
+    renderArtifactButton(button);
+    button.addEventListener("click", () => selectChainPath(path, button));
+    button.addEventListener("contextmenu", event => openArtifactMenu(event, path, button));
+    item.append(label, button);
+    $("toolboxChainList").prepend(item);
+  }
+
+  function rememberComparison(input, result) {
+    const inputPath = [input.projectPath, input.srtPath, result.sourceProjectPath, result.sourceSrtPath]
+      .find(path => SUBTITLE_EXTS.has(extension(path)));
+    const resultPath = result.projectPath || result.srtPath;
+    if (!inputPath || !resultPath) return;
+
+    // The source opens the latest result; each historical result opens its own pair.
+    const sourcePath = comparisonByInput.get(inputPath)?.sourcePath || inputPath;
+    const comparison = { sourcePath, resultPath };
+    comparisonByInput.set(sourcePath, comparison);
+    if (result.projectPath) comparisonByInput.set(result.projectPath, comparison);
+    if (result.srtPath) comparisonByInput.set(result.srtPath, comparison);
+  }
+
+  function applySubtitleResult(result, chain, input) {
+    rememberComparison(input, result);
     if (result.projectPath) {
       $("jsonPath").value = result.projectPath;
       $("jsonPath").dispatchEvent(new Event("change", { bubbles: true }));
@@ -1707,6 +1791,13 @@
     setMatchStats(chain?.kind === "ai_cleanup" && result.stats ? aiCleanupStatsText(result.stats) : "");
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+    if (chain?.kind === "match" && chain.scriptPath && (result.projectPath || result.srtPath)) {
+      for (const warning of warnings) window.MAWLauncher.appendLog?.(warning);
+      const overlaps = warnings.filter(warning => warning.includes("与匹配结果重叠") || warning.includes("与匹配结果完全重叠"));
+      setResult([t("toolbox_done"), t("toolbox_match_source").replace("{path}", () => chain.scriptPath),
+        t("toolbox_match_compare_hint"), ...overlaps].join("\n"), "success", { revealWarning: warnings.length > 0 });
+      return;
+    }
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
     if (result.diagnosticPath) warnings.push(`${t(chain?.operation === "resegment" ? "toolbox_resegment_record_path" : "toolbox_cleanup_record_path")} ${result.diagnosticPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
@@ -2243,7 +2334,7 @@
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "match" });
+      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath }, paths);
       else if (cancelled) setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -2276,7 +2367,7 @@
         reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked),
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
+      if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" }, paths);
       else if (result.code === "postprocess_cancelled") setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -2380,7 +2471,7 @@
         ...(scriptMode ? scriptAlignmentPayload() : {}),
       });
       if (result.ok) {
-        applySubtitleResult(result, { kind: scriptMode ? "scriptAlignment" : "timestamps" });
+        applySubtitleResult(result, { kind: scriptMode ? "scriptAlignment" : "timestamps" }, paths);
         if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success", { revealWarning: Boolean(result.warnings?.length) });
       }
       else {
@@ -2434,7 +2525,7 @@
         report: $("ocrReport").checked,
         ...ocrRegionPayload(),
       });
-      if (result.ok) applySubtitleResult(result, { kind: "ocr" });
+      if (result.ok) applySubtitleResult(result, { kind: "ocr" }, paths);
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -2641,7 +2732,7 @@
         skipTargetLanguage: $("postprocessSkipTarget").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
+      if (result.ok) applySubtitleResult(result, { kind: "llm", operation }, paths);
       else if (result.code === "postprocess_cancelled") setResult(t("toolbox_ai_cancelled"));
       else {
         const message = result.code === "custom_prompt_required"
@@ -2671,7 +2762,7 @@
     setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_fixed_process", { ...paths, replacements, conversion });
-      if (result.ok) applySubtitleResult(result, { kind: "fixed" });
+      if (result.ok) applySubtitleResult(result, { kind: "fixed" }, paths);
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -3090,6 +3181,8 @@
     syncInputName();
     void refreshScriptPreview();
   });
+  $("openTranscriptCompare").addEventListener("click", (event) => { void openCompareTool("transcript", event.currentTarget); });
+  $("openTimestampCompare").addEventListener("click", (event) => { void openCompareTool("timestamp", event.currentTarget); });
   $("toolboxUtilityMediaPath").addEventListener("input", () => {
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");
@@ -3120,7 +3213,7 @@
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
+  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection", "llmApiKey"); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
     persistLlmPrompt();
@@ -3308,8 +3401,7 @@
     updateBackfillLabels();
   };
   window.MAWLauncher.onProjectPathChanged = () => {
-    if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
-    syncAlignmentNames();
+    syncPaths();
   };
   window.MAWLauncher.onAlignmentModelsChanged = () => {
     renderTimestampModel();

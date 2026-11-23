@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -67,7 +68,10 @@ class RecordingReviewJob:
     def _run(self, request: dict[str, Any], cancel: Event, source_items: bool = False) -> None:
         try:
             from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID
+            from maw.ffmpeg import _ALIGNMENT_ORIGINAL_PATH_ENV
+            from maw.gui_config import DEFAULT_ENV_PATH, load_env
             from maw.local_runtime import run_timestamp_alignment_in_runtime
+            configured_ffmpeg = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
             with tempfile.TemporaryDirectory(prefix="maw-recording-request-") as directory:
                 path = Path(directory) / "selection.json"
                 path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
@@ -75,6 +79,8 @@ class RecordingReviewJob:
                     model_id=QWEN_FORCED_ALIGNER_MODEL_ID, project_path=self.state.project_path,
                     script_path=self.state.script_path, media_path=self.state.media_path,
                     recording_request_path=path, recording_operation="fill" if source_items else "align", output_mode="json",
+                    ffmpeg_path=configured_ffmpeg or None,
+                    ffmpeg_search_path=os.environ.get(_ALIGNMENT_ORIGINAL_PATH_ENV),
                     cancel_event=cancel, on_event=self._progress,
                 )
             self.check_inputs()

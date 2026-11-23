@@ -358,6 +358,18 @@ function syncAssStyleForm(style) {
     else if (field.type === 'radio') field.checked = String(value) === field.value;
     else if (value !== undefined && value !== null) field.value = String(value);
   });
+  // 次色需要同时满足样式库可编辑和当前导出方案开启逐字换色。
+  // 放在通用字段同步之后，避免通用的 disabled 状态覆盖此门控。
+  const secondaryInput = /** @type {HTMLInputElement | null} */ (document.getElementById('ass-style-secondary-color'));
+  const secondaryRow = document.getElementById('ass-style-karaoke-row');
+  if (secondaryInput && secondaryRow) {
+    const library = getAssStyleLibrary();
+    const profileId = library.assignments?.assExportProfileId || 'ass';
+    const profile = (library.assProfiles || []).find(item => item?.id === profileId);
+    const disabled = !canEdit || profile?.animations?.karaoke?.enabled !== true;
+    secondaryInput.disabled = disabled;
+    secondaryRow.classList.toggle('is-disabled', disabled);
+  }
   const emphasisSection = document.getElementById('ass-style-emphasis-section');
   if (emphasisSection) emphasisSection.hidden = MaweSettings.EDITOR_SETTINGS.assMode !== true;
   const emphasisOptions = document.getElementById('ass-style-emphasis-options');
@@ -402,8 +414,14 @@ function syncAssProfileForm(profile) {
   if (assProfilePreviewSummary) {
     const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
     const style = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), safeProfile.styleId);
-    const summary = `${style.name} · ${tags || '无逐句动画'}`;
-    assProfilePreviewSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+    // 逐字换色不是逐句时钟动画，不在 assAnimationOverrideTags 里；摘要按
+    // 片段拼接翻译（整串动态拼接无法命中键），未唱颜色提示取自样式次色。
+    const translate = text => window.MAWE_I18N?.translateText?.(text) || text;
+    const tagsLabel = tags || translate('无逐句动画');
+    const karaokeLabel = safeProfile.animations?.karaoke?.enabled === true
+      ? translate('逐字换色（未唱色 = 样式次色；仅有字词时间码的主字幕生效）') : '';
+    const summary = `${style.name} · ${tagsLabel}${karaokeLabel ? ` · ${karaokeLabel}` : ''}`;
+    assProfilePreviewSummary.textContent = summary;
   }
 }
 
@@ -951,6 +969,7 @@ function syncAssModeControl() {
   }
   const quickOpen = document.getElementById('ass-style-quick-open');
   if (quickOpen) quickOpen.hidden = !enabled;
+  window.MaweAssFrame?.syncAssFrameControls?.();
   // 工具栏「烧录视频」按钮只在 ASS 字幕模式下显示。
   window.MaweBurnVideoExport?.syncButton?.();
   syncAssSymbolRule();

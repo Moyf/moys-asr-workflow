@@ -1,7 +1,7 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceAnimationTags, parseSentenceShakeMarkers, assStyleLine, effectiveColorName, effectiveSegmentColor, getProject, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
+  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceAnimationTags, parseSentenceShakeMarkers, assStyleLine, effectiveColorName, effectiveSegmentColor, getProject, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, getWordTimingEntries, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
 
 
   function normalizeAssHeaderValue(value, fallback = 'MAW') {
@@ -59,13 +59,15 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function assStyleVariant(style, paletteValue, colorStyle) {
+  function assStyleVariant(style, paletteValue, colorStyle, keepSecondary = false) {
     const variant = { ...style };
     if (colorStyle === 'stroke') {
       variant.outlineColor = paletteValue;
     } else if (colorStyle === 'text') {
       variant.primaryColor = paletteValue;
-      variant.secondaryColor = paletteValue;
+      // 卡拉 OK 开启时次色是「未唱」颜色，不再跟随调色板同步（否则未唱色
+      // 被主色覆盖，\k 完全不可见）。
+      if (!keepSecondary) variant.secondaryColor = paletteValue;
     }
     return variant;
   }
@@ -76,6 +78,97 @@ export function createUtilsModule(dependencies) {
     return globalThis.window?.MaweAssFontAliases?.resolveRuns?.(runs, style) || runs;
   }
 
+  // KTV（\k 整词跳变）：把字词时间码映射为「已唱/未唱」翻转计划。
+  // libass 的整词翻转发生在
+  // 音节窗口起点，词 i 的 \k 时长承载「本词翻转到下一词翻转」的间隔；首词
+  // 前的空引导 {\kNN} 表达句首静默；首个 \k 之前的文本恒为主色。text 必须是
+  // inline runs 看到的文本（MASS 标记已剥除）；任何失配都返回 null，该句
+  // 静默回落普通输出。
+  function assKaraokePlan(text, segment, options) {
+    const source = String(text ?? '');
+    if (!source || typeof getWordTimingEntries !== 'function') return null;
+    const owners = [];
+    let entries;
+    try {
+      // 在 runs 文本上重新分配字词归属：可听序列校验、标点/空白挂靠、
+      // 部分覆盖保守投影都复用 word-timing 模块的既有规则。
+      entries = getWordTimingEntries({ ...segment, text: source }, null, owners);
+    } catch (_) {
+      return null;
+    }
+    if (!entries.length || !owners.length) return null;
+    const eventStartMs = Number(options.eventStartMs) || 0;
+    const eventEndMs = Math.max(eventStartMs + 1, Number(options.eventEndMs) || eventStartMs + 1);
+    const mapTime = typeof options.mapTime === 'function' ? options.mapTime : value => value;
+    const cueCs = Math.max(1, Math.round((eventEndMs - eventStartMs) / 10));
+    // 翻转时刻（厘秒，相对事件起点）：绝对时间过同一 mapTime（去空隙导出
+    // 同步压缩），先取整再作差，钳入事件范围并保持单调不减。
+    const startCs = Math.round(eventStartMs / 10);
+    const flips = entries.map((entry) => {
+      const mapped = Number(mapTime(Number(entry?.start)));
+      const value = (Number.isFinite(mapped) ? Math.round(mapped / 10) : startCs) - startCs;
+      return Math.min(cueCs, Math.max(0, value));
+    });
+    for (let index = 1; index < flips.length; index += 1) {
+      flips[index] = Math.max(flips[index], flips[index - 1]);
+    }
+    return { owners, flips, cueCs };
+  }
+
+
+  // 把 inline runs 按字词边界切开并挂翻转元数据。所有碎片携带词 id（word）
+  // 与窗口；\k 的发射在 assEmphasizedText 里按「该词首个出现的碎片」去重——
+  // 后续字体解析（resolveRuns）可能把碎片再按字素切分，任何碎片都可能成为
+  // 顺序上的第一个，因此不能在切分时固化 head 标记。背景碎片（无词）跟随
+  // 前一词的翻转时刻（首个词之前恒已唱），与导出语义一致。
+  function assKaraokeSplitRuns(runs, plan) {
+    const { owners, flips, cueCs } = plan;
+    const entryMeta = flips.map((startCs, index) => ({
+      word: index,
+      startCs,
+      nextCs: index + 1 < flips.length ? flips[index + 1] : Math.max(startCs + 1, cueCs),
+      flipMs: startCs * 10,
+      // 首词的句首静默：空引导时长挂在首词元数据上。
+      ...(index === 0 ? { leadCs: flips[0] } : {}),
+    }));
+    const result = [];
+    let previousFlipMs = -1;
+    let consumed = 0;
+    for (const run of Array.isArray(runs) ? runs : []) {
+      const chars = Array.from(String(run?.text ?? ''));
+      if (!chars.length) {
+        result.push(run);
+        continue;
+      }
+      let piece = '';
+      let pieceOwner = null;
+      const flush = () => {
+        if (piece === '') return;
+        if (pieceOwner === null || pieceOwner === -1) {
+          result.push({ ...run, text: piece, karaoke: { flipMs: previousFlipMs } });
+        } else {
+          const meta = entryMeta[pieceOwner];
+          previousFlipMs = meta.flipMs;
+          result.push({ ...run, text: piece, karaoke: { ...meta } });
+        }
+        piece = '';
+      };
+      for (const ch of chars) {
+        const owner = owners[consumed] ?? -1;
+        consumed += 1;
+        if (pieceOwner === null) pieceOwner = owner;
+        if (owner !== pieceOwner) {
+          flush();
+          pieceOwner = owner;
+        }
+        piece += ch;
+      }
+      flush();
+    }
+    return result;
+  }
+
+
   function assEmphasizedText(text, style, fontSize, emphasisSyntax, inlineOptions) {
     const sourceRuns = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
     // libass applies an enabled t:\i target immediately. Use that baseline
@@ -83,10 +176,26 @@ export function createUtilsModule(dependencies) {
     const italic = inlineOptions?.italicTransformTarget === undefined
       ? style.italic : Boolean(inlineOptions.italicTransformTarget);
     const runs = resolveFontRuns(sourceRuns, { ...style, italic });
+    // KTV：每个词只在其顺序上首个碎片发射一次 \k（字体解析可能把同一词
+    // 切成多个碎片，按 word id 去重）。时长按片偏移重定基：已唱为 0，未唱
+    // 按差值，首词句首静默用空引导 \k 先行。\k 作为独立引导块放在 run 覆盖
+    // 标签之前（分离块与同块混排均经像素 oracle 验证，见方案文档）。
+    const karaokeWords = new Set();
     return runs.map((run) => {
       const content = escapeAssText(run.text);
       let startTags = '';
       let endTags = '';
+      let karaokePrefix = '';
+      const karaoke = run.karaoke;
+      if (karaoke && karaoke.startCs !== undefined && !karaokeWords.has(karaoke.word)) {
+        karaokeWords.add(karaoke.word);
+        const offset = Math.max(0, Math.round(Number(inlineOptions?.karaokeOffsetCs) || 0));
+        const start = Math.max(0, (Number(karaoke.startCs) || 0) - offset);
+        const next = Math.max(0, (Number(karaoke.nextCs) || 0) - offset);
+        const lead = Math.max(0, (Number(karaoke.leadCs) || 0) - offset);
+        if (lead > 0) karaokePrefix += `{\\k${lead}}`;
+        karaokePrefix += `{\\k${Math.max(0, next - start)}}`;
+      }
       // Never use \r to restore a font: it would reset colour, size and animation.
       // Unsafe names cannot enter ASS override syntax (there is no fn escaping).
       const safeName = name => typeof name === 'string' && name && !/[{}\\\r\n]/u.test(name);
@@ -139,7 +248,7 @@ export function createUtilsModule(dependencies) {
         startTags += '\\i1';
         endTags += '\\i0';
       }
-      return startTags ? `{${startTags}}${content}{${endTags}}` : content;
+      return karaokePrefix + (startTags ? `{${startTags}}${content}{${endTags}}` : content);
     }).join('');
   }
 
@@ -165,6 +274,24 @@ export function createUtilsModule(dependencies) {
     const label = `${speakerName}${speakerLabelSeparator}`;
     if (!assMode) return escapeAssText(`${label}${content}`);
     return `{\\c${assOverrideColorFromHex(speakerColor)}}${assEmphasizedText('', style, fontSize, emphasisSyntax, { ...inlineOptions, preparedRuns: [{ text: label }] })}{\\c${assOverrideColorFromHex(eventTextColor)}}${assEmphasizedText(content, style, fontSize, emphasisSyntax, inlineOptions)}`;
+  }
+
+
+  function assSpeakerBoxText(content) {
+    // Both export paths emit a fill override before each half. Any other
+    // inline override (including font fallback) keeps its original event.
+    const match = /^\{\\(?:1c|c)(&H00[0-9A-F]{6}&)\}([^{}]+)\{\\(?:1c|c)(&H00[0-9A-F]{6}&)\}([^{}]+)$/u.exec(content);
+    if (!match || match[1] === match[3]) return '';
+    const [, , label, , body] = match;
+    const plain = (label + body).replaceAll('\\N', '\n');
+    const bodyStart = body.replaceAll('\\N', '\n').trimStart();
+    // Merging colour runs also merges their shaping context. A bare ASCII
+    // colon can change glyph advance when joined to the surrounding text.
+    // Keep the existing separators and admit only common opening punctuation.
+    if (!/[：\p{Zs}]$/u.test(label) || !/^[\p{L}0-9０-９"'“‘「『＂＇(（—…]/u.test(bodyStart)
+        || plain.includes('\\')
+        || !/^[\p{Script=Latin}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{P}\p{Zs}0-9０-９\n]+$/u.test(plain)) return '';
+    return label + body;
   }
 
 
@@ -232,6 +359,10 @@ export function createUtilsModule(dependencies) {
     // 是两套语义；color_underline 只控制 CSS 预览，不参与 ASS 导出。
     const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
     const assMode = Boolean(profile);
+    // KTV 只在 ASS 模式 + 方案开关开启时参与；颜色变体不再同步次色（见
+    // assStyleVariant），主轨字幕按句尝试注入 \k。
+    const karaokeEnabled = assMode && profile.animations.karaoke.enabled === true;
+    const keepSecondary = karaokeEnabled;
     const emphasisSyntax = options.assEmphasisSyntax === 'none' ? 'none' : 'both';
     /** @type {Record<string, any>} */
     const inlineOptions = { ...options, italicTransformTarget: profile?.animations.t.enabled
@@ -259,14 +390,14 @@ export function createUtilsModule(dependencies) {
     const cueStyleLines = [];
     const cueStyleNames = new Map();
     const stackItems = [];
-    const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText, shake = false) => {
+    const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText, shake = false, karaoke = null) => {
       const colorName = colorNameFor(segment, context);
       const snapshot = cueStyles.get(segment.cue_style_id) || segment.assStyle;
       if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
         style = normalizeAssStyle(snapshot, ASS_DEFAULT_ASS_STYLE, 'cue');
         style.fontName = canonicalizeAssFontName(style.fontName);
         if (assColorGroupsSupported && knownColor(colorName)) {
-          style = assStyleVariant(style, colorStyles.find(entry => entry.name === colorName)?.value || '#ffffff', colorStyle);
+          style = assStyleVariant(style, colorStyles.find(entry => entry.name === colorName)?.value || '#ffffff', colorStyle, keepSecondary);
         }
         size = normalizeAssFontSize(style.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y);
         const key = JSON.stringify([style, size]);
@@ -282,10 +413,24 @@ export function createUtilsModule(dependencies) {
       }
       const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
         ? colorStyles.find(entry => entry.name === colorName)?.value || style.primaryColor : style.primaryColor;
-      const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
+      let runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
+      // KTV：先在 runs 实际携带的文本（MASS 标记已剥除）上求翻转计划，再按
+      // 字词边界切 runs；计划失败（无字词时间码/文本失配）时该句静默回落。
+      let karaokeApplied = false;
+      if (karaoke) {
+        const karaokeText = runs.map(run => String(run?.text ?? '')).join('');
+        const karaokePlan = assKaraokePlan(karaokeText, karaoke.segment, {
+          eventStartMs: start * 10, eventEndMs: end * 10, mapTime: karaoke.mapTime,
+        });
+        if (karaokePlan) {
+          runs = assKaraokeSplitRuns(runs, karaokePlan);
+          karaokeApplied = true;
+        }
+      }
       if (speakerName) runs.unshift({ text: `${speakerName}${speakerLabelSeparator}`, speakerColor });
       stackItems.push({ role, segment, index, start: start * 10, end: end * 10,
-        style, fontSize: size, styleName, speakerName, runs: resolveFontRuns(runs, style), fad: fade.fad, pop: fade.pop, originalText, shake });
+        style, fontSize: size, styleName, speakerName, runs: resolveFontRuns(runs, style),
+        karaoke: karaokeApplied, fad: fade.fad, pop: fade.pop, originalText, shake });
     };
     // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
     // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
@@ -323,7 +468,7 @@ export function createUtilsModule(dependencies) {
       const styleName = assColorGroupsSupported && knownColor(colorName)
         ? colorName.toUpperCase() : 'Default';
       const styleForEvent = assMode && styleName !== 'Default'
-        ? assStyleVariant(baseStyle, colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle)
+        ? assStyleVariant(baseStyle, colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle, keepSecondary)
         : baseStyle;
       const eventText = assEventText({
         segment,
@@ -343,9 +488,13 @@ export function createUtilsModule(dependencies) {
       const animationTags = assMode
         ? assAnimationOverrideTags(profile, { fad: sentenceAnimation?.fad || null, pop: sentenceAnimation?.pop || null, style: styleForEvent }) : '';
       // 计划条目的 runs/原文本都必须使用剥除 `!!` 后的文本；fad 时长与 pop
-      // 倍率保持单句解析结果，两者合并成一个 fade 形参传入。
+      // 倍率保持单句解析结果，两者合并成一个 fade 形参传入。KTV 描述符带
+      // 映射后的时间上下文，逐句尝试；翻转时刻在 addStackItem 内相对事件
+      // 起点量化（含 alignFirstStart 归零与去空隙压缩）。
       const stackFade = { text: shakeText, fad: sentenceAnimation?.fad || null, pop: sentenceAnimation?.pop || null };
-      if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, stackFade, eventText, sentenceShake?.shake === true);
+      const karaokeDescriptor = karaokeEnabled
+        ? { segment, mapTime } : null;
+      if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, stackFade, eventText, sentenceShake?.shake === true, karaokeDescriptor);
       const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
         `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${decoratedText}`,
@@ -440,7 +589,7 @@ export function createUtilsModule(dependencies) {
     const overlayStyleFor = (colorName) => {
       const variant = assColorGroupsSupported && knownColor(colorName)
         ? assStyleVariant(overlayBaseStyle,
-          colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle)
+          colorStyles.find((item) => item.name === colorName)?.value || '#ffffff', colorStyle, keepSecondary)
         : overlayBaseStyle;
       return { ...variant, marginV: overlayMarginV };
     };
@@ -496,6 +645,12 @@ export function createUtilsModule(dependencies) {
       if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
       events.length = 0;
       const number = value => Number(value.toFixed(4));
+      const transform = profile.animations.t;
+      // The two masks run after animation so even a shared \alpha transform
+      // can only paint the channels assigned to each event. Custom tags
+      // outside this grammar keep their original rendering.
+      const canSplitSpeakerBox = colorStyle === 'speaker' && (!transform.enabled || !transform.tags
+        || /^(?:\\(?:(?:fs|fscx|fscy|fsp|frz|fr|bord|shad|b|i|u|s)-?\d+(?:\.\d+)?|[1234]?c&H[0-9a-f]{6,8}&?|(?:alpha|[1234]a)&H[0-9a-f]{2}&?)\s*)+$/iu.test(transform.tags));
       for (const slice of plan.slices) {
         if (slice.diagnostic) continue;
         for (const piece of slice.pieces) for (const item of slice.items) {
@@ -518,8 +673,8 @@ export function createUtilsModule(dependencies) {
             }
           }
           const size = Math.max(1, number(item.fontSize * scale));
-          // 每条 Dialogue 的发射入口：非震动句只发一次（start/end 即分片
-          // 边界，输出与拆分前逐字节一致）；震动句按固定间隔多次发射。
+          // 普通句按排布分片发射，震动句在每个分片内再按固定间隔发射。
+          // 说话人底框与文字在同一个发射点复用时钟及排版信息。
           const emitEvent = (start, end, position, { includeMove = slice.legacy && item.role === 'main' && !item.manual } = {}) => {
             const animation = start === item.start && end === item.end && scale === 1
               ? assAnimationOverrideTags(profile, { includeMove, fad: item.fad, pop: item.pop, style: item.style })
@@ -534,12 +689,27 @@ export function createUtilsModule(dependencies) {
               accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
             };
             // Legacy 震动句带预折行 runs 与 \q2，必须走 runs 渲染而不是原文。
-            const content = slice.legacy && !item.manual && !item.shake && item.cueScale === 1 && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
-              { ...inlineOptions, preparedRuns: item.runs, fontTransform });
-            const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
+            // KTV 句同理：originalText 不含 \k，且分片发射需按片偏移重定基
+            //（已唱 \k0、未唱差值，见 assEmphasizedText）。
+            const content = slice.legacy && !item.manual && !item.shake && !item.karaoke && item.cueScale === 1 && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+              { ...inlineOptions, preparedRuns: item.runs, fontTransform, karaokeOffsetCs: item.karaoke ? (start - item.start) / 10 : 0 });
+            const overrides = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '');
             const layer = { main: 0, extension: 1, overlay: 2 }[item.role] + (item.manual ? 3 : 0);
             const eventName = options.pngEventNames ? `maw:${item.role}:${item.index}` : item.speakerName;
-            events.push(`Dialogue: ${layer},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(eventName)},0,0,0,,${decorated}`);
+            const event = `Dialogue: ${layer},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(eventName)},0,0,0,,${overrides}`;
+            const box = canSplitSpeakerBox && item.speakerName && item.style.borderStyle === 3
+              ? assSpeakerBoxText(content) : '';
+            if (box) {
+              // libass exempts transforms from collision detection. For the
+              // unpositioned main cue, put a no-op clock on the box only.
+              // It is already over at cue start and adds no PNG samples.
+              const collision = /\\(?:pos|move|t)\(/u.test(position + animation)
+                ? '' : '\\t(-2,-1,1,\\1a&HFF&)';
+              events.push(`${event}{\\1a&HFF&\\2a&HFF&${collision}}${box}`,
+                `${event}{\\3a&HFF&\\4a&HFF&}${content}`);
+            } else {
+              events.push(event + content);
+            }
           };
           if (item.shake) {
             // 原地震动：一条 ASS 事件只能有一个定位标签，导出时按固定间隔
@@ -622,7 +792,7 @@ export function createUtilsModule(dependencies) {
           assStyleLine(baseStyle, 'Default', fontSize),
           ...(colorStyle === 'text' || colorStyle === 'stroke'
             ? colorStyles.map((color) => assStyleLine(
-              assStyleVariant(baseStyle, color.value, colorStyle),
+              assStyleVariant(baseStyle, color.value, colorStyle, keepSecondary),
               color.name.toUpperCase(),
               fontSize,
             ))

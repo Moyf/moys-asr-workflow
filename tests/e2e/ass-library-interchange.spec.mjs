@@ -43,13 +43,10 @@ async function currentLibrary(page) {
   });
 }
 
-async function restoreLibrary(page, file, { warnsAboutKaraoke = false } = {}) {
+async function restoreLibrary(page, file) {
   const dialog = page.locator('#ass-style-import-dialog');
   await page.locator('#ass-style-import-file').setInputFiles(file);
   await expect(dialog).toBeVisible();
-  if (warnsAboutKaraoke) {
-    await expect(dialog.locator('#ass-style-import-preview')).toContainText('逐字换色设置会随样式库保留');
-  }
   await dialog.locator('input[value="restore"]').check();
   await dialog.locator('#ass-style-import-confirm').click();
   await expect(dialog).not.toBeVisible();
@@ -89,14 +86,28 @@ for (const variant of ['default', 'karaoke']) {
     const sourcePath = fileURLToPath(new URL(`../fixtures/ass-styles/main-f345a896-${variant}.json`, import.meta.url));
     const { library: expected } = JSON.parse(readFileSync(sourcePath, 'utf8'));
     await changeFontSize(page, 'ass', 175);
-    await restoreLibrary(page, sourcePath, { warnsAboutKaraoke: variant === 'karaoke' });
+    await restoreLibrary(page, sourcePath);
     await expect.poll(() => currentLibrary(page)).toEqual(expected);
 
     const profile = expected.assProfiles.find(item => item.id === expected.assignments.assExportProfileId);
+    await page.locator(`#ass-style-list [data-ass-selection-id="${profile.styleId}"]`).click();
+    await expect(page.locator('#ass-style-secondary-color')).toBeEnabled({ enabled: variant === 'karaoke' });
+    if (variant === 'karaoke') {
+      const row = page.locator('#ass-style-karaoke-row');
+      await row.scrollIntoViewIfNeeded();
+      const gaps = await row.evaluate(el => {
+        const box = el.getBoundingClientRect();
+        return [box.top - el.previousElementSibling.getBoundingClientRect().bottom,
+          el.nextElementSibling.getBoundingClientRect().top - box.bottom];
+      });
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(8);
+      await row.locator('..').screenshot({ path: test.info().outputPath('karaoke-style-fields.png') });
+    }
     await expect(page.locator('#ass-ass-default-profile')).toHaveValue(profile.id);
     await expect(page.locator('#ass-srt-default-style')).toHaveValue(expected.assignments.srtBurnStyleId);
     await page.locator(`#ass-profile-list [data-ass-selection-id="${profile.id}"]`).click();
     await expect(page.locator('#ass-profile-style-id')).toHaveValue(profile.styleId);
+    await expect(page.locator('#ass-animation-karaoke-enabled')).toBeChecked({ checked: variant === 'karaoke' });
     await page.locator('input[data-ass-animation="fad.enabled"]').check();
     await page.locator('#ass-style-save').click();
     profile.animations.fad.enabled = true;
@@ -104,7 +115,7 @@ for (const variant of ['default', 'karaoke']) {
     await waitForAssFonts(page);
     const ass = await page.evaluate(() => MaweExportSrt.buildAss());
     expect(ass).toContain('\\fad(250,250)');
-    expect(ass).not.toMatch(/\\k\d/u);
+    expect(/\\k\d/u.test(ass)).toBe(variant === 'karaoke');
     await roundTrip(page, expected, info.outputPath('exported-in-2.0.json'));
     expect(await cueStyle()).toEqual(snapshot);
     expect(readFileSync(projectPath, 'utf8')).toBe(initialProjectFile);
