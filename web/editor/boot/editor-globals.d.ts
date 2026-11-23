@@ -233,7 +233,7 @@ interface MaweHostApi {
     hasSavePicker(): boolean;
     pickSaveFile(options: object): Promise<FileSystemFileHandle>;
     writeBlob(handle: FileSystemFileHandle, buildBlob: () => Blob): Promise<void>;
-    downloadBlob(blob: Blob, filename: string): void;
+    downloadBlob(blob: Blob, filename: string, options?: { separateFrame?: boolean }): void;
   };
   server: { fetch(url: string | URL, options?: RequestInit): Promise<Response> };
   runtime: { getNavigator(): Navigator | undefined; hasUserActivation(): boolean };
