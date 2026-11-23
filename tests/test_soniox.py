@@ -13,6 +13,7 @@ import requests
 
 from maw import soniox
 from maw.project import validate_project
+from tests.compact_assertions import CompactContainerAssertions
 
 BASE = "https://api.soniox.com"
 KEY = "test-key"
@@ -681,7 +682,7 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(req.delete.call_args.args[0], f"{BASE}/v1/transcriptions/t1")
 
 
-class SonioxCliExitContractTests(unittest.TestCase):
+class SonioxCliExitContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_transcript_with_zero_width_word_writes_multiple_word_timed_cues(self) -> None:
         from maw.asr.soniox import main
 
