@@ -7,6 +7,9 @@
   const SEEK_MAX_TIMELINE_SPAN = 30_000;
   const MAX_SCROLL_WIDTH = 8_000_000;
   const NOTES_GAP = 8;
+  const MAX_DIFF_CELLS = 250_000;
+  const MAX_PAGE_DIFF_CELLS = 1_000_000;
+  const graphemes = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
   const zh = {
     title: 'MAW 文稿匹配对照', reset: '重置筛选', export: '导出调整后的 MOSP', warnings: '匹配说明',
     exportHint: '建议优先使用启动台的「文稿修正」操作',
@@ -18,7 +21,9 @@
     search: '搜索字幕或文稿', filter: '筛选差异', different: '只看差异', all: '全部对照组',
     fragment: '候选长度异常 · 保留原文', unmatched: '无对应文稿 · 保留原文', estimated: '字词时间码估算',
     clipped: '重叠 · 已裁短', dropped: '重叠 · 未纳入结果', timing: '时间或分段变化',
-    manual: '已调整', changed: '文字有变化', disabled: '禁用', none: '—', edit: '修改字幕',
+    manual: '已调整', changed: '字幕有变化', disabled: '禁用', none: '—', edit: '修改字幕',
+    added: n => `新增 ${n} 字`, removed: n => `删除 ${n} 字`, punctuation: '标点变化',
+    breaksOnly: '仅断句变化', manuscriptDiff: '结果与文稿不同', diffLimited: '文字变化过多，未逐字标注',
     filters: {
       different: ['只看变化和异常', '显示文字、时间或分段有变化的组，也包括匹配异常和手动调整。'],
       all: ['显示全部', '显示所有字幕组，包括完全没变的组。'],
@@ -49,7 +54,9 @@
     search: 'Search subtitles or manuscript', filter: 'Filter differences', different: 'Differences only', all: 'All groups',
     fragment: 'Candidate length mismatch · original kept', unmatched: 'No manuscript match · original kept', estimated: 'Estimated word timing',
     clipped: 'Overlap · shortened', dropped: 'Overlap · omitted', timing: 'Timing or segmentation changed',
-    manual: 'Manually adjusted', changed: 'Text changed', disabled: 'Disabled', none: '—', edit: 'Edit text',
+    manual: 'Manually adjusted', changed: 'Subtitle changed', disabled: 'Disabled', none: '—', edit: 'Edit text',
+    added: n => `Added ${n} ${n === 1 ? 'character' : 'characters'}`, removed: n => `Removed ${n} ${n === 1 ? 'character' : 'characters'}`, punctuation: 'Punctuation changed',
+    breaksOnly: 'Cue breaks only', manuscriptDiff: 'Result differs from manuscript', diffLimited: 'Diff too large to highlight',
     filters: {
       different: ['Changes and issues only', 'Show changes to text, timing or segmentation, plus match issues and manual edits.'],
       all: ['Show all', 'Show every subtitle group, including unchanged groups.'],
@@ -220,12 +227,102 @@
       else position();
     });
   }
-  function showCues(parent, cues, group) {
+  function tokenize(values) {
+    const tokens = [];
+    const ends = [];
+    for (const value of values) {
+      let offset = 0;
+      for (const item of graphemes ? graphemes.segment(value) : value) {
+        const char = item.segment ?? item;
+        // Whitespace may be introduced by reflow; punctuation and case still count.
+        if (!/^\s+$/u.test(char)) tokens.push({ char, offset });
+        offset += char.length;
+      }
+      ends.push(tokens.length);
+    }
+    return { tokens, ends };
+  }
+
+  function equalTokens(a, b) {
+    return a.length === b.length && a.every((token, i) => token.char === b[i].char);
+  }
+
+  function characterDiff(a, b, budget) {
+    // Like Transcript Compare, use exact LCS masks, with a cap on quadratic work.
+    let start = 0, endA = a.length, endB = b.length;
+    while (start < endA && start < endB && a[start].char === b[start].char) start++;
+    while (endA > start && endB > start && a[endA - 1].char === b[endB - 1].char) { endA--; endB--; }
+    const n = endA - start, m = endB - start;
+    const cells = n * m;
+    if (cells > MAX_DIFF_CELLS || (budget && cells > budget.remaining)) return null;
+    if (budget) budget.remaining -= cells;
+    const removed = new Uint8Array(a.length), added = new Uint8Array(b.length);
+    removed.fill(1, start, endA);
+    added.fill(1, start, endB);
+    if (!n || !m) return { removed, added };
+    const width = m + 1;
+    const dp = new Uint16Array((n + 1) * width);
+    for (let i = 1; i <= n; i++) {
+      for (let j = 1; j <= m; j++) {
+        const at = i * width + j;
+        dp[at] = a[start + i - 1].char === b[start + j - 1].char
+          ? dp[at - width - 1] + 1 : Math.max(dp[at - width], dp[at - 1]);
+      }
+    }
+    let i = n, j = m;
+    while (i && j) {
+      if (a[start + i - 1].char === b[start + j - 1].char) {
+        removed[start + --i] = 0;
+        added[start + --j] = 0;
+      } else if (dp[(i - 1) * width + j] >= dp[i * width + j - 1]) i--;
+      else j--;
+    }
+    return { removed, added };
+  }
+
+  function paintDifferences(nodes, values, { tokens, ends }, mask, tag) {
+    let from = 0;
+    nodes.forEach((node, index) => {
+      const value = values[index];
+      const end = ends[index];
+      const parts = [];
+      let offset = 0, i = from;
+      while (mask && i < end) {
+        if (!mask[i]) { i++; continue; }
+        const start = tokens[i].offset;
+        while (i + 1 < end && mask[i + 1]) i++;
+        const stop = tokens[i].offset + tokens[i].char.length;
+        if (start > offset) parts.push(value.slice(offset, start));
+        parts.push(create(tag, value.slice(start, stop), 'diff-char'));
+        offset = stop;
+        i++;
+      }
+      parts.push(value.slice(offset));
+      node.replaceChildren(...parts);
+      from = end;
+    });
+  }
+
+  const lineParts = values => values.flatMap(value => value.split(/\r\n?|\n/u).map(line => line.replace(/\s/gu, '')));
+  function isBreaksOnly(before, after, beforeText, afterText) {
+    if (!before.length || !after.length) return false;
+    const leftLines = lineParts(beforeText), rightLines = lineParts(afterText);
+    if (leftLines.length === rightLines.length && leftLines.every((line, i) => line === rightLines[i])) return false;
+    const sameRange = before[0].start === after[0].start
+      && before.reduce((end, cue) => Math.max(end, cue.end), 0) === after.reduce((end, cue) => Math.max(end, cue.end), 0);
+    if (!sameRange) return false;
+    if (before.length === after.length) {
+      return before.every((cue, i) => cue.start === after[i].start && cue.end === after[i].end && cue.disabled === after[i].disabled);
+    }
+    return [...before, ...after].every(cue => cue.disabled === before[0].disabled);
+  }
+
+  function showCues(parent, cues, group, refreshDifferences) {
     if (!cues.length) parent.append(create('p', text.none, 'muted'));
-    for (const cue of cues) {
+    return cues.map(cue => {
       const node = create('div', null, 'cue');
       node.append(create('span', `${cueTime(cue)}${cue.disabled ? ` · ${text.disabled}` : ''}`, 'time'));
-      const value = create('p', group ? outputText(group, cue) : cue.text);
+      const value = create('p');
       node.append(value);
       if (group) {
         const actions = create('div', null, 'actions');
@@ -239,8 +336,7 @@
             if (nextValue === cue.text) state.edits.delete(cue.index);
             else state.edits.set(cue.index, nextValue);
             review.set(group.id, state);
-            value.textContent = nextValue;
-            updateBadges(group);
+            refreshDifferences();
             status();
           };
           input.addEventListener('input', () => updateEdit(input.value));
@@ -262,17 +358,10 @@
         node.append(actions);
       }
       parent.append(node);
-    }
+      return value;
+    });
   }
-  function updateBadges(group) {
-    const stack = rendered.get(group.id)?.querySelector('.badges');
-    if (!stack) return;
-    const tags = group.issues.map(key => create('span', text[key], 'badge'));
-    if (group.changed && !group.issues.includes('timing')) tags.push(create('span', text.changed, 'badge changed'));
-    if (isAdjusted(group)) tags.push(create('span', text.manual, 'badge manual'));
-    stack.replaceChildren(...tags);
-  }
-  function makeRow(group) {
+  function makeRow(group, budget) {
     const row = create('tr');
     row.tabIndex = -1;
     row.toggleAttribute('data-active', selected === group.id);
@@ -283,7 +372,8 @@
       return stack;
     };
     const range = wrap();
-    range.append(create('span', `${time(group.start)}\n${time(group.end)}`, 'time range-text'), create('div', null, 'badges'));
+    const badges = create('div', null, 'badges');
+    range.append(create('span', `${time(group.start)}\n${time(group.end)}`, 'time range-text'), badges);
     const actions = create('div', null, 'actions');
     const jump = button('', () => selectTimeline(group, group.start, { center: true, maxSpan: SEEK_MAX_TIMELINE_SPAN }), 'btn jump-timeline');
     window.MAWToolPage.setActionIcon(jump, 'locate', text.jump);
@@ -297,34 +387,67 @@
         review.set(group.id, { restore: !current?.restore, edits: new Map() });
         tracksDirty = true;
         drawOutput();
-        updateBadges(group);
         drawTimeline();
         status();
       });
       actions.append(action);
     }
-    showCues(wrap(), group.before);
+    const beforeText = group.before.map(cue => cue.text);
+    const before = tokenize(beforeText);
+    const beforeNodes = showCues(wrap(), group.before);
     const candidates = wrap();
     for (const candidate of group.candidates) candidates.append(create('p', candidate, 'candidate'));
     if (!group.candidates.length) candidates.append(create('p', text.none, 'muted'));
+    const manuscript = tokenize(group.candidates).tokens;
     const result = wrap();
-    function drawOutput() {
+    let resultNodes;
+    function refreshDifferences(initialBudget) {
+      const cues = output(group);
+      const afterText = cues.map(cue => outputText(group, cue));
+      const after = tokenize(afterText);
+      const sameText = equalTokens(before.tokens, after.tokens);
+      const diff = sameText ? null : characterDiff(before.tokens, after.tokens, initialBudget);
+      paintDifferences(beforeNodes, beforeText, before, diff?.removed, 'del');
+      paintDifferences(resultNodes, afterText, after, diff?.added, 'ins');
+
+      const breaksOnly = sameText && isBreaksOnly(group.before, cues, beforeText, afterText);
+      const restored = review.get(group.id)?.restore;
+      const tags = group.issues.filter(key => key !== 'timing' || (!breaksOnly && !restored))
+        .map(key => create('span', text[key], 'badge'));
+      const badge = (label, kind = 'changed') => tags.push(create('span', label, `badge ${kind}`));
+      if (breaksOnly) badge(text.breaksOnly);
+      else if (!sameText && !diff) badge(text.diffLimited);
+      else if (diff) {
+        const removed = before.tokens.filter((_, i) => diff.removed[i]);
+        const added = after.tokens.filter((_, i) => diff.added[i]);
+        if ([...removed, ...added].every(token => /^\p{P}\p{M}*$/u.test(token.char))) badge(text.punctuation);
+        else {
+          if (removed.length) badge(text.removed(removed.length));
+          if (added.length) badge(text.added(added.length));
+        }
+      } else if (!restored && group.changed && !group.issues.includes('timing')) badge(text.changed);
+      if (manuscript.length && !equalTokens(manuscript, after.tokens)) badge(text.manuscriptDiff, 'manuscript');
+      if (isAdjusted(group)) badge(text.manual, 'manual');
+      badges.replaceChildren(...tags);
+    }
+    function drawOutput(initialBudget) {
       if (action) {
         const restored = review.get(group.id)?.restore;
         window.MAWToolPage.setActionIcon(action, restored ? 'adopt' : 'restore', restored ? text.adopt : text.restore);
       }
       result.replaceChildren();
-      showCues(result, output(group), group);
+      resultNodes = showCues(result, output(group), group, refreshDifferences);
+      refreshDifferences(initialBudget);
     }
-    drawOutput();
+    drawOutput(budget);
     return row;
   }
   function renderRows(scrollToTop = true) {
     rendered.clear();
+    const budget = { remaining: MAX_PAGE_DIFF_CELLS };
     const nodes = visible.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(group => {
-      const row = makeRow(group);
+      const row = makeRow(group, budget);
       rendered.set(group.id, row);
-      updateBadges(group);
       return row;
     });
     $('rows').replaceChildren(...nodes);

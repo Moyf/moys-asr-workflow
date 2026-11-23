@@ -2641,6 +2641,14 @@ textarea::placeholder {
   margin-top: 12px;
 }
 
+#toolboxAlignmentGapParameters {
+  margin-top: 8px;
+}
+
+#toolboxInputDropNotice {
+  margin-top: 8px;
+}
+
 .toolbox-alignment-gap-settings .toolbox-grid {
   row-gap: 12px;
 }

@@ -481,6 +481,7 @@ def build_alignment_serve_command(
     port: int,
     *,
     gap_remove: Mapping[str, object] | None = None,
+    auto_mark_silence: bool = True,
     executable: Path | str | None = None,
     frozen: bool | None = None,
 ) -> list[str]:
@@ -492,6 +493,8 @@ def build_alignment_serve_command(
     command.extend([str(project_path), str(script_path)])
     if media_path:
         command.extend(["--media", str(media_path)])
+    if not auto_mark_silence:
+        command.append("--no-auto-mark-silence")
     for option, name in (
         ("--gap-minimum-ms", "minimum_ms"),
         ("--gap-threshold-db", "threshold_db"),

@@ -108,6 +108,72 @@ test('review filters preserve edits, timeline locates hidden groups and export s
   } finally { await browser.close(); }
 });
 
+test('character annotations stay on the original and result across splits, edits and restores', async () => {
+  const browser = await chromium.launch({ executablePath: process.env.MAW_E2E_CHROMIUM_PATH || undefined });
+  try {
+    const examples = [
+      [['我可以快速找到位置'], ['我可以快速地找到位置'], ['我可以快速地找到位置']],
+      [['这这句话，'], ['这句话。'], ['这句话。']],
+      [['Hello world.'], ['Hello', 'world.'], ['Hello world.']],
+      [['然后走走'], ['然后走'], ['然后走']],
+      [['第一句，第二句'], ['第一句。', '第二句'], ['第一句。', '第二句']],
+      [['甲'.repeat(600)], ['乙'.repeat(600)], []],
+      [['甲乙', '丙丁'], ['甲', '乙丙丁'], ['甲乙丙丁']],
+    ];
+    const groups = examples.map(([left, right, candidates], id) => {
+      const start = id * 2000, end = start + 1000;
+      const cues = values => values.map((value, i) => cue(id * 10 + i, start + i * 1000 / values.length, start + (i + 1) * 1000 / values.length, value));
+      const after = cues(right);
+      if (id === 6) { after[0].end += 200; after[1].start += 200; }
+      return { id, start, end, before: cues(left), after, candidates, changed: true, issues: right.length > 1 ? ['timing'] : [] };
+    });
+    const page = await browser.newPage({ viewport: { width: 1240, height: 830 }, colorScheme: 'dark' });
+    await page.addInitScript(data => { window.pywebview = { api: { review_data: async () => data } }; }, { ...fixture, groups });
+    await page.goto(url);
+    await page.locator('#workspace').waitFor();
+    const row = i => page.locator('#rows tr').nth(i);
+    const inserted = i => row(i).locator('td').nth(3).locator('ins');
+    const deleted = i => row(i).locator('td').nth(1).locator('del');
+    const badges = i => row(i).locator('.badge').allTextContents();
+
+    assert.deepEqual(await inserted(0).allTextContents(), ['地']);
+    assert.deepEqual(await badges(0), ['新增 1 字']);
+    assert.equal(await row(0).locator('.candidate :is(del, ins)').count(), 0);
+    assert.deepEqual(await deleted(1).allTextContents(), ['这', '，']);
+    assert.deepEqual(await inserted(1).allTextContents(), ['。']);
+    assert.deepEqual(await badges(2), ['仅断句变化']);
+    assert.equal(await row(2).locator('ins, del').count(), 0);
+    assert.deepEqual(await deleted(3).allTextContents(), ['走']);
+    assert.deepEqual(await badges(3), ['删除 1 字']);
+    assert.deepEqual(await deleted(4).allTextContents(), ['，']);
+    assert.deepEqual(await inserted(4).allTextContents(), ['。']);
+    assert.ok((await badges(4)).includes('标点变化'));
+    assert.deepEqual(await badges(5), ['文字变化过多，未逐字标注']);
+    assert.equal(await row(5).locator('ins, del').count(), 0);
+    assert.deepEqual(await badges(6), ['时间或分段变化']);
+    for (const theme of ['dark', 'light']) {
+      assert.equal(await inserted(0).evaluate(node => getComputedStyle(node).textDecorationLine), 'underline');
+      assert.equal(await deleted(3).evaluate(node => getComputedStyle(node).textDecorationLine), 'line-through');
+      if (process.env.MAW_REVIEW_SCREENSHOTS) await page.screenshot({ path: `${process.env.MAW_REVIEW_SCREENSHOTS}/character-diff-${theme}.png` });
+      if (theme === 'dark') await page.locator('[data-tool-theme]').click();
+    }
+
+    await row(0).getByRole('button', { name: '修改字幕' }).click();
+    await row(0).getByRole('textbox').fill('我可以立刻找到位置');
+    await row(0).getByRole('button', { name: '应用' }).click();
+    assert.deepEqual(await deleted(0).allTextContents(), ['快速']);
+    assert.deepEqual(await inserted(0).allTextContents(), ['立刻']);
+    assert.ok((await badges(0)).includes('结果与文稿不同'));
+    await page.evaluate(() => { window.confirm = () => true; });
+    await row(0).getByRole('button', { name: '恢复本组原字幕' }).click();
+    assert.equal(await row(0).locator('ins, del').count(), 0);
+    assert.deepEqual(await badges(0), ['结果与文稿不同', '已调整']);
+    await row(0).getByRole('button', { name: '采用本组匹配结果' }).click();
+    assert.deepEqual(await inserted(0).allTextContents(), ['地']);
+    assert.deepEqual(await badges(0), ['新增 1 字']);
+  } finally { await browser.close(); }
+});
+
 test('long projects paginate the table and keep resize layout bounded', async (t) => {
   const browser = await chromium.launch({ executablePath: process.env.MAW_E2E_CHROMIUM_PATH || undefined });
   try {
