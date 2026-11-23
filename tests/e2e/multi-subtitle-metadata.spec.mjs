@@ -43,6 +43,8 @@ async function saveAndReopen(page) {
 async function configureMergeFixture(page, { extension = false, linked = false,
   mainSpeakers = ['Alice', 'Bob'], secondarySpeakers = ['Alice', 'Bob'] } = {}) {
   return page.evaluate(({ extension, linked, mainSpeakers, secondarySpeakers }) => {
+    // Keep history notifications clear of the toolbar during consecutive undo/redo clicks.
+    MaweHint.applyHintPosition('bottom-right');
     MaweSelection.clearSelection({ silent: true, commitCuePanel: false });
     MaweCuePanelState.resetCuePanelEditState({ discard: true });
     MaweCuePanelState.currentCuePanelIdx = -1;
