@@ -511,7 +511,9 @@ export function initMaweContextMenus() {
       false,
       altClickHint(),
     );
-    addItem('删除副字幕', () => MaweSegmentOps.deleteExtensionSegments([index]), true);
+    const deleteIndices = extensionSelectionOnly ? [...MaweSelection.selectedExtensionIdxs] : [index];
+    addItem(deleteIndices.length > 1 ? `删除 ${deleteIndices.length} 条副字幕` : '删除副字幕',
+      () => MaweSegmentOps.deleteExtensionSegments(deleteIndices, track), true, false, 'Delete');
     if (binding) addItem('对齐主字幕时间范围', () => MaweBindingAlign.alignExtensionToMainTimeRange(index, track), false, false, 'H');
     if (binding) addItem('解绑', () => {
       MaweSelection.selectOnlyExtension(index);

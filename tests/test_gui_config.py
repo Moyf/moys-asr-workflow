@@ -347,13 +347,32 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.key_url, "https://console.volcengine.com/speech/new/setting/apikeys")
         self.assertTrue(provider.divider_before)
 
+    def test_provider_registry_contains_moss_cloud_transcription(self) -> None:
+        provider = gui_config.provider_by_id("moss")
+
+        self.assertEqual(provider.label, "MOSS（模思智能 / 说话人分离）")
+        self.assertEqual(provider.key_url, "https://platform.moss.cn/app/api-keys")
+        # Launcher Key 提示：主链接显示「MOSS 控制台」，次链接指向积分领取页
+        self.assertEqual(provider.key_label, "MOSS 控制台")
+        self.assertEqual(provider.secondary_key_url, "https://create.moss.cn/")
+        self.assertEqual(provider.models[0].id, "moss-transcribe-diarize-pro")
+        self.assertEqual(provider.models[0].env_key, "MOSS_API_KEY")
+        self.assertEqual(provider.regions, ())
+        self.assertTrue(provider.supports_speaker)
+        # MOSS 官方接口不接受语言参数：模型自动识别语言
+        self.assertFalse(provider.supports_language)
+        self.assertTrue(provider.models[0].supports_speaker)
+        self.assertTrue(provider.models[0].supports_keywords)
+        self.assertIn("1.20", provider.models[0].price_note)
+        self.assertIn("60 分钟", provider.note)
+
     def test_provider_registry_groups_main_providers_before_divider(self) -> None:
         """Given the provider registry, When read in order, Then main entries precede the divider and niche ones follow."""
         visible = [item for item in gui_config.PROVIDERS if not item.hidden]
         divider_index = next(index for index, item in enumerate(visible) if item.divider_before)
 
         self.assertEqual([item.id for item in visible[:divider_index]], ["qwen", "openai", "local"])
-        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut", "deepseek"])
+        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "moss", "soniox", "bcut", "deepseek"])
 
     def test_custom_llm_slots_are_three_parallel_presets(self) -> None:
         """Given the post-process presets, When custom slots are read, Then three parallel slots exist."""
@@ -379,7 +398,8 @@ class GuiConfigTests(unittest.TestCase):
         self.assertFalse(provider.divider_before)
         self.assertFalse(provider.requires_api_key)
         self.assertFalse(provider.supports_language)
-        self.assertIn("文本模型", provider.note)
+        # 2026-11 DeepSeek 上线 ASR 后文案更新：只回纯文本、做不了字幕（不再是「文本模型」）。
+        self.assertIn("纯文本", provider.note)
         self.assertIn("AI处理", provider.note)
         self.assertIn("\n", provider.note)  # 两行提示：第一行说明，第二行指向 AI 处理
 

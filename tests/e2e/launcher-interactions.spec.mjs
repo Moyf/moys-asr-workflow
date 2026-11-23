@@ -400,6 +400,36 @@ test('runtime upgrade and alignment model states distinguish files, validation, 
   await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-dependency-status.png') });
 });
 
+test('MOSS API key and credit links share one callout', async ({ page }, testInfo) => {
+  await gotoLauncher(page);
+  await page.evaluate(() => {
+    window.openedKeyUrls = [];
+    window.open = url => { window.openedKeyUrls.push(url); };
+  });
+  await page.locator('#provider').selectOption('moss');
+  const callout = page.locator('.key-hint-callout');
+  await expect(callout).toHaveText('在 MOSS 控制台 获取或查看 API Key；在 MOSS Create 可领取免费积分 ↗', { useInnerText: true });
+  await callout.locator('#openKeyUrl').click();
+  await callout.locator('#mossCreditsUrl').click();
+  await expect.poll(() => page.evaluate(() => window.openedKeyUrls)).toEqual([
+    'https://platform.moss.cn/app/api-keys', 'https://create.moss.cn/',
+  ]);
+  const gap = await callout.evaluate(node => node.getBoundingClientRect().top
+    - document.getElementById('keyStatus').getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#apiKeyField').screenshot({ path: testInfo.outputPath('moss-key-callout.png') });
+  await page.locator('#settingsButton').click();
+  await page.locator('#langEn').click();
+  await page.locator('#settingsClose').click();
+  await expect(callout).toHaveText('Get or view an API Key from MOSS Console and claim free credits at MOSS Create ↗', { useInnerText: true });
+  await page.locator('#settingsButton').click();
+  await page.locator('#langZh').click();
+  await page.locator('#settingsClose').click();
+  await page.locator('#provider').selectOption('qwen');
+  await expect(callout.locator('#mossCreditsUrl')).toBeHidden();
+  await expect(callout).toContainText('获取或查看 API Key ↗');
+});
+
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
@@ -524,6 +554,74 @@ test('support link opens the sponsor QR modal and closes on Escape or backdrop',
   await expect(page.locator('#supportModal')).toBeVisible();
   await page.locator('#supportBackdrop').click({ position: { x: 5, y: 5 } });
   await expect(page.locator('#supportModal')).toBeHidden();
+});
+
+for (const route of ['browser drop zone', 'native media field', 'native mixed drop', 'project field', 'batch drop zone']) {
+  test(`single MOSP subtitle routing: ${route}`, async ({ page }, testInfo) => {
+    await gotoLauncher(page);
+    await page.locator('#mediaPath').fill('D:\\Demo\\keep.wav');
+    const project = 'D:\\Demo\\incoming.MOSP';
+    const files = route === 'native mixed drop' ? [project, 'D:\\Demo\\other.wav'] : [project];
+    if (route === 'batch drop zone') await page.locator('#batchMode').click();
+    const target = route === 'project field' ? '#jsonPath'
+      : route.startsWith('native') ? '#mediaPath' : '#dropZone';
+    await page.locator(target).evaluate((node, { route, files }) => {
+      if (route.startsWith('native')) window.MAWLauncher.backend = 'real';
+      const transfer = new DataTransfer();
+      for (const path of files) {
+        const file = new File(['test'], path.split('\\').at(-1));
+        Object.defineProperty(file, 'path', { value: path });
+        transfer.items.add(file);
+      }
+      for (const type of ['dragenter', 'dragover', 'drop']) {
+        node.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      }
+      if (route.startsWith('native')) {
+        for (const path of files) window.MAWLauncher.onBackendEvent({
+          type: path.endsWith('.wav') ? 'dropMedia' : 'dropJson', path, fileCount: files.length, targetId: node.id,
+        });
+      }
+    }, { route, files });
+
+    if (['browser drop zone', 'native media field'].includes(route)) {
+      await expect(page.locator('#toolboxDrawer')).toBeVisible();
+      await expect(page.locator('#toolboxPostprocessPrimaryTab')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('#toolboxInputPath')).toHaveValue(project);
+      const notice = page.locator('#toolboxInputDropNotice');
+      await expect(notice).toBeVisible();
+      await expect(notice).toHaveText('已将 MOSP 工程载入字幕处理');
+      await expect(page.locator('#mediaPath')).toHaveValue('D:\\Demo\\keep.wav');
+      await expect(page.locator('#jsonPath')).toHaveValue('');
+      const spacing = await notice.evaluate(node => node.getBoundingClientRect().top -
+        node.closest('#toolboxInputDropZone').querySelector('.path-row').getBoundingClientRect().bottom);
+      expect(spacing).toBeGreaterThanOrEqual(8);
+      await page.locator('#toolboxDrawer').screenshot({ path: testInfo.outputPath('mosp-drop.png') });
+    } else {
+      await expect(page.locator('#toolboxDrawer')).toBeHidden();
+      if (route === 'project field') await expect(page.locator('#jsonPath')).toHaveValue(project);
+    }
+  });
+}
+
+test('delayed native MOSP events use their own drop target', async ({ page }) => {
+  await gotoLauncher(page);
+  await page.evaluate(() => {
+    window.MAWLauncher.backend = 'real';
+    const first = 'D:\\Demo\\editor.mosp';
+    const second = 'D:\\Demo\\subtitle.mosp';
+    for (const [id, path] of [['jsonPath', first], ['mediaPath', second]]) {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(['test'], path.split('\\').at(-1)));
+      const field = document.getElementById(id);
+      for (const type of ['dragover', 'drop']) {
+        field.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      }
+    }
+    window.MAWLauncher.onBackendEvent({ type: 'dropJson', path: first, targetId: 'jsonPath', fileCount: 1 });
+    window.MAWLauncher.onBackendEvent({ type: 'dropJson', path: second, targetId: 'mediaPath', fileCount: 1 });
+  });
+  await expect(page.locator('#jsonPath')).toHaveValue('D:\\Demo\\editor.mosp');
+  await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\subtitle.mosp');
 });
 
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
@@ -1218,6 +1316,38 @@ test('keeps local runtime events working after the page learns that installation
   await expect.poll(() => page.locator('#localRuntimeProgressBar').getAttribute('style')).toContain('37%');
   await expect(page.locator('#localRuntimeProgressMessage')).toHaveText('正在安装本地运行环境……');
 
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory .runtime-inventory-meta')).toBeVisible();
+  const updates = await page.evaluate(() => {
+    const inventory = document.querySelector('#localRuntimeInventory .runtime-inventory-meta');
+    const progress = document.querySelector('#localRuntimeProgressMessage');
+    const log = document.querySelector('#log');
+    const observer = new MutationObserver(() => {});
+    observer.observe(progress, { childList: true });
+    observer.observe(log, { childList: true });
+    window.MAWLauncher.onBackendEvents(Array.from({ length: 200 }, (_, index) => [
+      { type: 'localRuntimeProgress', percent: 70, message: `Installing ${index}` },
+      { type: 'log', message: `[runtime] Installing ${index}` },
+    ]).flat());
+    const records = observer.takeRecords();
+    observer.disconnect();
+    return {
+      inventoryUnchanged: inventory === document.querySelector('#localRuntimeInventory .runtime-inventory-meta'),
+      progressUpdates: records.filter(record => record.target === progress).length,
+      logUpdates: records.filter(record => record.target === log).length,
+      logLines: log.textContent.match(/^\[runtime\] Installing \d+$/gm)?.length,
+    };
+  });
+  expect(updates).toEqual({ inventoryUnchanged: true, progressUpdates: 1, logUpdates: 1, logLines: 200 });
+  await expect(page.locator('#localRuntimeProgressMessage')).toHaveText('Installing 199');
+  const settingsScroll = page.locator('.settings-scroll');
+  await settingsScroll.evaluate(node => { node.scrollTop = 0; });
+  await settingsScroll.hover();
+  await page.mouse.wheel(0, 350);
+  await expect.poll(() => settingsScroll.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory')).toBeHidden();
+
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady' }));
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
 });
@@ -1677,6 +1807,43 @@ test('server timeout diagnostics are visible and copied with the error report', 
   expect(report).toContain('Connection refused');
 });
 
+test('launcher points to the required project instead of opening an empty editor', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoLauncher(page);
+  const input = page.locator('#jsonPath');
+  const error = page.locator('#jsonPathError');
+  await page.evaluate(() => {
+    document.querySelector('.shell-scroll').scrollTop = 0;
+    window.__openUrlCalls = [];
+    window.open = (url) => { window.__openUrlCalls.push(String(url)); return null; };
+  });
+
+  await page.locator('#openMawe').click();
+  await expect(error).toHaveText('请先选择或拖入工程文件，再打开编辑器。');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveClass(/invalid/);
+  await expect(input).toBeInViewport({ ratio: 1 });
+  await expect(error).toBeInViewport({ ratio: 1 });
+  const spacing = await error.evaluate(element =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  expect(await page.evaluate(() => window.__openUrlCalls)).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('launcher-required-project.png') });
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const pulseDurations = await page.locator('#openMawe').evaluate((button) => {
+    button.click();
+    return document.getElementById('jsonPath').getAnimations()
+      .map(animation => animation.effect.getTiming().duration);
+  });
+  expect(pulseDurations).toContain(650);
+
+  await input.fill('D:/Demo/clip.mosp');
+  await expect(error).toBeHidden();
+  await page.locator('#openMawe').click();
+  await expect.poll(() => page.evaluate(() => window.__openUrlCalls.length)).toBe(1);
+});
+
 test('launcher reports a server disconnect without manual refresh', async ({ page }) => {
   await gotoLauncher(page);
   await page.locator('#settingsButton').click();
@@ -1694,6 +1861,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
     };
   });
 
+  await page.locator('#jsonPath').fill('D:/Demo/clip.mosp');
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
   await expect(page.locator('#openMawe')).toContainText('打开编辑器');
@@ -1757,6 +1925,7 @@ test('restarting after a server disconnect does not reopen the editor page', asy
   });
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
+  await page.locator('#jsonPath').fill('D:/Demo/clip.mosp');
   await page.locator('#openMawe').click();
   await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);

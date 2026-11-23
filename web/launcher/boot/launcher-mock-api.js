@@ -69,7 +69,7 @@ function mockApi() {
       minWords: saved.minWords || "",
       maxWords: saved.maxWords || "",
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.11.4",
+      appVersion: "1.12.0",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,
@@ -188,6 +188,22 @@ function mockApi() {
           languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }]
         },
         {
+          id: "moss",
+          label: "MOSS（模思智能 / 说话人分离）",
+          keyUrl: "https://platform.moss.cn/app/api-keys",
+          keyButtonLabel: "MOSS 控制台",
+          secondaryKeyUrl: "https://create.moss.cn/",
+          apiKey: "",
+          maskedApiKey: "",
+          supportsSpeaker: true,
+          supportsLanguage: false,
+          note: "多人转写向云端服务：媒体会直接上传到 MOSS（模思智能开放平台）；单次任务需 ≤60 分钟；自动识别语言，不支持指定语言。",
+          commonLanguages: [],
+          models: [{ id: "moss-transcribe-diarize-pro", label: "MOSS 转写说话人分离（Pro）", envKey: "MOSS_API_KEY", note: "多人转写与说话人分离；超长句段按断句设置自动拆分，字词时间码可用对齐模型补齐。", priceNote: "MOSS 参考价：说话人分离转写促销价 ¥1.20 / 小时（原价 ¥2 / 小时）", supportsSpeaker: true, supportsKeywords: true, languages: [] }],
+          regions: [],
+          languages: []
+        },
+        {
           id: "soniox",
           label: "Soniox STT（海外 / 小语种）",
           keyUrl: "https://console.soniox.com",
@@ -219,8 +235,8 @@ function mockApi() {
         {
           id: "deepseek", label: "DeepSeek（？）", keyUrl: "", apiKey: "", maskedApiKey: "",
           supportsSpeaker: false, multiLanguage: false, requiresApiKey: false, supportsLanguage: false,
-          note: "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n不过你可以在「AI处理」中使用它来翻译啥的。", commonLanguages: [], regions: [], languages: [],
-          models: [{ id: "deepseek-not-an-asr", label: "DeepSeek 不是转写模型", envKey: "", note: "被问太多次了所以专门加上这个说明 _(:з」∠)_", languages: [] }],
+          note: "🐳 蓝色大肥鱼上线了语音识别，但只回纯文本：没有时间码、单次最长 2 分钟，做不了字幕！\n不过你可以在「AI处理」中使用它来翻译啥的。", commonLanguages: [], regions: [], languages: [],
+          models: [{ id: "deepseek-not-an-asr", label: "DeepSeek ASR 只生成纯文本，不带时间码，真不适合", envKey: "", note: "被问太多次了所以专门加上这个说明 _(:з」∠)_", languages: [] }],
         }
       ]
       };
@@ -234,7 +250,7 @@ function mockApi() {
         const dirIndex = Math.max(mediaPath.lastIndexOf("/"), mediaPath.lastIndexOf("\\"));
         const dir = dirIndex >= 0 ? mediaPath.slice(0, dirIndex + 1) : "";
         const stem = mediaPath.slice(dirIndex + 1).replace(/\.[^.\\/]+$/, "");
-        const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : ((modelId === "qwen-audio-3.0-asr-flash-filetrans" || modelId === "qwen-audio-3.1-asr-flash-filetrans") ? ".qwen-audio" : ".qwen3-asr-api"))))));
+        const tag = saved.attachModelName === false ? "" : (providerId === "openai" ? ".custom-asr" : (providerId === "soniox" ? ".soniox" : (providerId === "moss" ? ".moss-pro" : (providerId === "bcut" ? ".bcut" : (providerId === "local" ? (modelId.includes("sensevoice") ? ".sensevoice-local" : (modelId.includes("firered") ? ".firered-local" : (modelId.includes("moss") ? ".moss-local" : ((modelId.includes("funasr") || modelId.includes("fun-asr")) ? ".funasr-local" : (modelId.includes("1.7b") ? ".qwen3-asr-1.7b-local" : ".qwen-asr-local"))))) : (modelId === "fun-asr" ? ".fun-asr" : ((modelId === "qwen-audio-3.0-asr-flash-filetrans" || modelId === "qwen-audio-3.1-asr-flash-filetrans") ? ".qwen-audio" : ".qwen3-asr-api")))))));
         let outputDir = dir;
         if (saved.outputSubfolder) {
           const root = saved.perVideoSubfolder ? `${stem}_maw` : "_maw";

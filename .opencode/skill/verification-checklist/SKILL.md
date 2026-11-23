@@ -11,11 +11,11 @@ description: 在 moys-asr-workflow（MAW）中编写「人工核对清单」并�
 
 - `tools/verification-checklist/README.md` — 完整契约：**Markdown 源格式（v2）**、JSON 兼容契约、front-matter、导出与刷新
 - `tools/AGENTS.md` — HTML 工具页性能与测量约定
-- 根 `AGENTS.md`「批量改动的人工核查清单」— 何时生成清单、分区约定
+- 根 [AGENTS 的人工核查清单规则](../../../AGENTS.md#批量改动的人工核查清单) — 何时生成清单、校验与产物边界
 
 ## 标准工作流（agents 只写 Markdown）
 
-1. **写 `<主题>.checklist.md`**：YAML front-matter（`task` / `pr` / `date` / `status: pending`）+ `# 标题` + `> 副标题` + `## 分区`。完整语法见 README「Markdown 源格式（v2）」，要点：
+1. **写 `<主题>.checklist.md`**：YAML front-matter（`task` / `pr` / `date` / `status: pending`）+ `# 标题` + `> 副标题` + `## 分区`。依次列实现／审查结论（只读）、修复与提交记录、自动化验证结果（命令与已知环境性失败）、人工核验、后续步骤。勾选项写操作和可观察的预期；间距项按[根 UI 约定](../../../AGENTS.md#ui-间距约定)附实测数据。完整语法见 README「Markdown 源格式（v2）」，要点：
 
 ```markdown
 ---

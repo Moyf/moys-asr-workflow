@@ -2,14 +2,46 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSettingsPanels 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+import { bindGitHubStar } from '../../shared/github-star.js';
+
 export function initMaweSettingsPanels() {
   'use strict';
 
   // 装配器无参调用；宿主对象固定为当前页面 window。
   // 顶层 DOM 查询/监听随函数体在装配器调用位次执行，时机不变（G07 gate）。
   const global = window;
-
-
+  const starConfig = MaweBoot.SERVER_CONFIG;
+  const supportsGitHubStar = starConfig?.githubStarUrl === '/api/github-star' &&
+    Boolean(starConfig.requestToken) && location.protocol === 'http:' && location.hostname === '127.0.0.1';
+  async function requestGitHubStar(path) {
+    const response = await MaweHost.server.fetch(path, {
+      method: 'POST',
+      mode: 'same-origin',
+      redirect: 'error',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestToken: starConfig.requestToken }),
+    });
+    return response.ok ? response.json() : null;
+  }
+  const aboutGitHubThanks = document.getElementById('editor-about-github-thanks');
+  const aboutGitHubStar = bindGitHubStar({
+    entry: document.getElementById('editor-about-github-star-entry'),
+    button: document.getElementById('editor-about-github-star'),
+    thanks: aboutGitHubThanks,
+    fallbackFocus: document.getElementById('editor-about-github-repository'),
+    check: supportsGitHubStar ? () => requestGitHubStar('/api/github-star/status') : null,
+    write: supportsGitHubStar ? () => requestGitHubStar('/api/github-star') : null,
+  });
+  aboutGitHubThanks?.addEventListener('click', () => {
+    aboutGitHubThanks.querySelector('.editor-about-star-spark')?.remove();
+    const spark = document.createElement('span');
+    spark.className = 'editor-about-star-spark';
+    spark.textContent = '⭐️';
+    spark.setAttribute('aria-hidden', 'true');
+    spark.addEventListener('animationend', () => spark.remove(), { once: true });
+    spark.addEventListener('animationcancel', () => spark.remove(), { once: true });
+    aboutGitHubThanks.append(spark);
+  });
 
   // 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
   // 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
@@ -69,6 +101,7 @@ export function initMaweSettingsPanels() {
       const page = document.getElementById(item.getAttribute('aria-controls') || '');
       if (page) page.hidden = !active;
     }
+    if (!project && tab.dataset.settingsTab === 'about') void aboutGitHubStar.open();
     // A taller settings page can push lower controls outside the viewport while
     // its floating window remains at the position saved for a shorter page.
     requestAnimationFrame(() => (project ? projectFloatingPanel : editorSettingsFloatingPanel).reclamp());
@@ -130,7 +163,7 @@ export function initMaweSettingsPanels() {
 
 
 
-  function positionAnchoredSettingsPanel(panel, toggle) {
+  function positionAnchoredSettingsPanel(panel, toggle, gap = 6) {
     if (!panel || panel.hidden || !toggle) return;
     const buttonRect = toggle.getBoundingClientRect();
     const panelWidth = panel.offsetWidth;
@@ -140,8 +173,8 @@ export function initMaweSettingsPanels() {
       Math.max(margin, buttonRect.right - panelWidth),
       Math.max(margin, window.innerWidth - panelWidth - margin),
     );
-    const belowTop = buttonRect.bottom + 6;
-    const aboveTop = buttonRect.top - panelHeight - 6;
+    const belowTop = buttonRect.bottom + gap;
+    const aboveTop = buttonRect.top - panelHeight - gap;
     let top = belowTop;
     if (belowTop + panelHeight > window.innerHeight - margin && aboveTop >= margin) {
       top = aboveTop;

@@ -29,8 +29,19 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   const openButton = document.getElementById('ass-frame-preview-open');
   const quickOpenButton = document.getElementById('ass-frame-quick-open');
   const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
+  const emojiWarningElement = document.getElementById('ass-emoji-warning');
+  const emojiTip = document.getElementById('ass-emoji-warning-tip');
+  if (emojiWarningElement && emojiTip) {
+    function positionEmojiTip() {
+      if (!emojiTip.offsetWidth) return;
+      global.MaweSettingsPanels.positionAnchoredSettingsPanel(emojiTip, emojiWarningElement, 8);
+    }
+    emojiWarningElement.addEventListener('mouseenter', positionEmojiTip);
+    emojiWarningElement.addEventListener('focus', positionEmojiTip);
+    global.addEventListener('resize', positionEmojiTip);
+  }
   const emojiWarning = createAssEmojiWarning({
-    element: document.getElementById('ass-emoji-warning'),
+    element: emojiWarningElement,
     getData: () => global.MaweBoot?.DATA,
     isAssMode: () => global.MaweSettings?.EDITOR_SETTINGS?.assMode === true,
     enqueue: callback => Promise.resolve().then(callback),

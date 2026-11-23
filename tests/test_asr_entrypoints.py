@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROVIDERS = ("qwen", "soniox", "doubao", "bcut", "tencent", "openai", "local")
+PROVIDERS = ("qwen", "soniox", "doubao", "bcut", "tencent", "openai", "moss", "local")
 
 
 class AsrEntrypointTests(unittest.TestCase):

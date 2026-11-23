@@ -591,7 +591,12 @@ test('cumulative fixed secondary overflow refuses export instead of silently ove
   expect(result.diagnostics).toHaveLength(1);
   expect(result.diagnostics[0].message).toMatch(/固定副字幕.*同时容纳/);
   expect(result.painted).toBe(0);
-  await expect(page.evaluate(() => MaweExportSrt.buildAss())).rejects.toThrow(/固定副字幕.*同时容纳/);
+  const exportError = await page.evaluate(() => {
+    try { MaweExportSrt.buildAss(); }
+    catch (error) { return { code: error.code, message: error.message }; }
+    return null;
+  });
+  expect(exportError).toEqual({ code: 'ass-fixed-track-overlap', message: expect.stringMatching(/固定副字幕.*同时容纳/) });
 });
 
 test('positive spacing and coloured outline shadow keep complete multiline edge paint visible', async ({ page }, testInfo) => {

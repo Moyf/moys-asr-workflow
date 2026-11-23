@@ -49,7 +49,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.11.4</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.12.0</span></div>
           <p data-i18n="hero_desc">让字幕制作变得超级轻松！</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -164,7 +164,7 @@
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">保存</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint key-hint-callout"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
+        <p class="hint key-hint-callout"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span><span id="mossCreditsHint" class="hidden"><span data-i18n="moss_credits_hint_prefix">在</span> <button id="mossCreditsUrl" class="inline-link" type="button">MOSS Create</button> <span data-i18n="moss_credits_hint_suffix">可领取免费积分 ↗</span></span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localModelSettingsEntry" class="field hidden">
@@ -321,6 +321,15 @@
               <div id="openaiDiarizationField" class="field hidden">
                 <p class="hint" data-i18n="openai_diarization_hint">当前模型会使用 diarized_json 返回带说话人标注的段落；无需额外勾选。</p>
                 <p id="openaiDiarizationUnsupported" class="field-warning" data-i18n="openai_diarization_openrouter_hint">OpenRouter 不支持 diarize，请改用 OpenAI 官方 Base URL。</p>
+              </div>
+            </div>
+            <div id="mossAdvancedOptions" class="adv-group moss-advanced-options hidden">
+              <h3 data-i18n="moss_advanced_title">MOSS 转写选项</h3>
+              <div id="mossKeytermsField" class="field hidden">
+                <label for="mossKeyterms" data-i18n="moss_keyterms">热词（Keyterms）</label>
+                <textarea id="mossKeyterms" rows="3" autocomplete="off" data-i18n-placeholder="moss_keyterms_placeholder"></textarea>
+                <p class="hint" data-i18n="moss_keyterms_hint">每行一个热词，提升人名、品牌与术语的识别；最多 20 个、每个 ≤30 字符。</p>
+                <p id="mossKeytermsError" class="field-error"></p>
               </div>
             </div>
             <div class="adv-group">
@@ -486,7 +495,7 @@
         <div class="field">
           <label for="jsonPath" data-i18n="json_project">工程文件</label>
           <div class="path-row">
-            <input id="jsonPath" type="text" autocomplete="off" data-i18n-placeholder="json_placeholder">
+            <input id="jsonPath" type="text" autocomplete="off" aria-describedby="jsonPathError" data-i18n-placeholder="json_placeholder">
             <button id="pickJson" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
           <p id="jsonPathError" class="field-error"></p>
@@ -579,6 +588,7 @@
             <button id="pickToolboxInput" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
           <p id="toolboxInputPathError" class="field-error"></p>
+          <p id="toolboxInputDropNotice" class="hint hidden" role="status" data-i18n="toolbox_mosp_drop_loaded">已将 MOSP 工程载入字幕处理</p>
         </div>
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
           <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入，或查看报告）</p>
@@ -739,13 +749,13 @@
       <section id="toolboxAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxAlignmentTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_alignment_hint">适合初版 ASR 中有口吃、重录、重复或顺序混乱的口播；需要 MAW 工程和校对文稿，人工选择 take 后导出新工程。</p>
         <div class="field" style="margin-bottom:12px">
-          <label for="toolboxRecordingInputMode">输入方式 / Input</label>
+          <label for="toolboxRecordingInputMode" data-i18n="toolbox_recording_input_mode">输入方式</label>
           <select id="toolboxRecordingInputMode">
-            <option value="project">使用已有原始 ASR 工程 / Existing ASR project</option>
-            <option value="recording">从录音开始：先 ASR 再审查 / Transcribe then review</option>
+            <option value="project" data-i18n="toolbox_recording_input_project">使用已有原始 ASR 工程</option>
+            <option value="recording" data-i18n="toolbox_recording_input_audio">从录音开始</option>
           </select>
-          <p class="hint" style="margin-top:10px">从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。</p>
-          <button id="cancelRecordingPreparation" class="ghost hidden" type="button" style="margin-top:10px">停止 ASR 准备 / Stop ASR</button>
+          <p class="hint" style="margin-top:10px" data-i18n="toolbox_recording_input_hint">从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。</p>
+          <button id="cancelRecordingPreparation" class="ghost hidden" type="button" style="margin-top:10px" data-i18n="toolbox_recording_stop">停止转写</button>
         </div>
         <div id="toolboxAlignmentInputs" class="toolbox-alignment-inputs">
           <div id="toolboxAlignmentProjectDropZone" class="field toolbox-input">
@@ -774,7 +784,11 @@
           </div>
         </div>
         <div id="toolboxAlignmentGapSettings" class="adv-group toolbox-alignment-gap-settings">
-          <h3 data-i18n="toolbox_alignment_gap_heading">自动标记静音</h3>
+          <label class="check-field" for="toolboxAlignmentAutoSilence">
+            <input id="toolboxAlignmentAutoSilence" type="checkbox" aria-controls="toolboxAlignmentGapParameters">
+            <span data-i18n="toolbox_alignment_gap_heading">自动标记静音</span>
+          </label>
+          <div id="toolboxAlignmentGapParameters" class="hidden">
           <div class="toolbox-grid">
             <div class="field">
               <label for="toolboxAlignmentGapMinimum" data-i18n="toolbox_alignment_gap_minimum">最短静音（ms）</label>
@@ -798,6 +812,7 @@
             </div>
           </div>
           <p class="hint toolbox-alignment-gap-hint" data-i18n="toolbox_alignment_gap_hint">仅作用于口播对齐导出的自动空隙；与 MAWE 设置分开保存。</p>
+          </div>
         </div>
         <p class="toolbox-notice" data-i18n="toolbox_alignment_notice">不会覆盖输入工程；导出后会生成 source.aligned.mosp。</p>
       </section>
@@ -948,7 +963,7 @@
         </div>
         <div class="field">
           <label class="check-field" for="postprocessCleanMarkdownSymbols">
-            <input id="postprocessCleanMarkdownSymbols" type="checkbox" checked>
+            <input id="postprocessCleanMarkdownSymbols" type="checkbox">
             <span data-i18n="toolbox_clean_markdown_symbols">清理 Markdown 符号</span>
           </label>
           <p class="hint" data-i18n="toolbox_clean_markdown_symbols_hint">匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。</p>
@@ -1220,7 +1235,7 @@
           <button id="runWaveform" class="primary" type="button" data-i18n="toolbox_run_waveform">生成波形并打开编辑器</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="alignment">
-          <button id="runToolboxAlignment" class="primary" type="button" data-i18n="toolbox_run_alignment">启动并打开口播对齐</button>
+          <button id="runToolboxAlignment" class="primary" type="button">打开口播对齐</button>
           <button id="stopToolboxAlignment" class="ghost hidden" type="button" data-i18n="toolbox_stop_alignment">停止服务</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="scriptAlignment">
@@ -1683,6 +1698,10 @@
         <p class="support-desc" data-i18n="support_desc">如果 MAW 对你有帮助，可以前往B站小店赞助！</p>
         <p class="support-note" data-i18n="support_thanks">软件免费使用，但我为此花了非常多的心血 ❤️</p>
         <p class="support-note" data-i18n="support_better">你的支持将帮助 Moy 把它做得更好  :)</p>
+        <div id="supportGitHubActions" class="support-github" hidden>
+          <button id="supportGitHubStar" class="ghost small" type="button" hidden data-i18n="support_github_star">⭐️ 一键加星</button>
+          <span id="supportGitHubThanks" role="status" tabindex="-1" hidden data-i18n="support_github_thanks">⭐️ 感谢你的星星！</span>
+        </div>
       </div>
     </section>
   </div>

@@ -126,7 +126,7 @@ test('applyAsrPreset persists segmentation snapshot taken after field assignment
       localDevice: '', fireRedPunc: '', recognitionAlignmentModel: '', language: 'zh',
       promptContext: '', qwenAudioHotwordsMode: '', qwenAudioHotwords: '', qwenAudioHotwordsFile: '',
       qwenAudioHotwordWeight: '', sonioxContextGeneral: '', sonioxContextTerms: '',
-      sonioxContextTranslationTerms: '', openaiKeywords: '',
+      sonioxContextTranslationTerms: '', openaiKeywords: '', mossKeyterms: '',
       gapSplit: '750', minLen: '3', maxLen: '42', minWords: '2', maxWords: '60',
       speakerColors: false, generateSpectral: false, generateKeyframes: false, generateThumbnails: false,
       debugRaw: false, testRun: false, qwenAudioKeepDialect: false,

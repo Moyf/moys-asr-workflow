@@ -96,6 +96,10 @@ export function createUtilsModule(dependencies) {
       return null;
     }
     if (!Array.isArray(entries) || !entries.length) return null;
+    // 投影失败的条目（可听序列失配或部分匹配歧义，如重复字「哈哈」对单个
+    // 「哈」的时间码）保留原始 item 文本且不带 allocated 标记：位置无法唯
+    // 一确定，整句回落普通输出，不猜最早匹配（PR #411 外审 Major）。
+    if (entries.some((entry) => entry.allocated !== true)) return null;
     const eventStartMs = Number(options.eventStartMs) || 0;
     const eventEndMs = Math.max(eventStartMs + 1, Number(options.eventEndMs) || eventStartMs + 1);
     const mapTime = typeof options.mapTime === 'function' ? options.mapTime : value => value;
@@ -513,8 +517,7 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    // 副字幕位置由其样式预设（对齐 + MarginV）决定：排布计划把副字幕当作
-    // 固定层（见 assCreateStackPlan），不再强制排在主字幕上方。
+    // 未逐句定位的副字幕从样式对齐与 MarginV 排布；绝对坐标由共用计划应用。
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment, index) => {
         if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
@@ -632,7 +635,10 @@ export function createUtilsModule(dependencies) {
         width: resolution.width, height: resolution.height, measure: options.measureAssRun });
       if (typeof options.onAssPlan === 'function') options.onAssPlan({ ...plan, profile });
       if (options.allowAssPlanDiagnostics) return '';
-      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
+      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) {
+        const { code, message } = plan.diagnostics[0];
+        throw Object.assign(new Error(message), { code });
+      }
       events.length = 0;
       const number = value => Number(value.toFixed(4));
       const transform = profile.animations.t;

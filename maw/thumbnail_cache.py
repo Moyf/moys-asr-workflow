@@ -1078,7 +1078,7 @@ def _publish_base(path, manifest, blobs, media_path, *, cancel=None):
         Path(name).unlink(missing_ok=True)
 
 
-def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2, keyframe_extract=None, duration_limit_sec: float | None = None) -> dict:
+def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, batch_frames_registered: bool = False, background_batches: bool = False, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2, keyframe_extract=None, duration_limit_sec: float | None = None) -> dict:
     """Launcher grid generation with bounded staging and cancellable packing.
 
     The keyframe stage decodes only keyframes in one fast full-file pass and
@@ -1188,7 +1188,10 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
             pending.clear()
 
         try:
-            for batch in batches(targets):
+            from maw.thumbnails import BACKGROUND_BATCH_SPAN_MS, MAX_BATCH_SPAN_MS
+
+            span = BACKGROUND_BATCH_SPAN_MS if background_batches else MAX_BATCH_SPAN_MS
+            for batch in batches(targets, max_span_ms=span):
                 check()
                 if before_batch:
                     before_batch(batch)
@@ -1205,7 +1208,8 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
                     check_source = source_signature(media_path)
                     if check_source != signature:
                         raise ThumbnailError("source changed during thumbnail generation")
-                    register_frames(media_path, generated, info=video, ffmpeg_path=ffmpeg_path, expected_source=signature)
+                    if not batch_frames_registered:
+                        register_frames(media_path, generated, info=video, ffmpeg_path=ffmpeg_path, expected_source=signature)
                     found.update((frame.requested_ms, frame) for frame in generated if frame.status == "target" and frame.jpeg)
                     empty_samples.update((frame.requested_ms, _sample(frame, None)) for frame in generated if frame.status == "unavailable" and frame.requested_ms < video.video_start_ms)
                 for target in batch:

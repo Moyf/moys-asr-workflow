@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import multiprocessing
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -9,7 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from maw.thumbnail_jobs import ThumbnailCoordinator, ThumbnailJobManager, plan_targets, source_key
+from maw.thumbnail_jobs import LauncherThumbnailQueue, ThumbnailCoordinator, ThumbnailJobManager, plan_targets, source_key
 
 
 def _lease_process(database, source, ready):
@@ -39,6 +41,114 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
             db.execute('UPDATE leases SET expires=?', (time.time()-1,))
         self.assertFalse(self.coordinator.paused('video'))
 
+    def test_launcher_queue_marks_job_and_deduplicates_until_close(self):
+        media = self.root / 'test.mp4'
+        media.write_bytes(b'fixture')
+        entered = threading.Event()
+
+        def blocked_build(path, *, cancel, **kwargs):
+            entered.set()
+            if not cancel.wait(5):
+                raise TimeoutError('queue did not cancel')
+
+        queue = LauncherThumbnailQueue(lambda _message: None, coordinator=self.coordinator)
+        with mock.patch('maw.thumbnail_jobs.cleanup_base_cache'), mock.patch(
+            'maw.thumbnail_jobs.build_base', side_effect=blocked_build
+        ) as build:
+            queue.submit(media, exact=True)
+            try:
+                self.assertTrue(entered.wait(3))
+                thread = queue.thread
+                self.assertFalse(thread.daemon)
+                self.assertTrue(ThumbnailCoordinator(self.path).background_pending(source_key(media)))
+                self.assertTrue(queue.submit(media, exact=True))
+            finally:
+                queue.close()
+                if queue.thread:
+                    queue.thread.join(5)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(build.call_count, 1)
+            self.assertTrue(build.call_args.kwargs["background_batches"])
+            self.assertFalse(self.coordinator.background_pending(source_key(media)))
+
+    def test_pending_queue_renews_leases_and_reports_overflow(self):
+        entered = threading.Event()
+        renewed = threading.Event()
+        files = [self.root / f"test-{i}.mp4" for i in range(34)]
+        for path in files:
+            path.write_bytes(b"fixture")
+
+        def blocked_build(_path, *, cancel, **_kwargs):
+            entered.set()
+            cancel.wait(5)
+
+        original_renew = self.coordinator.renew_background
+
+        def renew(owner, sources):
+            original_renew(owner, sources)
+            if source_key(files[-2]) in sources:
+                renewed.set()
+
+        queue = LauncherThumbnailQueue(lambda _message: None, coordinator=self.coordinator)
+        with mock.patch("maw.thumbnail_jobs.BACKGROUND_HEARTBEAT_SECONDS", .01), mock.patch(
+            "maw.thumbnail_jobs.cleanup_base_cache"
+        ) as cleanup, mock.patch("maw.thumbnail_jobs.build_base", side_effect=blocked_build), mock.patch.object(
+            self.coordinator, "renew_background", side_effect=renew
+        ):
+            try:
+                self.assertTrue(queue.submit(files[0], exact=True))
+                self.assertTrue(entered.wait(3))
+                worker = queue.thread
+                self.assertTrue(all(queue.submit(path, exact=True) for path in files[1:-1]))
+                self.assertFalse(queue.submit(files[-1], exact=True))
+                self.assertTrue(renewed.wait(3))
+                self.assertTrue(self.coordinator.background_pending(source_key(files[-2])))
+                cleanup.assert_called_once()
+            finally:
+                thread = queue.thread
+                queue.close()
+                if thread:
+                    thread.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertFalse(self.coordinator.background_pending(source_key(files[-2])))
+
+    def test_closing_launcher_queue_reaps_running_thumbnail_subprocess(self):
+        from maw.thumbnails import _run
+
+        media = self.root / "fixture.mp4"
+        media.write_bytes(b"fixture")
+        started = threading.Event()
+        children = []
+        popen = subprocess.Popen
+
+        def capture(*args, **kwargs):
+            child = popen(*args, **kwargs)
+            children.append(child)
+            started.set()
+            return child
+
+        def build(_path, *, cancel, **_kwargs):
+            _run([sys._base_executable, "-c", "import time; time.sleep(10)"], timeout_s=12, cancel=cancel)
+
+        queue = LauncherThumbnailQueue(lambda _message: None, coordinator=self.coordinator)
+        with mock.patch("maw.thumbnail_jobs.cleanup_base_cache"), mock.patch(
+            "maw.thumbnail_jobs.build_base", side_effect=build
+        ), mock.patch("maw.thumbnails.subprocess.Popen", side_effect=capture):
+            self.assertTrue(queue.submit(media, exact=False))
+            thread = queue.thread
+            try:
+                self.assertTrue(started.wait(3))
+            finally:
+                queue.close()
+                thread.join(4)
+                reaped = bool(children) and children[0].poll() is not None
+                for child in children:
+                    if child.poll() is None:
+                        child.kill()
+                        child.wait(3)
+            self.assertFalse(thread.is_alive())
+            self.assertTrue(reaped)
+
     def test_foreground_priority_and_duplicate_claim(self):
         self.coordinator.lease('view', 'video', visible=True)
         self.assertTrue(self.coordinator.paused('video', background=True))
@@ -57,17 +167,29 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
         from maw.thumbnail_jobs import build_base
         source = self.root / "video.mp4"
         source.write_bytes(b"source")
-        messages = []
-        def build(path, **kwargs):
-            kwargs["before_batch"]([0])
-            return {"state": "ready"}
-        with mock.patch.object(self.coordinator, "paused", side_effect=[True, True, False]), mock.patch("maw.thumbnail_jobs.time.sleep"), mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=build):
-            result = build_base(source, coordinator=self.coordinator, progress=messages.append)
-        self.assertEqual(result["state"], "ready")
-        self.assertEqual(messages, [
-            "[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停",
-            "[thumbnails] 同源优先需求已释放，继续生成基础画面",
-        ])
+        for background in (False, True):
+            with self.subTest(background=background):
+                messages = []
+
+                def build(_path, **kwargs):
+                    self.assertEqual(kwargs["background_batches"], background)
+                    kwargs["before_batch"]([0])
+                    return {"state": "ready"}
+
+                options = {"background_batches": True} if background else {}
+                with mock.patch.object(self.coordinator, "paused", side_effect=[True, True, False]), \
+                     mock.patch("maw.thumbnail_jobs.time.sleep"), \
+                     mock.patch("maw.thumbnail_jobs.time.monotonic", side_effect=[10, 10, 10, 10, 10.25]), \
+                     mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=build):
+                    result = build_base(source, coordinator=self.coordinator, progress=messages.append, **options)
+                self.assertEqual(result["state"], "ready")
+                self.assertEqual(messages[:2], [
+                    "[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停",
+                    "[thumbnails] 同源优先需求已释放，继续生成基础画面",
+                ])
+                self.assertEqual(len(messages), 3 if background else 2)
+                if background:
+                    self.assertRegex(messages[2], r"^\[thumbnails\] CPU threads=\d+ .*\bpause=0\.25s\b")
 
     def test_claim_batch_and_lease_limits(self):
         # 上限测试与真实时长解耦：逐个创建 64 个租约一旦跨过 8s TTL，早期租约
@@ -169,6 +291,37 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
 
 
 class ThumbnailDemandTests(unittest.TestCase):
+    def test_hidden_playback_pauses_only_its_source_without_starting_a_worker(self):
+        from maw import thumbnail_cache
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'media.mp4'
+            path.write_bytes(b'media')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            manager = ThumbnailJobManager()
+            manager.bind(path, 'binding')
+            control = {'binding': 'binding', 'client_id': 'tab', 'view': 1,
+                       'visible': False, 'decode': False, 'playing': True}
+            try:
+                with mock.patch('maw.thumbnail_jobs.ThumbnailCoordinator', return_value=coord), \
+                     mock.patch.object(manager, '_start') as start, \
+                     mock.patch.object(thumbnail_cache, 'sample_manifest') as manifest:
+                    first = manager.demand(control)
+                    self.assertTrue(coord.paused(source_key(path), background=True))
+                    self.assertFalse(coord.paused('other-source', background=True))
+                    expires = manager.leases[first['lease']]['expires']
+                    with mock.patch('maw.thumbnail_jobs.time.monotonic', return_value=expires - 1):
+                        manager.status('binding', client='tab', view=0)
+                    self.assertEqual(manager.leases[first['lease']]['expires'], expires)
+                    manager.release('binding', first['lease'], client='tab', view=0)
+                    self.assertTrue(coord.paused(source_key(path), background=True))
+                    manager.demand(dict(control, lease=first['lease'], view=2, playing=False))
+                    manager.demand(control)  # A late play request must not undo the pause.
+                    self.assertFalse(coord.paused(source_key(path), background=True))
+                    start.assert_not_called()
+                    manifest.assert_not_called()
+            finally:
+                manager.close()
+
     def test_empty_pins_skip_release_only_until_first_protection_attempt(self):
         from maw import thumbnail_cache
         with tempfile.TemporaryDirectory() as temp:

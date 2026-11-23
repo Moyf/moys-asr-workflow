@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from http import HTTPStatus
 from pathlib import Path
 
+from maw.burn_diagnostics import burn_error_kind
 from maw.media_jobs import MediaJobCancelled, MediaJobUnavailable
 from maw.native_burn_host import BURN_JOBS, BurnDialogBusy, BurnDialogUnavailable, BurnSessions, validate_suggested_name
 from maw.native_burn_output import BurnDestination, PublishedBurn, open_burn_output
@@ -204,12 +205,18 @@ def handle_native_burn(handler, path: str) -> None:
     except PermissionError as error:
         status, message = (HTTPStatus.SERVICE_UNAVAILABLE, OPEN_ERROR if opening else FILE_ERROR) if error.errno is not None else (
             HTTPStatus.FORBIDDEN, str(error))
-        handler.send_json(status, {"ok": False, "error": message}, close_connection=True)
+        payload = {"ok": False, "error": message}
+        if error.errno is not None and not opening:
+            payload["code"] = "permission"
+        handler.send_json(status, payload, close_connection=True)
     except (MediaJobUnavailable, MediaJobCancelled, BurnDialogBusy) as error:
         handler.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
     except BurnDialogUnavailable as error:
         handler.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
     except ValueError as error:
         handler.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)}, close_connection=True)
-    except (OSError, subprocess.SubprocessError):
-        handler.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": OPEN_ERROR if opening else FILE_ERROR})
+    except (OSError, subprocess.SubprocessError) as error:
+        payload = {"ok": False, "error": OPEN_ERROR if opening else FILE_ERROR}
+        if not opening:
+            payload["code"] = burn_error_kind(error) or "native-file-operation"
+        handler.send_json(HTTPStatus.SERVICE_UNAVAILABLE, payload)

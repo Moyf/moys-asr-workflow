@@ -342,12 +342,11 @@ export function createUtilsModule(dependencies) {
       events.get(time).push({ item, active });
     };
     for (const raw of items || []) {
-      // 主字幕与叠加字幕共用逐句 assOverride（scale/pos）；扩展轨是固定层，
-      // 仍不消费逐句覆盖。手动定位句成为独立 ASS 事件：不参与整组适配、
+      // 副字幕只支持 pos；没有手动定位时仍使用原有固定层。
+      // 手动定位句成为独立 ASS 事件：不参与整组适配、
       // 避碰与方案移动；只有缩放的句继续留在自动排布内。
-      const override = raw.role === 'main' || raw.role === 'overlay'
-        ? dependencies.normalizeAssOverride(raw.segment?.assOverride) : undefined;
-      const item = { ...raw, cueScale: override?.scale || 1,
+      const override = dependencies.normalizeAssOverride(raw.segment?.assOverride);
+      const item = { ...raw, cueScale: raw.role === 'extension' ? 1 : override?.scale || 1,
         ...(override ? { assOverride: override, manual: Boolean(override.pos) } : {}) };
       queue(item.start, item, true); queue(item.end, item, false);
     }
@@ -387,7 +386,7 @@ export function createUtilsModule(dependencies) {
       });
       // If every main cue is manual, an overlay keeps its automatic style
       // anchor; a fixed extension must not become the overlay's moving root.
-      const root = (manual.length && !ordered.some(item => item.role === 'main')
+      const root = (manual.some(item => item.role !== 'extension') && !ordered.some(item => item.role === 'main')
         ? ordered.find(item => item.role !== 'extension') : null) || ordered[0] || manual[0];
       const baseAnchor = assCanvasAnchorPoint({ alignment: root.style.alignment,
         margins: { left: root.style.marginL, right: root.style.marginR, vertical: root.style.marginV },
@@ -405,16 +404,17 @@ export function createUtilsModule(dependencies) {
       if (ordered.some(item => item.style.spacing < 0)
         || (profile?.animations?.t?.enabled && dependencies.assTransformStyleTargets(transformText).spacing < 0)) {
         slice.diagnostic = 'ASS 自动堆叠无法可靠排布负字距；请将样式及变换的字距改为非负值后导出。';
-        diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
+        diagnostics.push({ start, end, code: 'ass-negative-spacing', message: slice.diagnostic }); slices.push(slice); continue;
       }
       if (unsupported) {
         slice.diagnostic = 'ASS 自动堆叠不支持此方案的 3D 透视或自定义几何标签；请关闭这些变换后导出。';
-        diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
+        diagnostics.push({ start, end, code: 'ass-unsupported-geometry', message: slice.diagnostic }); slices.push(slice); continue;
       }
       let previous = null;
       // 副字幕轨内的碰撞堆叠基准：同一排布切片内多条副字幕互相错开
       //（模拟 libass 同层碰撞避免），第一条仍严格落在其样式预设位置。
       let extensionPrevious = null;
+      let extensionDiagnosticCode;
       for (const item of ordered) {
         let cue = prepared.get(item);
         if (!cue) {
@@ -431,6 +431,7 @@ export function createUtilsModule(dependencies) {
         if (fixed && (rect.right - rect.left > width - slice.padding * 2
           || rect.bottom - rect.top > height - slice.padding * 2)) {
           slice.diagnostic = 'ASS 固定副字幕超出可用画面；请减少同时显示的文字或调小副字幕样式后重试。';
+          extensionDiagnosticCode = 'ass-fixed-track-too-large';
           break;
         }
         const ownAnchor = assCanvasAnchorPoint({ alignment,
@@ -455,6 +456,7 @@ export function createUtilsModule(dependencies) {
         if (fixed && extensionPrevious && fixedAnchor.y + rect.bottom > extensionPrevious.top
           - Math.max(2, Math.round(extensionPrevious.fontSize * 0.2)) + 1e-7) {
           slice.diagnostic = 'ASS 固定副字幕无法在画面中同时容纳；请减少重叠字幕或调小副字幕样式后重试。';
+          extensionDiagnosticCode = 'ass-fixed-track-overlap';
           break;
         }
         const offset = fixed ? { x: fixedAnchor.x, y: fixedAnchor.y }
@@ -474,7 +476,7 @@ export function createUtilsModule(dependencies) {
         previous = { ...world, fontSize: cue.fontSize * (cue.cueScale || 1) };
       }
       if (slice.diagnostic) {
-        diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
+        diagnostics.push({ start, end, code: extensionDiagnosticCode, message: slice.diagnostic }); slices.push(slice); continue;
       }
       slice.scale = Math.min(1, (width - slice.padding * 2) / Math.max(1, slice.box.right - slice.box.left),
         (height - slice.padding * 2) / Math.max(1, slice.box.bottom - slice.box.top));
@@ -491,7 +493,7 @@ export function createUtilsModule(dependencies) {
       }));
       if (!Number.isFinite(slice.scale) || slice.scale <= 0 || (slice.scale < 1 && smallest * slice.scale < Math.min(smallest, 8 * height / 1080))) {
         slice.diagnostic = 'ASS 字幕组过大，缩放后字号低于可读范围；请减少同时显示的文字或调小样式后重试。';
-        diagnostics.push({ start, end, message: slice.diagnostic });
+        diagnostics.push({ start, end, code: 'ass-stack-too-large', message: slice.diagnostic });
       }
       slice.pieces = assStackMotionPieces(slice);
       slices.push(slice);

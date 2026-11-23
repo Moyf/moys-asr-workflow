@@ -21,6 +21,44 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 
+test('ASS emoji warning tooltip is not clipped on hover or keyboard focus', async ({ page }, testInfo) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
+  await page.evaluate(() => MaweProjectLoad.applyCanonicalProject({
+    schema: 'moy.asr.project.v1', media: '',
+    segments: [{ id: 'emoji', start: 0, end: 1000, text: '字幕 🤔' }],
+  }, 'synthetic.mosp'));
+  const warning = page.locator('#ass-emoji-warning');
+  const tip = page.locator('#ass-emoji-warning-tip');
+  await expect(warning).toBeHidden();
+  await page.locator('#ass-mode-quick-toggle').click();
+  await warning.hover();
+  await expect(tip).toContainText('当前 ASS 烧录不支持彩色 emoji');
+  const checkTip = async () => {
+    const { painted, gap } = await tip.evaluate(node => {
+      const tipRect = node.getBoundingClientRect();
+      const anchor = node.parentElement.getBoundingClientRect();
+      return {
+        painted: [0.2, 0.5, 0.8].every(fraction => node.contains(document.elementFromPoint(
+          tipRect.left + tipRect.width / 2, tipRect.top + tipRect.height * fraction,
+        ))),
+        gap: Math.max(tipRect.top - anchor.bottom, anchor.top - tipRect.bottom),
+      };
+    });
+    expect(painted, 'tooltip is painted beyond the toolbar clip').toBe(true);
+    expect(gap).toBeGreaterThanOrEqual(8);
+  };
+  await checkTip();
+  await page.screenshot({ path: testInfo.outputPath('ass-emoji-tooltip.png') });
+  await page.mouse.move(0, 0);
+  await expect(tip).toBeHidden();
+  await warning.focus();
+  await checkTip();
+  await page.locator('#ass-mode-quick-toggle').click();
+  await expect(tip).toBeHidden();
+});
+
 test('minified portable bundle preserves non-default data, paths and generated language', async ({page}) => {
   // 便携单 HTML 的注入与 file:// 运行契约随 2.0 移除；HTTP bundle 覆盖保留。
   test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');

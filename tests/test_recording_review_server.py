@@ -56,6 +56,36 @@ class RecordingServerTests(unittest.TestCase):
             self.post("/api/recording/review",{**self.body,"requestToken":"wrong"})
         self.assertEqual(error.exception.code,403)
 
+    def test_silence_detection_is_opt_in_to_server_session_and_worker_request(self):
+        from dataclasses import replace
+
+        self.server.state.project["waveform"] = {}
+        self.server.state.project["gap_remove"] = {"provenance": {
+            "manual_overrides": [{"id": "hand", "start": 100, "end": 200, "removed": True}],
+        }}
+        self.server.state = replace(self.server.state, auto_mark_silence=False)
+        self.server.recording_job.state = self.server.state
+        with mock.patch("maw.script_alignment.detect_waveform_gaps", return_value=[]) as detect:
+            preview = self.post("/api/preview", self.body)
+            self.assertEqual(preview["gapRemove"]["provenance"]["manual_overrides"][0]["id"], "hand")
+            review = self.post("/api/recording/review", self.body)
+            self.assertFalse(review["review"]["request"]["autoMarkSilence"])
+            detect.assert_not_called()
+
+            self.server.state = replace(self.server.state, auto_mark_silence=True, gap_remove_override={
+                "minimum_ms": 700, "threshold_db": -32, "hysteresis_db": 2, "lead_in_ms": 120, "lead_out_ms": 80,
+            })
+            self.server.recording_job.state = self.server.state
+            preview = self.post("/api/preview", self.body)
+            review = self.post("/api/recording/review", self.body)
+            exported = self.post("/api/export", self.body)
+            saved = json.loads(Path(exported["path"]).read_text(encoding="utf-8"))
+            for gap in (preview["gapRemove"], review["gapRemove"], saved["gap_remove"]):
+                self.assertEqual(gap["provenance"]["manual_overrides"][0]["id"], "hand")
+            self.assertEqual(detect.call_count, 3)
+            for call in detect.call_args_list:
+                self.assertEqual(call.kwargs["minimum_ms"], 700)
+
     def test_stale_file_or_signature_rejected(self):
         with self.assertRaises(HTTPError):
             self.post("/api/recording/review",{**self.body,"inputSignature":"old"})

@@ -6,12 +6,18 @@ function isInsideMediaCard(node) { return node instanceof Node && $("mediaCard")
 function onDragEnter(event) { if (!hasFileDrag(event) || !isInsideMediaCard(event.target)) return; event.preventDefault(); if (isInsideMediaCard(event.relatedTarget)) return; dragState.depth += 1; setDropHighlight(true); }
 function onDragLeave(event) { if (!isInsideMediaCard(event.target)) return; if (isInsideMediaCard(event.relatedTarget)) return; dragState.depth = Math.max(0, dragState.depth - 1); if (dragState.depth === 0) setDropHighlight(false); }
 function bindDropField(id, target, controlId) { const field = $(id); const control = $(controlId || id); field.addEventListener("dragenter", (event) => { if (!hasFileDrag(event) || control.getAttribute("aria-disabled") === "true") return; event.preventDefault(); state.dropTarget = target; control.classList.add("drag-over"); }); field.addEventListener("dragover", (event) => { if (!hasFileDrag(event) || control.getAttribute("aria-disabled") === "true") return; event.preventDefault(); state.dropTarget = target; control.classList.add("drag-over"); }); field.addEventListener("dragleave", (event) => { if (!field.contains(event.relatedTarget)) { control.classList.remove("drag-over"); if (state.dropTarget === target) state.dropTarget = ""; } }); }
-function handleRoutedDrop(path) {
-  const target = state.dropTarget;
+function handleRoutedDrop(path, fileCount, targetId) {
+  const target = fileCount === 1 && targetId === "jsonPath" ? "json"
+    : fileCount === 1 && targetId === "mediaPath" ? "media" : state.dropTarget;
+  const droppedOnMedia = (targetId === "dropZone" || targetId === "mediaPath") && !$('singleMediaFields').classList.contains('hidden');
   clearDropState();
   if (target === "toolboxUtilityMedia" && $("toolboxUtilityMediaPath").disabled) return;
   const value = String(path || "").trim();
   const suffix = ext(value);
+  if (droppedOnMedia && fileCount === 1 && suffix === ".mosp" && window.MAWLauncher.openDroppedMosp?.(value)) {
+    setError("mediaPath", "");
+    return;
+  }
   if (target === "media") {
     if (MEDIA_EXTS.has(suffix)) {
       setMedia(value, { refreshOcrVideo: true });
@@ -119,11 +125,20 @@ let serverMediaRequest = 0;
 async function refreshServerMedia() {
   const requestId = ++serverMediaRequest;
   const jsonPath = $("jsonPath").value.trim();
+  if (!jsonPath) {
+    state.serverMediaOk = false;
+    $("serverMediaField").classList.add("hidden");
+    setError("jsonPath", "");
+    return;
+  }
   const result = await bridge("check_server_media", { jsonPath });
   // 快速切换工程时，旧路径的慢响应不能覆盖当前工程的媒体提示。
   if (requestId !== serverMediaRequest || jsonPath !== $("jsonPath").value.trim()) return result;
   state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists);
-  $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath);
+  const projectError = result.field === "jsonPath";
+  $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || projectError);
+  if (projectError) setError("jsonPath", errText(result.code, result.detail));
+  else if (result.ok || result.status) setError("jsonPath", "");
   return result;
 }
 async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }

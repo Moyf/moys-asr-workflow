@@ -104,6 +104,38 @@ test('right-click and batch wrapping preserve single fade markers with undo', as
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>>HELLO');
 });
 
+for (const { label, native, secure, reason } of [
+  { label: 'browser API missing', native: false, secure: true, reason: '当前浏览器未提供文件保存选择器' },
+  { label: 'Launcher session missing', native: true, secure: true, reason: '当前页面没有有效的启动器保存会话' },
+  { label: 'insecure page', native: false, secure: false, reason: '当前页面不是安全上下文' },
+]) {
+  test(`unavailable burn save stays visible until closed · ${label}`, async ({ page }) => {
+    const burnRequests = [];
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().includes('/api/exports/burned-video/jobs')) {
+        burnRequests.push(request.url());
+      }
+    });
+    await page.evaluate(({ native, secure }) => {
+      MaweBoot.SERVER_CONFIG.nativeBurnAvailable = native;
+      Object.defineProperty(window, 'showSaveFilePicker', { value: undefined });
+      Object.defineProperty(window, 'isSecureContext', { value: secure });
+    }, { native, secure });
+    await page.clock.install();
+    await page.locator('#burn-video-export-btn').click();
+    await page.locator('#burn-video-encoding [type="submit"]').click();
+    const card = page.locator('.hint-card.hint-warning').filter({ hasText: reason });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('选择保存位置');
+    await expect(card).toContainText('打开编辑器');
+    await page.clock.fastForward(30_000);
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: '关闭' }).click();
+    await expect(card).toBeHidden();
+    expect(burnRequests).toEqual([]);
+  });
+}
+
 test('real editor burns SRT mode through the server job and saves an MP4', async ({ page }) => {
   const requests = [];
   page.on('request', request => {
@@ -120,10 +152,19 @@ test('real editor burns SRT mode through the server job and saves an MP4', async
   });
   await expect(page.locator('#burn-video-export-btn')).toBeVisible();
   await page.locator('#burn-video-export-btn').click();
+  const dialog = page.locator('#burn-video-encoding');
+  await expect(dialog).toBeVisible();
+  const gaps = await dialog.evaluate(element => [...element.querySelectorAll('.burn-video-encoding-fields small')]
+    .map(hint => hint.getBoundingClientRect().top - hint.previousElementSibling.getBoundingClientRect().bottom));
+  expect(Math.min(...gaps)).toBeGreaterThanOrEqual(8);
+  await dialog.screenshot({ path: test.info().outputPath('burn-encoding.png') });
+  await dialog.locator('#burn-video-crf').fill('25');
+  await dialog.locator('[type="submit"]').click();
   await expect.poll(() => page.evaluate(() => window.burnSaved), { timeout: 45_000 }).toBe(true);
   expect(requests).toHaveLength(1);
   expect(requests[0].srt).toContain('HELLO');
   expect(requests[0].ass).toBeUndefined();
+  expect(requests[0].encoding).toEqual({ crf: 25, preset: 'medium', audioBitrate: '192k' });
   expect(await page.evaluate(() => String.fromCharCode(...burnBytes.slice(4, 8)))).toBe('ftyp');
   await expect(page.locator('#burn-video-export-btn')).toBeEnabled();
 });

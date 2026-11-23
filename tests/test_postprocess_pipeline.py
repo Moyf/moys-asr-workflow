@@ -315,7 +315,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
         self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
-        self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
+        self.assertFalse(plan["steps"][0]["cleanMarkdownSymbols"])
         self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
 
     def test_normalize_plan_migrates_legacy_preserved_question_marks(self) -> None:
@@ -419,11 +419,11 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_markdown_cleanup_setting_is_preserved_when_normalizing_plan(self) -> None:
         plan = default_postprocess_plan()
-        plan["steps"] = [{"id": "match", "enabled": True, "cleanMarkdownSymbols": False}]
+        plan["steps"] = [{"id": "match", "enabled": True, "cleanMarkdownSymbols": True}]
 
         normalized = normalize_plan(plan)
 
-        self.assertFalse(normalized["steps"][0]["cleanMarkdownSymbols"])
+        self.assertTrue(normalized["steps"][0]["cleanMarkdownSymbols"])
 
     def test_validation_allows_conversion_without_replacement_rules(self) -> None:
         plan, errors = validate_plan(self.plan(self.conversion_step()), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)

@@ -284,6 +284,33 @@ class CliTests(unittest.TestCase):
         self.assertIn("--speaker", generated)
         self.assertEqual(generated[generated.index("--strip-tail-punct") + 1], "，。！？")
 
+    def test_moss_forwards_hotwords_as_keyterms(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(
+            [
+                "--provider", "moss", "-i", "clip.mp3",
+                "--hotword", "MOSS", "--hotword", "模思智能",
+            ]
+        )
+
+        generated = cli._generator_args(args, Path("clip.mp3"), Path("out.srt"))
+
+        self.assertEqual(generated.count("--hotword"), 2)
+        self.assertEqual(generated[generated.index("--hotword") + 1], "MOSS")
+
+    def test_moss_rejects_language_and_qwen_only_options(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--provider", "moss", "-i", "clip.mp3", "--language", "zh"])
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_moss_dispatches_to_moss_generator(self) -> None:
+        with mock.patch("maw.asr.moss.main", return_value=0) as generator_main:
+            result = cli._invoke_generator("moss", ["clip.mp3"])
+
+        self.assertEqual(result, 0)
+        generator_main.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()

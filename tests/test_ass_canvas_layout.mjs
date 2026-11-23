@@ -192,7 +192,9 @@ test('stack rejects negative spacing and does not silently fit tiny formatted ru
     runs: [{ text: 'TEXT', size: 'small' }] });
   const profile = h.normalizeAssProfile({ animations: {} });
   assert.equal(h.assCreateStackPlan({ profile, items: [item('main')] }).slices[0].legacy, true);
-  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] }).diagnostics[0].message, /负字距/);
+  const spacingError = h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] }).diagnostics[0];
+  assert.equal(spacingError.code, 'ass-negative-spacing');
+  assert.match(spacingError.message, /负字距/);
   style.spacing = 0;
   const enormous = { ...item('extension'), runs: [{ text: ('BIG\n').repeat(200) }] };
   assert.match(h.assCreateStackPlan({ profile, items: [item('main'), enormous] }).diagnostics[0].message, /固定副字幕超出/);
@@ -224,13 +226,18 @@ test('overlay cues honor per-cue scale and pos overrides like main cues', () => 
   const bothCue = both.slices[0].items[0];
   assert.equal(bothCue.manual, true);
   assert.equal(bothCue.cueScale, 1.5);
-  // 扩展轨闸门保持关闭：带 override 的扩展句不受影响。
+});
+
+test('secondary cues honor position overrides but keep their preset scale', () => {
+  const style = h.normalizeAssStyle({ fontSize: 48, alignment: 2, marginV: 60 });
+  const profile = h.normalizeAssProfile({ animations: {} });
   const extension = { role: 'extension', index: 0, start: 0, end: 2000,
     segment: { id: 'ext-001', assOverride: { scale: 1.5, pos: { x: 10, y: 20 } } }, style, fontSize: 48, runs: [{ text: 'EXT' }] };
   const extensionPlan = h.assCreateStackPlan({ profile, items: [extension] });
   const extensionCue = extensionPlan.slices[0].items[0];
   assert.equal(extensionCue.cueScale, 1);
-  assert.equal(extensionCue.manual, undefined);
+  assert.equal(extensionCue.manual, true);
+  assert.deepEqual({ ...h.assStackFrame(extensionPlan, 500).items[0].anchor }, { x: 10, y: 20 });
 });
 
 test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {

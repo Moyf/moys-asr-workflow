@@ -116,6 +116,7 @@ export function initMaweSegmentOps() {
         // 组引用、跨组同色物化自持 head）；未继承时 splice 前按切点拆组（见下方）。
         color: extensionColorGroup.head,
         color_ref: extensionColorGroup.ref,
+        ...(extensionMergeSegments[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(extensionMergeSegments[0].assOverride) } : {}),
         ...(extensionMergeSegments[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(extensionMergeSegments[0].assStyle)) } : {}),
         _dirty: true,
       };
@@ -255,6 +256,7 @@ export function initMaweSegmentOps() {
       start: segments[0].start,
       end: segments[segments.length - 1].end,
       text: extensionJoin.text,
+      ...(segments[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride) } : {}),
       color: colorGroup.head,
       color_ref: colorGroup.ref,
       _dirty: true,
@@ -671,6 +673,40 @@ export function initMaweSegmentOps() {
 
   // === 删除 ===
   // 删除一组 idx，并智能维持 head/ref 链（"组拆分"语义）：
+  function resetCuePanelBeforeDeletion() {
+    // Pending text must be committed before a splice changes cue indices.
+    commitCuePanelEdit();
+    MaweCuePanelState.currentCuePanelIdx = -1;
+    MaweCuePanelState.currentCuePanelKind = 'main';
+    MaweCuePanelState.currentCuePanelTrackId = null;
+    MaweCuePanelState.resetCuePanelEditState();
+  }
+
+  function spliceDeletedExtensionSegments(track, indices) {
+    const sorted = [...indices].sort((a, b) => a - b);
+    // Promote surviving color-group members before shifting their index refs.
+    splitGroupsAtCutPoints(indices, 'color', 'color_ref', track.segments);
+    track.segments.forEach((segment, index) => {
+      if (!indices.has(index) && indices.has(segment.color_ref?.headIdx)) segment.color_ref = null;
+    });
+    for (let i = sorted.length - 1; i >= 0; i--) track.segments.splice(sorted[i], 1);
+    track.segments.forEach(({ color_ref: ref }) => {
+      if (!ref) return;
+      let shift = 0;
+      for (const removedIndex of sorted) { if (removedIndex < ref.headIdx) shift++; else break; }
+      ref.headIdx -= shift;
+    });
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  }
+
+  function removeDeletedCueBindings(multi, mainIds, track, extensionIndices) {
+    const extensionIds = new Set([...extensionIndices].map(index => track?.segments[index]?.id).filter(Boolean));
+    return window.AsrEditorUtils.removeSubtitleBindings(multi, binding => (
+      binding.main_segment_ids?.some(id => mainIds.has(id))
+      || (binding.track_id === track?.id && binding.extension_segment_ids?.some(id => extensionIds.has(id)))
+    ));
+  }
+
   //   核心规则：被删的任一 idx 都会把它所属的 group 拆成"前段"和"后段"
   //     - 前段（idx < 被删 idx 且原本同组）：保留原 head；head 的 .end 收缩到
   //       前段最后一个存活的 ref/head 的 .end
@@ -679,40 +715,39 @@ export function initMaweSegmentOps() {
   //   当被删的是 head：前段为空，整段后段重组（与之前的"head 晋升"语义吻合）
   //   当被删的是 ref：head 仍是 head，但 group 被切成两块——这是用户原话
   //     "删除中间的 3 → 4 变 head，5 改 ref→4"
-  function deleteSegments(idxs) {
-    if (!idxs.length) return;
-    const sorted = [...new Set(idxs)].sort((a, b) => a - b);
+  function deleteSegments(idxs, extensionSelection = null) {
+    const sorted = [...new Set(idxs)].filter(index => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length)
+      .sort((a, b) => a - b);
+    if (!sorted.length) return;
     if (sorted.length === MaweBoot.DATA.segments.length) {
       MaweHint.flashHint('不能删除全部字幕', 'warning');
       return;
     }
-    // Commit any pending cue-panel edit and reset panel state BEFORE splicing.
-    // Without this, clearSelection() → setCurrentCuePanelIndex(-1) → commitCuePanelEdit()
-    // would write the stale panel text to whatever segment now occupies the old index
-    // after splice shifts the array — causing wrong-adjacent text overwrites.
-    commitCuePanelEdit();
-    MaweCuePanelState.currentCuePanelIdx = -1;
-    MaweCuePanelState.currentCuePanelKind = 'main';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.resetCuePanelEditState();
-    return MaweCommands.run(`删除 ${sorted.length} 条字幕`, (command) => {
-      const pairedExtensionIndices = new Set();
-      const pairedMainIds = sorted.map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
-      const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
-      const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-      (multi.bindings || []).forEach((binding) => {
-        if (!binding.main_segment_ids?.some((id) => pairedMainIds.includes(id))) return;
-        const extensionId = binding.extension_segment_ids?.[0];
-        const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
-        if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
-      });
-      // 关闭多字幕时仍清理已失效的主轨绑定，但不删除隐藏的副字幕。
-      MaweMultiSubtitleCore.removeBindingsForSegmentIds(
-        pairedMainIds,
-        MaweMultiSubtitleCore.multiSubtitleVisible()
-          ? [...pairedExtensionIndices].map((index) => extensionTrack?.segments[index]?.id)
-          : [],
-      );
+    resetCuePanelBeforeDeletion();
+    const mainIds = new Set(sorted.map(index => MaweBoot.DATA.segments[index]?.id).filter(Boolean));
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
+    const extensionIndices = new Set();
+    if (extensionTrack) {
+      if (extensionSelection !== null) {
+        extensionSelection.forEach(index => {
+          if (Number.isInteger(index) && index >= 0 && index < extensionTrack.segments.length) extensionIndices.add(index);
+        });
+      } else {
+        // Main-track context menu keeps the existing paired deletion behavior.
+        (multi.bindings || []).forEach((binding) => {
+          if (binding.track_id !== extensionTrack.id
+              || !binding.main_segment_ids?.some(id => mainIds.has(id))) return;
+          const extensionId = binding.extension_segment_ids?.[0];
+          const extensionIndex = extensionTrack.segments.findIndex(segment => segment.id === extensionId);
+          if (extensionIndex >= 0) extensionIndices.add(extensionIndex);
+        });
+      }
+    }
+    const count = sorted.length + (extensionSelection === null ? 0 : extensionIndices.size);
+    return MaweCommands.run(`删除 ${count} 条字幕`, (command) => {
+      // Hidden or unselected secondary cues stay in the project; only their orphaned bindings are removed.
+      const removedBindings = removeDeletedCueBindings(multi, mainIds, extensionTrack, extensionIndices);
       const removeSet = new Set(sorted);
 
       // ---- 用通用 helper 做组拆分（同时清掉被删 idx 的 head/ref 字段）----
@@ -745,37 +780,15 @@ export function initMaweSegmentOps() {
         if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
         if (s.color_ref)   shiftHeadIdx(s.color_ref);
       });
-      if (extensionTrack && pairedExtensionIndices.size) {
-        // 副轨颜色组按删除语义拆组：被删成员之后的同组 ref 晋升新 head；
-        // splice 后平移幸存 ref（副轨 color_ref 是数组下标，不随 splice 更新）。
-        const pairedSorted = [...pairedExtensionIndices].sort((a, b) => a - b);
-        splitGroupsAtCutPoints(new Set(pairedSorted), 'color', 'color_ref', extensionTrack.segments);
-        extensionTrack.segments.forEach((segment, index) => {
-          if (pairedExtensionIndices.has(index)) return;
-          if (segment.color_ref && pairedExtensionIndices.has(segment.color_ref.headIdx)) {
-            segment.color_ref = null;
-          }
-        });
-        for (let i = pairedSorted.length - 1; i >= 0; i--) {
-          extensionTrack.segments.splice(pairedSorted[i], 1);
-        }
-        const shiftPairedRemovedBefore = (ref) => {
-          let shift = 0;
-          for (const removedIndex of pairedSorted) { if (removedIndex < ref.headIdx) shift += 1; else break; }
-          if (shift) ref.headIdx -= shift;
-        };
-        extensionTrack.segments.forEach((segment) => {
-          if (segment.color_ref) shiftPairedRemovedBefore(segment.color_ref);
-        });
-      }
-      if (pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      if (extensionTrack && extensionIndices.size) spliceDeletedExtensionSegments(extensionTrack, extensionIndices);
+      else if (removedBindings.length) MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
       // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
       // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
       // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
       clearSelection({ silent: true });
       MawePlaybackLoop.lastActive = -1;
       command.commit({ cueList: true });
-      MaweHint.flashHint(`已删除 ${sorted.length} 条`, 'success');
+      MaweHint.flashHint(`已删除 ${count} 条`, 'success');
     });
   }
 
@@ -783,66 +796,18 @@ export function initMaweSegmentOps() {
 
   function deleteExtensionSegments(indices, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     if (!track || !indices?.length) return;
-    const sorted = [...new Set(indices)].filter((index) => Number.isInteger(index)
-      && index >= 0 && index < track.segments.length).sort((a, b) => a - b);
-    if (!sorted.length) return;
-    // 先提交并解除编辑区对旧副字幕下标的引用，避免删除前面的段后，
-    // 编辑区下标漂移到另一条副字幕。
-    commitCuePanelEdit();
-    MaweCuePanelState.currentCuePanelIdx = -1;
-    MaweCuePanelState.currentCuePanelKind = 'main';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.resetCuePanelEditState();
-    const ids = sorted.map((index) => track.segments[index]?.id).filter(Boolean);
-
-    // 删除绑定副字幕时沿用主轨删除语义：绑定关系和另一侧字幕一起删除，
-    // 这样从任意 lane 删除都能用同一条撤销记录完整恢复。未绑定的副轨段
-    // 仍允许单独删除；混合选择时两类操作会分别使用各自的历史记录。
-    const pairedMainIndices = new Set();
-    const unboundIds = new Set(ids);
-    ids.forEach((id) => {
-      const binding = window.AsrEditorUtils.bindingForSegment(
-        MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
-      );
-      if (!binding) return;
-      const mainId = binding.main_segment_ids?.[0];
-      const mainIndex = MaweBoot.DATA.segments.findIndex((segment) => segment.id === mainId);
-      if (mainIndex >= 0) pairedMainIndices.add(mainIndex);
-      unboundIds.delete(id);
-    });
-    if (pairedMainIndices.size) {
-      deleteSegments([...pairedMainIndices]);
-    }
-
-    const remainingIndices = track.segments
-      .map((segment, index) => unboundIds.has(segment.id) ? index : -1)
-      .filter((index) => index >= 0);
-    if (!remainingIndices.length) return;
-
-    return MaweCommands.run(`删除 ${sorted.length} 条副字幕`, (command) => {
-      MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
-      // 副轨颜色组按删除语义拆组（同主轨 deleteSegments）：被删成员之后的
-      // 同组 ref 晋升新 head；splice 后平移幸存 ref，避免保存校验悬空。
-      const removeSet = new Set(remainingIndices);
-      splitGroupsAtCutPoints(removeSet, 'color', 'color_ref', track.segments);
-      track.segments.forEach((segment, index) => {
-        if (removeSet.has(index)) return;
-        if (segment.color_ref && removeSet.has(segment.color_ref.headIdx)) segment.color_ref = null;
-      });
-      const removedAscending = [...remainingIndices].sort((a, b) => a - b);
-      [...remainingIndices].reverse().forEach((index) => track.segments.splice(index, 1));
-      const shiftRemovedBefore = (ref) => {
-        let shift = 0;
-        for (const removedIndex of removedAscending) { if (removedIndex < ref.headIdx) shift += 1; else break; }
-        if (shift) ref.headIdx -= shift;
-      };
-      track.segments.forEach((segment) => {
-        if (segment.color_ref) shiftRemovedBefore(segment.color_ref);
-      });
-      MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      MaweState.selection.clear('extension');
+    const removeSet = new Set(indices.filter(index => Number.isInteger(index) && index >= 0 && index < track.segments.length));
+    if (!removeSet.size) return;
+    resetCuePanelBeforeDeletion();
+    return MaweCommands.run(`删除 ${removeSet.size} 条副字幕`, (command) => {
+      // Pair selection is visual; an explicit secondary delete never touches the main track.
+      const removedBindings = removeDeletedCueBindings(MaweMultiSubtitleCore.getMultiSubtitleState(), new Set(), track, removeSet);
+      spliceDeletedExtensionSegments(track, removeSet);
+      clearSelection({ silent: true });
       command.commit({ cueList: true });
-      MaweHint.flashHint(`已删除 ${remainingIndices.length} 条副字幕`, 'success');
+      const message = `已删除 ${removeSet.size} 条副字幕`;
+      MaweHint.flashHint(removedBindings.length
+        ? `${message}，已解除 ${removedBindings.length} 组绑定，主字幕已保留` : message, 'success');
     });
   }
 

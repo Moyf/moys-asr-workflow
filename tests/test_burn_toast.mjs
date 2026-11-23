@@ -61,6 +61,101 @@ test('persistent cards survive unrelated messages and close independently', () =
   assert.equal(error.parentElement, null); assert.ok(success.parentElement);
 });
 
+test('burn failure exposes attempts including an empty stderr, and copies only the shareable report', async () => {
+  const f = fixture();
+  let copied;
+  Object.assign(f.context, {MaweHint: f.hint, MaweBoot: {SERVER_CONFIG: {burnVideoAppVersion: '1.11.4'}},
+    navigator: {clipboard: {writeText: async text => { copied = text; }}}});
+  vm.runInContext(fs.readFileSync(process.env.MAW_TEST_BURN_SOURCE || 'web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
+  const attempts = [
+    {encoder: 'nvenc', exitCode: 7, elapsedMs: 20, stderrPresent: true, reasons: ['cannot load nvcuda.dll']},
+    {encoder: 'cpu', exitCode: 1, elapsedMs: 45, stderrPresent: false},
+  ];
+  const diagnostic = {mode: 'full', ffmpegVersion: '8.0', encoder: 'cpu', attempts,
+    failure: {stage: 'burning', type: 'BurnVideoExportError'}};
+  assert.match(f.context.burnProgressText({stage: 'burning', burnDiagnostic: diagnostic}), /换编码器.*CPU/);
+  const card = f.context.showBurnVideoFailure(new Error('token=not-for-copy'), {stage: 'status', jobId: 'job123', diagnostic});
+  assert.match(card.children[0].textContent, /烧录编码/);
+  assert.equal(card.children[2].children[0].textContent, '查看诊断详情');
+  await card.children[1].children[0].dispatch('click');
+  assert.match(copied, /job123/);
+  assert.match(copied, /nvenc.*退出码: 7/);
+  assert.match(copied, /cpu.*退出码: 1\nFFmpeg 未输出错误详情/);
+  assert.doesNotMatch(copied, /not-for-copy/);
+});
+
+test('burn admission and native save distinguish lost connections from file failures', async () => {
+  const f = fixture();
+  Object.assign(f.context, {MaweHint: f.hint, MaweBoot: {SERVER_CONFIG: {}},
+    MaweHost: {server: {fetch: async () => { throw new TypeError('Failed to fetch'); }}}});
+  vm.runInContext(fs.readFileSync('web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
+  for (const [stage, request, code, message] of [
+    ['admission', () => f.context.burnFetch('/jobs', {}), 'local-connection', /连接中断/],
+    ['write', () => f.context.nativeBurnPost('/jobs/job/native-save', 'token', {}), 'native-write-unconfirmed', /无法确认保存结果/],
+  ]) {
+    await assert.rejects(request, error => {
+      assert.equal(error.code, code);
+      const card = f.context.showBurnVideoFailure(error, {stage, mode: 'full'});
+      assert.match(card.children[0].textContent, message);
+      assert.ok(card.children[2].children[1].textContent.includes(code));
+      return true;
+    });
+  }
+});
+
+test('burn diagnostics preserve known subtitle and session guidance without copying raw exceptions', () => {
+  const f = fixture();
+  Object.assign(f.context, {MaweHint: f.hint, MaweBoot: {SERVER_CONFIG: {}}});
+  vm.runInContext(fs.readFileSync(process.env.MAW_TEST_BURN_SOURCE || 'web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
+  const layoutError = Object.assign(new Error('请将字距改为非负值后导出'), {code: 'ass-negative-spacing'});
+  const layout = f.context.showBurnVideoFailure(layoutError, {stage: 'subtitles', mode: 'full'});
+  assert.match(layout.children[0].textContent, /字距改为非负值/);
+  assert.match(layout.children[2].children[1].textContent, /ass-negative-spacing/);
+  const unknown = f.context.showBurnVideoFailure(new Error('arbitrary subtitle data'), {stage: 'subtitles', mode: 'full'});
+  assert.doesNotMatch(unknown.children[0].textContent + unknown.children[2].children[1].textContent, /arbitrary subtitle data/);
+  const sessionError = f.context.burnResponseError('启动器编辑器会话无效，请从启动器重新打开', 403, 'burn-authorization');
+  const session = f.context.showBurnVideoFailure(sessionError, {stage: 'admission', mode: 'full'});
+  assert.match(session.children[0].textContent, /请从启动器重新打开/);
+  assert.match(session.children[2].children[1].textContent, /burn-authorization/);
+});
+
+for (const phase of ['download', 'write']) {
+  test(`burn pipeline labels ${phase} errors after successful encoding`, async () => {
+    const f = fixture();
+    const config = {canBurnVideoExport: true, burnVideoJobsUrl: '/jobs', requestToken: 'fixture',
+      bindingGeneration: 1, sourceMediaId: 'source', burnVideoSourceName: 'source.mp4'};
+    const state = {state: 'ready', jobId: 'job123', bindingGeneration: 1, sourceMediaId: 'source'};
+    Object.assign(f.window, {MaweProjectLoad: {projectBindingEpoch: 1}, MaweCoreState: {player: {currentSrc: 'http://localhost/media'}}});
+    Object.assign(f.context, {MaweHint: f.hint, MaweBoot: {SERVER_CONFIG: config}, MaweInlineEdit: {},
+      MaweSettings: {EDITOR_SETTINGS: {assMode: false}}, location: {href: 'http://localhost/', origin: 'http://localhost'},
+      URL, Uint8Array, AbortController, crypto: {getRandomValues: value => value},
+      MaweHost: {
+        files: {hasSavePicker: () => true, pickSaveFile: async () => ({
+          name: 'result.mp4', createWritable: async () => ({write: async () => {},
+            close: async () => { throw Object.assign(new Error('private-save-location'), {name: 'QuotaExceededError'}); },
+            abort: async () => {}}),
+        })},
+        server: {fetch: async (url) => {
+          if (url === '/jobs') return {ok: true, json: async () => state};
+          if (url.endsWith('/cancel')) return {ok: true, json: async () => ({state: 'cancelled', cleanupComplete: true})};
+          let read = false;
+          return {ok: true, headers: {get: name => name === 'Content-Type' ? 'video/mp4' : '1'},
+            body: {getReader: () => ({read: async () => {
+              if (phase === 'download') throw new TypeError('network error');
+              return read ? {done: true} : (read = true, {done: false, value: new Uint8Array([1])});
+            }, releaseLock() {}, cancel: async () => {}})}};
+        }},
+      },
+    });
+    vm.runInContext(fs.readFileSync(process.env.MAW_TEST_BURN_SOURCE || 'web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
+    await f.context.runBurnVideoJob({button: f.document.createElement('button'), label: 'burn',
+      suggestedName: 'result.mp4', startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})});
+    const card = f.body.children.find(c => c.id === 'hint-stack').children.find(c => c.className.includes('hint-warning'));
+    assert.match(card.children[0].textContent, phase === 'download' ? /下载视频.*传输中断/ : /写入文件.*磁盘空间/);
+    assert.doesNotMatch(card.children[2].children[1].textContent, /private-save-location/);
+  });
+}
+
 test('real burn flow retains independent errors and successes across consecutive jobs', async () => {
   const f = fixture();
   let failing = true;
@@ -118,6 +213,9 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
   const reply = data => ({ok: true, json: async () => data});
   let openError = null;
   let grantRemoved = false;
+  let cancelPicker = false;
+  const pickerHint = '请稍等片刻，在 Launcher 的文件选择器中选择保存路径。';
+  const normalHints = () => f.body.children.find(c => c.id === 'hint-stack')?.children || [];
   Object.assign(f.window, {
     location: {hash: '#maw-burn-host=grant', pathname: '/', search: '?lang=en'},
     MAWE_I18N: {language: 'en', translateText: text => text},
@@ -133,7 +231,11 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
       server: {fetch: async (url, options) => {
         calls.push([url, options.body ? JSON.parse(options.body) : null]);
         if (url.endsWith('/native-session')) return reply({nativeSession: 'session'});
-        if (url.endsWith('/native-target')) return reply({nativeTarget: 'opaque', name: 'source.mp4'});
+        if (url.endsWith('/native-target')) {
+          assert.ok(normalHints().some(card => card.textContent === pickerHint && card.dataset.persistent === '1'));
+          assert.ok(!normalHints().some(card => card.textContent === 'start'));
+          return reply(cancelPicker ? {cancelled: true} : {nativeTarget: 'opaque', name: 'source.mp4'});
+        }
         if (url === '/jobs') return reply({jobId: 'job', state: 'ready', bindingGeneration: 1, sourceMediaId: 'media'});
         if (url.endsWith('/native-save')) return reply({name: 'source.mp4', syncWarning: true});
         if (url.endsWith('/native-open')) return openError || reply({openRequested: true});
@@ -144,8 +246,19 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
   });
   vm.runInContext(fs.readFileSync('web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
   const button = f.document.createElement('button');
-  await f.context.runBurnVideoJob({button, label: 'burn', suggestedName: 'result.mp4',
-    startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})});
+  const options = {button, label: 'burn', suggestedName: 'result.mp4',
+    startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})};
+  cancelPicker = true;
+  await f.context.runBurnVideoJob(options);
+  f.advance(200);
+  assert.ok(!normalHints().some(card => card.textContent === pickerHint || card.textContent === 'start'));
+  assert.deepEqual(calls.map(([url]) => url), ['/jobs/native-session', '/jobs/native-target']);
+  calls.splice(1);
+  cancelPicker = false;
+  await f.context.runBurnVideoJob(options);
+  f.advance(200);
+  assert.ok(!normalHints().some(card => card.textContent === pickerHint));
+  assert.ok(normalHints().some(card => card.textContent === 'start'));
   assert.equal(grantRemoved, true);
   assert.deepEqual(calls.map(([url]) => url), ['/jobs/native-session', '/jobs/native-target', '/jobs', '/jobs/job/native-save', '/jobs/job']);
   const [_, choose, admission] = calls;

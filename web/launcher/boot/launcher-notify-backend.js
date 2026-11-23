@@ -84,6 +84,30 @@ function notifySingleFailure(event) {
   sendSystemNotification(t("notify_single_failed_title"), body);
 }
 
+function localRuntimeIsInstalling() {
+  return state.localRuntimeInstalling || state.config?.localRuntime?.status === "installing";
+}
+
+function handleBackendEvents(events) {
+  let progress = null;
+  const logs = [];
+  function flushRuntimeUpdates() {
+    if (progress) handleBackendEvent(progress);
+    if (logs.length) appendRuntimeLogLines(logs);
+    progress = null;
+    logs.length = 0;
+  }
+  for (const event of events) {
+    if (localRuntimeIsInstalling()) {
+      if (event.type === "localRuntimeProgress") { progress = event; continue; }
+      if (event.type === "log" && event.message?.startsWith("[runtime] ")) { logs.push(event.message); continue; }
+    }
+    flushRuntimeUpdates();
+    handleBackendEvent(event);
+  }
+  flushRuntimeUpdates();
+}
+
 function handleBackendEvent(event) {
   if (event.type === "editorShutdownPending") {
     setStatus(errText("server_stop_pending"));
@@ -152,11 +176,11 @@ function handleBackendEvent(event) {
     setStatus(t("alignment_model_cancelled"));
   }
   if (event.type === "localRuntimeProgress") {
-    const runtime = state.config?.localRuntime || {};
-    if (state.localRuntimeInstalling || runtime.status === "installing") {
+    if (localRuntimeIsInstalling()) {
       state.localRuntimeProgress = Number(event.percent || 0);
       state.localRuntimeProgressMessage = event.message || "";
-      renderLocalRuntime();
+      if ($("localRuntimeProgress").classList.contains("hidden")) renderLocalRuntime();
+      else renderLocalRuntimeProgress();
     }
   }
   if (event.type === "localRuntimeReady") {
@@ -301,9 +325,10 @@ function handleBackendEvent(event) {
   }
   if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
   if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
-  if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
+  if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "", event.fileCount, event.targetId);
 }
-window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents: handleBackendEvents, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher.getRecordingReviewTranscriptionPayload = recordingReviewTranscriptionPayload;
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -317,7 +342,19 @@ document.querySelectorAll("[data-settings-tab]").forEach((tab) => {
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
 $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
 $("tutorialVideoLink").addEventListener("click", () => bridge("open_url", { url: TUTORIAL_VIDEO_URL }));
-$("supportLink").addEventListener("click", () => { $("supportModal").classList.remove("hidden"); $("supportClose").focus(); });
+const supportGitHubStar = bindGitHubStar({
+  entry: $("supportGitHubActions"),
+  button: $("supportGitHubStar"),
+  thanks: $("supportGitHubThanks"),
+  fallbackFocus: $("supportClose"),
+  check: () => api?.github_star_status?.({}),
+  write: () => api?.github_star?.({}),
+});
+$("supportLink").addEventListener("click", () => {
+  $("supportModal").classList.remove("hidden");
+  $("supportClose").focus();
+  void supportGitHubStar.open();
+});
 $("supportClose").addEventListener("click", () => $("supportModal").classList.add("hidden"));
 $("supportBackdrop").addEventListener("click", () => $("supportModal").classList.add("hidden"));
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("supportModal").classList.add("hidden"); });
@@ -355,9 +392,10 @@ $("jsonPath").addEventListener("input", () => { setError("jsonPath", ""); resetS
 $("recentProjectsToggle").addEventListener("click", (event) => {
   setRecentProjectsExpanded(event.currentTarget.getAttribute("aria-expanded") !== "true");
 });
-["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
+["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "mossKeyterms", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
 $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
 $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
+$("mossCreditsUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://create.moss.cn/" }));
 $("openRouterKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().secondaryKeyUrl || "https://openrouter.ai/keys" }));
 $("pickLocalModelPath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model" }); if (result.ok) { $("localModelPath").value = result.path; state.localModelPaths[selectedModel().id] = result.path; setError("localModelPath", ""); await savePrefsNow({ localModelPaths: { ...state.localModelPaths } }); await refreshLocalModels(); } });
 $("pickLocalModelCachePath").addEventListener("click", async () => { const result = await bridge("choose_folder", { kind: "model-cache" }); if (result.ok) { $("localModelCachePath").value = result.path; await saveLocalModelCache(result.path); } });

@@ -56,7 +56,7 @@ import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
 from maw.audio_loudness import LoudnessAnalyzer, validate_gain_db, volume_filter  # noqa: E402
-from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
+from maw.thumbnail_jobs import ThumbnailJobManager, launcher_thumbnails_pending  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
@@ -66,6 +66,9 @@ from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
 from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_style_state, save_ass_style_state  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
+from maw.github_star import check_maw_starred, star_maw  # noqa: E402
+from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic, ffmpeg_version  # noqa: E402
+from maw.diagnostics import app_version  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
     MediaJobManager, MediaJobUnavailable,
@@ -84,7 +87,7 @@ from maw.gui_platform import creationflags, restore_host_library_path, startupin
 from maw.postprocess_ffmpeg import (  # noqa: E402
     ASS_FALLBACK_PLAY_RESOLUTION, DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET,
     MediaToolError, convert_srt_to_ass, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    normalize_burn_encoding_settings, normalize_video_encoder, video_encoder_attempts, video_encoder_options,
     _green_screen_input, _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
@@ -1037,7 +1040,7 @@ def _burn_interval_filter(
     shifts = [_burn_seconds(intervals[0][0])]
     for (_, previous_end), (start, _) in zip(intervals, intervals[1:]):
         shifts.append(f'if(gte(T,{_burn_seconds(start)}),{_burn_seconds(start - previous_end)},0)')
-    head = f"[0:v:0]select='{selected}',setpts='PTS-({'+'.join(shifts)})/TB'"
+    head = f"[0:v:0]select='{selected}',settb=AVTB,setpts='PTS-({'+'.join(shifts)})/TB'"
     if stickers:
         graph = [head + '[burn_base]'] + _burn_sticker_chain_lines(stickers, '[burn_base]')
     else:
@@ -1079,6 +1082,9 @@ def burn_ass_video(
     audio_track: int = 0,
     subtitle_format: str = "ass",
     audio_gain_db: float = 0,
+    crf: int = DEFAULT_BURN_CRF,
+    preset: str = DEFAULT_BURN_PRESET,
+    audio_bitrate: str = DEFAULT_BURN_AUDIO_BITRATE,
 ) -> Path:
     """Burn ASS, or convert SRT using the library's burn style before encoding.
 
@@ -1090,6 +1096,21 @@ def burn_ass_video(
     一致），enable 区间使用与 ass 相同的时间轴。
     """
     audio_gain_db = validate_gain_db(audio_gain_db)
+    if job:
+        with job.manager.lock:
+            job.burn_diagnostic = {
+                "mode": "green-screen" if green_screen else "gap-removed" if intervals else "full",
+                "ffmpegVersion": None, "encoder": None, "attempts": [],
+            }
+        try:
+            version_result = job.run_command([str(ffmpeg_path), "-version"], timeout=3, cwd=output_path.parent)
+            version = ffmpeg_version(version_result.stdout or "") if version_result.returncode == 0 else None
+            with job.manager.lock:
+                job.burn_diagnostic["ffmpegVersion"] = version
+        except MediaJobCancelled:
+            raise
+        except (OSError, subprocess.SubprocessError, RuntimeError):
+            pass  # Diagnostic metadata must not prevent a normal burn.
     try:
         source = source_path.expanduser().resolve(strict=True)
     except OSError as error:
@@ -1113,8 +1134,6 @@ def burn_ass_video(
         raise BurnVideoExportError("绿幕视频暂不支持表情包烧录")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
-    if job:
-        job.update("preparing")
     probe = None
     if subtitle_format == "srt":
         probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
@@ -1125,6 +1144,8 @@ def burn_ass_video(
         # Width/height are part of the existing stream signature, after codec/tag.
         width, height = video.codec_signature[4:6]
         resolution = (width, height) if all(type(value) is int and value > 0 for value in (width, height)) else ASS_FALLBACK_PLAY_RESOLUTION
+        if job:
+            job.update("subtitles")
         srt_path = output_path.with_name("burn.srt")
         srt_path.write_text(ass_text, encoding="utf-8", newline="\n")
 
@@ -1143,6 +1164,8 @@ def burn_ass_video(
             raise BurnVideoExportError("SRT 字幕转换失败，请检查字幕和样式", details=error) from error
     # 最终任务副本也统一归一化：旧客户端或异步字体表尚未就绪时，不能
     # 依赖前端改写；SRT 转换产物同样经过这里，保留事件和内联样式原文。
+    if job:
+        job.update("subtitles")
     ass_text, _ = normalize_ass_text_fontnames(ass_text)
     ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
     sticker_input_args = _burn_sticker_input_args(stickers)
@@ -1164,7 +1187,12 @@ def burn_ass_video(
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
-        probe = probe or _probe_gap_removed_video(source, ffprobe_path, job=job)
+        if probe is None:
+            if job:
+                job.update("preparing")
+            probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        if job:
+            job.update("filters")
         audio_streams = [stream for stream in probe.streams if stream.codec_signature[0] == "audio"]
         audio_count = len(audio_streams)
         # Input-side accurate seeking bounds decoding to the requested hull;
@@ -1186,14 +1214,25 @@ def burn_ass_video(
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
                                 f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
-        filter_args.extend(("-fps_mode", "vfr", "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
+        # Match the filter's microsecond clock using syntax supported by FFmpeg 5.1+.
+        # Older encoders omit packet duration; retain valid durations and fill
+        # missing ones from the decode clock so the final frame is not lost.
+        filter_args.extend(("-fps_mode", "vfr", "-enc_time_base:v", "1:1000000",
+                            "-bsf:v", "setts=pts=PTS:dts=DTS:duration='if(gt(DURATION,0),DURATION,if(gt(NEXT_DTS,DTS),NEXT_DTS-DTS,PREV_OUTDURATION))'",
+                            "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
     elif stickers:
+        if job:
+            job.update("preparing")
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
+        if job:
+            job.update("filters")
         graph_path = output_path.with_suffix(".filters")
         graph_path.write_text(';\n'.join(_burn_sticker_chain_lines(stickers, "[0:v:0]")) + '\n',
                               encoding="utf-8", newline="\n")
         filter_args = ["-/filter_complex", str(graph_path), "-map", "[burn_video]", "-map", "0:a?"]
     else:
+        if job:
+            job.update("preparing")
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
         filter_args = ["-map", "0:v:0", "-map", "0:a?", "-vf", "ass=filename='burn.ass'"]
 
@@ -1210,17 +1249,18 @@ def burn_ass_video(
     ]
     last_error: BurnVideoExportError | None = None
     for encoder in attempts:
+        if job:
+            job.begin_burn_attempt(encoder)
         output_path.unlink(missing_ok=True)
         command = [
             *common_command,
-            *video_encoder_options(encoder, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET),
+            *video_encoder_options(encoder, crf, preset),
             "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", DEFAULT_BURN_AUDIO_BITRATE,
+            "-c:a", "aac", "-b:a", audio_bitrate,
             "-movflags", "+faststart",
         ]
         if job:
             command.extend(("-progress", "pipe:1", "-nostats"))
-            job.update("burning")
         command.append(str(output_path))
         glyph_tail = ""
         def inspect_glyphs(chunk):
@@ -1236,12 +1276,29 @@ def burn_ass_video(
                     "请在字幕样式中更换可用字体。", details=glyph_tail)
         try:
             def run_encode(args):
-                return job.run_command(args, timeout=86_400, duration_ms=duration_ms,
-                                       cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
-                    args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                    timeout=86_400, check=False, cwd=output_path.parent,
-                    startupinfo=startupinfo(), creationflags=creationflags(),
-                )
+                if not job:
+                    return subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                          timeout=86_400, check=False, cwd=output_path.parent,
+                                          startupinfo=startupinfo(), creationflags=creationflags())
+                started = time.monotonic()
+                attempt = {"encoder": encoder, "exitCode": None}
+                try:
+                    result = job.run_command(args, timeout=86_400, duration_ms=duration_ms,
+                                             cwd=output_path.parent, on_stderr=inspect_glyphs)
+                    attempt["exitCode"] = result.returncode
+                    attempt.update(ffmpeg_diagnostic(result.stderr or ""))
+                    return result
+                except MediaJobCancelled:
+                    raise
+                except Exception as error:
+                    attempt["exception"] = type(error).__name__
+                    if isinstance(error, BurnVideoExportError):
+                        attempt.update(ffmpeg_diagnostic(error.details or ""))
+                    raise
+                finally:
+                    if not job.cancelled.is_set():
+                        attempt["elapsedMs"] = round((time.monotonic() - started) * 1000)
+                        job.record_burn_attempt(attempt)
             completed = run_encode(command)
             # FFmpeg 9 removed filter_complex_script. Older installations that
             # predate option-file syntax may still use it; retry only a parser
@@ -1269,7 +1326,11 @@ def burn_ass_video(
                 f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
                 "请在字幕样式中更换可用字体。", details=stderr)
         if completed.returncode != 0:
-            last_error = BurnVideoExportError("视频烧录失败，请检查源文件或缩短区间后重试", details=stderr)
+            reasons = ffmpeg_diagnostic(stderr)["reasons"]
+            message = ("烧录临时目录空间不足，请释放空间后重试"
+                       if {"no space left on device", "disk quota exceeded"}.intersection(reasons)
+                       else "FFmpeg 编码异常退出")
+            last_error = BurnVideoExportError(message, details=stderr)
             if requested_encoder != "auto" or encoder == "cpu":
                 output_path.unlink(missing_ok=True)
                 raise last_error
@@ -1718,6 +1779,7 @@ def build_server_page(
         "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
         "canGapRemovedMediaExport": can_gap_media_export,
         "burnVideoJobsUrl": BURN_JOBS,
+        "burnVideoAppVersion": app_version(),
         "nativeBurnAvailable": native_burn,
         "fcp7PngJobsUrl": "/api/exports/fcp7-png/jobs",
         "canBurnVideoExport": bool(
@@ -1759,6 +1821,7 @@ def build_server_page(
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
             "settingsUrl": "/api/settings",
+            "githubStarUrl": "/api/github-star",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
             "textProcessingPresetsUrl": "/api/text-processing-presets",
@@ -1913,6 +1976,8 @@ class EditorServer(ThreadingHTTPServer):
                                  f"{self.binding_generation}:{self.source_media_id}")
 
     def _project_binding_payload_locked(self) -> dict[str, object]:
+        pending = launcher_thumbnails_pending(self.thumbnail_jobs.path)
+        base_ready = self._thumbnail_base_ready()
         return {
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
@@ -1920,7 +1985,8 @@ class EditorServer(ThreadingHTTPServer):
             # A valid persisted base cache means the Launcher stage ran with
             # thumbnails enabled; without one the editor keeps its display
             # toggle off by default so opening a project never starts decoding.
-            "thumbnailBaseReady": self._thumbnail_base_ready(),
+            "thumbnailBaseReady": base_ready,
+            "thumbnailAutoPending": pending and not base_ready,
         }
 
     def _thumbnail_base_ready(self) -> bool:
@@ -3033,6 +3099,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path in ("/api/github-star/status", "/api/github-star"):
+            self.github_star_request(write=path == "/api/github-star")
         elif path == "/api/ass-styles":
             self.update_ass_styles()
         elif path == "/api/text-processing-presets":
@@ -3084,6 +3152,23 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_ograf()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
+
+    def github_star_request(self, *, write: bool) -> None:
+        # Only the existing editor request token is accepted, not a repo or command.
+        try:
+            check_native_origin(self)
+            request = self.read_json_request(max_bytes=1024)
+            self._check_request_token(request)
+            if request.keys() != {"requestToken"}:
+                raise ValueError("Unexpected GitHub Star request fields")
+        except PermissionError:
+            self.send_json(HTTPStatus.FORBIDDEN, {"starred": None}, close_connection=True)
+            return
+        except ValueError:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"starred": None}, close_connection=True)
+            return
+        starred = (True if star_maw() else None) if write else check_maw_starred()
+        self.send_json(HTTPStatus.OK, {"starred": starred})
 
     def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
         """Opaque assets and current binding only; client paths are never accepted."""
@@ -3544,6 +3629,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if self.editor_server.native_burn is None:
                     raise PermissionError("启动器编辑器会话无效，请从启动器重新打开")
             audio_gain_db = validate_gain_db(request.get("audioGainDb", 0))
+            encoding = {}
+            if "encoding" in request:
+                raw_encoding = request["encoding"]
+                if not isinstance(raw_encoding, dict):
+                    raise ValueError("视频编码参数必须是对象")
+                try:
+                    crf, preset, audio_bitrate = normalize_burn_encoding_settings(
+                        raw_encoding.get("crf"), raw_encoding.get("preset"), raw_encoding.get("audioBitrate"),
+                    )
+                except MediaToolError as error:
+                    raise ValueError(str(error)) from error
+                encoding = {"crf": crf, "preset": preset, "audio_bitrate": audio_bitrate}
             admission_token = request.get("admissionToken")
             if "admissionToken" in request:
                 self.editor_server.media_jobs.validate_admission_token(admission_token)
@@ -3584,12 +3681,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             tools = editor_ffmpeg_tools()
             if tools.ffmpeg is None or tools.ffprobe is None:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False, "error": "视频烧录需要可用的 FFmpeg 和 FFprobe",
+                    "ok": False, "code": "media-tools-missing", "error": "视频烧录需要可用的 FFmpeg 和 FFprobe",
                 })
                 return
             if not self.editor_server.ensure_libass_supported(tools.ffmpeg):
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
+                    "ok": False, "code": "libass-missing",
                     "error": "当前 FFmpeg 未编译 libass（ass 滤镜），无法烧录字幕；"
                              "请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。",
                 })
@@ -3601,7 +3698,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                             "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
                     ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
-                    subtitle_format=subtitle_format, stickers=stickers, audio_gain_db=audio_gain_db, **options)
+                    subtitle_format=subtitle_format, stickers=stickers, audio_gain_db=audio_gain_db,
+                    **encoding, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:
@@ -3618,7 +3716,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     del native.targets[request["nativeTarget"]]
             self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)}, close_connection=True)
+            if error.errno is None:
+                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "code": "burn-authorization", "error": str(error)},
+                               close_connection=True)
+            else:
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False, "code": "permission", "error": "无法访问烧录文件，请检查文件权限",
+                })
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
         except MediaJobCancelled as error:
@@ -3628,7 +3732,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (OSError, MediaJobUnavailable) as error:
             if job is not None:
                 self.editor_server.media_jobs.cancel(job.id)
-            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
+            kind = burn_error_kind(error)
+            message = {
+                "disk-full": "烧录临时目录空间不足，请释放空间后重试",
+                "permission": "无法访问烧录文件，请检查文件权限",
+            }.get(kind, "无法创建烧录任务，请检查临时目录")
+            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False, "code": kind or "burn-admission-unavailable", "error": message,
+            })
 
     def gap_removed_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
         self._media_job_request(path, prefix="/api/exports/gap-removed-video/jobs",
@@ -4396,17 +4507,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         print(f"[http] {self.address_string()} - {message}")
 
 
-def _port_is_free(host: str, port: int) -> bool:
-    """True only when nothing else accepts connections on ``host:port``.
-
-    不带 SO_REUSEADDR、并按平台设置排他绑定来探测；EditorServer 自身的
-    allow_reuse_address 在 Windows 上会对正在监听的端口静默二次绑定成功，
-    不能用作占用的判据。
-    """
+def _windows_port_is_free(host: str, port: int) -> bool:
+    """Probe with an exclusive bind because Windows permits duplicate SO_REUSEADDR binds."""
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        if os.name == "nt":
-            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         probe.bind((host, port))
         return True
     except OSError:
@@ -4430,7 +4535,7 @@ def open_editor_server(
 ) -> tuple[EditorServer, bool]:
     """Bind the editor server and report whether the port had to be advanced.
 
-    省略 --port 时从 DEFAULT_EDITOR_PORT 起，用 _port_is_free 逐个跳过被占用端口，
+    省略 --port 时从 DEFAULT_EDITOR_PORT 起，逐个跳过被占用端口，
     直到找到空闲端口或耗尽 EDITOR_PORT_ATTEMPTS。显式 --port 保持“必须监听该端口”：
     探测发现被占用立即抛 OSError，--port 0 仍由系统任选。
     """
@@ -4440,7 +4545,9 @@ def open_editor_server(
     last_error: OSError | None = None
     for offset in range(attempts):
         port = base_port + offset
-        if port != 0 and not _port_is_free(host, port):
+        # POSIX lets the server bind with SO_REUSEADDR after the old listener
+        # closes, even while accepted connections remain in TIME_WAIT.
+        if os.name == "nt" and port != 0 and not _windows_port_is_free(host, port):
             last_error = OSError(f"端口 {host}:{port} 已被其他程序占用")
             if not scan:
                 break
