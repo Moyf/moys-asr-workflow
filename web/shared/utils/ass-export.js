@@ -78,7 +78,7 @@ export function createUtilsModule(dependencies) {
     return globalThis.window?.MaweAssFontAliases?.resolveRuns?.(runs, style) || runs;
   }
 
-  // KTV（\k 整词跳变）：把字词时间码映射为「已唱/未唱」翻转计划。libass
+  // KTV（\k 整词跳变）：把字词时间码映射为「已唱/未唱」翻转计划。
   // libass 的整词翻转发生在
   // 音节窗口起点，词 i 的 \k 时长承载「本词翻转到下一词翻转」的间隔；首词
   // 前的空引导 {\kNN} 表达句首静默；首个 \k 之前的文本恒为主色。text 必须是
@@ -87,40 +87,20 @@ export function createUtilsModule(dependencies) {
   function assKaraokePlan(text, segment, options) {
     const source = String(text ?? '');
     if (!source || typeof getWordTimingEntries !== 'function') return null;
+    const owners = [];
     let entries;
     try {
       // 在 runs 文本上重新分配字词归属：可听序列校验、标点/空白挂靠、
       // 部分覆盖保守投影都复用 word-timing 模块的既有规则。
-      entries = getWordTimingEntries({ ...segment, text: source }, null);
+      entries = getWordTimingEntries({ ...segment, text: source }, null, owners);
     } catch (_) {
       return null;
     }
-    if (!Array.isArray(entries) || !entries.length) return null;
+    if (!entries.length || !owners.length) return null;
     const eventStartMs = Number(options.eventStartMs) || 0;
     const eventEndMs = Math.max(eventStartMs + 1, Number(options.eventEndMs) || eventStartMs + 1);
     const mapTime = typeof options.mapTime === 'function' ? options.mapTime : value => value;
     const cueCs = Math.max(1, Math.round((eventEndMs - eventStartMs) / 10));
-    // 逐码点归属：按顺序消费 entry.text；未被认领的字符是背景（部分匹配
-    // 残留或前缀文本），渲染恒为主色；与已认领字符冲突视为失配。
-    const chars = Array.from(source);
-    const owners = new Array(chars.length).fill(-1);
-    let cursor = 0;
-    for (let index = 0; index < entries.length; index += 1) {
-      const entryChars = Array.from(String(entries[index]?.text ?? ''));
-      let matched = 0;
-      while (cursor < chars.length && matched < entryChars.length) {
-        if (chars[cursor] === entryChars[matched]) {
-          owners[cursor] = index;
-          cursor += 1;
-          matched += 1;
-        } else if (owners[cursor] === -1) {
-          cursor += 1;
-        } else {
-          return null;
-        }
-      }
-      if (matched < entryChars.length) return null;
-    }
     // 翻转时刻（厘秒，相对事件起点）：绝对时间过同一 mapTime（去空隙导出
     // 同步压缩），先取整再作差，钳入事件范围并保持单调不减。
     const startCs = Math.round(eventStartMs / 10);
