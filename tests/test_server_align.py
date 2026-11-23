@@ -155,7 +155,8 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("function previewGapAt(timeMs, gap = null)", page)
         self.assertIn("seekTimeline(time, current);", page)
         self.assertIn("if (event.button === 0 && event.altKey)", page)
-        self.assertIn("Alt+点击切换禁用", page)
+        # 空隙 tooltip 的禁用提示按平台显示 Alt/Option（源码断言模板字面量）。
+        self.assertIn("${ALT_KEY_LABEL}+点击切换禁用", page)
         self.assertIn("toggleCandidateDisabled(line.id, candidate.id)", page)
         self.assertIn("box-shadow: inset 0 0 0 4px rgba(65,174,207,.35);", page)
         self.assertIn("<span class=\"extra\">额外保留</span>", page)

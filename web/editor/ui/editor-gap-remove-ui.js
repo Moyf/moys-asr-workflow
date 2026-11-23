@@ -171,7 +171,8 @@ export function initMaweGapRemoveUi() {
     const total = gapRemoveTotalMs(gaps);
     const summary = document.createElement('div');
     summary.className = 'gap-remove-total';
-    summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键定位，Alt+点击切换，空白处 Alt+左键拖动增加，空隙块左键拖动偏移，Ctrl/Cmd+拖动复制。`;
+    const altLabel = window.MaweDisplaySettings?.altKeyLabel?.() || 'Alt';
+    summary.textContent = `已移除 ${removedCount}/${gaps.length} 段，共 ${formatGapRemoveTotal(total)}；左键定位，${altLabel}+点击切换，空白处 ${altLabel}+左键拖动增加，空隙块左键拖动偏移，Ctrl/Cmd+拖动复制。`;
     MaweDom.gapRemoveList.appendChild(summary);
   }
 
