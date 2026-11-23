@@ -187,7 +187,11 @@ def _connect() -> sqlite3.Connection:
         db.execute("PRAGMA busy_timeout=5000")
         # New databases reclaim deleted pages. Existing v1 databases keep their
         # layout but share this hard physical page bound and reuse free pages.
-        db.execute("PRAGMA auto_vacuum=INCREMENTAL")
+        # Reapplying this setting to an incremental database acquires a write
+        # lock even for readers. Keep initialization and legacy layout behavior
+        # while avoiding that lock on the normal, already-initialized path.
+        if db.execute("PRAGMA auto_vacuum").fetchone()[0] != 2:
+            db.execute("PRAGMA auto_vacuum=INCREMENTAL")
         page_size = db.execute("PRAGMA page_size").fetchone()[0]
         db.execute(f"PRAGMA max_page_count={(GLOBAL_QUOTA_BYTES + MAX_INDEX_BYTES) // page_size}")
         db.executescript("""
