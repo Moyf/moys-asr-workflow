@@ -101,7 +101,7 @@ uv run --no-sync python -m maw.asr.local "clip.mp4" --engine whisper --model lar
 
 `auto` 优先 CUDA，不可用时 CPU；macOS 不自动选择 MPS。Qwen3-ASR 或 Qwen 对齐器可显式选 MPS，失败会报错，速度需与同一音频的 CPU 结果比较。FireRed 始终走 CPU。
 
-Faster-Whisper 的 CUDA 运行库与 Torch 不共用，需要适配 CTranslate2 的 CUDA / cuDNN 库；自动设备可在缺库时回退 CPU，显式 CUDA 保留错误。CPU 使用 int8。
+Faster-Whisper 的 CUDA 运行库与 Torch 不共用，需要适配 CTranslate2 的 CUDA 12 cuBLAS 与 cuDNN 9。自动设备在模型加载或转写任一阶段确认缺失或无法装载这些运行库时，会放弃已生成的部分转写，改用 CPU（int8）从头重试一次，日志会记录回退并提示速度可能变慢；显存不足、模型损坏等其他错误不触发回退。显式选择 CUDA 时不自动降级：错误信息保留原始报错，并提示可把设备改为 CPU，或安装与 CTranslate2 版本匹配的 CUDA 12 运行库并确保其 DLL 及传递依赖位于进程搜索路径。CPU 使用 int8。
 
 Qwen/FunASR/FireRed 分块后恢复原时间偏移。MOSS 不分块，避免不同块的说话人编号失去一致性；单次输入按约 90 分钟限制处理。Whisper 自行滑窗，不使用 MAW 分块参数。
 
