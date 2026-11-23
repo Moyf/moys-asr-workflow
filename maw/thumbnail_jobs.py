@@ -860,7 +860,8 @@ class ThumbnailJobManager:
             for lease, item in list(self.leases.items()):
                 if item["expires"] < now:
                     self._release(lease)
-            if not any(item["visible"] or item["decode"] for item in self.leases.values()):
+            # Skip playback-only work, not the initial probe after binding a source.
+            if self.leases and not any(item["visible"] or item["decode"] for item in self.leases.values()):
                 self.state = "idle"
                 return
             self._refresh_source()
