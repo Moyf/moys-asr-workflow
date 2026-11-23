@@ -3120,7 +3120,7 @@
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
+  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection", "llmApiKey"); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
     persistLlmPrompt();

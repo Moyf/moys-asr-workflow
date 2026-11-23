@@ -85,44 +85,250 @@ test('alignment model shortcut opens the selected model without changing the ASR
   await expect(page.locator('#model')).toHaveValue(asrModel);
 });
 
-test('cloud ASR runtime installation errors leave the installing state', async ({ page }) => {
-  await openLauncher(page);
+async function mockLocalRuntimeBackend(page) {
+  await gotoLauncher(page);
   const config = await page.evaluate(() => window.MAWLauncher.config);
   await page.addInitScript((initialConfig) => {
     initialConfig.providerId = 'qwen';
-    window.__runtimeBackend = { status: 'installing', ready: false };
+    window.__runtimeBackend = { status: 'missing', ready: false };
     initialConfig.localRuntime = { ...window.__runtimeBackend };
     window.__runtimeRequests = [];
+    window.__runtimeReports = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async (text) => window.__runtimeReports.push(text) },
+    });
     window.pywebview = { api: new Proxy({}, { get: (_target, method) => method === 'then' ? undefined : async (payload) => {
       if (method === 'get_config') return initialConfig;
       if (method === 'get_local_runtime') {
         window.__runtimeRequests.push(payload);
         return { ok: true, ...window.__runtimeBackend };
       }
+      if (method === 'install_local_runtime') return window.__runtimeStartResult ?? { ok: true, installing: true };
       if (method === 'get_alignment_models') return { ok: true, models: initialConfig.alignmentModels };
       return { ok: true };
     } }) };
   }, config);
   await page.reload();
   await page.waitForFunction(() => document.body.classList.contains('launcher-ready'));
-  await page.evaluate(() => window.MAWLauncher.openSettings('localRuntimePanel'));
-  for (const code of ['local_runtime_install_failed', 'local_runtime_cancelled']) {
-    await page.evaluate((errorCode) => {
-      window.MAWLauncher.config.localRuntime = { status: 'installing', ready: false };
-      window.MAWLauncher.onBackendEvent({ type: 'localRuntimeProgress', percent: 30 });
+}
+
+async function openRuntimeSettings(page) {
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
+}
+
+test('local ASR runtime installation failure is visible inside settings and returns to the launcher', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 480, height: 560 });
+  await mockLocalRuntimeBackend(page);
+  const install = page.locator('#installLocalRuntime');
+  const settings = page.getByRole('dialog', { name: '设置' });
+  const settingsAlert = settings.getByRole('alert');
+  const mainAlert = page.locator('.shell-scroll > #errorNotice');
+  const failInstall = async () => {
+    await page.evaluate(() => {
       window.__runtimeBackend = { status: 'broken', ready: false };
-      window.MAWLauncher.onBackendEvent({ type: 'error', code: errorCode, detail: 'test runtime failure' });
-    }, code);
-    await expect(page.locator('#localRuntimeStatus')).toHaveText('本地运行环境需要修复');
-    await expect(page.locator('#localRuntimeProgress')).toBeHidden();
-    await expect(page.locator('#installLocalRuntime')).toHaveText('修复运行环境');
-    await expect(page.locator('#installLocalRuntime')).toBeEnabled();
-    await expect(page.locator('#provider')).toHaveValue('qwen');
-  }
+      window.MAWLauncher.onBackendEvent({
+        type: 'error', code: 'local_runtime_install_failed',
+        detail: `test runtime failure: ${'long installer output '.repeat(100)}`,
+        diagnostics: 'mock installer diagnostics',
+      });
+    });
+  };
+
+  await openRuntimeSettings(page);
+  await install.click();
+  await expect(page.locator('#localRuntimeProgress')).toBeVisible();
+  await failInstall();
+  await expect(settingsAlert).toContainText('本地运行环境安装失败');
+  await expect(settingsAlert).toHaveAttribute('aria-live', 'assertive');
+  await expect(settingsAlert.getByRole('button', { name: '复制错误报告' })).toBeInViewport();
+  await expect(install).toBeFocused();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('本地运行环境需要修复');
+  await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+  await expect(install).toHaveText('修复运行环境');
+  await expect(install).toBeEnabled();
+  await expect(page.locator('#provider')).toHaveValue('qwen');
+
+  const layout = await settingsAlert.evaluate((card) => {
+    const tabs = document.getElementById('settingsTabList').getBoundingClientRect();
+    const scroll = card.parentElement.getBoundingClientRect();
+    const panel = document.getElementById('settingsRuntimePanel').getBoundingClientRect();
+    const details = card.querySelector('.error-notice-details');
+    const bounds = card.getBoundingClientRect();
+    return { above: bounds.top - tabs.bottom, below: panel.top - bounds.bottom,
+      settingsVisible: scroll.bottom - panel.top, detailsScrollable: details.scrollHeight > details.clientHeight };
+  });
+  expect(layout.above).toBeGreaterThanOrEqual(8);
+  expect(layout.below).toBeGreaterThanOrEqual(8);
+  expect(layout.settingsVisible).toBeGreaterThan(60);
+  expect(layout.detailsScrollable).toBe(true);
+  console.log(`Runtime error layout: above=${layout.above}px, below=${layout.below}px, settings visible=${layout.settingsVisible}px`);
+  await testInfo.attach('runtime-error-layout', { body: JSON.stringify(layout), contentType: 'application/json' });
+  await settings.locator('.settings-modal-card').screenshot({ path: testInfo.outputPath('runtime-error-settings.png') });
+  const details = settingsAlert.locator('#errorNoticeDetails');
+  await details.press('End');
+  await expect.poll(() => details.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(settingsAlert.getByText('mock installer diagnostics')).toBeInViewport();
+
+  await settingsAlert.getByRole('button', { name: '复制错误报告' }).click();
+  await expect(settingsAlert.getByRole('button', { name: '已复制' })).toBeVisible();
+  const report = await page.evaluate(() => window.__runtimeReports[0]);
+  expect(report).toContain('local_runtime_install_failed');
+  expect(report).toContain('test runtime failure');
+  expect(report).toContain('mock installer diagnostics');
+  // Escape should move the very same card back, without discarding its copy state.
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeHidden();
+  await expect(page.locator('#settingsButton')).toBeFocused();
+  await expect(mainAlert).toContainText('本地运行环境安装失败');
+  await expect(mainAlert.getByRole('button', { name: '已复制' })).toBeVisible();
+  await expect(mainAlert.locator('+ #status')).toHaveCount(1);
+  await mainAlert.getByRole('button', { name: '关闭提示' }).click();
+
+  await openRuntimeSettings(page);
+  await install.click();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'error', code: 'local_runtime_cancelled' }));
+  await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+  await expect(page.locator('#status')).toContainText('安装已取消');
+  await expect(page.locator('#errorNotice')).toBeHidden();
+
+  await install.click();
+  await failInstall();
+  await expect(settingsAlert).toBeVisible();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'error', code: 'ffmpeg_missing' }));
+  await expect(settingsAlert).toHaveCount(0);
+  await expect(mainAlert.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
+  await expect(settings).toBeVisible();
+
+  await install.click();
+  await page.locator('#settingsClose').click();
+  await failInstall();
+  await expect(mainAlert).toContainText('本地运行环境安装失败');
   const requests = await page.evaluate(() => window.__runtimeRequests);
   expect(requests.length).toBeGreaterThanOrEqual(2);
   expect(requests.every((payload) => payload.modelId === '')).toBe(true);
+
+  await openRuntimeSettings(page);
+  await page.evaluate(() => { window.__runtimeStartResult = { ok: false, error: 'could not start installer' }; });
+  await install.click();
+  await expect(settingsAlert).toContainText('could not start installer');
+  await settingsAlert.getByRole('button', { name: '关闭提示' }).click();
+  await expect(settingsAlert).toHaveCount(0);
+  await expect(mainAlert).toBeHidden();
+  await expect(page.locator('#settingsClose')).toBeFocused();
 });
+
+test('reopening settings shows the same local ASR install report without another failure', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 480, height: 560 });
+  await mockLocalRuntimeBackend(page);
+  await page.locator('#advancedToggle').click();
+  await openRuntimeSettings(page);
+  await page.locator('#installLocalRuntime').click();
+  await page.locator('#settingsClose').click();
+
+  await page.evaluate(() => {
+    window.__runtimeBackend = { status: 'broken', ready: false };
+    window.MAWLauncher.onBackendEvent({
+      type: 'error', code: 'local_runtime_install_failed', detail: 'failure while settings were closed',
+      errorContext: { version: '1.11.4-test', occurredAt: '2026-11-20T12:34:56Z' },
+    });
+  });
+  const mainAlert = page.locator('.shell-scroll > #errorNotice');
+  const modal = page.getByRole('dialog', { name: '设置' });
+  const alert = modal.getByRole('alert');
+  await expect(modal).toBeHidden();
+  await expect(mainAlert).toContainText('failure while settings were closed');
+  const originalCard = await mainAlert.elementHandle();
+
+  await page.locator('#settingsButton').press('Enter');
+  await expect(alert).toContainText('failure while settings were closed');
+  expect(await alert.evaluate((el, original) => el === original, originalCard)).toBe(true);
+  await expect(page.locator('#settingsRuntimeTab')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(alert.locator('#errorNoticeDetails')).toBeFocused();
+  await alert.getByRole('button', { name: '复制错误报告' }).click();
+  expect(await page.evaluate(() => window.__runtimeReports[0])).toContain('2026-11-20T12:34:56Z');
+  await page.keyboard.press('Escape');
+  await expect(mainAlert.getByRole('button', { name: '已复制' })).toBeVisible();
+  await expect(page.locator('#settingsButton')).toBeFocused();
+
+  await page.locator('#openDashscopeRegionSettings').press('Enter');
+  await expect(page.locator('#settingsLlmTab')).toBeFocused();
+  await expect(alert.getByRole('button', { name: '已复制' })).toBeVisible();
+  await modal.locator('.settings-modal-card').screenshot({ path: testInfo.outputPath('reopened-install-report.png') });
+  await expect(alert).toBeInViewport({ ratio: 1 });
+  const gaps = await alert.evaluate((card) => ({
+    above: card.getBoundingClientRect().top - document.getElementById('settingsTabList').getBoundingClientRect().bottom,
+    below: document.getElementById('settingsLlmPanel').getBoundingClientRect().top - card.getBoundingClientRect().bottom,
+    scrollTop: card.parentElement.scrollTop,
+  }));
+  expect(gaps.above).toBeGreaterThanOrEqual(8);
+  expect(gaps.below).toBeGreaterThanOrEqual(8);
+  expect(gaps.scrollTop).toBe(0);
+  console.log(`Reopened error layout: above=${gaps.above}px, below=${gaps.below}px`);
+
+  await page.evaluate(() => window.MAWLauncher.openSettings('asrPresetRootSection', 'asrPresetRoot'));
+  await expect(page.locator('#settingsGeneralTab')).toBeFocused();
+  await expect(alert).toBeInViewport({ ratio: 1 });
+
+  await page.keyboard.press('Escape');
+  await expect(mainAlert).toBeVisible();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'error', code: 'ffmpeg_missing' }));
+  await page.locator('#settingsButton').press('Enter');
+  await expect(alert).toHaveCount(0);
+  await expect(mainAlert.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
+});
+
+for (const scenario of ['worker failure in settings', 'start refusal moved to launcher', 'unrelated error']) {
+  test(`local ASR runtime retry clears only install reports: ${scenario}`, async ({ page }) => {
+    await mockLocalRuntimeBackend(page);
+    await openRuntimeSettings(page);
+    const install = page.locator('#installLocalRuntime');
+    const progress = page.locator('#localRuntimeProgress');
+    const settings = page.getByRole('dialog', { name: '设置' });
+    const alert = settings.getByRole('alert');
+    const mainAlert = page.locator('.shell-scroll > #errorNotice');
+
+    if (scenario === 'worker failure in settings') {
+      await install.click();
+      await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+        type: 'error', code: 'local_runtime_install_failed', detail: 'installer failed',
+      }));
+      await expect(alert).toContainText('installer failed');
+      await install.click();
+    } else if (scenario === 'start refusal moved to launcher') {
+      await page.evaluate(() => { window.__runtimeStartResult = { ok: false, error: 'could not start installer' }; });
+      await install.click();
+      await expect(alert).toContainText('could not start installer');
+      await page.evaluate(() => { delete window.__runtimeStartResult; });
+      await install.click();
+      await page.locator('#settingsClose').click();
+      await expect(mainAlert).toBeVisible();
+      await expect(mainAlert).toContainText('could not start installer');
+    } else {
+      await install.click();
+      await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'error', code: 'ffmpeg_missing' }));
+      await expect(mainAlert.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
+    }
+
+    await page.evaluate(() => {
+      window.__runtimeBackend = { status: 'ready', ready: true };
+      window.MAWLauncher.onBackendEvent({ type: 'localRuntimeReady', runtime: window.__runtimeBackend });
+    });
+    await expect(page.locator('#status')).toContainText('本地模型支持已安装完成');
+    await expect(page.locator('#localRuntimeStatus')).toHaveText('本地运行环境已就绪');
+    await expect(progress).toBeHidden();
+
+    if (scenario === 'unrelated error') {
+      await expect(mainAlert).toBeVisible();
+      await expect(mainAlert.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
+    } else {
+      await expect(page.locator('#errorNotice')).toBeHidden();
+      await expect(mainAlert).toHaveCount(1);
+      if (scenario === 'worker failure in settings') await expect(settings).toBeVisible();
+    }
+  });
+}
 
 test('runtime upgrade and alignment model states distinguish files, validation, and dependencies', async ({ page }, testInfo) => {
   await openLauncher(page);
