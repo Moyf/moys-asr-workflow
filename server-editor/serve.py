@@ -3080,7 +3080,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/audio/loudness":
             self.measure_audio_loudness()
         elif path == "/api/prproj":
-            self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
+            # Consume a small, complete request before refusing it. Leaving a
+            # POST body unread can corrupt the next keep-alive request or reset
+            # the response when a Windows client closes the connection.
+            consumed = self.discard_unsupported_request_body()
+            self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY,
+                           close_connection=not consumed)
         elif path == "/api/stickers/root":
             self.set_sticker_root()
         elif path == "/api/exports/sticker-otio":
@@ -3835,6 +3840,40 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(ograf_bytes)
 
+    def discard_unsupported_request_body(self) -> bool:
+        """Drain only a bounded body, without interpreting paths or writing data."""
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get("Transfer-Encoding") is not None or len(lengths) > 1:
+            return False
+        try:
+            length = int(lengths[0]) if lengths else 0
+        except ValueError:
+            return False
+        if not 0 <= length <= 65536:
+            return False
+        if not length:
+            return True
+        previous_timeout = self.connection.gettimeout()
+        deadline = time.monotonic() + 2.0
+        remaining = length
+        try:
+            while remaining:
+                budget = deadline - time.monotonic()
+                if budget <= 0:
+                    return False
+                self.connection.settimeout(budget if previous_timeout is None else min(previous_timeout, budget))
+                # read1 makes at most one underlying read, so a slow drip cannot
+                # repeatedly reset a per-recv timeout inside BufferedReader.read.
+                chunk = self.rfile.read1(min(remaining, 8192))
+                if not chunk:
+                    return False
+                remaining -= len(chunk)
+            return time.monotonic() <= deadline
+        except OSError:
+            return False
+        finally:
+            self.connection.settimeout(previous_timeout)
+
     def read_json_request(self, *, max_bytes: int = 64 * 1024 * 1024) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > max_bytes:
@@ -4201,12 +4240,17 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_localized_error(HTTPStatus.NOT_FOUND, "未知资源")
 
-    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True) -> None:
+    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True,
+                  close_connection: bool = False) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if close_connection:
+            self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         if include_body:
             self.wfile.write(body)
