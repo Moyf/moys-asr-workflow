@@ -410,7 +410,7 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.keep_dialect
     ):
         parser.error(
-            "--provider moss 仅支持 --model、--hotword/--keyterm、--speaker-colors 和通用字幕参数；"
+            "--provider moss 仅支持 --model、--hotword、--speaker-colors 和通用字幕参数；"
             "MOSS 自动识别语言，不支持指定语言"
         )
     if args.provider == "bcut" and (

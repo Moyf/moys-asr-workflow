@@ -345,29 +345,33 @@ def parse_result(body: Mapping[str, Any]) -> dict[str, Any]:
     segments_list = raw_segments if isinstance(raw_segments, list) else []
 
     segments: list[dict[str, Any]] = []
+    ordered_texts: list[str] = []
     has_unranged = False
     for raw in segments_list:
         if not isinstance(raw, Mapping):
             has_unranged = True
             continue
-        text = str(raw.get("text") or "").strip()
-        if not text:
+        seg_text = str(raw.get("text") or "").strip()
+        if not seg_text:
             continue
+        ordered_texts.append(seg_text)
         start = _seconds_milliseconds(raw.get("start"))
         end = _seconds_milliseconds(raw.get("end"))
         timestamp = normalize_timestamp_range(start, end)
         if timestamp is None:
             has_unranged = True
             continue
-        segment: dict[str, Any] = {"start": timestamp[0], "end": timestamp[1], "text": text}
+        segment: dict[str, Any] = {"start": timestamp[0], "end": timestamp[1], "text": seg_text}
         speaker = str(raw.get("speaker") or "").strip()
         if speaker:
             segment["speaker"] = speaker
         segments.append(segment)
 
     text = str(body.get("text") or "").strip()
-    if not text and segments:
-        text = "".join(str(item["text"]) for item in segments)
+    if not text and ordered_texts:
+        # 顶层 text 缺失时按出现顺序重建全文；无时间码段的文字也必须计入，
+        # 否则整段兜底会输出不完整字幕。
+        text = "".join(ordered_texts)
     duration = _seconds_milliseconds(body.get("duration"))
     if text and (has_unranged or not segments):
         # 官方文档明确允许 segments 为空（短音频或无有效分段），个别段也可能

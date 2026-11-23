@@ -360,6 +360,22 @@ class MossParseTests(unittest.TestCase):
                 "text": "既没有分段也没有时长",
             })
 
+    def test_parse_result_without_top_level_text_keeps_unranged_segment_text(self) -> None:
+        # Greptile P1：无顶层 text 且部分段缺时间码时，缺时间码段的文字
+        # 不能被丢掉——整段兜底必须包含全部文本
+        result = parse_result({
+            "duration": 9.5,
+            "segments": [
+                {"start": 0.5, "end": 4.5, "text": "第一位先说。", "speaker": "S01"},
+                {"text": "第二位没时间码的补充。", "speaker": "S02"},
+            ],
+        })
+
+        self.assertEqual(result["text"], "第一位先说。第二位没时间码的补充。")
+        self.assertEqual(result["segments"], [
+            {"start": 0, "end": 9500, "text": "第一位先说。第二位没时间码的补充。"},
+        ])
+
     def test_parse_result_millisecond_rounding(self) -> None:
         # 0.0167s → 16.7ms → 17：验证四舍五入而非截断；避开 .5 平局的银行家舍入
         result = parse_result({

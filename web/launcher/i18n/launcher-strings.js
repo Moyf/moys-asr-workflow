@@ -930,9 +930,7 @@ Object.assign(STRINGS.zh, {
   moss_advanced_title: "MOSS 转写选项",
   moss_keyterms: "热词（Keyterms）",
   moss_keyterms_placeholder: "MOSS-Transcribe-Diarize\n模思智能\n专有名词",
-  moss_keyterms_hint: "每行一个热词，提升人名、品牌与术语的识别；最多 20 个、每个 ≤30 字符。",
-  moss_keyterms_too_many: "MOSS 热词最多 20 个；请删减后再试。",
-  moss_keyterm_too_long: "MOSS 单个热词不能超过 30 字符；请拆分或精简。"
+  moss_keyterms_hint: "每行一个热词，提升人名、品牌与术语的识别；最多 20 个、每个 ≤30 字符。"
 });
 Object.assign(STRINGS.en, {
   advanced_params: "Parameters",
@@ -1031,9 +1029,7 @@ Object.assign(STRINGS.en, {
   moss_advanced_title: "MOSS transcription options",
   moss_keyterms: "Keyterms",
   moss_keyterms_placeholder: "MOSS-Transcribe-Diarize\nMOSS\nProper noun",
-  moss_keyterms_hint: "One keyterm per line to improve names, brands, and terminology; at most 20 keyterms, each up to 30 characters.",
-  moss_keyterms_too_many: "MOSS keyterms are limited to 20; remove some before retrying.",
-  moss_keyterm_too_long: "A single MOSS keyterm cannot exceed 30 characters; split or shorten it."
+  moss_keyterms_hint: "One keyterm per line to improve names, brands, and terminology; at most 20 keyterms, each up to 30 characters."
 });
 Object.assign(STRINGS.zh, {
   settings_tablist_label: "设置分类",
