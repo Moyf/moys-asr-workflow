@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +21,7 @@ from maw.moss import (
     MAX_KEYTERMS,
     MAX_UPLOAD_BYTES,
     build_request_data,
+    MAX_AUDIO_SECONDS_TOLERANCE,
     load_config,
     normalize_keyterms,
     parse_result,
@@ -71,10 +73,35 @@ class MossConfigTests(unittest.TestCase):
     def test_limit_constants_match_official_contract(self) -> None:
         self.assertEqual(MAX_UPLOAD_BYTES, 512 * 1024 * 1024)
         self.assertEqual(MAX_AUDIO_SECONDS, 60 * 60)
+        # 恰好等于上限的素材不因转码舍入被拒（3600s → ffprobe 3600.006s）
+        self.assertLess(MAX_AUDIO_SECONDS_TOLERANCE, 1.0)
+        self.assertGreater(MAX_AUDIO_SECONDS_TOLERANCE, 0.0)
         self.assertEqual(MAX_KEYTERMS, 20)
         self.assertEqual(MAX_KEYTERM_CHARS, 30)
         self.assertEqual(AUDIO_FORMAT, "ogg")
         self.assertEqual(AUDIO_BITRATE, "24k")
+
+    def test_cli_punctuation_defaults_follow_unified_contract(self) -> None:
+        # 统一 CLI 契约（docs/user/CLI.md）：未配置时保留全部句尾标点，
+        # 删除必须显式传入；MOSS 适配器与各供应商一致，不得自带删除默认值
+        import maw.asr.moss as moss_cli
+
+        source = Path(moss_cli.__file__).read_text(encoding="utf-8")
+        match = _re.search(
+            r'--strip-tail-punct", default="([^"]*)"', source
+        )
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), "")
+
+    def test_cli_duration_limit_uses_tolerance(self) -> None:
+        # 恰好 3600s（转码后读出 3600.006s）的素材不得被 60 分钟上限拒绝
+        import maw.asr.moss as moss_cli
+
+        source = Path(moss_cli.__file__).read_text(encoding="utf-8")
+        self.assertIn(
+            "MAX_AUDIO_SECONDS + MAX_AUDIO_SECONDS_TOLERANCE",
+            source,
+        )
 
 
 class MossKeytermTests(unittest.TestCase):

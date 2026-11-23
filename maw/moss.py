@@ -56,6 +56,9 @@ STATUS_FAILED = "FAILED"
 # 官方上传限制：单文件 ≤512MB；diarize-pro 单次 ≤60 分钟。
 MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 MAX_AUDIO_SECONDS = 60 * 60
+# 转码容器时长的毫秒级舍入误差（3600s 素材经 ogg/opus 转码后 ffprobe 可读
+# 出 3600.006s）：恰好等于上限的合法素材不因舍入被拒。
+MAX_AUDIO_SECONDS_TOLERANCE = 0.1
 
 # keyterms 官方限制：最多 20 个、每个最多 30 字符。
 MAX_KEYTERMS = 20
