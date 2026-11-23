@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from maw.postprocess import OutputMode
-from maw.project_tracks import get_main_track
+from maw.project_tracks import get_main_track, get_tracks_by_role, make_project
 from maw.postprocess_io import SubtitleArtifact, read_project
 from maw.postprocess_match import MatchCoverageError, ScriptMatchRequest, run_script_match
 from maw.project_preview import JsonDict
@@ -102,3 +102,64 @@ class ScriptMatchGuardrailTests(unittest.TestCase):
         first = get_main_track(read_project(result.project_path))["segments"][0]
         self.assertEqual((first["text"], first["start"], first["end"], first["items"]),
                          ("ABCD", 0, 1000, original[0]["items"]))
+
+    def overlapping_disabled_project(self):
+        disabled = {**cue(1200, 1600, "保留", timed=True), "id": "archived", "disabled": True,
+                    "start_frame": 30, "end_frame": 40, "custom": {"review": "保留"}}
+        return make_project([cue(0, 1000, "甲乙", timed=True), disabled, cue(2000, 3000, "丙丁", timed=True)])
+
+    def match_document(self, project):
+        source, script = self.root / "input.mosp", self.root / "draft.txt"
+        source.write_text(json.dumps(project), encoding="utf-8")
+        script.write_text("甲乙丙丁", encoding="utf-8")
+        return run_script_match(ScriptMatchRequest(source, None, script, OutputMode.BOTH))
+
+    def test_overlapping_disabled_cue_moves_intact_to_overlay(self):
+        for existing in (False, True):
+            with self.subTest(existing=existing):
+                project = self.overlapping_disabled_project()
+                old = {"id": "old", **cue(0, 500, "覆盖")}
+                if existing:
+                    project["tracks"].append({"id":"notes", "role":"overlay", "name":"已有叠加", "enabled":True,
+                                              "preview_visible":False, "segments":[old]})
+                result = self.match_document(project)
+                saved = read_project(result.project_path)
+                overlay, = get_tracks_by_role(saved, "overlay")
+                disabled = get_main_track(project)["segments"][1]
+                self.assertEqual(overlay["segments"], ([old] if existing else []) + [disabled])
+                self.assertEqual([(c["start"], c["end"], c["text"]) for c in get_main_track(saved)["segments"]],
+                                 [(0, 3000, "甲乙丙丁")])
+                self.assertTrue(any("叠加轨" in warning for warning in result.warnings))
+                self.assertNotIn("保留", result.srt_path.read_text(encoding="utf-8"))
+                if existing:
+                    self.assertFalse(overlay["preview_visible"])
+                    self.assertEqual(overlay["id"], "notes")
+                self.assertEqual(json.loads((self.root / "input.mosp").read_text(encoding="utf-8")), project)
+
+    def test_full_overlay_refuses_to_discard_or_shift_disabled_cue(self):
+        project = self.overlapping_disabled_project()
+        project["tracks"].append({"id":"notes", "role":"overlay", "name":"叠加", "enabled":True,
+                                  "segments":[{"id":"occupied", **cue(1300, 1900, "已有")} ]})
+        with self.assertRaisesRegex(ValueError, "叠加轨"):
+            self.match_document(project)
+        self.assertEqual(list(self.root.glob("*.mosp")), [self.root / "input.mosp"])
+
+    def test_bound_disabled_cue_cannot_leave_the_main_track(self):
+        project = self.overlapping_disabled_project()
+        project["tracks"].append({"id":"translated", "role":"secondary", "name":"译文", "enabled":True,
+                                  "segments":[{"id":"translation", **cue(1200, 1600, "Translation")}]})
+        project["bilingual"]["active_track_id"] = "translated"
+        project["bindings"] = [{"id":"link", "source":{"track_id":"main", "segment_id":"archived"},
+                                "target":{"track_id":"translated", "segment_id":"translation"},
+                                "start_offset_ms":0, "end_offset_ms":0}]
+        with self.assertRaisesRegex(ValueError, "禁用字幕带有主副轨绑定"):
+            self.match_document(project)
+        self.assertEqual(list(self.root.glob("*.mosp")), [self.root / "input.mosp"])
+
+    def test_fully_covered_unmatched_speech_is_reported_separately_from_disabled_overlay(self):
+        project = self.overlapping_disabled_project()
+        get_main_track(project)["segments"].insert(1, {**cue(1000, 1100, "旁白", timed=True), "id":"extra"})
+        result = self.match_document(project)
+        saved = read_project(result.project_path)
+        self.assertEqual([s["id"] for s in get_tracks_by_role(saved, "overlay")[0]["segments"]], ["archived"])
+        self.assertTrue(any("1 个文稿之外" in w and "完全重叠" in w for w in result.warnings))

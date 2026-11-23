@@ -14,8 +14,8 @@ from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final
 
-from maw.project_mutations import replace_main_segments
-from maw.project_tracks import get_main_track, iter_segments
+from maw.project_mutations import fresh_segment_id, replace_main_segments
+from maw.project_tracks import get_main_track, get_tracks_by_role, iter_segments
 from maw.postprocess import OutputMode, _reconcile_items
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
@@ -158,10 +158,9 @@ def run_script_match(
         )
     # Both character-timed and sentence-level matching must keep the same v2
     # group contract. The fallback must not silently reassign grouped content.
-    if len(get_main_track(matched)["segments"]) != len(get_main_track(project)["segments"]) and any(
-        segment.get("color_group_id") or segment.get("sticker_group_id")
-        for segment in get_main_track(project)["segments"]
-    ):
+    old_active = [cue for cue in get_main_track(project)["segments"] if not cue.get("disabled")]
+    new_active_count = sum(not cue.get("disabled") for cue in get_main_track(matched)["segments"])
+    if new_active_count != len(old_active) and any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in old_active):
         raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
     check_match_cancelled(is_cancelled)
     if begin_commit is not None and not begin_commit():
@@ -389,18 +388,14 @@ def _match_project_with_character_timings(
     raw_matched: JsonValue = json.loads(matched_text)
     if not isinstance(raw_matched, dict):
         raise ValueError("character matcher returned an invalid project")
-    preserved_extras = _merge_unmatched_source_segments(
+    preserved_extras, clipped, dropped = _merge_unmatched_source_segments(
         [s for s in source_segments if s.get("disabled") is not True],
         raw_matched,
         report,
         is_cancelled=is_cancelled,
     )
-    final_segments = _merge_disabled_segments(source_segments, raw_matched)
-    grouped = any(segment.get("color_group_id") or segment.get("sticker_group_id") for segment in source_segments)
-    if len(final_segments) != len(source_segments) and (grouped or project["bindings"]):
-        raise SubtitleMatchError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
     restored = copy.deepcopy(project)
-    replace_main_segments(restored, final_segments)
+    moved = _restore_disabled_segments(restored, get_main_track(raw_matched)["segments"], is_cancelled=is_cancelled)
     matched = normalize_project(restored)
     warnings: list[str] = [
         f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
@@ -413,6 +408,12 @@ def _match_project_with_character_timings(
         warnings.append("部分新增或改写文字没有可靠的独立时间码，已并入同段相邻字词，未拉长字幕时间。")
     if preserved_extras:
         warnings.append(f"已保留 {preserved_extras} 个文稿之外的 ASR 字幕段。")
+    if clipped:
+        warnings.append(f"{clipped} 个文稿之外的 ASR 字幕段与匹配结果重叠，已收窄到空隙内。")
+    if dropped:
+        warnings.append(f"{dropped} 个文稿之外的 ASR 字幕段与匹配结果完全重叠，未保留。")
+    if moved:
+        warnings.append(f"{moved} 个禁用字幕与匹配结果重叠，已按原时间和词码移至叠加轨。")
     return matched, tuple(warnings)
 
 
@@ -432,26 +433,113 @@ def _integer_field(segment: JsonDict, key: str, default: int | None = None) -> i
     return round(value)
 
 
-def _merge_disabled_segments(
-    source_segments: list[JsonValue],
-    matched: JsonDict,
-) -> list[JsonValue]:
-    matched_segments = get_main_track(matched)["segments"]
-    if not isinstance(matched_segments, list):
-        raise ValueError("character matcher returned invalid segments")
-    disabled_segments = [
-        copy.deepcopy(segment)
-        for segment in source_segments
-        if isinstance(segment, dict) and segment.get("disabled") is True
-    ]
-    combined = [*matched_segments, *disabled_segments]
-    combined.sort(
-        key=lambda segment: (
-            segment.get("start", 0) if isinstance(segment, dict) else 0,
-            segment.get("end", 0) if isinstance(segment, dict) else 0,
-        )
-    )
-    return combined
+def _restore_disabled_segments(project: JsonDict, enabled: list[JsonDict], *, is_cancelled=None) -> int:
+    """Reinsert disabled cues without changing their timing, identity or annotations."""
+    ends = [cue["end"] for cue in enabled]
+    main = list(enabled)
+    moved = []
+    bound_ids = {binding["source"]["segment_id"] for binding in project["bindings"]}
+    for cue in get_main_track(project)["segments"]:
+        check_match_cancelled(is_cancelled)
+        if not cue.get("disabled"):
+            continue
+        index = bisect_right(ends, cue["start"])
+        if index < len(enabled) and enabled[index]["start"] < cue["end"]:
+            if cue["id"] in bound_ids:
+                raise SubtitleMatchError("重叠的禁用字幕带有主副轨绑定，无法移至叠加轨。")
+            moved.append(cue)
+        else:
+            main.append(cue)
+    if moved:
+        overlays = get_tracks_by_role(project, "overlay")
+        if overlays:
+            overlay = overlays[0]
+            if overlay.get("variant", "plain") != "plain":
+                raise SubtitleMatchError("已有叠加轨使用其他类型，无法放入重叠的禁用字幕。")
+        else:
+            track_id = fresh_segment_id("overlay", {track["id"] for track in project["tracks"]})
+            overlay = {"id": track_id, "role": "overlay", "name": "叠加字幕", "enabled": False, "segments": []}
+            project["tracks"].append(overlay)
+        combined = sorted([*overlay["segments"], *moved], key=_cue_range)
+        if any(left["end"] > right["start"] for left, right in zip(combined, combined[1:])):
+            raise SubtitleMatchError("已有叠加轨在该时段有字幕，无法原样放入重叠的禁用字幕。")
+        overlay["segments"] = combined
+    replace_main_segments(project, sorted(main, key=_cue_range))
+    return len(moved)
+
+
+def _cue_range(segment: JsonDict) -> tuple[int, int]:
+    return _integer_field(segment, "start"), _integer_field(segment, "end")
+
+
+def _fit_segments_into_gaps(
+    candidates: list[JsonDict],
+    matched_segments: list[JsonValue],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+    issues: dict[tuple[int, int], str] | None = None,
+) -> tuple[list[JsonDict], int, int]:
+    """Fit candidate cues into the gaps between matched manuscript cues.
+
+    Manuscript cues are authoritative and never move.  A candidate that only
+    partially overlaps them keeps the largest free part of its original
+    range (its stale word items are dropped); one that is fully covered is
+    dropped because two subtitles cannot share the same timespan.  Returns
+    the fitted segments plus how many were clipped and dropped.
+    """
+
+    check_match_cancelled(is_cancelled)
+    occupied: list[tuple[int, int]] = []
+    for segment in matched_segments:
+        check_match_cancelled(is_cancelled)
+        if not isinstance(segment, dict):
+            continue
+        start = segment.get("start")
+        end = segment.get("end")
+        if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+            occupied.append((round(start), round(end)))
+    occupied.sort()
+    fitted: list[JsonDict] = []
+    clipped = 0
+    dropped = 0
+    first_overlap = 0
+    for piece in sorted(candidates, key=lambda segment: (_integer_field(segment, "start"), _integer_field(segment, "end"))):
+        check_match_cancelled(is_cancelled)
+        start = _integer_field(piece, "start")
+        end = _integer_field(piece, "end")
+        while first_overlap < len(occupied) and occupied[first_overlap][1] <= start:
+            check_match_cancelled(is_cancelled)
+            first_overlap += 1
+        cursor = start
+        best = (start, start)
+        for index in range(first_overlap, len(occupied)):
+            check_match_cancelled(is_cancelled)
+            occupied_start, occupied_end = occupied[index]
+            if occupied_start >= end or cursor >= end:
+                break
+            if occupied_start - cursor > best[1] - best[0]:
+                best = (cursor, occupied_start)
+            cursor = max(cursor, occupied_end)
+        if end - cursor > best[1] - best[0]:
+            best = (cursor, end)
+        if best[1] <= best[0]:
+            dropped += 1
+            if issues is not None:
+                issues[(start, end)] = "dropped"
+            continue
+        if best != (start, end):
+            clipped += 1
+            if issues is not None:
+                issues[(start, end)] = "clipped"
+            piece = copy.deepcopy(piece)
+            piece["start"] = best[0]
+            piece["end"] = best[1]
+            # 原 items / 帧号对应的时间范围已不再成立。
+            piece.pop("items", None)
+            piece.pop("start_frame", None)
+            piece.pop("end_frame", None)
+        fitted.append(piece)
+    return fitted, clipped, dropped
 
 
 def _merge_unmatched_source_segments(
@@ -460,15 +548,18 @@ def _merge_unmatched_source_segments(
     report: Mapping[str, object],
     *,
     is_cancelled: Callable[[], bool] | None = None,
-) -> int:
-    """Keep complete source cues covered only by ASR-side deletions.
+    issues: dict[tuple[int, int], str] | None = None,
+) -> tuple[int, int, int]:
+    """Keep complete source cues without a reliable character match.
 
     The timed matcher intentionally builds output cues from manuscript
     characters.  A source cue that is deleted by the character alignment has
     no manuscript character to anchor it, so it would otherwise disappear
     from the regenerated project.  Keep those complete cues at their source
     timestamps; gaps around them are already left by the neighbouring
-    manuscript character timings.
+    manuscript character timings.  Cues whose timestamps collide with a
+    manuscript cue are narrowed into the free gaps (or dropped when fully
+    covered) so the merged project stays valid.
     """
 
     check_match_cancelled(is_cancelled)
@@ -477,26 +568,25 @@ def _merge_unmatched_source_segments(
         raise ValueError("character matcher returned invalid segments")
     raw_indexes = report.get("unmatched_source_segment_indexes")
     if not isinstance(raw_indexes, list):
-        return 0
-    extras: list[JsonValue] = []
+        return 0, 0, 0
+    extras: list[JsonDict] = []
     for raw_index in raw_indexes:
         check_match_cancelled(is_cancelled)
         if type(raw_index) is not int or raw_index < 0 or raw_index >= len(matcher_segments):
             continue
         source_segment = matcher_segments[raw_index]
         if isinstance(source_segment, dict):
+            if issues is not None:
+                issues[_cue_range(source_segment)] = "unmatched"
             extras.append(copy.deepcopy(source_segment))
     if not extras:
-        return 0
-    combined = [*matched_segments, *extras]
-    combined.sort(
-        key=lambda segment: (
-            segment.get("start", 0) if isinstance(segment, dict) else 0,
-            segment.get("end", 0) if isinstance(segment, dict) else 0,
-        )
+        return 0, 0, 0
+    fitted, clipped, dropped = _fit_segments_into_gaps(
+        extras, matched_segments, is_cancelled=is_cancelled, issues=issues,
     )
+    combined = sorted([*matched_segments, *fitted], key=_cue_range)
     replace_main_segments(matched, combined)
-    return len(extras)
+    return len(fitted), clipped, dropped
 
 
 def _match_project(
