@@ -223,16 +223,16 @@ def match_script_project(
     return matched, (punctuation_warning, *warnings)
 
 
-def preserve_match_cleanup_scopes(
-    source: JsonDict, matched: JsonDict, *, is_cancelled: Callable[[], bool] | None = None,
-) -> None:
-    """Carry verified local cleanup words into a new main-track snapshot."""
+def verified_match_cleanup_scopes(
+    source: JsonDict, *, is_cancelled: Callable[[], bool] | None = None,
+) -> dict[int, tuple[JsonDict, range]]:
+    """Locate cleanup entries that still refer to their exact source items."""
     gap = source.get("gap_remove")
     provenance = gap.get("provenance") if isinstance(gap, dict) else None
     sources = provenance.get("sources") if isinstance(provenance, dict) else None
     entries = sources.get("ai_cleanup") if isinstance(sources, dict) else None
     if not isinstance(entries, list) or not entries:
-        return
+        return {}
 
     originals = {cue["id"]: cue for cue in get_main_track(source)["segments"]}
     by_entry = {}
@@ -243,8 +243,18 @@ def preserve_match_cleanup_scopes(
         original = originals.get(segment_id) if isinstance(segment_id, str) else None
         if original is not None and (indices := verified_scope_indices(entry, original)):
             by_entry[index] = original, indices
+    return by_entry
+
+
+def preserve_match_cleanup_scopes(
+    source: JsonDict, matched: JsonDict, *, is_cancelled: Callable[[], bool] | None = None,
+) -> None:
+    """Carry verified local cleanup words into a new main-track snapshot."""
+    by_entry = verified_match_cleanup_scopes(source, is_cancelled=is_cancelled)
     if not by_entry:
         return
+    gap = source["gap_remove"]
+    entries = gap["provenance"]["sources"]["ai_cleanup"]
 
     def word_key(item: JsonDict) -> tuple[int, int, str]:
         return item["start"], item["end"], item["text"].strip()

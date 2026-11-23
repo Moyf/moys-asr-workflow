@@ -1,12 +1,15 @@
 import contextlib
 import io
 import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from maw.postprocess import OutputMode
-from maw.postprocess_io import read_project
+from maw.postprocess_ai_cleanup import AiCleanupRequest, run_ai_cleanup
+from maw.postprocess_io import read_project, render_srt
 from maw.postprocess_match import ScriptMatchRequest, run_script_match
 from maw.project_tracks import get_main_track
 from scripts.mosp_match_text import AlignmentError, generate_matched_mosp, main as match_main
@@ -92,6 +95,56 @@ class ScriptMatchGroupRetentionTests(unittest.TestCase):
         self.assertEqual([(cue["text"], cue["start"], cue["end"]) for cue in main], [
             ("甲乙", 0, 500), ("丙丁", 500, 1000), ("戊己庚辛", 1200, 5000),
         ])
+
+    def test_cli_keeps_scoped_cleanup_and_rejects_unmappable_replacement(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw, script = root / "input.mosp", root / "script.txt"
+            raw.write_text(json.dumps({"segments": [{
+                "id": "greeting", "text": "Hello Hello world", "start": 0, "end": 600,
+                "items": [{"text": word, "start": i * 200, "end": (i + 1) * 200}
+                          for i, word in enumerate((" Hello", " Hello", " world "))],
+            }]}), encoding="utf-8")
+            cleaned = run_ai_cleanup(
+                AiCleanupRequest(raw, None, None, OutputMode.BOTH, review_enabled=False),
+                complete=lambda _prompt, _rows: {"timeline": "[c001] ~~Hello~~ Hello world"},
+            )
+            source = cleaned.project_path
+            before = source.read_bytes()
+            self.assertEqual(cleaned.srt_path.read_text(encoding="utf-8-sig").splitlines()[2], "Hello world")
+            script.write_text("Hello Hello world", encoding="utf-8")
+            srt, mosp = root / "matched.srt", root / "matched.mosp"
+            args = ["-m", str(source), "-t", str(script), "--os", str(srt), "--om", str(mosp)]
+            cli = Path(__file__).resolve().parents[1] / "scripts" / "mosp_match_text.py"
+            run = subprocess.run(
+                [sys.executable, "-X", "utf8", str(cli), *args],
+                capture_output=True, encoding="utf-8", timeout=15,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(srt.read_text(encoding="utf-8").splitlines()[2], "Hello world")
+            project_before = read_project(source)
+            matched = read_project(mosp)
+            self.assertEqual(get_main_track(matched)["segments"][0]["text"], "Hello Hello world")
+            self.assertEqual(matched["gap_remove"]["gaps"], project_before["gap_remove"]["gaps"])
+
+            script.write_text("Goodbye Hello world", encoding="utf-8")
+            files_before = {path.name for path in root.iterdir()}
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                self.assertEqual(match_main(["-m", str(source), "-t", str(script)]), 2)
+            self.assertIn("局部删减", stderr.getvalue())
+            self.assertEqual({path.name for path in root.iterdir()}, files_before)
+            self.assertEqual(source.read_bytes(), before)
+
+            entries = project_before["gap_remove"]["provenance"]["sources"]["ai_cleanup"]
+            entries[0]["cleanup_scope"]["text"] = "stale"
+            _, stale_report, stale_json = generate_matched_mosp(json.dumps(project_before), "Hello Hello world")
+            del project_before["gap_remove"]
+            _, plain_report, plain_json = generate_matched_mosp(json.dumps(project_before), "Hello Hello world")
+            stale, plain = json.loads(stale_json), json.loads(plain_json)
+            self.assertEqual(get_main_track(stale), get_main_track(plain))
+            self.assertEqual(stale_report, plain_report)
+            self.assertEqual(render_srt(stale), render_srt(plain))
 
     def test_equal_count_keeps_cue_identity_group_and_binding(self):
         original = project()

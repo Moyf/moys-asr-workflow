@@ -23,7 +23,7 @@ from typing import Callable, Iterable, Iterator, Sequence
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
-from maw.project_tracks import get_main_track, iter_segments  # noqa: E402
+from maw.project_tracks import get_main_track, iter_segments, project_tracks  # noqa: E402
 from maw.project import normalize_project  # noqa: E402
 from maw.postprocess_io import render_srt  # noqa: E402
 from maw.project_mutations import replace_main_segments, fresh_segment_id  # noqa: E402
@@ -532,7 +532,7 @@ def align_character_timings(
     ]
 
     unplaced = 0
-    if item_owners is not None:
+    if require_cue_anchor and item_owners is not None:
         unplaced = _project_local_edits(asr_chars, opcodes, manuscript_segments, timings, item_owners, is_cancelled=is_cancelled)
     elif policy == "nearest" and anchor_indexes:
         previous_anchor: list[int | None] = []
@@ -606,7 +606,9 @@ def align_character_timings(
             "asr_text": asr_text[i1:i2],
             "manuscript_text": manuscript_text[j1:j2],
         }
-        if j1 < j2 and (item_owners is None or all(start < end for start, end in resolved[j1:j2])):
+        if j1 < j2 and (
+            not require_cue_anchor or item_owners is None or all(start < end for start, end in resolved[j1:j2])
+        ):
             region["estimated_start_ms"] = round(resolved[j1][0])
             region["estimated_end_ms"] = round(resolved[j2 - 1][1])
         low_confidence.append(region)
@@ -866,7 +868,16 @@ def generate_matched_mosp(
     protected = bool(project["bindings"]) or any(
         cue.get("color_group_id") or cue.get("sticker_group_id") for cue in source_segments
     )
-    item_owners: list[int | None] | None = [] if require_cue_anchor and policy == "fuzzy" else None
+    remap_cleanup = None
+    if not require_cue_anchor and "gap_remove" in project:
+        # The Launcher calls this matcher before it restores the full cue set
+        # and remaps cleanup scopes in its own matching transaction.
+        from maw.postprocess_match import preserve_match_cleanup_scopes, verified_match_cleanup_scopes
+
+        if verified_match_cleanup_scopes(project, is_cancelled=is_cancelled):
+            remap_cleanup = preserve_match_cleanup_scopes
+    keep_item_owners = remap_cleanup is not None or (require_cue_anchor and policy == "fuzzy")
+    item_owners: list[int | None] | None = [] if keep_item_owners else None
     output, report, segments, timings = _align_mosp_and_manuscript(
         project,
         manuscript_text,
@@ -901,8 +912,15 @@ def generate_matched_mosp(
         for key, value in original.items():
             if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
                 cue[key] = copy.deepcopy(value)
-    replace_main_segments(project, generated)
-    content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
+    matched = project
+    if remap_cleanup is not None:
+        # Replacing main cues mutates the track and project dictionaries.
+        # Keep the original cue set available for checking the cleanup scope.
+        matched = {**project, "tracks": [track.copy() for track in project_tracks(project)]}
+    replace_main_segments(matched, generated)
+    if remap_cleanup is not None:
+        remap_cleanup(project, matched, is_cancelled=is_cancelled)
+    content = json.dumps(matched, ensure_ascii=False, indent=2) + "\n"
     return output, report, content
 
 
