@@ -205,7 +205,8 @@ class LauncherThumbnailQueue:
                 if not self.cancel.is_set() and source_key(path) == identity:
                     cleanup_base_cache(path, self.progress)
                     build_base(path, exact=exact, duration_limit_sec=limit, ffmpeg_path=ffmpeg_path,
-                               coordinator=self.coordinator, cancel=self.cancel, progress=self.progress)
+                               coordinator=self.coordinator, cancel=self.cancel, progress=self.progress,
+                               background_batches=True)
             except (OSError, RuntimeError, ValueError, sqlite3.Error) as error:
                 if not self.cancel.is_set():
                     self.progress(f"[thumbnails] 后台画面缓存未完成：{error}")
@@ -378,8 +379,8 @@ def coordinated_pack(path, jpegs, *, coordinator, before_batch, cancel=None, tim
         # The next iteration waits for the lease, then retries this unsealed block.
 
 
-def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200, exact: bool = True, duration_limit_sec: float | None = None):
-    """Launcher-only base build: keyframe tier always, exact grid when enabled.
+def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200, exact: bool = True, duration_limit_sec: float | None = None, background_batches: bool = False):
+    """Build the keyframe tier and optionally the exact grid.
 
     The keyframe stage decodes only keyframes (seconds for a whole film) and
     covers the display grid as preview cells; the exact stage — bounded by the
@@ -394,7 +395,7 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
     identity = source_key(path)
     threads = min(8, max(2, os.cpu_count() or 4))
     deadline = time.monotonic() + timeout_s
-    profile = dict.fromkeys(("probe", "decode_jpeg", "jpeg_read", "cache_write", "pack", "pause", "keyframes"), 0.0)
+    profile = dict.fromkeys(("probe", "decode_jpeg", "jpeg_read", "cache_write", "pack", "pause", "keyframes"), 0.0) if background_batches else None
 
     def before_batch(_targets):
         yielded = False
@@ -412,7 +413,7 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
             time.sleep(.05)
         if yielded and progress is not None:
             progress("[thumbnails] 同源优先需求已释放，继续生成基础画面")
-        if yielded:
+        if yielded and profile is not None:
             profile["pause"] += time.monotonic() - started
 
     def extract(media, targets, **kwargs):
@@ -430,12 +431,13 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
             time.sleep(.05)
 
     def pack(jpegs, **kwargs):
-        started, paused = time.monotonic(), profile["pause"]
+        started, paused = time.monotonic(), profile["pause"] if profile is not None else 0.0
         try:
             return coordinated_pack(path, jpegs, coordinator=coordinator, before_batch=before_batch,
                                     ffmpeg_path=ffmpeg_path, **kwargs)
         finally:
-            profile["pack"] += max(0, time.monotonic() - started - (profile["pause"] - paused))
+            if profile is not None:
+                profile["pack"] += max(0, time.monotonic() - started - (profile["pause"] - paused))
 
     def keyframe_extract():
         """Pause-aware keyframe pass; playback and visible demand win."""
@@ -477,18 +479,19 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
                     raise
                 # before_batch waits for playback before starting a fresh pass.
             finally:
-                profile["keyframes"] += time.monotonic() - started
+                if profile is not None:
+                    profile["keyframes"] += time.monotonic() - started
                 done.set()
                 watcher.join(.2)
 
     try:
         return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
             before_batch=before_batch, batch_extract=extract, batch_pack=pack, batch_frames_registered=True,
-            background_batches=True,
+            background_batches=background_batches,
             ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads,
             keyframe_extract=keyframe_extract, duration_limit_sec=duration_limit_sec)
     finally:
-        if progress is not None and any(profile.values()):
+        if progress is not None and profile is not None and any(profile.values()):
             spans = " ".join(f"{name}={seconds:.2f}s" for name, seconds in profile.items())
             progress(f"[thumbnails] CPU threads={threads} {spans}")
 
@@ -657,6 +660,8 @@ class ThumbnailJobManager:
             keys = [lease] if lease in self.leases else [key for key, item in self.leases.items() if client and item["client"] == client]
             marker = view if view is not None else -1
             for key in keys:
+                if view is not None and self.leases[key]["view"] > view:
+                    continue  # A delayed release must not discard newer playback or demand.
                 marker = max(marker, self.leases[key]["view"])
                 self._release(key)
             if client:
@@ -689,6 +694,8 @@ class ThumbnailJobManager:
     def demand(self, body):
         with self.lock:
             self._check(body.get("binding"))
+            if self.closed.is_set():
+                raise ValueError("thumbnail manager closed")
             view = body.get("view", 0)
             if type(view) is not int or not 0 <= view <= 2**53-1:
                 raise ValueError("invalid thumbnail view")
@@ -736,6 +743,12 @@ class ThumbnailJobManager:
                 if not item["visible"]:
                     self._pins(lease, set())
             item["expires"] = time.monotonic()+LEASE_SECONDS
+            if not item["visible"] and not item["decode"]:
+                # Playback-only control: publish without probing or reading the picture cache.
+                if item["playing"] and self.identity and self.coordinator is None:
+                    self.coordinator = ThumbnailCoordinator()
+                self._publish_lease(lease, item)
+                return {"binding": self.binding, "lease": lease, "view": item["view"]}
             self._publish_lease(lease, item)
             self._start()
             self.wake.set()
@@ -749,6 +762,9 @@ class ThumbnailJobManager:
             self._refresh_source()
             lease = self._lease(lease, client, view=view)
             item = self.leases[lease]
+            if not item["visible"] and not item["decode"]:
+                # A late picture poll must not restart work or renew hidden playback.
+                return {"binding": self.binding, "lease": lease, "view": item["view"]}
             if item["view"] < 0:
                 item["view"] = view
             item["expires"] = time.monotonic()+LEASE_SECONDS
@@ -840,6 +856,13 @@ class ThumbnailJobManager:
             path, binding = self.path, self.binding
             if not path or self.state in ("unavailable", "error"):
                 return
+            now = time.monotonic()
+            for lease, item in list(self.leases.items()):
+                if item["expires"] < now:
+                    self._release(lease)
+            if not any(item["visible"] or item["decode"] for item in self.leases.values()):
+                self.state = "idle"
+                return
             self._refresh_source()
             identity = self.identity
             if self.coordinator is None:
@@ -906,6 +929,8 @@ class ThumbnailJobManager:
             missing = [point for point, hit in zip(targets, hits) if point in decoding
                 and (hit is None or hit.status == "preview") and self.failures.get(point, 0) < 2]
             for lease, item in self.leases.items():
+                if not item["visible"] and not item["decode"]:
+                    continue  # Hidden playback renews itself; it needs no cache manifest or pins.
                 self._publish_lease(lease, item,
                     missing=item.get("decode", True) and any(point in missing for point in item["targets"]))
                 manifest = cache.sample_manifest(path, item["targets"], stream_index=self.info.stream_index)

@@ -124,6 +124,50 @@ test('display mode defaults to keyframe marks and falls back to hidden without a
   h.controller.close();
 });
 
+test('hidden playback renews only a playback lease and clears it on pause',async()=>{
+  const h=harness([],{thumbnailBaseReady:false,thumbnailAutoPending:true},{'mawe-filmstrip-mode':'hidden'});
+  h.respond(call=>manifest(call));
+  h.controller.setBinding('video-a'); await h.advance(2000);
+  assert.equal(h.calls.length,0,'hidden and paused does no work');
+  h.controller.setPlaying(true); await h.flush(); await h.advance(2000);
+  assert.equal(h.calls.length,2,'play and heartbeat send only control requests');
+  for(const call of h.calls) {
+    assert.equal(call.url,'/demand');
+    assert.equal(call.body.playing,true);
+    assert.equal(call.body.visible,false);
+    assert.equal(call.body.decode,false);
+    assert.deepEqual(call.body.ranges,[]);
+  }
+  assert.equal(h.calls[1].body.lease,'lease-a');
+  h.controller.setPlaying(false); await h.flush();
+  assert.equal(h.calls.at(-1).body.playing,false);
+  const count=h.calls.length;
+  await h.advance(10000);
+  assert.equal(h.calls.length,count,'paused hidden mode stops the heartbeat');
+  h.controller.close();
+});
+
+test('switching display modes during playback changes the lease without releasing it',async()=>{
+  const h=harness([],{thumbnailAutoPending:true}); h.respond(call=>manifest(call));
+  h.controller.setBinding('video-a'); await h.flush();
+  h.controller.setPlaying(true); await h.flush();
+  const shown=h.calls.at(-1).body;
+  h.controller.setMode('hidden'); await h.flush();
+  const hidden=h.calls.at(-1).body;
+  assert.equal(h.calls.at(-1).url,'/demand');
+  assert.equal(hidden.playing,true);
+  assert.equal(hidden.visible,false);
+  assert.ok(hidden.view>shown.view);
+  h.controller.setMode('strip'); await h.flush();
+  const restored=h.calls.at(-1).body;
+  assert.equal(restored.playing,true);
+  assert.equal(restored.visible,true);
+  assert.ok(restored.view>hidden.view);
+  assert.equal(restored.lease,shown.lease);
+  assert.ok(h.calls.every(call=>call.url!=='/release'));
+  h.controller.close();
+});
+
 test('the decode switch persists and re-plans the lease with decode:false',async()=>{
   const h=harness(); h.respond(call=>manifest(call));
   h.controller.setBinding('video-a'); await h.flush();

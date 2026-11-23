@@ -547,7 +547,8 @@ class NativeBurnHTTPTests(unittest.TestCase):
                 port, token = launch["port"], launch["token"]
                 origin = f"http://127.0.0.1:{port}"
 
-                def request(suffix, fields=None, *, session=None, from_origin=origin, full_path=None, host_header=None):
+                def request(suffix, fields=None, *, session=None, from_origin=origin, full_path=None, host_header=None,
+                            method=None):
                     headers = {"X-MAW-Request-Token": token}
                     if from_origin:
                         headers["Origin"] = from_origin
@@ -555,9 +556,9 @@ class NativeBurnHTTPTests(unittest.TestCase):
                         headers["Host"] = host_header
                     if session:
                         headers["X-MAW-Burn-Session"] = session
-                    method, body = "GET", None
+                    method, body = method or ("GET" if fields is None else "POST"), None
                     if fields is not None:
-                        method, body = "POST", json.dumps({"requestToken": token, **fields})
+                        body = json.dumps({"requestToken": token, **fields})
                         headers["Content-Type"] = "application/json"
 
                     def send():
@@ -586,10 +587,14 @@ class NativeBurnHTTPTests(unittest.TestCase):
                     self.assertTrue(LauncherApi.open_url(launcher, {"url": origin + "/?lang=zh", "editor": True})["ok"])
                 url = browser.call_args.args[0]
                 grant = url.split("#maw-burn-host=")[1]
-                self.assertEqual(request("", {}, from_origin="https://example.test", full_path="/api/shutdown")[0], 403)
-                self.assertEqual(request("", {}, from_origin=None, host_header="example.test",
+                # Match the CLI's bodyless POST. Shutdown rejects these headers
+                # before reading a body; unread bytes can reset the reply on Windows.
+                self.assertEqual(request("", method="POST", from_origin="https://example.test",
                                          full_path="/api/shutdown")[0], 403)
-                self.assertEqual(request("/native-session", {"launchGrant": grant}, from_origin="https://example.test")[0], 403)
+                self.assertEqual(request("", method="POST", from_origin=None, host_header="example.test",
+                                         full_path="/api/shutdown")[0], 403)
+                # The cross-origin guard must reject before parsing any payload.
+                self.assertEqual(request("/native-session", method="POST", from_origin="https://example.test")[0], 403)
                 status, data = request("/native-session", {"launchGrant": grant})
                 self.assertEqual(status, 200, data)
                 session = {"nativeSession": data["nativeSession"]}

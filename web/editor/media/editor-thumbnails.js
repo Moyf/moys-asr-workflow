@@ -328,10 +328,14 @@ export function createThumbnailModule(dependencies) {
         if (demandAgain) { demandAgain = false; void submit(); }
       }
     }
-    function release(disposeImages = true) {
+    function stopRequests() {
       browser.clearTimeout(debounce); browser.clearTimeout(pollTimer); browser.clearInterval(heartbeat);
       browser.clearTimeout(viewThrottleTimer); viewThrottleTimer = 0; pendingView = null;
       requestEpoch += 1; abortRequests();
+      browser.cancelAnimationFrame(paintFrame); paintFrame = 0; dirtyRanges.length = 0;
+    }
+    function release(disposeImages = true) {
+      stopRequests();
       if (binding && urls().release) {
         const body = {binding, lease, client_id:clientId, view, requestToken:config().requestToken || ''};
         void browser.fetch(urls().release, {method:'POST', keepalive:true,
@@ -339,7 +343,29 @@ export function createThumbnailModule(dependencies) {
           body:JSON.stringify(body)}).catch(() => {});
       }
       lease = ''; if (disposeImages) { demandKey = ''; dropImages(); }
-      browser.cancelAnimationFrame(paintFrame); paintFrame = 0; dirtyRanges.length = 0;
+    }
+    function sendPlayback(visible) {
+      if (closed || !binding || networkSuspended || !urls().demand) return;
+      // A newer control view prevents a late demand from restoring old playback or display state.
+      view += 1;
+      const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
+      const body = {binding, lease, client_id:clientId, view, playing, visible,
+        decode:visible && decodeEnabled && mode === 'strip'};
+      void send(urls().demand, visible ? {...body, ...demand, playhead_ms:playheadMs} : {...body, ranges:[]}, true)
+        .then(result => {
+          if (epoch !== requestEpoch || requestedView !== view) return;
+          failures.control = 0;
+          if (visible) ingest(result, requestedBinding, requestedView, epoch);
+          else if (result.binding === binding && result.view === view && result.lease) lease = result.lease;
+        })
+        .catch(() => networkFailed('control', epoch, requestedView));
+    }
+    function syncHiddenPlayback() {
+      browser.clearInterval(heartbeat);
+      sendPlayback(false);
+      if (playing && !closed && binding && !networkSuspended && urls().demand) {
+        heartbeat = browser.setInterval(() => { if (!controlRequest) sendPlayback(false); }, 2000);
+      }
     }
     // setView 的实际落盘逻辑（原实现整体后移）：节流尾拍/首拍到这里执行。
     function applySetView() {
@@ -384,6 +410,8 @@ export function createThumbnailModule(dependencies) {
         view += 1; onChange(true);
         if (active()) {
           void poll(); heartbeat = browser.setInterval(() => void submit(), 2000);
+        } else if (!displayOn() && playing) {
+          syncHiddenPlayback();
         }
       },
       setEnabled(next) {
@@ -398,16 +426,26 @@ export function createThumbnailModule(dependencies) {
         const wasOn = displayOn();
         mode = next;
         if (wasOn && !displayOn()) {
-          release(false); onChange(true); return;
+          if (playing) {
+            // Drop picture work, not the playback lease. Keep the same lease
+            // across display changes so there is no window for background decoding.
+            stopRequests();
+            networkSuspended = false; failures.control = 0;
+            syncHiddenPlayback();
+          } else release(false);
+          onChange(true); return;
         }
         if (!wasOn && displayOn()) {
-          onChange(true);
+          const hasPlaybackLease = playing || !!lease || (controlRequest && !controlRequest.signal.aborted);
+          stopRequests();
           if (binding) {
             available = true; networkSuspended = false;
             failures.status = failures.demand = failures.control = 0;
-            view += 1; void poll();
+            if (hasPlaybackLease) sendPlayback(true);
+            else { view += 1; void poll(); }
             heartbeat = browser.setInterval(() => void submit(), 2000);
           }
+          onChange(true);
           return;
         }
         // strip <-> marks: re-plan decode participation and repaint both lanes.
@@ -431,13 +469,11 @@ export function createThumbnailModule(dependencies) {
       setPlaying(next) {
         if (!!next === playing) return;
         playing = !!next; browser.clearTimeout(debounce);
-        if (!active() || networkSuspended || !urls().demand) return;
-        // A newer control view prevents a late ordinary demand from restoring old playback state.
-        view += 1;
-        const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
-        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true, decode:decodeEnabled && mode === 'strip'}, true)
-          .then(result => { failures.control = 0; ingest(result, requestedBinding, requestedView, epoch); })
-          .catch(() => networkFailed('control', epoch, requestedView));
+        if (!displayOn()) {
+          if (playing) { networkSuspended = false; failures.control = 0; }
+          syncHiddenPlayback();
+        }
+        else if (active()) sendPlayback(true);
       },
       setPlayhead(time) {
         if (!Number.isFinite(time)) return;
@@ -498,7 +534,14 @@ export function createThumbnailModule(dependencies) {
         return markers;
       },
       retry() {
-        if (!binding || !displayOn() || closed) return;
+        if (!binding || closed) return;
+        if (!displayOn()) {
+          if (playing) {
+            networkSuspended = false; failures.control = 0;
+            syncHiddenPlayback();
+          }
+          return;
+        }
         release(false); resumeNetwork();
       },
       close() { release(); closed = true; browser.cancelAnimationFrame(paintFrame); },

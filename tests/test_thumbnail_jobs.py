@@ -68,6 +68,7 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
                     queue.thread.join(5)
             self.assertFalse(thread.is_alive())
             self.assertEqual(build.call_count, 1)
+            self.assertTrue(build.call_args.kwargs["background_batches"])
             self.assertFalse(self.coordinator.background_pending(source_key(media)))
 
     def test_pending_queue_renews_leases_and_reports_overflow(self):
@@ -166,17 +167,29 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
         from maw.thumbnail_jobs import build_base
         source = self.root / "video.mp4"
         source.write_bytes(b"source")
-        messages = []
-        def build(path, **kwargs):
-            kwargs["before_batch"]([0])
-            return {"state": "ready"}
-        with mock.patch.object(self.coordinator, "paused", side_effect=[True, True, False]), mock.patch("maw.thumbnail_jobs.time.sleep"), mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=build):
-            result = build_base(source, coordinator=self.coordinator, progress=messages.append)
-        self.assertEqual(result["state"], "ready")
-        self.assertEqual(messages, [
-            "[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停",
-            "[thumbnails] 同源优先需求已释放，继续生成基础画面",
-        ])
+        for background in (False, True):
+            with self.subTest(background=background):
+                messages = []
+
+                def build(_path, **kwargs):
+                    self.assertEqual(kwargs["background_batches"], background)
+                    kwargs["before_batch"]([0])
+                    return {"state": "ready"}
+
+                options = {"background_batches": True} if background else {}
+                with mock.patch.object(self.coordinator, "paused", side_effect=[True, True, False]), \
+                     mock.patch("maw.thumbnail_jobs.time.sleep"), \
+                     mock.patch("maw.thumbnail_jobs.time.monotonic", side_effect=[10, 10, 10, 10, 10.25]), \
+                     mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=build):
+                    result = build_base(source, coordinator=self.coordinator, progress=messages.append, **options)
+                self.assertEqual(result["state"], "ready")
+                self.assertEqual(messages[:2], [
+                    "[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停",
+                    "[thumbnails] 同源优先需求已释放，继续生成基础画面",
+                ])
+                self.assertEqual(len(messages), 3 if background else 2)
+                if background:
+                    self.assertRegex(messages[2], r"^\[thumbnails\] CPU threads=\d+ .*\bpause=0\.25s\b")
 
     def test_claim_batch_and_lease_limits(self):
         # 上限测试与真实时长解耦：逐个创建 64 个租约一旦跨过 8s TTL，早期租约
@@ -278,6 +291,37 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
 
 
 class ThumbnailDemandTests(unittest.TestCase):
+    def test_hidden_playback_pauses_only_its_source_without_starting_a_worker(self):
+        from maw import thumbnail_cache
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'media.mp4'
+            path.write_bytes(b'media')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            manager = ThumbnailJobManager()
+            manager.bind(path, 'binding')
+            control = {'binding': 'binding', 'client_id': 'tab', 'view': 1,
+                       'visible': False, 'decode': False, 'playing': True}
+            try:
+                with mock.patch('maw.thumbnail_jobs.ThumbnailCoordinator', return_value=coord), \
+                     mock.patch.object(manager, '_start') as start, \
+                     mock.patch.object(thumbnail_cache, 'sample_manifest') as manifest:
+                    first = manager.demand(control)
+                    self.assertTrue(coord.paused(source_key(path), background=True))
+                    self.assertFalse(coord.paused('other-source', background=True))
+                    expires = manager.leases[first['lease']]['expires']
+                    with mock.patch('maw.thumbnail_jobs.time.monotonic', return_value=expires - 1):
+                        manager.status('binding', client='tab', view=0)
+                    self.assertEqual(manager.leases[first['lease']]['expires'], expires)
+                    manager.release('binding', first['lease'], client='tab', view=0)
+                    self.assertTrue(coord.paused(source_key(path), background=True))
+                    manager.demand(dict(control, lease=first['lease'], view=2, playing=False))
+                    manager.demand(control)  # A late play request must not undo the pause.
+                    self.assertFalse(coord.paused(source_key(path), background=True))
+                    start.assert_not_called()
+                    manifest.assert_not_called()
+            finally:
+                manager.close()
+
     def test_empty_pins_skip_release_only_until_first_protection_attempt(self):
         from maw import thumbnail_cache
         with tempfile.TemporaryDirectory() as temp:
