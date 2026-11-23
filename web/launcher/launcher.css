@@ -3039,6 +3039,14 @@ textarea::placeholder {
   line-height: 1.6;
 }
 
+.support-github {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.support-github[hidden], .support-github [hidden] { display: none; }
+
 .support-note {
   margin: 0;
   color: var(--text-muted);

@@ -343,6 +343,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'TEXTAREA'
     || a.tagName === 'SELECT'
     || a.tagName === 'BUTTON'
+    || a.tagName === 'A'  // 链接（关于页入口等）聚焦时 Enter 交给浏览器原生激活
     || a.isContentEditable
   )) return;
   if (MaweDom.textProcessModal.classList.contains('show')) return;

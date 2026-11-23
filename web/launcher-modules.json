@@ -15,6 +15,13 @@
       "name": "console_mirror",
       "exportName": "createUtilsModule",
       "binding": "createConsoleMirror"
+    },
+    {
+      "file": "shared/github-star.js",
+      "kind": "transition",
+      "name": "github_star",
+      "exportName": "bindGitHubStar",
+      "binding": "bindGitHubStar"
     }
   ]
 }
