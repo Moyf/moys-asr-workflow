@@ -117,7 +117,7 @@ uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 
-交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存。新增界面文字保持可读字号，元素垂直间隔至少 8px，并实测间距和截图自查。文本统一 UTF-8 / LF。
+交互改动只实测受影响的入口与操作，如拖动、播放、跳转或保存。若影响编辑器，可用 `uv run --no-sync python server-editor/serve.py --blank` 启动验证；只影响 Launcher 时可用 `pnpm run launcher`，不必另测编辑器。新增界面文字保持可读字号，元素垂直间隔至少 8px；截图与像素实测按本分支根 `AGENTS.md` 的 UI 验证规则。无法完成的验证逐项标为未验证，注明原因、人工验收操作和预期结果。文本统一 UTF-8 / LF。
 
 ### PR 提交前检查
 
