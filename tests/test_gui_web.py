@@ -1101,6 +1101,41 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "openai_diarize_openrouter_unsupported")
 
+    def test_moss_keyterms_are_forwarded_and_validated(self) -> None:
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+        payload = {
+            "providerId": "moss",
+            "modelId": "moss-transcribe-diarize-pro",
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "clip.srt"),
+            "apiKey": "moss-key",
+            "mossKeyterms": "MOSS\n模思智能\n\n",
+            "speakerColors": True,
+            "generateHtml": False,
+        }
+
+        request = _request_from_payload(payload, self.env_path)
+
+        self.assertEqual(request.provider, "moss")
+        self.assertEqual(request.model, "moss-transcribe-diarize-pro")
+        self.assertEqual(request.moss_keyterms, ("MOSS", "模思智能"))
+        self.assertTrue(request.speaker_colors)
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload(
+                {**payload, "mossKeyterms": "\n".join(f"词{i}" for i in range(21))},
+                self.env_path,
+            )
+        self.assertEqual(context.exception.code, "moss_keyterms_too_many")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload(
+                {**payload, "mossKeyterms": "字" * 31},
+                self.env_path,
+            )
+        self.assertEqual(context.exception.code, "moss_keyterm_too_long")
+
     def test_deepseek_provider_is_rejected_before_transcription(self) -> None:
         """Given the DeepSeek placeholder provider, When starting transcription, Then preflight rejects it."""
         media = self.root / "clip.wav"

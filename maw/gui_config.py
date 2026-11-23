@@ -370,6 +370,25 @@ DOUBAO_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+# MOSS（模思智能开放平台）云端转写：moss-transcribe-1.0 只回纯文本、没有
+# 时间戳，对字幕工程无用，不接入；这里只提供带说话人分段的 diarize-pro。
+# 模型自动识别语言（50+ 语种），接口不接受语言参数，故 supports_language=False。
+MOSS_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="moss-transcribe-diarize-pro",
+        label="MOSS 转写说话人分离（Pro）",
+        env_key="MOSS_API_KEY",
+        # 与本地 MOSS 引擎同一输出契约：仅段级时间码，MAW 不伪造 items；
+        # 超长句段按标点/字数设置二次拆分（插值切点吸附能量谷），需要精确
+        # 字词时间码时用对齐模型补齐。
+        note="多人转写与说话人分离；超长句段按断句设置自动拆分，字词时间码可用对齐模型补齐。",
+        price_note="MOSS 参考价：说话人分离转写促销价 ¥1.20 / 小时（原价 ¥2 / 小时）",
+        supports_speaker=True,
+        supports_keywords=True,
+        languages=(),
+    ),
+)
+
 QWEN_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id=QWEN_AUDIO_MODEL_ID,
@@ -678,7 +697,7 @@ BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
 DEEPSEEK_PLACEHOLDER_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="deepseek-not-an-asr",
-        label="Deepseek 目前不提供转写模型",
+        label="DeepSeek ASR 只生成纯文本，不带时间码，真不适合",
         env_key="",
         note="被问太多次了所以专门加上这个说明 _(:з」∠)_",
         languages=(),
@@ -735,6 +754,23 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         ),
     ),
     ProviderConfig(
+        id="moss",
+        label="MOSS（模思智能 / 说话人分离）",
+        key_url="https://platform.moss.cn/app/api-keys",
+        key_label="MOSS 控制台",
+        secondary_key_url="https://create.moss.cn/",
+        models=MOSS_MODELS,
+        regions=(),
+        languages=(),
+        supports_speaker=True,
+        supports_language=False,
+        common_languages=(),
+        note=(
+            "多人转写向云端服务：媒体会直接上传到 MOSS（模思智能开放平台）；"
+            "单次任务需 ≤60 分钟；自动识别语言，不支持指定语言。"
+        ),
+    ),
+    ProviderConfig(
         id="soniox",
         label="Soniox STT（海外 / 小语种）",
         key_url="https://console.soniox.com",
@@ -772,7 +808,8 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
             "重要或批量任务建议使用上方正式供应商。"
         ),
     ),
-    # 彩蛋占位：DeepSeek 是文本模型，没有语音转写 API；仅提示用户去后处理翻译使用。
+    # 彩蛋占位：DeepSeek 已上线 ASR（2026-11），但只返回纯文本（无时间码、
+    # 单次 ≤2 分钟），无法生成字幕，不接入转写；仅提示用户去后处理翻译使用。
     # 与必剪之间不再加分隔线：两项紧挨着更符合「非转写/实验性入口」的分组直觉。
     ProviderConfig(
         id="deepseek",
@@ -784,7 +821,8 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         requires_api_key=False,
         supports_language=False,
         note=(
-            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n"
+            "🐳 蓝色大肥鱼上线了语音识别，但只回纯文本：没有时间码、"
+            "单次最长 2 分钟，做不了字幕！\n"
             "不过你可以在「AI处理」中使用它来翻译啥的。"
         ),
     ),

@@ -150,6 +150,7 @@ from maw.ocr_runtime import OCR_MODEL_ID, OCR_MODEL_IDS, OCR_MODEL_LABELS, OCR_M
 from maw.waveform import is_waveform_payload
 from maw.project_preview import JsonValue
 from maw.soniox import SonioxContextError, build_soniox_context
+from maw.moss import MAX_KEYTERM_CHARS, MAX_KEYTERMS
 
 if TYPE_CHECKING:
     from webview import Window
@@ -4191,7 +4192,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError(
             "provider",
             "deepseek_transcribe_unsupported",
-            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！请在「AI处理」中使用它来翻译。",
+            "🐳 蓝色大肥鱼的语音识别只回纯文本（无时间码），做不了字幕！请在「AI处理」中使用它来翻译。",
         )
     requested_model = str(payload.get("modelId") or "")
     model = next(
@@ -4223,7 +4224,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError(
                 "openaiBaseUrl",
                 "deepseek_transcribe_unsupported",
-                "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！请在「AI处理」中使用它来翻译。",
+                "🐳 蓝色大肥鱼的语音识别只回纯文本（无时间码），做不了字幕！请在「AI处理」中使用它来翻译。",
             )
     openai_prompt = ""
     openai_keywords: tuple[str, ...] = ()
@@ -4252,6 +4253,28 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                     "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。",
                 )
             openai_diarize = True
+    moss_keyterms: tuple[str, ...] = ()
+    if provider.id == "moss" and model.supports_keywords:
+        raw_keyterms = str(payload.get("mossKeyterms") or "")
+        moss_keyterms = tuple(
+            keyterm.strip()
+            for keyterm in raw_keyterms.splitlines()
+            if keyterm.strip()
+        )
+        # keyterms 官方限制（提交前拦截，避免任务建好才被 400 打回）。
+        if len(moss_keyterms) > MAX_KEYTERMS:
+            raise PreflightError(
+                "mossKeyterms",
+                "moss_keyterms_too_many",
+                f"MOSS keyterms 最多 {MAX_KEYTERMS} 个（当前 {len(moss_keyterms)} 个）；请删减后再试。",
+            )
+        for keyterm in moss_keyterms:
+            if len(keyterm) > MAX_KEYTERM_CHARS:
+                raise PreflightError(
+                    "mossKeyterms",
+                    "moss_keyterm_too_long",
+                    f"MOSS keyterm 不能超过 {MAX_KEYTERM_CHARS} 字符：「{keyterm[:MAX_KEYTERM_CHARS]}…」请拆分或精简。",
+                )
     api_key = str(payload.get("apiKey") or "").strip() or api_key_for_provider(provider.id, env_path)
     region = str(payload.get("region") or "beijing") if provider.id == "qwen" else ""
     workspace_id = str(payload.get("workspaceId") or "").strip()
@@ -4508,6 +4531,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         base_url=custom_base_url,
         openai_prompt=openai_prompt,
         openai_keywords=openai_keywords,
+        moss_keyterms=moss_keyterms,
         openai_diarize=openai_diarize,
         runtime_python=runtime_python,
         postprocess_plan=auto_plan,

@@ -30,13 +30,14 @@ function runtimeHintText(runtime, readyKey, otherKey) {
 }
 // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
 // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
-const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (recommended / Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)", deepseek: "DeepSeek (?)" };
+const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (recommended / Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", moss: "MOSS (MOSS Intelligence / speaker diarization)", bcut: "Bcut (unofficial / free / experimental)", deepseek: "DeepSeek (?)" };
 const PROVIDER_NOTES_EN = {
   openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose the Custom model and enter the name provided by your provider.",
   doubao: "Media is uploaded directly to Volcano Engine; a single file must be ≤25MB and ≤120 minutes.",
+  moss: "Multi-speaker cloud transcription: media is uploaded directly to MOSS (MOSS Intelligence platform); a single task must be ≤60 minutes; language is auto-detected and cannot be specified.",
   tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
   bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
-  deepseek: "🐳 The big blue fish cannot transcribe audio — it's a text model! But you can use it for translation in the AI processing of the toolbox.",
+  deepseek: "🐳 The big blue fish now has speech recognition, but it only returns plain text — no timestamps, 2 minutes max per request — so it can't make subtitles. But you can use it for translation in the AI processing of the toolbox.",
 };
 const MODEL_LABELS_EN = {
   "qwen-audio-3.1-asr-flash-filetrans": "qwen-audio-3.1-asr (dialect / hotwords / context)",
@@ -52,6 +53,7 @@ const MODEL_LABELS_EN = {
   "gpt-4o-transcribe": "gpt-4o-transcribe",
   "gpt-4o-mini-transcribe": "gpt-4o-mini-transcribe",
   "gpt-4o-transcribe-diarize": "gpt-4o-transcribe-diarize (speaker diarization)",
+  "moss-transcribe-diarize-pro": "MOSS transcription with speaker diarization (Pro)",
   "whisper-large-v3-turbo": "Whisper Large V3 Turbo (OpenRouter)",
   "whisper-large-v3": "Whisper Large V3 (OpenRouter)",
   "qwen3-asr-local": "Qwen3-ASR 0.6B (recommended)",
@@ -62,7 +64,7 @@ const MODEL_LABELS_EN = {
   "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B",
   "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
   "bcut-asr": "Bcut (no key / Chinese only)",
-  "deepseek-not-an-asr": "DeepSeek does not offer a transcription model",
+  "deepseek-not-an-asr": "DeepSeek ASR produces plain text only (no timestamps) — really not suitable",
 };
 const MODEL_NOTES_EN = {
   "qwen-audio-3.1-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization; optional dialect preservation.",
@@ -84,6 +86,7 @@ const MODEL_NOTES_EN = {
   "sensevoice-small-local": "Multilingual recognition with FSMN-VAD by default; runs on CPU or GPU; an aligner can add word/character timestamps.",
   "firered-asr2-ctc-local": "Chinese, English, and dialect recognition; CPU-capable with word/character timestamps; ct-punc is optional for punctuation and segmentation.",
   "moss-transcribe-diarize-local": "Speaker diarization with segment timestamps only; an aligner can add word/character timestamps; GPU recommended.",
+  "moss-transcribe-diarize-pro": "Multi-speaker transcription and diarization; overlong turns are re-split by the segmentation settings; word timestamps can be added by an aligner.",
   "whisper-large-v3-local": "Multilingual recognition with native word timestamps; runs on CPU or GPU, with better speed on GPU; no speaker diarization.",
   "bcut-asr": "Millisecond per-character timestamps; no API key required.",
   "deepseek-not-an-asr": "Added this note because we get asked way too often _(:з」∠)_",
@@ -96,6 +99,7 @@ const MODEL_PRICING_NOTES_EN = {
   "stt-async-v6": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text tokens.",
   "stt-async-v5": "Soniox reference price: about $0.10/hour for async file transcription; token-based pricing with $1.50 / 1M audio input tokens and $3.50 / 1M input-text tokens.",
   "16k_zh_en_2.0": "Tencent Cloud reference price: CNY 0.8/hour for recorded-file ASR large model 2.0 on pay-as-you-go; a 60-hour prepaid pack is CNY 48.",
+  "moss-transcribe-diarize-pro": "MOSS reference price: CNY 1.20/hour for diarized transcription (promotional 40% off the list price of CNY 2/hour).",
   "whisper-1": "OpenAI official reference price: $0.006/minute (about $0.36/hour)",
   "gpt-transcribe": "OpenAI official reference price: $0.0045/minute (about $0.27/hour)",
   "gpt-4o-transcribe": "OpenAI official reference price: $2.50 / 1M audio input tokens and $10 / 1M audio output tokens",
@@ -127,7 +131,7 @@ function renderProviderNote(providerItem) {
   noteElement.textContent = "";
   if (providerItem?.id === "deepseek") {
     const en = state.lang === "en";
-    appendNoteText(noteElement, en ? "🐳 The big blue fish cannot transcribe audio — it's a text model!" : "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！");
+    appendNoteText(noteElement, en ? "🐳 The big blue fish now has speech recognition, but it only returns plain text — no timestamps, 2 minutes max — so it can't make subtitles!" : "🐳 蓝色大肥鱼上线了语音识别，但只回纯文本：没有时间码、单次最长 2 分钟，做不了字幕！");
     noteElement.append(document.createElement("br"));
     appendNoteText(noteElement, en ? " But you can use it for translation in " : " 不过你可以在 ");
     const link = document.createElement("button");
