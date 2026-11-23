@@ -97,6 +97,7 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
+from maw.tool_windows import open_comparison_window, timestamp_compare_payload, transcript_compare_payload
 from maw.media import probe_audio_tracks, resolve_project_media
 from maw.native_burn_host import BurnDialogBusy, BurnHost
 from maw.native_burn_output import BurnDestination
@@ -2037,6 +2038,41 @@ class LauncherApi:
         preview_limit = 240
         preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
         return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
+
+    def open_compare_tool(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Open a maintained comparison page preloaded with local files."""
+        tool = str(payload.get("tool") or "")
+        lang = "en" if payload.get("lang") == "en" else "zh"
+        paths: list[Path] = []
+        for value in payload.get("paths") or ():
+            text = str(value or "").strip()
+            if text:
+                candidate = Path(text).expanduser()
+                if candidate not in paths:
+                    paths.append(candidate)
+        if not paths:
+            detail = "没有可对比的文件。" if lang != "en" else "No files to compare."
+            return {"ok": False, "detail": detail}
+        titles = {
+            "transcript": ("MAW 转写对比", "MAW Transcript Compare"),
+            "timestamp": ("MAW 时间码对比", "MAW Timestamp Compare"),
+        }
+        if tool not in titles:
+            return {"ok": False, "detail": f"Unknown comparison tool: {tool}"}
+        try:
+            if tool == "transcript":
+                preload = transcript_compare_payload(paths, lang=lang)
+                page = self.paths.root / "tools" / "compare.html"
+            else:
+                preload = timestamp_compare_payload(paths, lang=lang)
+                page = self.paths.root / "tools" / "timestamp-compare.html"
+            if not preload["files"]:
+                detail = "没有可对比的工程文件。" if lang != "en" else "No comparable project files."
+                return {"ok": False, "detail": f"{detail}{preload['warning']}"}
+            open_comparison_window(self.paths.root, page=page, title=titles[tool][lang == "en"], payload=preload)
+            return {"ok": True}
+        except (OSError, RuntimeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
 
     def preview_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
         project_path = _optional_path(payload.get("projectPath"))

@@ -1662,6 +1662,41 @@
     list.scrollTop = list.scrollHeight;
   }
 
+  // 对比窗口预载：优先原始输入 + 最新一条字幕产物（工程优先于 SRT）。
+  function comparisonPreloadPaths() {
+    const paths = [];
+    const original = document.querySelector("#toolboxChainOriginal [data-artifact-path]");
+    const input = inputPaths();
+    const source = original?.dataset.artifactPath || (input && (input.projectPath || input.srtPath)) || "";
+    if (source) paths.push(source);
+    const items = [...document.querySelectorAll("#toolboxChainList .toolbox-chain-item")];
+    for (let index = items.length - 1; index >= 0 && paths.length < 2; index--) {
+      const artifact = items[index].querySelector('[data-artifact-kind="project"], [data-artifact-kind="srt"]');
+      const path = artifact?.dataset.artifactPath || "";
+      if (path && !paths.includes(path)) paths.push(path);
+    }
+    return paths;
+  }
+
+  async function openCompareTool(tool, button) {
+    if (button.disabled) return;
+    const paths = comparisonPreloadPaths();
+    if (!paths.length) {
+      setFieldError("toolboxInputPath", t("toolbox_need_source"));
+      $("toolboxInputPath").focus();
+      return;
+    }
+    button.disabled = true;
+    try {
+      const result = await bridge("open_compare_tool", { tool, paths, lang: document.documentElement.lang });
+      if (!result.ok) throw new Error(result.detail || t("failed"));
+    } catch (error) {
+      setResult(error.message || t("failed"), "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   function applySubtitleResult(result, chain) {
     if (!$("toolboxChainOriginal")) {
       const input = inputPaths();
@@ -1707,6 +1742,13 @@
     setMatchStats(chain?.kind === "ai_cleanup" && result.stats ? aiCleanupStatsText(result.stats) : "");
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+    if (chain?.kind === "match" && chain.scriptPath && (result.projectPath || result.srtPath)) {
+      for (const warning of warnings) window.MAWLauncher.appendLog?.(warning);
+      const overlaps = warnings.filter(warning => warning.includes("与匹配结果重叠") || warning.includes("与匹配结果完全重叠"));
+      setResult([t("toolbox_done"), t("toolbox_match_source").replace("{path}", () => chain.scriptPath),
+        t("toolbox_match_compare_hint"), ...overlaps].join("\n"), "success", { revealWarning: warnings.length > 0 });
+      return;
+    }
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
     if (result.diagnosticPath) warnings.push(`${t(chain?.operation === "resegment" ? "toolbox_resegment_record_path" : "toolbox_cleanup_record_path")} ${result.diagnosticPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
@@ -2243,7 +2285,7 @@
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "match" });
+      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath });
       else if (cancelled) setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -3090,6 +3132,8 @@
     syncInputName();
     void refreshScriptPreview();
   });
+  $("openTranscriptCompare").addEventListener("click", (event) => { void openCompareTool("transcript", event.currentTarget); });
+  $("openTimestampCompare").addEventListener("click", (event) => { void openCompareTool("timestamp", event.currentTarget); });
   $("toolboxUtilityMediaPath").addEventListener("input", () => {
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");

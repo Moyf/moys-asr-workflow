@@ -109,7 +109,7 @@ test('renders embedded projects, classifies differences, and expands item detail
 
   await page.locator('#diffOnly').check();
   await expect(page.locator('.row-grid')).toHaveCount(4);
-  await expect(page.locator('#status')).toContainText('显示 4/5 段');
+  await expect(page.locator('#status')).toContainText('显示 4/5 组');
 
   const exposedState = await page.evaluate(() => ({
     fileCount: window.MAWTsCompare.state.files.length,

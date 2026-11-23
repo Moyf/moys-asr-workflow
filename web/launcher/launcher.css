@@ -2326,6 +2326,30 @@ textarea::placeholder {
   overflow-y: auto;
 }
 
+.toolbox-compare-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.toolbox-compare-row .toolbox-chain-heading {
+  margin: 0;
+}
+
+.toolbox-compare-row .ghost {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 55%, var(--border-subtle));
+  background: var(--info-tint);
+}
+
+.toolbox-compare-row .ghost:hover:not(:disabled) {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-soft);
+}
+
 .toolbox-chain-item,
 .toolbox-chain-original {
   display: flex;

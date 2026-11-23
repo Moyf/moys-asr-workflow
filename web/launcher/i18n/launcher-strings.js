@@ -1414,3 +1414,17 @@ Object.assign(STRINGS.en, {
   toolbox_task_cleanup: "Compare complete expressions and clean failed takes, true repeats, process talk and false starts without rewriting source words. A reference is optional. Local scripts convert the editing draft to reversible cuts and review regions, followed by a missed-cut scan and continuity audit.",
   ai_cleanup_stats_summary: "Matched {matched} · Rephrased {rephrased} · Extra kept {extras} · Deleted cues {removed} · Partial edits {edited} / {items} items · Pending review {review}",
 });
+Object.assign(STRINGS.zh, {
+  toolbox_compare_heading: "对比工具",
+  toolbox_match_source: "文稿来源：{path}",
+  toolbox_match_compare_hint: "使用上方的「转写对比」工具查看详情。",
+  toolbox_open_transcript_compare: "转写对比",
+  toolbox_open_timestamp_compare: "时间码对比",
+});
+Object.assign(STRINGS.en, {
+  toolbox_compare_heading: "Comparison tools",
+  toolbox_match_source: "Manuscript: {path}",
+  toolbox_match_compare_hint: "Use Transcript Compare above to see the details.",
+  toolbox_open_transcript_compare: "Transcript compare",
+  toolbox_open_timestamp_compare: "Timestamp compare",
+});
