@@ -5,9 +5,10 @@ by an HTTP client. A slot remains owned until download or disposal finishes.
 """
 from __future__ import annotations
 
-import secrets
+import json
 import os
 import re
+import secrets
 import signal
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ from typing import Callable
 from maw.gui_platform import (popen_process_tree, process_group_kwargs,
                               release_process_tree, terminate_process_tree)
 from maw.local_log import LocalLogSink
+from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic
 
 MAX_MEDIA_JOB_STDOUT_BYTES = 2 * 1024 * 1024
 MAX_MEDIA_JOB_STDERR_BYTES = 64 * 1024
@@ -84,6 +86,16 @@ class MediaJob:
         self.native_burn = None
         self.native_burn_output = None
         self.native_burn_save_done: threading.Event | None = None
+        self.burn_diagnostic: dict | None = None
+
+    def begin_burn_attempt(self, encoder: str) -> None:
+        with self.manager.lock:
+            self.update("burning")
+            self.burn_diagnostic["encoder"] = encoder
+
+    def record_burn_attempt(self, attempt: dict) -> None:
+        with self.manager.lock:
+            self.burn_diagnostic["attempts"].append(attempt)
 
     def check_cancelled(self):
         if self.cancelled.is_set():
@@ -112,6 +124,9 @@ class MediaJob:
                     "error": self.error, "errorDetails": self.error_details,
                     "cleanupError": self.cleanup_error, "cleanupErrorDetails": self.cleanup_error_details,
                     "cleanupComplete": self.disposed,
+                    **({"burnDiagnostic": {**self.burn_diagnostic,
+                        "attempts": [dict(attempt) for attempt in self.burn_diagnostic["attempts"]]}}
+                       if self.burn_diagnostic is not None else {}),
                     **({"noOutput": True} if self.no_output else {})}
 
     def run_command(self, command, *, timeout=120, duration_ms=None, cwd=None, on_stderr=None):
@@ -316,16 +331,36 @@ class MediaJobManager:
                         job.state = "cancelled" if job.cancelled.is_set() else "failed"
                         job.error = None if job.cancelled.is_set() else str(error)[-4000:]
                         job.error_details = None if job.cancelled.is_set() else getattr(error, "details", None)
+                        if job.burn_diagnostic is not None and job.error:
+                            kind = burn_error_kind(error) or burn_error_kind(error.__cause__)
+                            job.burn_diagnostic["failure"] = {
+                                "type": type(error).__name__, "kind": kind, "stage": job.stage,
+                            }
+                            if isinstance(job.error_details, str):
+                                job.burn_diagnostic["failure"].update(ffmpeg_diagnostic(job.error_details))
+                            # Free-form burn errors can echo subtitles, filenames or command lines.
+                            if isinstance(error, OSError):
+                                job.error = {
+                                    "disk-full": "烧录临时目录空间不足，请释放空间后重试",
+                                    "permission": "无法访问烧录文件，请检查文件权限",
+                                }.get(kind, "烧录文件读写失败")
+                            job.error_details = None
                         if job.error_details:
                             job.error_details = str(job.error_details)[-4000:]
                         # Do not publish the terminal state before attempting disposal.
                         # Keep the state transition and cleanup under one lock.
                         self._dispose(job)
                     # Bounded diagnostics; cancellation carries no error and stays silent.
-                    if job.error:
+                    if job.error and job.burn_diagnostic is None:
                         diagnostics = f"[MAW media-job {job.id}] failed at stage={job.stage}: {job.error}"
                         if job.error_details:
                             diagnostics += "\n" + str(job.error_details)[-2000:]
+                        _diagnostic_sink().write_text(diagnostics, label="media-job")
+                        print(diagnostics, flush=True)
+                finally:
+                    report = job.burn_diagnostic
+                    if report and not job.cancelled.is_set() and (job.error or len(report["attempts"]) > 1):
+                        diagnostics = f"[MAW media-job {job.id}] " + json.dumps(report, ensure_ascii=False)
                         _diagnostic_sink().write_text(diagnostics, label="media-job")
                         print(diagnostics, flush=True)
 
