@@ -19,6 +19,10 @@ const BURN_FAILURE_STAGES = {
   subtitles: '准备字幕', filters: '准备视频滤镜', burning: '烧录编码', picker: '选择保存位置',
   download: '下载视频', write: '写入文件',
 };
+const BURN_ASS_LAYOUT_ERRORS = new Set([
+  'ass-negative-spacing', 'ass-unsupported-geometry', 'ass-fixed-track-too-large',
+  'ass-fixed-track-overlap', 'ass-stack-too-large',
+]);
 const BURN_SESSION_KEY = 'maw-native-burn-session';
 let nativeBurnPicking = false;
 
@@ -136,6 +140,7 @@ function showBurnVideoFailure(error, { stage, mode, jobId, diagnostic, received,
   const failure = diagnostic?.failure;
   if (failure) stage = failure.stage;
   const kind = failure?.kind || error?.code;
+  const showKnownSubtitleError = stage === 'subtitles' && BURN_ASS_LAYOUT_ERRORS.has(kind);
   const summary = kind === 'disk-full' || error?.name === 'QuotaExceededError'
     ? tr('磁盘空间或配额不足，请释放空间或换一个保存位置')
     : kind === 'permission' || ['NotAllowedError', 'SecurityError'].includes(error?.name)
@@ -144,13 +149,13 @@ function showBurnVideoFailure(error, { stage, mode, jobId, diagnostic, received,
         ? tr('与本地服务的连接中断，无法确认保存结果，请先检查目标文件')
         : kind === 'local-connection' || (stage === 'download' && error?.name === 'TypeError')
           ? tr(stage === 'download' ? '视频传输中断，请重试' : '与本地服务的连接中断，请重试')
-        : error?.burnMessage
-          ? burnVideoSafeError(error, '没有可显示的错误摘要')
-          : tr({
-            write: '无法写入所选文件，请检查保存位置后重试',
-            picker: '无法打开视频保存位置选择器',
-            subtitles: '无法准备字幕内容',
-          }[stage] || '没有可显示的错误摘要');
+          : error?.burnMessage || showKnownSubtitleError
+            ? burnVideoSafeError(error, '没有可显示的错误摘要')
+            : tr({
+              write: '无法写入所选文件，请检查保存位置后重试',
+              picker: '无法打开视频保存位置选择器',
+              subtitles: '无法准备字幕内容',
+            }[stage] || '没有可显示的错误摘要');
   const stageTitle = `${tr('烧录视频导出失败')} · ${tr(BURN_FAILURE_STAGES[stage] || '准备导出')}`;
   const headline = `${stageTitle}：${summary}`;
   // Only include structured fields, never arbitrary JS exceptions, request

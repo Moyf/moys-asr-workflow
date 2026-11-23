@@ -103,6 +103,22 @@ test('burn admission and native save distinguish lost connections from file fail
   }
 });
 
+test('burn diagnostics preserve known subtitle and session guidance without copying raw exceptions', () => {
+  const f = fixture();
+  Object.assign(f.context, {MaweHint: f.hint, MaweBoot: {SERVER_CONFIG: {}}});
+  vm.runInContext(fs.readFileSync(process.env.MAW_TEST_BURN_SOURCE || 'web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
+  const layoutError = Object.assign(new Error('请将字距改为非负值后导出'), {code: 'ass-negative-spacing'});
+  const layout = f.context.showBurnVideoFailure(layoutError, {stage: 'subtitles', mode: 'full'});
+  assert.match(layout.children[0].textContent, /字距改为非负值/);
+  assert.match(layout.children[2].children[1].textContent, /ass-negative-spacing/);
+  const unknown = f.context.showBurnVideoFailure(new Error('arbitrary subtitle data'), {stage: 'subtitles', mode: 'full'});
+  assert.doesNotMatch(unknown.children[0].textContent + unknown.children[2].children[1].textContent, /arbitrary subtitle data/);
+  const sessionError = f.context.burnResponseError('启动器编辑器会话无效，请从启动器重新打开', 403, 'burn-authorization');
+  const session = f.context.showBurnVideoFailure(sessionError, {stage: 'admission', mode: 'full'});
+  assert.match(session.children[0].textContent, /请从启动器重新打开/);
+  assert.match(session.children[2].children[1].textContent, /burn-authorization/);
+});
+
 for (const phase of ['download', 'write']) {
   test(`burn pipeline labels ${phase} errors after successful encoding`, async () => {
     const f = fixture();

@@ -412,10 +412,12 @@ class BurnVideoJobHttpTests(unittest.TestCase):
         self.thread.join(2)
         self.temp.cleanup()
 
-    def request(self, path, payload=None, token=True):
+    def request(self, path, payload=None, token=True, *, origin=None):
         headers = {"Content-Type": "application/json"}
         if token:
             headers["X-MAW-Request-Token"] = self.server.request_token
+        if origin is not None:
+            headers["Origin"] = origin
         data = json.dumps(payload).encode() if payload is not None else None
         request = urllib.request.Request(self.origin + path, data=data, headers=headers)
         try:
@@ -572,6 +574,18 @@ class BurnVideoJobHttpTests(unittest.TestCase):
                 self.assertEqual((status, body["code"]), (503, code))
                 self.assertNotIn("private-dir", json.dumps(body))
                 self.assertIsNone(self.server.media_jobs.active)
+
+    def test_http_admission_preserves_authorization_guidance(self):
+        native = self.server_editor.NativeBurnJobs(self.server_editor.BurnSessions(mock.Mock()))
+        with mock.patch.object(self.server, "native_burn", native), \
+             mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True):
+            status, body = self.request(self.base, self.payload(nativeSession="expired"), origin=self.origin)
+            self.assertEqual((status, body["code"]), (403, "burn-authorization"))
+            self.assertIn("请从启动器重新打开", body["error"])
+        status, body = self.request(self.base, self.payload(requestToken="invalid"), token=False)
+        self.assertEqual((status, body["code"]), (403, "burn-authorization"))
+        self.assertIn("请求令牌无效", body["error"])
 
     def test_http_green_screen_accepts_bound_audio_and_rejects_invalid_options(self):
         audio = self.root / "song.wav"

@@ -3677,7 +3677,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
         except PermissionError as error:
             if error.errno is None:
-                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "code": "permission", "error": str(error)},
+                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "code": "burn-authorization", "error": str(error)},
                                close_connection=True)
             else:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
