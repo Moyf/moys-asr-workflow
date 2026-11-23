@@ -1334,6 +1334,56 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(command[:3], ["MAW.exe", "--transcribe-tencent", str(self.media_path)])
         self.assertIn("--model", command)
 
+    def test_build_transcribe_command_moss_passes_model_keyterms_and_colors(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="moss",
+            model="moss-transcribe-diarize-pro",
+            moss_keyterms=("MOSS", "模思智能"),
+            speaker_colors=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[1:3], ["-m", "maw.asr.moss"])
+        self.assertEqual(command[command.index("--model") + 1], "moss-transcribe-diarize-pro")
+        self.assertEqual(command.count("--keyterm"), 2)
+        self.assertEqual(command[command.index("--keyterm") + 1], "MOSS")
+        self.assertIn("--speaker-colors", command)
+        # MOSS 自动识别语言：不下发 --language
+        self.assertNotIn("--language", command)
+
+    def test_build_transcribe_command_moss_omits_optionals_by_default(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="moss",
+            model="moss-transcribe-diarize-pro",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--keyterm", command)
+        self.assertNotIn("--speaker-colors", command)
+        self.assertNotIn("--language", command)
+        self.assertEqual(command.count("--with-waveform"), 1)
+
+    def test_build_transcribe_command_frozen_moss_dispatches_moss_flag(self) -> None:
+        request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path, provider="moss")
+
+        command = build_transcribe_command(request, executable=Path("MAW.exe"), frozen=True)
+
+        self.assertEqual(command[:3], ["MAW.exe", "--transcribe-moss", str(self.media_path)])
+
+    def test_child_environment_moss_uses_moss_key_only(self) -> None:
+        env = _child_environment({}, "secret-key", "workspace-123", "moss")
+
+        self.assertEqual(env["MOSS_API_KEY"], "secret-key")
+        self.assertNotIn("DASHSCOPE_API_KEY", env)
+        self.assertNotIn("DASHSCOPE_WORKSPACE_ID", env)
+        self.assertNotIn("VOLC_API_KEY", env)
+
     def test_child_environment_soniox_uses_soniox_key_only(self) -> None:
         env = _child_environment({}, "secret-key", "workspace-123", "soniox")
 
@@ -1364,6 +1414,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             "clip.qwen3-asr-api.srt",
         )
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="soniox", attach_model_name=True).name, "clip.soniox.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="moss", attach_model_name=True).name, "clip.moss-pro.srt")
         self.assertEqual(
             default_srt_path(Path("clip.mp4"), test_run=True, attach_model_name=True).name,
             "clip.qwen-audio-test.srt",

@@ -91,6 +91,7 @@ class TranscriptionRequest:
     openai_prompt: str = ""
     openai_keywords: tuple[str, ...] = ()
     openai_diarize: bool = False
+    moss_keyterms: tuple[str, ...] = ()
     runtime_python: str = ""
     postprocess_plan: dict[str, object] | None = None
     postprocess_llm_settings: dict[str, dict[str, str]] | None = None
@@ -230,6 +231,7 @@ PROVIDER_SRT_TAGS: Final = {
     "qwen": ".qwen3-asr-api",
     "soniox": ".soniox",
     "doubao": ".doubao",
+    "moss": ".moss-pro",
     "local": ".qwen-asr-local",
     "bcut": ".bcut",
     "tencent": ".tencent-asr",
@@ -312,9 +314,10 @@ def build_transcribe_command(
     is_bcut = request.provider == "bcut"
     is_openai = request.provider == "openai"
     is_doubao = request.provider == "doubao"
+    is_moss = request.provider == "moss"
     is_local = request.provider == "local"
     provider = request.provider if request.provider in {
-        "local", "soniox", "doubao", "bcut", "tencent", "openai",
+        "local", "soniox", "doubao", "bcut", "tencent", "openai", "moss",
     } else "qwen"
     module_name = f"maw.asr.{provider}"
     if is_local and request.runtime_python:
@@ -336,6 +339,8 @@ def build_transcribe_command(
             command = [exe, "--transcribe-openai"]
         elif is_doubao:
             command = [exe, "--transcribe-doubao"]
+        elif is_moss:
+            command = [exe, "--transcribe-moss"]
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
@@ -387,6 +392,13 @@ def build_transcribe_command(
     elif is_doubao:
         _append_option(command, "--model", request.model)
         _append_option(command, "--language", request.language)
+        if request.speaker_colors:
+            command.append("--speaker-colors")
+    elif is_moss:
+        _append_option(command, "--model", request.model)
+        # MOSS 自动识别语言，不下发 --language；说话人分离为模型固有输出。
+        for keyterm in request.moss_keyterms:
+            command.extend(["--keyterm", keyterm])
         if request.speaker_colors:
             command.append("--speaker-colors")
     elif is_bcut:
@@ -746,6 +758,9 @@ def _child_environment(
     elif provider == "doubao":
         if api_key:
             env["VOLC_API_KEY"] = api_key
+    elif provider == "moss":
+        if api_key:
+            env["MOSS_API_KEY"] = api_key
     elif provider == "bcut":
         pass  # 必剪为非官方免 Key 接口，无需注入凭据
     elif provider == "tencent":

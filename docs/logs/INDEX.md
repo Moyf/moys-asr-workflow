@@ -15,8 +15,10 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.11.4 之后 | 2026-11-22 | [缩略图后台化](release1.11.4/261122_缩略图后台化/缩略图后台化.checklist.md) / [独立审查](release1.11.4/261122_缩略图后台化/REVIEW_FINDINGS.md) | 编辑不等待缩略图，含抽帧测速与人工核验 |
+| 1.11.4 之后 | 2026-11-19 | [MOSS 云端供应商](release1.11.4/261119_MOSS云端供应商/MOSS_API_SUPPORT.md) / [独立审查](release1.11.4/261119_MOSS云端供应商/REVIEW_FINDINGS.md) / [人工清单](release1.11.4/261119_MOSS云端供应商/MOSS云端供应商.checklist.md) | 新增 moss-transcribe-diarize-pro 供应商（说话人 + keyterms + 自动断句）；本地验证 + 维护者实测一轮，字词时间码仍待实测补齐 |
 | 1.11.4 之后 | 2026-11-22 | [Launcher 最近工程展开与收起](release1.11.4/261122_Launcher最近工程/REVIEW_FINDINGS.md) | 默认 3 条、展开最多 10 条；含双向回归与审查结果 |
 | 1.11.4 之后 | 2026-11-21 | [文稿匹配对照](release1.11.4/261121_文稿匹配对照/文稿匹配对照.checklist.md) / [提交前自审](release1.11.4/261121_文稿匹配对照/REVIEW_FINDINGS.md) | 修复吞停顿/碎片替换/重叠失败三处匹配缺陷；Launcher 预览入口、三栏对照、底部双轨时间线与完整 MOSP 另存；原生选址待人工验收 |
+| 1.11.3 之后 | 2026-11-16 | [AI 后处理绑定修复与独立审查](release1.11.3/261116_AI后处理绑定修复/REVIEW_FINDINGS.md) | 合并/拆分后清理失效绑定，保留副字幕及未受影响关联；含合成回归与原版负对照 |
 | 1.11.4 之后 | 2026-11-20 | [ASS 逐字换色独立审查](release1.11.4/261120_ASS逐字换色KTV/REVIEW_FINDINGS.md) / [方案](../plans/ASS_KTV_KARAOKE.md) | `\k` 卡拉 OK 全链路的提交前自审：无 blocker/major，libass 语义与分片重定基独立像素级复证，关闭态零回归 |
 | 1.11.4 之后 | 2026-11-21 | [官网单一真源](release1.11.4/261121_官网单一真源/实施与验证.md) / [独立审查](release1.11.4/261121_官网单一真源/REVIEW_FINDINGS.md) / [候选复核与授权](release1.11.4/261121_官网单一真源/候选复核与后续授权.md) / [增量盲审修复](release1.11.4/261121_官网单一真源/增量盲审修复与验证.md) | 官网从工作树隔离生成；候选修复、staging 授权与验证边界见后续记录 |
 | 1.11.4 之后 | 2026-11-20 | [faster-whisper 缺 CUDA 库反馈](release1.11.4/261120_faster-whisper缺CUDA库/TEST_FEEDBACK_faster-whisper.md) / [独立审查](release1.11.4/261120_faster-whisper缺CUDA库/REVIEW_FINDINGS.md) | cuBLAS 12 DLL 加载错误与运行环境/回退责任核对及实施；推理期缺库 auto 单次 CPU 回退与显式 CUDA 可操作报错，含红绿证据与审查处置 |

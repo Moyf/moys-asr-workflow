@@ -109,6 +109,8 @@ Qwen/FunASR/FireRed 分块后恢复原时间偏移。MOSS 不分块，避免不�
 
 MOSS 使用 `trust_remote_code`。默认 Hugging Face 模型固定提交 `e8681d68e7042738ffca8ac8212bc8fcb1131ab8`，推理包固定 `e607537b1b870475e7898969d40b864de8b691b6`；ModelScope 回退不对齐 HF 提交，自定义模型也不套用默认 revision。首次加载前确认模型代码来源。
 
+不想配置本地运行环境时，也可在 Launcher 选择「MOSS（模思智能 / 说话人分离）」云端供应商，见 [PROVIDERS](../providers/)。
+
 MOSS 日志显示准备阶段和真实生成 token 数，无法预知最终长度，不给伪百分比。MOSS runtime 不含 quapeaks，缺少内核时跳过该容器生成；工程照常保存，波形可使用 `.mopeaks` 回退或由编辑器重建，不写进落盘工程。
 
 FireRed 识别的 ct-punc 是可选组件：生成标点并改善断句，不为标点伪造时间码。关闭后保留 CTC 结果；对齐模式只使用 CTC，不需要 ct-punc。

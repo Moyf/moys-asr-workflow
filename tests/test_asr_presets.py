@@ -80,6 +80,15 @@ class RecognitionPresetTests(unittest.TestCase):
         self.assertIs(restored["generateKeyframes"], True,
             "基础缩略图开关上线前保存的识别预设按当前默认（开启）迁移，而不是整份拒绝加载")
 
+    def test_legacy_preset_without_moss_keyterms_loads_with_default_empty(self):
+        path = self.library / "pre-moss.json"
+        legacy_options = dict(self.options)
+        legacy_options.pop("mossKeyterms")
+        path.write_text(json.dumps({"schema": SCHEMA, "options": legacy_options}), encoding="utf-8")
+        restored = read_preset(path)
+        self.assertEqual(restored["mossKeyterms"], "",
+            "MOSS 云端供应商上线前保存的识别预设按空热词迁移，而不是整份拒绝加载")
+
     def test_legacy_per_provider_contexts_merge_into_shared_prompt_context(self):
         path = self.library / "merged.json"
         legacy_options = dict(self.options)
