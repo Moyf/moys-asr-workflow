@@ -1306,6 +1306,10 @@ label {
   display: block;
 }
 
+#jsonPathError {
+  margin-top: 8px;
+}
+
 .invalid {
   border-color: var(--red)!important;
   box-shadow: 0 0 0 2px var(--red-soft)!important;

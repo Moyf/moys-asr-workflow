@@ -3751,16 +3751,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(detail, "HTTP 404")
 
-    def test_start_server_returns_existing_server_url_without_spawning(self) -> None:
-        """Given a responding port, When starting server, Then it reports the existing server instead of spawning."""
-        with mock.patch("maw.gui_web._wait_for_server", return_value=True):
-            with mock.patch("maw.gui_web.subprocess.Popen") as popen:
-                result = self.api.start_server({"port": "9876", "guiLang": "zh"})
+    def test_start_server_requires_a_project_before_probing_or_spawning(self) -> None:
+        with mock.patch("maw.gui_web._wait_for_server") as probe, \
+                mock.patch("maw.gui_web.popen_process_tree") as spawn:
+            result = self.api.start_server({"jsonPath": "  ", "port": "9876"})
 
-        self.assertTrue(result["ok"])
-        self.assertTrue(result["serverAlreadyRunning"])
-        self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
-        popen.assert_not_called()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "server_project_required")
+        probe.assert_not_called()
+        spawn.assert_not_called()
 
     def test_start_server_does_not_silently_ignore_manual_media_on_another_server(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
@@ -3926,6 +3926,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertFalse(result["hasMedia"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "server_project_unreadable")
+
+    def test_check_server_media_reports_missing_project_at_the_project_field(self) -> None:
+        result = self.api.check_server_media({"jsonPath": str(self.root / "missing.mosp")})
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["mediaExists"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "json_not_found")
 
     def test_start_server_requires_manual_media_when_project_media_missing(self) -> None:
         """Given project media is unusable, When no override is provided, Then server blocks."""
@@ -4748,6 +4758,39 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "srtPath")
         self.assertEqual(result["code"], "output_missing")
+
+    def test_launcher_returns_transcription_without_waiting_for_thumbnail_builder(self) -> None:
+        from maw.thumbnail_jobs import ThumbnailCoordinator
+
+        video = self.root / "video.mp4"
+        video.write_bytes(b"fixture")
+        result = TranscriptionResult(srt_path=self.root / "video.srt", json_path=self.root / "video.mosp", html_path=None)
+        result.srt_path.write_text("subtitle", encoding="utf-8")
+        result.json_path.write_text("{}", encoding="utf-8")
+        request = TranscriptionRequest(media_path=video, srt_path=result.srt_path, generate_keyframes=True, generate_thumbnails=True)
+        self.api.thumbnail_queue.coordinator = ThumbnailCoordinator(self.root / "jobs.sqlite3")
+        started = threading.Event()
+
+        def build(_path, *, cancel, **kwargs):
+            started.set()
+            cancel.wait(5)
+
+        with mock.patch("maw.thumbnail_jobs.cleanup_base_cache"), mock.patch(
+            "maw.gui_web.run_transcription", return_value=result
+        ) as transcribe, mock.patch(
+            "maw.thumbnail_jobs.build_base", side_effect=build
+        ):
+            try:
+                self.assertEqual(self.api._transcribe_with_background_thumbnails(request), result)
+                self.assertTrue(started.wait(3))
+                self.assertTrue(self.api.thumbnail_queue.thread.is_alive())
+                self.assertFalse(transcribe.call_args.args[0].generate_keyframes)
+                self.assertFalse(transcribe.call_args.args[0].generate_thumbnails)
+            finally:
+                thread = self.api.thumbnail_queue.thread
+                self.api.thumbnail_queue.close()
+                if thread:
+                    thread.join(5)
 
     def test_default_output_avoids_existing_srt_and_reports_rename(self) -> None:
         media = self.root / "clip.mp4"
