@@ -49,6 +49,15 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
 
+    def test_about_credits_footer_keeps_single_source_line(self) -> None:
+        # 关于页署名与其它 UI 字符串走同一套 i18n 单源翻译：模板只保留
+        # 中文原文，英文由 editor-i18n 词条提供，不再双语并列两行。
+        template = edit.read_web_asset("editor-template.html")
+        self.assertIn("<p>来自 Moy 的用爱发电 ❤️</p>", template)
+        self.assertNotIn("Made with love by Moy", template)
+        i18n = edit.read_web_asset("shared/editor-i18n.js")
+        self.assertIn("'来自 Moy 的用爱发电 ❤️': 'Made with love by Moy ❤️'", i18n)
+
     # G06 后这些 composition 模块不再出现在清单里，
     # 但仍是 waveform.js 的显式 import 与源码契约。
     WAVEFORM_COMPOSITION_SOURCES: ClassVar[tuple[str, ...]] = (

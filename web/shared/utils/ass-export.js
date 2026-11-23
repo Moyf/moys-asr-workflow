@@ -517,8 +517,7 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    // 副字幕位置由其样式预设（对齐 + MarginV）决定：排布计划把副字幕当作
-    // 固定层（见 assCreateStackPlan），不再强制排在主字幕上方。
+    // 未逐句定位的副字幕从样式对齐与 MarginV 排布；绝对坐标由共用计划应用。
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment, index) => {
         if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
@@ -636,7 +635,10 @@ export function createUtilsModule(dependencies) {
         width: resolution.width, height: resolution.height, measure: options.measureAssRun });
       if (typeof options.onAssPlan === 'function') options.onAssPlan({ ...plan, profile });
       if (options.allowAssPlanDiagnostics) return '';
-      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
+      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) {
+        const { code, message } = plan.diagnostics[0];
+        throw Object.assign(new Error(message), { code });
+      }
       events.length = 0;
       const number = value => Number(value.toFixed(4));
       const transform = profile.animations.t;

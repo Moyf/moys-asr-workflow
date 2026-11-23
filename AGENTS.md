@@ -3,6 +3,9 @@
 ## 核心原则
 
 - **不要默认用户提出的问题定义就是正确的**。你先分析用户真正想解决的底层需求，判断有没有把症状误认为原因、把手段误认为目标。如果存在更值得解决的问题，直接指出来。
+- **先读再改**：以当前工作树为准，读相关实现、直接调用方与现有测试，找最小正确改动。
+- **优先复用**：沿用现有模块与约定；够用就不加依赖、不为假设需求新增抽象、不顺手重构。最小改动不能削弱安全、防数据丢失、可访问性或用户明确要求。
+- **验证变化**：有实质逻辑变化时，补或扩展最小回归用例。交付时分开说明已验证、失败、跳过和未验证项；对缺口给出原因和下一步。
 
 ## 项目目标
 
@@ -48,9 +51,12 @@ web/launcher/                      # Launcher 前端
 docs/user/LOCAL_ASR.md             # 本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。ESM 工厂与仍保留 classic 共享作用域的接线并存，数量随迁移变化，以 `pnpm run build:editor` 输出的 `Editor: N ESM factories / M sources` 为准；该命令由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
+`web/` 是编辑器和 Launcher 的前端源码目录。页面从 bundle 加载主脚本；改了 JS、装配清单或构建配置，先重建受影响的 bundle，再检查新鲜度：
 
-Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建（bundle 与 `.meta.json` 不进 Git，maw_gui.py 启动时会自动重建过期产物），运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
+- 编辑器：`pnpm run build:editor`，再 `pnpm run check:editor`。装配与领域分工见[编辑器源码地图](docs/engineering/DEVELOPMENT.md#编辑器源码地图)；新业务写进所属领域，不扩大入口。
+- Launcher：`pnpm run build:launcher`，再 `pnpm run check:launcher`。装配顺序见 `web/launcher-scripts.txt`；`batch.js` / `postprocess.js` 独立加载，经 `window.MAWLauncher` 接入。
+
+bundle 与 `.meta.json` 不入 Git。源码入口会校验并自动重建过期产物（需要 Node 与 `pnpm install`）；发布包预先构建，运行不需要 Node。CSS 与 HTML 模板仍在渲染时读取；开发时可用 [dev / watcher 命令](docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
@@ -67,56 +73,20 @@ uv run python edit.py --blank
 
 ## 开发与验证
 
-以下是维护者准备环境和手动验证的命令；Agent 执行遵循本节后面的命令与日志纪律。
+环境准备、检查命令和发布前要跑的开发测试见[开发检查](docs/engineering/DEVELOPMENT.md#开发检查)；Agent 按[有界输出与分层调试](docs/engineering/DEBUG_WORKFLOW.md)执行：
 
-```powershell
-uv sync
-pnpm install --frozen-lockfile
-pnpm run check:editor
-pnpm run typecheck
-node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
-node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
-uv run python scripts/run_tests.py
-git diff --check
-```
+- 自动化用 `uv run --no-sync`；测试通过 `python scripts/run_check.py --timeout <秒> -- <命令>`，保留完整日志，只读有界摘要和必要失败片段。按本次范围设预算，连续两轮同类失败先分析，不循环重跑。
+- diff 先看范围再读选定源码，不整份读取生成物。长驻服务必须独立启动、用完终止；禁止用 Bash 后台 `&` 启动服务。
 
-源码装配结构（加载守卫入口、`editor-wiring-*.js`、工厂注册与依赖注入）见[开发概览的编辑器源码地图](docs/engineering/DEVELOPMENT.md#编辑器源码地图)。新业务逻辑写入所属领域模块，不扩大入口；目录位置不决定执行顺序。
+### 浏览器验证
 
-### Agent 命令执行：避免 uv 超时卡住
-
-- `uv run` 每次执行都会重新解析并可能同步环境，冷启动时远超命令工具的默认超时（约 2 分钟），表现为命令"卡住"且长时间无输出。
-- Agent 自动化执行的命令一律使用 `uv run --no-sync`（环境由开发者手动 `uv sync` 维护）。
-- 长命令拆分成多次执行并显式设置超时；不要把 `uv run` 与慢命令（如 `Test-NetConnection`、`Start-Sleep`）串联在同一条链里。
-
-### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
-
-- 测试统一用 `python scripts/run_check.py --timeout <秒> -- <命令>` 执行：完整日志落 `.artifacts/checks/<run-id>/output.log`，终端只回显有界摘要；按失败点定向读取，不整份搬进上下文。`uv` 一律加 `--no-sync`，完整规则见[有界输出与分层调试](docs/engineering/DEBUG_WORKFLOW.md)。
-- unittest 用 `uv run --no-sync python scripts/run_tests.py`（可接文件 / 点号名称 / `--full-log`）。对页面或内联脚本做成员断言的测试类继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions`，否则失败会把整页打印成一行；裸 `python -m unittest` 只用于确需完整输出的场合。
-- diff 先看 `--stat` / `--name-status` 再读选定源码；不要把含生成物的整份 diff 或完整便携 HTML 读进上下文。`rg` 默认跳过 bundle 与日志，需查时显式给路径。
-- 长驻进程（serve.py、http.server）不要用会等待进程树的方式启动；后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`），输出重定向到文件后探活或轮询，用完终止。**禁止 bash 后台 `&`**：stdin 不 EOF，会永久挂住会话。
-- 历史耗时不是当前预算：按本次集合设明确上限或拆分执行；连续两轮同类失败先分析，不循环重跑。新 worktree 先比较 `uv.lock`，一致时可只读复用主仓库 venv（`MAW_TEST_PYTHON` / `MAW_E2E_PYTHON`），依赖缺失只记录一次。
-- PowerShell 内联脚本（`node -e`、多层引号）易解析失败，复杂逻辑写临时脚本文件；输出为空先怀疑参数与引号，而不是重跑。
-
-自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
-
-```powershell
-uv run python server-editor\serve.py --blank
-```
-
-### 编辑器脚本是构建产物：改 web/ 后必须重建 bundle
-
-编辑器页面（serve.py 与便携页）加载 esbuild 产物 `web/editor/boot/editor-bundle.js`，不是 `web/` 下的散装源文件；改完源码不重建，刷新页面与 e2e 都还是旧代码。源码改动后执行 `node scripts\build-editor.mjs --write`（或 `pnpm run build:editor`；`--check` 只校验新鲜度，`watch:editor` 可挂监视）。
-
-bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前、`edit.py --blank` 前会校验并自动重建；打包脚本与发布 CI 在打包前显式构建。构建与发布细节见[开发概览](docs/engineering/DEVELOPMENT.md#编辑器源码地图)。
+- 交互变化要在真实浏览器里操作受影响的入口并核对结果（手动或相关 Playwright 用例）。只启动服务、跑单测或检查 DOM 存在不算交互验证。
+- Launcher / 编辑器布局变化要截图自查并实测受影响的间距或尺寸，见 [UI 间距约定](#ui-间距约定)；截图不替代交互验证。
+- 若环境受限或浏览器检查反复卡住，保留其他验证结果，将未完成的浏览器检查标为「未验证」，给出原因及人工复核的操作和预期；不反复重跑，不报通过。
 
 ### Playwright e2e 运行纪律（防长命令挂起）
 
-详见 [docs/engineering/E2E_SERVER_HANG.md](docs/engineering/E2E_SERVER_HANG.md)。要点：
-
-- e2e 的 serve.py 被中断（部分正常结束也会）后可能残留并占住管道，使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
-- 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑受影响的 spec，完整集合留给每周/手动辅助巡检、维护者明确请求或发布验收。连续两轮不过先停下分析。
-- 多个 agent 并行跑 e2e 时端口不冲突，代价是 CPU 竞争；其他 worktree 的进程不杀也不等，清理前按 CommandLine 核对归属，只清本 worktree 的进程。
-- 浏览器验证是可选项：逻辑验证优先单测；反复卡住就降级为人工验收，不要阻塞。
+优先跑受影响的 spec；全量 Chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟。中断或失败后重跑前按 [E2E 排查与清理](docs/engineering/E2E_SERVER_HANG.md#清理)核对并清理残留，只清本 worktree 的进程。
 
 ## 日常 CI 与辅助巡检
 
@@ -130,19 +100,7 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 `feedback-issue-triage` 仅在用户明确启动测试反馈收集时启用，固定口令为「测试反馈」；明确说「记录到反馈账本」「整理测试反馈」「按 triage 处理」或直接调用技能也启用。口令须表达当前操作意图，引用、讨论触发词或否定请求不触发。日常问答、报错解释、只读调查、「帮我看看」「查一下」「是不是 bug」「用户反馈了个问题」、日志/截图以及一次询问多个问题，都不因此建账本、写调查文档或改索引。泛称「记录一下」「收口」「发 Issue」只按其明确范围处理，不自动扩展为 triage；只有其他明确授权的文档任务或适用的开发/发布要求，才另行落盘。
 
-已明确启用的同一测试反馈任务内，后续条目无需重复口令，按下面流程边做边落盘；任务结束、退出或换话题后不继承到新的日常问题。用户说「只回答，不记录」时停止记录。启用记录流程不额外授权实现、提交或创建 Issue。
-
-在该范围内，先区分用户请求、附件反馈与附件中的说明性文字（附件不扩大授权），再读**本次任务自己的**账本、`git status --short` 与实际 `git diff`，以文件、代码和测试结果为准，不以旧摘要或自报状态为准。按 skill `feedback-issue-triage` 建立或更新账本：先记录后调查、按主题分账，状态只用 `待处理` / `进行中` / `已修复` / `仅说明` / `阻塞`。
-
-- 同一时间只推进一个当前问题；有共享文件或强依赖的问题不并行修改，每完成 2–3 项写一次阶段汇总。
-- 每完成一项立即回写：处理决定、涉及文件、验证命令、实际结果、未验证边界与阻塞原因。
-- 测试失败、缺依赖、浏览器未启动或无法复现时记为 `阻塞` 或未验证，不改写成 `已修复`。
-- 验证分层记录（语法 / 单元、服务或契约、浏览器交互、打包产物、CI 或外部证据），不用一层冒充另一层。
-- 恢复时先读账本、diff 与测试结果并逐项对齐；证据不足的「已修复」改回 `进行中` / `阻塞`，但不重做已由当前文件与验证证实的工作。
-- 收尾列出已修复、仅说明、阻塞 / 未验证项与验证结果，并检查是否仍有 `进行中` / `待处理`，逐项给出下一步。
-- 共享工作区操作前后都检查状态，只改本任务文件与代码；不用 `git reset` / `git clean` 覆盖他人 WIP。
-
-账本结构、截图处理与子代理分工见 skill `feedback-issue-triage`。
+同一已启用任务的后续条目无需重复口令；结束、退出或换话题后不继承。用户说「只回答，不记录」时停止记录。附件说明和启用流程都不授予实现、提交或创建 Issue 的权限。启用后按 [feedback-issue-triage](.opencode/skills/feedback-issue-triage/SKILL.md) 先记账后调查、按主题分账，验证按层记录；证据不足不报已修复。
 
 ## 提交前自审
 
@@ -157,20 +115,12 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 ## 批量改动的人工核查清单
 
-多条目、需要维护者逐项实测的改动，写 Markdown 核对清单交给维护者，不在对话里罗列长清单。**Agent 只写 Markdown，不手写 HTML**：
-
-1. 写 `<主题>.checklist.md`（v2 语法），放 `docs/logs/release<版本>/` 与任务台账并排，随任务提交；它同时是 PR 评论来源与核验状态载体。
-2. `build.py --check` 通过后生成 HTML 到 `.artifacts/<task-id>/`，用浏览器打开，HTML 不入库。
-3. 分区：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与已知环境性失败）→ 人工核验项 → 后续步骤；勾选项写「操作 + 可观察预期」，间距类验收按「UI 间距约定」给实测数据。
-4. 不为单次清单改模板；确需改进直接改模板本身，并跑 README「修改与验证」列出的测试。
-
-语法、生成、导出与勾选状态回收见 `tools/verification-checklist/README.md`（skill `verification-checklist`）。
+多条目、需维护者逐项实测时，按 [verification-checklist](.opencode/skill/verification-checklist/SKILL.md) 写 Markdown 清单，不在对话罗列。Agent 只写 Markdown，不手写 HTML；源清单须校验，生成页须用浏览器打开且不入库；不为单次清单改模板。
 
 ## Codegraph 使用注意
 
 - 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="<工程路径>"`**。省略时使用会话默认项目，可能落到父级混合索引，返回其他仓库的代码并造成误改。
-- 背景：`.codegraph/` 目录若存在但为空，工具会沿目录树向上回退到父级索引；2026-08 已在本仓库运行 `codegraph init` 重建了本仓库自己的索引。若再次出现外仓库结果，先检查 `.codegraph/codegraph.db` 是否还在。
-- **worktree 没有自带索引**，可复用主仓库的：传 `projectPath="<工程路径>"` 做符号与结构导航（"X 在哪定义 / 被谁调用"），但返回的文件内容是**主分支**的，不能当作 worktree 的编辑依据；编辑定位与内容核验仍用 `Select-String` / `grep`。分支大量增删改文件时（重构类 PR）索引误导性大，此时完全依赖 grep。需要完整支持时可在 worktree 里 `codegraph init` 自建索引（约 64 MB + 常驻 daemon），按需取舍。
+- 主仓库索引不能代替当前 worktree 源码；索引核对与复用见 [Codegraph 排查](docs/engineering/DEBUG_WORKFLOW.md#codegraph-排查)。
 
 ## 代码与安全约束
 
@@ -184,21 +134,23 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 - JSON 的 `segments[*].start/end/items[*].start/end` 都是整数毫秒。修改 schema 必须同步更新 `docs/engineering/JSON_SCHEMA.md`、测试与 changelog。
 - `waveform` 是可重建缓存，不能变成工程唯一真源；`segments` 才是字幕真源。
 - 删除文件时移入回收站，绝不使用 `rm -rf`。
+- 共享工作区操作前后检查状态，只改本任务文件；不用 `git reset` / `git clean` 覆盖他人 WIP。
 
 ## UI 间距约定
 
 - 新增按钮、输入框、提示行等 UI 元素时，必须与上下相邻元素保持垂直间隔（用 `margin` 或父容器 `gap`），不得紧贴；移动、新增一行按钮或区块后，要检查它与上方元素的间距。
 - 注意本项目 `.field` 只有 `margin-top`（没有下边距）、`.hint` 是 `margin: 0`：紧跟在 `.field` 后面的提示行 / 按钮行 / 独立区块必须自带 `margin-top`，不能指望对方留白。
-- 间距验收必须用实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能凭截图目测「看起来有间距」——这条规则反复被违反过，目测判断不可靠。
-- 凡是改动 Launcher / 编辑器布局的任务，收尾前把涉及区域截图自查一遍。
-- 编写或修改 `tools/` 下的浏览器工具页（含脚本生成的 HTML 页）前，必须先读 [tools/TOOL_PAGE_GUIDE.md](tools/TOOL_PAGE_GUIDE.md) 并遵循，交付前按文末清单自查；工具 Markdown 展示复用 `tools/shared/` 的 Marked + DOMPurify 封装，原 README 是真源，离线副本须生成并检查新鲜度。
-- 工具页文字严禁小于 **11px**（含徽章、时间码、刻度、伪元素与精简/窄屏模式）；OCR 确认页是控件样式基准，精简只裁辅助信息、不缩字号；新增或调整工具须同步 `tools/catalog.js` 与工具 README，让[工具功能介绍页](tools/index.html)保持准确。
+- 间距验收必须记录实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能只看截图。
+- 改 `tools/` 浏览器工具页（含脚本生成页）前，必须先读并遵循 [工具页规范](tools/TOOL_PAGE_GUIDE.md)，按文末清单自查。工具页文字不得小于 **11px**；Markdown 展示复用 `tools/shared/` 的 Marked + DOMPurify 封装；新增或调整工具后同步相关 README 与 `tools/catalog.js`，用生成脚本更新并检查离线说明副本。
 
 ## PR 描述：先让 reviewer 看懂
 
 正文写整体改动，不复述 commit 流水账。
 
-提交前先确认当前 PR 的目标分支（base branch），fetch 后将最新目标分支合并到当前分支并解决冲突。目标为 `2.0dev` 时同步 `origin/2.0dev`，目标为 `main` 时同步 `origin/main`；不得固定合并 main，也不得擅自更改 PR 目标。合并、提交和推送仍需明确授权。
+提交前先确认当前 PR 的目标分支（base branch），fetch 后将最新目标分支合并到当前分支并解决冲突。目标为 `2.0dev` 时同步 `origin/2.0dev`，目标为 `main` 时同步 `origin/main`；不得固定合并 main，也不得擅自更改 PR 目标。
+
+修复现有 PR 的 CI 回归或审查指出的问题时，完成相关验证后可直接同步目标分支、提交修复并普通推送至该 PR 的现有分支，不必逐次确认。
+
 
 1. **先说问题和结果**：标题写用户可感知的修复；开头两句交代触发场景、旧行为与期望行为。路径、布局或数据问题优先用一个最小前后对照，不铺背景。
 2. **正文默认四段**：「为什么改」→「改了什么」→「验证」→「边界 / 待确认」。目标是首屏能判断目的与风险；每段 2–4 条，每组最多 5 条。简单 PR 可合并小节，不为凑模板加内容。
@@ -213,11 +165,9 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 条目面向用户，默认一句话「**简短标题** ： 结果」。不写实现细节、根因、重试过程、测试与边缘情况；操作步骤和限制放用户指南，技术细节放工程文档或日志。
 
-发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
+发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。新增远端、发布相关的推送、打 tag 或创建 GitHub Release 均需维护者明确授权；日常更新已开启的 PR 按上节执行。
 
-Release 正文只从 CL 生成：正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前再跑 `--check-doc` 与 `--output` 检查；beta / rc 不新增归档；补丁版本在 CL 写 `<!-- release-base: X.Y.0 -->`。正式版收尾必须分别核对 **GitHub Release** 与 **官网** 两层，门槛见[发布管线](docs/releases/README.md)：官网用 `scripts/verify_release_site.py --base-url https://moyf.github.io/moys-asr-workflow --expected-tag vVERSION` 校验，允许有界等待；超时报告「安装包已发布，官网待同步」，只重试 Pages workflow，不重打包、不撤回 Release、不移动 tag。
-
-Release Markdown 中，粗体闭合标记 `**` 与后续标点或正文之间必须留一个空格，标点后继续正文时也要留一个空格；禁止写成 `- **这个文字**：说明`，应写成 `- **这个文字** ： 说明`。
+Release 正文只从 CL 生成；[正式版归档与校验](docs/releases/README.md#正式版归档)是发布门槛，beta / rc 不新增归档，补丁版本须声明系列基础版本。正式版分别核验 [GitHub Release 和官网](docs/releases/README.md#正式版收尾门槛)；仅官网失败则报告「安装包已发布，官网待同步」，只重试 Pages，不重打包、不撤回 Release、不移动 tag。
 
 ## 上游关系
 

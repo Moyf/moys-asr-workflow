@@ -21,7 +21,7 @@ from maw.project import normalize_project
 from maw.project_io import strip_inline_caches
 from maw.script_alignment import (
     align_project_to_script, apply_alignment_to_project, make_selection_manifest,
-    normalize_alignment_text,
+    normalize_alignment_text, normalize_gap_remove_settings,
 )
 from maw.script_timestamp_alignment import (
     MAX_SCRIPT_ALIGNMENT_MS, read_script_lines, tokens_to_script_segments,
@@ -157,7 +157,8 @@ def recommend_recording(project: Mapping[str, Any], script: str, *,
 
 
 def review_recording(project: Mapping[str, Any], alignment: dict[str, Any],
-                     request: Mapping[str, Any], *, gap_remove: Mapping[str, Any] | None = None
+                     request: Mapping[str, Any], *, gap_remove: Mapping[str, Any] | None = None,
+                     auto_mark_silence: bool = True,
                      ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     selected = request.get("selectedByLine", {})
     candidate_actions = request.get("candidateActions", {})
@@ -169,8 +170,16 @@ def review_recording(project: Mapping[str, Any], alignment: dict[str, Any],
                                         candidate_actions=candidate_actions, extra_actions=extra_actions)
     if gap_remove is not None and not isinstance(gap_remove, Mapping):
         raise RecordingWorkflowError("静音切除状态必须是对象。")
-    reviewed = apply_alignment_to_project(project, alignment, selection, gap_remove_override=gap_remove)
+    settings = normalize_gap_remove_settings(gap_remove)
+    reviewed = apply_alignment_to_project(
+        project, alignment, selection, gap_remove_override=gap_remove, detect_audio_gaps=auto_mark_silence,
+        minimum_gap_ms=int(settings["minimum_ms"]), threshold_db=settings["threshold_db"],
+        hysteresis_db=settings["hysteresis_db"], lead_in_ms=int(settings["lead_in_ms"]),
+        lead_out_ms=int(settings["lead_out_ms"]),
+    )
     snapshot = canonical_review_request(request, reviewed.get("gap_remove", {}))
+    if not auto_mark_silence:
+        snapshot["autoMarkSilence"] = False
     chosen = {c["lineId"]: c for c in selection["selected"]}
     blockers = [{"lineId": "", "reason": error}
                 for error in evidence_errors(project, request.get("sourceConfirmed") is True)]
@@ -291,7 +300,8 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
                        cancel_event: Any = None, on_event: Callable[[str], None] | None = None
                        ) -> tuple[dict[str, Any], dict[str, Any]]:
     review, selection, reviewed = review_recording(project, alignment, request,
-                                                    gap_remove=request.get("gapRemove"))
+                                                     gap_remove=request.get("gapRemove"),
+                                                     auto_mark_silence=request.get("autoMarkSilence") is not False)
     if not review["ready"]:
         raise RecordingWorkflowError("; ".join(f'{b["lineId"]}: {b["reason"]}' for b in review["blockers"]))
     from maw.language import normalize_language_code

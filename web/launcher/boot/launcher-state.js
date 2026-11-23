@@ -13,6 +13,8 @@ const ERROR_TEXT = {
   zh: {
     json_not_found: "工程文件不存在，请检查路径。",
     media_not_found: "媒体文件不存在，请重新选择。",
+    server_project_required: "请先选择或拖入工程文件，再打开编辑器。",
+    server_project_unreadable: "无法读取工程文件，请选择有效的 MAW 工程。",
     server_media_missing: "工程无可用媒体，请手动选择媒体文件。",
     server_media_busy: "该端口已有其他编辑器实例，无法打开所选工程或应用新的媒体关联；请关闭该实例或更换端口。",
     server_stop_not_maw: "当前端口上的进程不是 MAW 字幕编辑服务器，未执行停止。",
@@ -110,6 +112,8 @@ const ERROR_TEXT = {
   en: {
     json_not_found: "Project file does not exist. Check the path.",
     media_not_found: "Media file does not exist. Choose it again.",
+    server_project_required: "Choose or drop a project file before opening the editor.",
+    server_project_unreadable: "Could not read the project file. Choose a valid MAW project.",
     server_media_missing: "The project has no usable media. Choose the media file manually.",
     server_media_busy: "Another editor is using this port. Close it or choose another port to open the selected project or apply the new media association.",
     server_stop_not_maw: "The current port is not used by a MAW subtitle editor server, so it was not stopped.",
@@ -222,6 +226,7 @@ Object.assign(ERROR_TEXT.en, {
   alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
 });
 Object.assign(STRINGS.zh, {
+  toolbox_mosp_drop_loaded: "已将 MOSP 工程载入字幕处理",
   start_server_editor: "打开编辑器",
   toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
   error_notice_title: "任务未完成",
@@ -238,6 +243,7 @@ Object.assign(STRINGS.zh, {
   error_copy_report_failed: "复制失败，请手动复制日志。",
 });
 Object.assign(STRINGS.en, {
+  toolbox_mosp_drop_loaded: "MOSP project loaded in Subtitle Tools",
   start_server_editor: "Open editor",
   toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
   error_notice_title: "Task not completed",
@@ -261,6 +267,13 @@ Object.assign(STRINGS.zh, {
   toolbox_alignment_script_placeholder: "选择或拖入 UTF-8 .txt / .md 校对文稿",
   toolbox_alignment_script_hint: "每个非空行视为一行校对文稿。",
   toolbox_alignment_gap_heading: "自动标记静音",
+  toolbox_recording_input_mode: "输入方式",
+  toolbox_recording_input_project: "使用已有原始 ASR 工程",
+  toolbox_recording_input_audio: "从录音开始",
+  toolbox_recording_input_hint: "从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。",
+  toolbox_recording_stop: "停止转写",
+  toolbox_run_alignment: "打开口播对齐",
+  toolbox_transcribe_alignment: "转写并打开口播对齐",
   toolbox_alignment_gap_hint: "仅作用于口播对齐导出的自动空隙；与 MAWE 设置分开保存。",
   toolbox_alignment_gap_minimum: "最短静音（ms）",
   toolbox_alignment_gap_minimum_hint: "短于此值的静音不处理。",
@@ -281,6 +294,13 @@ Object.assign(STRINGS.en, {
   toolbox_alignment_script_placeholder: "Choose or drop a UTF-8 .txt / .md proofreading script",
   toolbox_alignment_script_hint: "Each non-empty line is treated as one proofreading-script line.",
   toolbox_alignment_gap_heading: "Auto-mark silence",
+  toolbox_recording_input_mode: "Input mode",
+  toolbox_recording_input_project: "Use an existing raw ASR project",
+  toolbox_recording_input_audio: "Start from a recording",
+  toolbox_recording_input_hint: "Starting from a recording uses the ASR provider, model, audio track and output location selected in the main window. It skips script replacement and automatic AI post-processing. Extra content is kept by default.",
+  toolbox_recording_stop: "Stop transcription",
+  toolbox_run_alignment: "Open speech alignment",
+  toolbox_transcribe_alignment: "Transcribe and open speech alignment",
   toolbox_alignment_gap_hint: "Applies only to gaps generated during speech-alignment export; saved separately from MAWE settings.",
   toolbox_alignment_gap_minimum: "Minimum silence (ms)",
   toolbox_alignment_gap_minimum_hint: "Silence shorter than this is ignored.",

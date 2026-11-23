@@ -19,6 +19,7 @@ from maw.gui_platform import creationflags, startupinfo
 IMAGE_SPEC = {"width": 160, "height": 90, "encoding": "jpeg", "fit": "contain", "rotation": "auto", "sar": "display"}
 MAX_BATCH_TARGETS = 16
 MAX_BATCH_SPAN_MS = 30_000
+BACKGROUND_BATCH_SPAN_MS = 60_000
 MAX_KEYFRAME_CELLS = 4000
 
 
@@ -188,11 +189,11 @@ def base_interval_ms(duration_ms: int) -> int:
     return 2_000 if duration_ms <= 600_000 else 5_000 if duration_ms <= 3_600_000 else 10_000
 
 
-def batches(requests: Sequence[int]) -> list[list[int]]:
+def batches(requests: Sequence[int], *, max_span_ms: int = MAX_BATCH_SPAN_MS) -> list[list[int]]:
     """Partition sorted unique source-grid targets by both count and span."""
     result: list[list[int]] = []
     for target in sorted(set(requests)):
-        if not result or len(result[-1]) == MAX_BATCH_TARGETS or target - result[-1][0] > MAX_BATCH_SPAN_MS:
+        if not result or len(result[-1]) == MAX_BATCH_TARGETS or target - result[-1][0] > max_span_ms:
             result.append([])
         result[-1].append(target)
     return result
@@ -251,7 +252,7 @@ def _frame_times(media_path: Path | str, video: VideoInfo, batch: Sequence[int],
     return _packet_times(media_path, video, begin, end, timeout_s=timeout_s, cancel=cancel, ffmpeg_path=ffmpeg_path)[0]
 
 
-def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 45, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2) -> list[FrameResult]:
+def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 45, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2, profile: dict[str, float] | None = None, max_span_ms: int = MAX_BATCH_SPAN_MS) -> list[FrameResult]:
     """Batch-decode selected real frames, including VFR and held tail frames.
 
     The timestamp probe reads a short packet-PTS interval from its preceding
@@ -274,9 +275,12 @@ def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, strea
     source_stat = Path(media_path).stat()
     source_identity = (source_stat.st_size, source_stat.st_mtime_ns)
     output: dict[int, FrameResult] = {}
-    for batch in batches(values):
+    for batch in batches(values, max_span_ms=max_span_ms):
         deadline = time.monotonic() + timeout_s
+        started = time.monotonic()
         candidates = _frame_times(media_path, video, batch, timeout_s=timeout_s, cancel=cancel, ffmpeg_path=ffmpeg_path)
+        if profile is not None:
+            profile["probe"] += time.monotonic() - started
         choices: dict[int, float] = {}
         for target in batch:
             before = [p for p in candidates if p * 1000 - video.start_ms <= target + 0.001]
@@ -292,13 +296,19 @@ def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, strea
                 expression = "+".join(f"lt(abs(t-{p:.9f}),0.000001)" for p in selected)
                 vf = f"select='{expression}',scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
                 command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-threads", str(threads), "-filter_threads", "1", "-copyts", "-ss", f"{seek:.9f}", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-threads", str(threads), "-frames:v", str(len(selected)), "-y", str(Path(temp) / "%06d.jpg")]
+                started = time.monotonic()
                 result = _run(command, timeout_s=max(0.01, deadline - time.monotonic()), cancel=cancel)
+                if profile is not None:
+                    profile["decode_jpeg"] += time.monotonic() - started
                 if result.returncode:
                     raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
                 files = sorted(Path(temp).glob("*.jpg"))
                 if len(files) != len(selected):
                     raise ThumbnailError("selected source frames were not decoded")
+                started = time.monotonic()
                 images = {pts: file.read_bytes() for pts, file in zip(selected, files)}
+                if profile is not None:
+                    profile["jpeg_read"] += time.monotonic() - started
         for target in batch:
             pts = choices.get(target)
             output[target] = FrameResult(target, max(0, round(pts * 1000) - video.start_ms), "target", images[pts]) if pts in images else FrameResult(target, None, "unavailable", None)

@@ -124,7 +124,7 @@ async function install(page, origin, mode) {
       currentAssVideoResolution: () => ({ width: 1920, height: 1080 }),
     };
     window.MaweHint = { flashHint: (text) => window.hints.push(text) };
-    window.MaweHost = { server: { fetch: (...args) => fetch(...args) }, files: {
+    window.MaweHost = { storage: window.localStorage, server: { fetch: (...args) => fetch(...args) }, files: {
       hasSavePicker: () => true,
       pickSaveFile: async ({ suggestedName }) => {
         window.pickedName = suggestedName;
@@ -142,6 +142,86 @@ async function install(page, origin, mode) {
   await page.addScriptTag({ content: handler });
 }
 
+async function startBurn(page, button = '#burn-video-export-btn') {
+  await page.click(button);
+  if (button !== '#download-green-screen-video') await page.locator('#burn-video-encoding [type="submit"]').click();
+}
+
+test('editor burn validates and saves defaults without starting a job', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    const dialog = page.locator('#burn-video-encoding');
+    await page.click('#burn-video-export-btn');
+    const crf = dialog.locator('#burn-video-crf');
+    await expect(crf).toHaveValue('21');
+    await crf.fill('52');
+    await dialog.locator('[type="submit"]').click();
+    await expect(dialog).toBeVisible();
+    await crf.fill('25');
+    await dialog.locator('#burn-video-preset').selectOption('slow');
+    await dialog.locator('#burn-video-audio-bitrate').selectOption('128k');
+    await dialog.locator('[data-save-defaults]').click();
+    await expect(dialog.locator('[role="status"]')).toHaveText('已保存为默认参数');
+    await dialog.locator('[data-cancel]').click();
+    await expect(dialog).toBeHidden();
+    expect(state.payloads).toEqual([]);
+    expect(await page.evaluate(() => window.pickedName)).toBeUndefined();
+    await page.click('#burn-video-export-btn');
+    await expect(crf).toHaveValue('25');
+    await dialog.locator('[type="submit"]').click();
+    await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+    expect(state.payloads[0].encoding).toEqual({ crf: 25, preset: 'slow', audioBitrate: '128k' });
+  });
+});
+
+test('binding change while the encoding dialog is open does not open the save picker', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    await page.click('#burn-video-export-btn');
+    await page.evaluate(() => { MaweBoot.SERVER_CONFIG.bindingGeneration += 1; });
+    await page.locator('#burn-video-encoding [type="submit"]').click();
+    expect(await page.evaluate(() => window.hints.some(text => text.includes('绑定已变更')))).toBe(true);
+    expect(await page.evaluate(() => window.pickedName)).toBeUndefined();
+    expect(state.payloads).toEqual([]);
+  });
+});
+
+test('burn diagnostics card expands, copies, and leaves room between controls', async ({ page }, testInfo) => {
+  await fixture('burn', async (origin) => {
+    await install(page, origin, 'burn');
+    await page.addStyleTag({ path: join(root, 'web', 'editor.css') });
+    const hintSource = fs.readFileSync(join(root, 'web', 'editor/ui/editor-hint.js'), 'utf8')
+      .replace(/^import .*;\n/m, '').replace('export function initMaweHint()', 'function initMaweHint()');
+    await page.addScriptTag({
+      content: `const createConsoleMirrorModule = () => ({ mirrorFeedback() {} }); ${hintSource}\ninitMaweHint();`,
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {value: {writeText: async text => { window.copied = text; }}});
+      showBurnVideoFailure(burnResponseError('FFmpeg 编码异常退出'), {
+        stage: 'burning', mode: 'full', jobId: 'fixture-job',
+        diagnostic: {ffmpegVersion: '8.0', attempts: [
+          {encoder: 'nvenc', exitCode: 7, elapsedMs: 1550, reasons: ['cannot load nvcuda.dll'], stderrPresent: true},
+          {encoder: 'cpu', exitCode: 1, elapsedMs: 1700, stderrPresent: false},
+        ]},
+      });
+    });
+    const card = page.locator('.hint-card.hint-warning');
+    const details = card.locator('details');
+    await expect(card.locator('pre')).toBeHidden();
+    await details.locator('summary').click();
+    await expect(card.locator('pre')).toContainText('FFmpeg 未输出错误详情');
+    await card.getByRole('button', { name: '复制诊断' }).click();
+    await expect(card.getByRole('button', { name: '已复制' })).toBeVisible();
+    expect(await page.evaluate(() => window.copied)).toContain('fixture-job');
+    expect(await card.evaluate(el => {
+      const [title, actions, report] = el.children;
+      return Math.min(actions.getBoundingClientRect().top - title.getBoundingClientRect().bottom,
+        report.getBoundingClientRect().top - actions.getBoundingClientRect().bottom);
+    })).toBeGreaterThanOrEqual(8);
+    await card.screenshot({ path: testInfo.outputPath('burn-diagnostic.png') });
+  });
+});
+
 for (const [buttonId, label, expected] of [
   ['#burn-video-export-btn', '烧录视频', { ass: '[Script Info] full' }],
   ['#download-gap-removed-burn-video', '重组后烧录视频',
@@ -150,11 +230,12 @@ for (const [buttonId, label, expected] of [
   test(`${label} burns, downloads and saves with a dated MP4 name`, async ({ page }) => {
     await fixture('ready', async (origin, state) => {
       await install(page, origin, 'ready');
-      await page.click(buttonId);
+      await startBurn(page, buttonId);
       await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
       await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('已保存')))).toBe(true);
       const payload = state.payloads[0];
       expect(payload.ass).toBe(expected.ass);
+      expect(payload.encoding).toEqual({ crf: 21, preset: 'medium', audioBitrate: '192k' });
       expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([[buttonId.includes('gap') ? 'gap-ass' : 'ass',
         { alignFirstStart: false }]]);
       expect(payload.intervals).toEqual(expected.intervals ?? undefined);
@@ -190,7 +271,7 @@ for (const includeAudio of [false, true]) {
 test('stop during burning cancels the task and permits retry', async ({ page }) => {
   await fixture('burn', async (origin, state) => {
     await install(page, origin, 'burn');
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect(page.locator('#burn-video-job-stop')).toBeVisible();
     await expect(page.locator('#burn-video-job-status')).toContainText('正在烧录字幕');
     await page.click('#burn-video-job-stop');
@@ -198,7 +279,7 @@ test('stop during burning cancels the task and permits retry', async ({ page }) 
     expect([...state.jobs.values()][0].state).toBe('cancelled');
     expect(await page.evaluate(() => window.hints.some(text => text.includes('已保存')))).toBe(false);
     await expect(page.locator('#burn-video-export-btn')).toBeEnabled();
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect.poll(() => state.jobs.size).toBe(2);
     await page.click('#burn-video-job-stop');
     await expect(page.locator('#burn-video-export-btn')).toBeEnabled();
@@ -208,7 +289,7 @@ test('stop during burning cancels the task and permits retry', async ({ page }) 
 test('stop cancels admitted work before a delayed admission delivers jobId', async ({ page }) => {
   await fixture('admission-body', async (origin, state) => {
     await install(page, origin, 'admission-body');
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect.poll(() => state.jobs.size).toBe(1);
     expect(await page.evaluate(() => window.__maweBurnVideoTask.id)).toBeNull();
     const job = [...state.jobs.values()][0];
@@ -224,7 +305,7 @@ test('stop cancels admitted work before a delayed admission delivers jobId', asy
 test('mime failure, source-name conflict and bad extension clear the task', async ({ page }) => {
   await fixture('mime-failure', async (origin, state) => {
     await install(page, origin, 'mime-failure');
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('导出失败')))).toBe(true);
     await expect.poll(() => [...state.jobs.values()][0]?.state).toBe('cancelled');
     expect(await page.evaluate(() => window.saved)).toBe(false);
@@ -232,12 +313,12 @@ test('mime failure, source-name conflict and bad extension clear the task', asyn
   });
   await fixture('ready', async (origin) => {
     await install(page, origin, 'source-name');
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     expect(await page.evaluate(() => window.hints)).toContain('保存目标不能与源视频同名');
   });
   await fixture('ready', async (origin) => {
     await install(page, origin, 'bad-extension');
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     expect(await page.evaluate(() => window.hints)).toContain('烧录视频请使用 .mp4 扩展名');
   });
 });
@@ -252,7 +333,7 @@ test('gap-removed entry without removed gaps or ASS content stays silent and fai
         return null;
       };
     });
-    await page.click('#download-gap-removed-burn-video');
+    await startBurn(page, '#download-gap-removed-burn-video');
     await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('静音空隙')))).toBe(true);
     expect(await page.evaluate(() => window.saved)).toBe(false);
   });
@@ -287,7 +368,7 @@ for (const [buttonId, text] of [['#burn-video-export-btn', 'CURRENT SRT'],
         MaweInlineEdit.finishEdit = () => commits.push('main');
         MaweInlineEdit.finishExtensionEdit = () => commits.push('extension');
       });
-      await page.click(buttonId);
+      await startBurn(page, buttonId);
       await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
       expect(state.payloads[0].srt).toContain(text);
       expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([[buttonId.includes('gap') ? 'gap-srt' : 'srt',
@@ -308,7 +389,7 @@ test('picker resume rejects revoked burn capability before creating a job', asyn
         window.finishPicker = () => resolve({ name: 'result.mp4' });
       });
     });
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect.poll(() => page.evaluate(() => Boolean(window.finishPicker))).toBe(true);
     await page.evaluate(() => {
       MaweBoot.SERVER_CONFIG.canBurnVideoExport = false;
@@ -332,7 +413,7 @@ for (const button of ['#burn-video-export-btn', '#download-gap-removed-burn-vide
           window.finishGainPicker = () => resolve(originalPicker(options));
         });
       });
-      await page.click(button);
+      await startBurn(page, button);
       await expect.poll(() => page.evaluate(() => Boolean(window.finishGainPicker))).toBe(true);
       await page.evaluate(() => { window.fixtureGain = -12; window.finishGainPicker(); });
       await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
@@ -362,7 +443,7 @@ for (const phase of ['admission-body', 'write-pending']) {
           createWritable: async () => ({ write: () => new Promise(() => { window.writeStarted = true; }),
             close: async () => { window.saved = true; }, abort: async () => { window.fileAborted = true; } }) });
       }, phase);
-      await page.click('#burn-video-export-btn');
+      await startBurn(page);
       await expect.poll(() => state.jobs.size).toBe(1);
       if (phase === 'write-pending') await expect.poll(() => page.evaluate(() => window.writeStarted)).toBe(true);
       else expect(await page.evaluate(() => window.__maweBurnVideoTask.id)).toBeNull();
@@ -436,7 +517,7 @@ for (const assMode of [true, false]) {
             gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }, { start: 2000, end: 5000 }] }),
           });
         }, { assMode, gapRemoved });
-        await page.click(gapRemoved ? '#download-gap-removed-burn-video' : '#burn-video-export-btn');
+        await startBurn(page, gapRemoved ? '#download-gap-removed-burn-video' : '#burn-video-export-btn');
         await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
         expect(state.payloads).toHaveLength(1);
         const payload = state.payloads[0];
@@ -471,7 +552,7 @@ test('lazy ASS fonts keep the save picker immediate and defer serialization unti
       window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };
       window.MaweAudioProcessing = { settings: () => ({ gain_db: window.fixtureGain ?? 3 }) };
     });
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
     expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([]);
     expect(state.payloads).toEqual([]);
@@ -493,7 +574,7 @@ test('project switch while lazy ASS fonts wait does not serialize or submit the 
       const ready = new Promise(resolve => { window.releaseFonts = () => { pending = false; resolve(); }; });
       window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };
     });
-    await page.click('#burn-video-export-btn');
+    await startBurn(page);
     await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
     const switched = await page.evaluate(() => {
       const previous = MaweProjectLoad.projectBindingEpoch;

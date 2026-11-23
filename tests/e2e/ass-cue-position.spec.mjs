@@ -51,6 +51,48 @@ test.beforeEach(async ({ page }, info) => {
 const snapshot = page => page.evaluate(() => ({ override: MaweBoot.DATA.segments[0].assOverride ?? null,
   undo: MaweHistory.editorHistory.undoLength(), redo: MaweHistory.editorHistory.redoLength(), dirty: MaweServerSave.hasUnsavedProjectChanges() }));
 
+test('extension cue drag enables coordinates and exports fixed position', async ({ page }, info) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle = AsrEditorUtils.normalizeMultiSubtitle({
+      enabled: true,
+      tracks: [{ id: 'translation', segments: [{ id: 'translated', start: 0, end: 2000, text: 'Translation' }] }],
+    }, MaweBoot.DATA.segments);
+    MaweDom.extensionOverlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const box = page.locator('.ass-cue-drag-target[data-track-kind="extension"]');
+  await expect(box).toBeVisible({ timeout: 3000 });
+  await box.click();
+  await expect(box).toHaveClass(/selected/);
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+  const bounds = await box.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 20, bounds.y + bounds.height / 2 - 10);
+  await page.mouse.up();
+  await expect(page.locator('#ass-cue-position')).toBeVisible();
+  await expect(page.locator('#ass-cue-scale-controls')).toBeHidden();
+  await page.locator('#ass-cue-x').fill('320'); await page.locator('#ass-cue-x').press('Tab');
+  await page.locator('#ass-cue-y').fill('140'); await page.locator('#ass-cue-y').press('Tab');
+  const state = await page.evaluate(() => {
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    return {
+      anchor: MaweAssCanvas.lastRender.tracks.find(track => track.role === 'extension').anchor,
+      saved: JSON.parse(MaweJsonRepair.buildJson()).multi_subtitle.tracks[0].segments[0].assOverride,
+      dialogue: MaweExportSrt.buildAss().split('\n').find(line => line.startsWith('Dialogue:') && line.includes('Translation')),
+    };
+  });
+  expect(state.anchor).toEqual({ x: 320, y: 140 });
+  expect(state.saved).toEqual({ pos: { x: 320, y: 140 } });
+  expect(state.dialogue).toContain('\\pos(320,140)');
+  await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('extension-position.png') });
+  await page.locator('#ass-cue-reset').click();
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+  await page.locator('#undo-btn').click();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride))
+    .toEqual({ pos: { x: 320, y: 140 } });
+});
+
 test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positioning', async ({ page }, info) => {
   const before = await snapshot(page);
   const box = page.locator('.ass-cue-drag-target').first();

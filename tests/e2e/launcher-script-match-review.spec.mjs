@@ -24,6 +24,7 @@ test('complete comparison opens from the current preview without starting a writ
   await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
   await page.locator('#postprocessScriptPath').fill('D:\\Demo\\script.txt');
   const open = page.locator('#openScriptMatchReview');
+  await expect(page.locator('#postprocessCleanMarkdownSymbols')).not.toBeChecked();
   await expect(open).toBeVisible();
   const spacing = await open.evaluate(button => button.getBoundingClientRect().top - button.previousElementSibling.getBoundingClientRect().bottom);
   expect(spacing).toBeGreaterThanOrEqual(8);
@@ -34,13 +35,14 @@ test('complete comparison opens from the current preview without starting a writ
   await open.click();
   await expect.poll(() => page.evaluate(() => window.reviewCalls.length)).toBe(1);
   await page.locator('#postprocessMatchMode').selectOption('text');
+  await page.locator('#postprocessCleanMarkdownSymbols').check();
   await expect(page.locator('#postprocessSplitPreviewLabel')).toContainText('更正预览');
   await open.click();
   await expect.poll(() => page.evaluate(() => window.reviewCalls.length)).toBe(2);
   const calls = await page.evaluate(() => window.reviewCalls);
   expect(calls.map(call => call.method)).toEqual(['open_script_match_review', 'open_script_match_review']);
-  expect(calls[0].payload).toMatchObject({ projectPath: 'D:\\Demo\\source.mosp', scriptPath: 'D:\\Demo\\script.txt', matchMode: 'script', cleanMarkdownSymbols: true });
-  expect(calls[1].payload.matchMode).toBe('text');
+  expect(calls[0].payload).toMatchObject({ projectPath: 'D:\\Demo\\source.mosp', scriptPath: 'D:\\Demo\\script.txt', matchMode: 'script', cleanMarkdownSymbols: false });
+  expect(calls[1].payload).toMatchObject({ matchMode: 'text', cleanMarkdownSymbols: true });
 });
 
 test('match preview shows a pending hint until the current result is ready', async ({ page }, testInfo) => {

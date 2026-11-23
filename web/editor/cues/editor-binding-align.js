@@ -1,6 +1,6 @@
 import { releaseTemporaryVisibleSplitCuesUnless } from './editor-cue-elements.js';
 import { commitCuePanelEdit, setCurrentCuePanelIndex } from './editor-cue-panel.js';
-import { clearSelection, selectOnly, selectOnlyExtension, syncBoundSelection } from './editor-selection.js';
+import { clearSelection, selectOnly, selectOnlyExtension, syncBoundSelection, updateMultiSelectionClasses } from './editor-selection.js';
 
 // 绑定对齐：主副字幕绑定、按点击选中与对齐批处理。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
@@ -72,7 +72,8 @@ export function initMaweBindingAlign() {
           const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
           if (el) el.classList.add('selected');
         });
-        MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size);
+        updateMultiSelectionClasses();
+        window.MaweCuePanelWiring.updateSelectionCountText();
         if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
         setCurrentCuePanelIndex(idx);
         return;

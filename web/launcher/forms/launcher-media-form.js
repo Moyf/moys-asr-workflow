@@ -99,6 +99,18 @@ function getDefaultAudioTrackForMedia(path) {
   const defaultTrack = state.audioTracks.find(audioTrackIsDefault) || state.audioTracks[0];
   return audioTrackIndex(defaultTrack) ?? 0;
 }
+function recordingReviewTranscriptionPayload(mediaOverride) {
+  const payload = formPayload();
+  const mediaPath = mediaOverride || payload.mediaPath;
+  return {
+    ...payload,
+    mediaPath,
+    audioTrack: getAudioTrackForMedia(mediaPath),
+    audioTrackCount: getAudioTrackCountForMedia(mediaPath),
+    defaultAudioTrack: getDefaultAudioTrackForMedia(mediaPath),
+    srtPath: state.srtAuto ? "" : (state.testSuffixAdded ? removeTestSuffix(payload.srtPath) : payload.srtPath),
+  };
+}
 function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
 function setDroppedPath(field, path, eventType = "input") {
   const value = String(path || "").trim();
@@ -117,7 +129,7 @@ function setServerMedia(path) {
   }
   return setDroppedPath("serverMediaPath", value);
 }
-function resetServerMediaSelection() { $("serverMediaPath").value = ""; $("serverRememberMedia").checked = true; syncFlvHints(); }
+function resetServerMediaSelection() { $("serverMediaPath").value = ""; $("serverRememberMedia").checked = true; $("serverMediaField").classList.add("hidden"); setError("serverMediaPath", ""); syncFlvHints(); }
 function setJsonPath(path) { if ($("jsonPath").value !== path) resetServerMediaSelection(); $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
 function applyErrorResult(result, logDetail = true, noticeOptions) {
   const detail = result.detail || result.error || "";

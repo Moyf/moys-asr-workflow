@@ -185,6 +185,21 @@ class ThumbnailServerTests(unittest.TestCase):
         build_base(self.media)
         self.assertTrue(self.server.project_binding_payload()["thumbnailBaseReady"])
 
+    def test_cold_binding_detects_cache_published_as_background_finishes(self):
+        ready = False
+
+        def finishing(_path):
+            nonlocal ready
+            ready = True
+            return False
+
+        with mock.patch.object(server_editor, "launcher_thumbnails_pending", side_effect=finishing), mock.patch.object(
+            self.server, "_thumbnail_base_ready", side_effect=lambda: ready
+        ):
+            payload = self.server.project_binding_payload()
+        self.assertTrue(payload["thumbnailBaseReady"])
+        self.assertFalse(payload["thumbnailAutoPending"])
+
     def test_cache_only_demand_reads_without_decoding(self):
         from maw import thumbnails
         with mock.patch.object(thumbnails, 'extract_frames', side_effect=AssertionError('cache-only demand decoded')) as decode:

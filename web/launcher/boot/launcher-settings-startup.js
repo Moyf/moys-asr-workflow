@@ -102,28 +102,50 @@ async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");
   if (state.serverStarting) return;
-  const projectPath = $("jsonPath").value.trim();
-  const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
-  if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await openEditorInBrowser(currentUrl); return; }
+  const projectInput = $("jsonPath");
+  const projectPath = projectInput.value.trim();
+  if (!projectPath) {
+    expandServer();
+    setError("jsonPath", errText("server_project_required", ""));
+    const scroll = document.querySelector(".shell-scroll");
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+    projectInput.scrollIntoView({ block: "nearest" });
+    projectInput.focus({ preventScroll: true });
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      projectInput.animate([
+        { outline: "3px solid var(--red)", outlineOffset: "2px" },
+        { outline: "3px solid transparent", outlineOffset: "7px" },
+      ], { duration: 650, easing: "ease-out" });
+    }
+    return;
+  }
+  const currentUrl = `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
   const restartProjectPath = serverRestartProjectPath;
-  serverStatusRequest += 1;
   state.serverStarting = true;
   renderServerButton();
   try {
-    if (projectPath) {
-      const mediaState = await refreshServerMedia();
-      if ((!mediaState.hasMedia || !mediaState.mediaExists) && !$("serverMediaPath").value.trim()) {
-        expandServer();
-        return fail("serverMediaPath", errText("server_media_missing", ""));
-      }
+    const mediaState = await refreshServerMedia();
+    if (projectPath !== projectInput.value.trim()) return;
+    if (mediaState.field === "jsonPath") {
+      expandServer();
+      return fail("jsonPath", errText(mediaState.code, mediaState.detail));
     }
+    if (!$("serverMediaPath").value.trim() && state.serverRunning && projectPath === state.serverProjectPath) {
+      await openEditorInBrowser(currentUrl);
+      return;
+    }
+    if ((!mediaState.hasMedia || !mediaState.mediaExists) && !$("serverMediaPath").value.trim()) {
+      expandServer();
+      return fail("serverMediaPath", errText("server_media_missing", ""));
+    }
+    serverStatusRequest += 1;
     const result = await bridge("start_server", serverPayload());
     if (result.ok) {
       $("serverMediaPath").value = "";
       serverRestartProjectPath = null;
-      state.serverRunning = !result.serverAlreadyRunning;
-      state.serverProjectPath = state.serverRunning ? projectPath : "";
-      state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
+      state.serverRunning = true;
+      state.serverProjectPath = projectPath;
+      state.detectedServerUrl = "";
       $("openMawe").classList.remove("attention");
       renderServerButton();
       // HTTP 可用时工程仍可能在后台加载；由状态监控在 ready 后刷新最近工程。
@@ -134,7 +156,7 @@ async function openServerEditor() {
           startServerStatusMonitor();
           setStatus(t("server_restarted_hint"));
         } else {
-          setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
+          setServerStatus(result.url, false);
           startServerStatusMonitor();
           await openEditorInBrowser(result.url);
         }
