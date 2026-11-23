@@ -104,7 +104,7 @@ async function openServerEditor() {
   if (state.serverStarting) return;
   const projectPath = $("jsonPath").value.trim();
   const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
-  if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await bridge("open_url", { url: currentUrl }); return; }
+  if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await openEditorInBrowser(currentUrl); return; }
   const restartProjectPath = serverRestartProjectPath;
   serverStatusRequest += 1;
   state.serverStarting = true;
@@ -136,7 +136,7 @@ async function openServerEditor() {
         } else {
           setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
           startServerStatusMonitor();
-          await bridge("open_url", { url: result.url });
+          await openEditorInBrowser(result.url);
         }
       } else setStatus(t("ready"));
     } else {
@@ -146,6 +146,11 @@ async function openServerEditor() {
     state.serverStarting = false;
     renderServerButton();
   }
+}
+
+async function openEditorInBrowser(url) {
+  const result = await bridge("open_url", { url, editor: true });
+  if (!result.ok) applyErrorResult(result);
 }
 
 function refreshStartupState() {

@@ -85,6 +85,10 @@ function notifySingleFailure(event) {
 }
 
 function handleBackendEvent(event) {
+  if (event.type === "editorShutdownPending") {
+    setStatus(errText("server_stop_pending"));
+    return;
+  }
   if (event.type === "batch_started" || event.type === "batchStarted") {
     resetBatchNotification(event.total);
   }
