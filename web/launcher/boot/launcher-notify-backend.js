@@ -342,7 +342,19 @@ document.querySelectorAll("[data-settings-tab]").forEach((tab) => {
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
 $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
 $("tutorialVideoLink").addEventListener("click", () => bridge("open_url", { url: TUTORIAL_VIDEO_URL }));
-$("supportLink").addEventListener("click", () => { $("supportModal").classList.remove("hidden"); $("supportClose").focus(); });
+const supportGitHubStar = bindGitHubStar({
+  entry: $("supportGitHubActions"),
+  button: $("supportGitHubStar"),
+  thanks: $("supportGitHubThanks"),
+  fallbackFocus: $("supportClose"),
+  check: () => api?.github_star_status?.({}),
+  write: () => api?.github_star?.({}),
+});
+$("supportLink").addEventListener("click", () => {
+  $("supportModal").classList.remove("hidden");
+  $("supportClose").focus();
+  void supportGitHubStar.open();
+});
 $("supportClose").addEventListener("click", () => $("supportModal").classList.add("hidden"));
 $("supportBackdrop").addEventListener("click", () => $("supportModal").classList.add("hidden"));
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("supportModal").classList.add("hidden"); });

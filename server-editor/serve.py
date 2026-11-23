@@ -66,6 +66,7 @@ from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
 from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_style_state, save_ass_style_state  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
+from maw.github_star import check_maw_starred, star_maw  # noqa: E402
 from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic, ffmpeg_version  # noqa: E402
 from maw.diagnostics import app_version  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
@@ -1817,6 +1818,7 @@ def build_server_page(
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
             "settingsUrl": "/api/settings",
+            "githubStarUrl": "/api/github-star",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
             "textProcessingPresetsUrl": "/api/text-processing-presets",
@@ -3094,6 +3096,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path in ("/api/github-star/status", "/api/github-star"):
+            self.github_star_request(write=path == "/api/github-star")
         elif path == "/api/ass-styles":
             self.update_ass_styles()
         elif path == "/api/text-processing-presets":
@@ -3145,6 +3149,23 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_ograf()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
+
+    def github_star_request(self, *, write: bool) -> None:
+        # Only the existing editor request token is accepted, not a repo or command.
+        try:
+            check_native_origin(self)
+            request = self.read_json_request(max_bytes=1024)
+            self._check_request_token(request)
+            if request.keys() != {"requestToken"}:
+                raise ValueError("Unexpected GitHub Star request fields")
+        except PermissionError:
+            self.send_json(HTTPStatus.FORBIDDEN, {"starred": None}, close_connection=True)
+            return
+        except ValueError:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"starred": None}, close_connection=True)
+            return
+        starred = (True if star_maw() else None) if write else check_maw_starred()
+        self.send_json(HTTPStatus.OK, {"starred": starred})
 
     def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
         """Opaque assets and current binding only; client paths are never accepted."""

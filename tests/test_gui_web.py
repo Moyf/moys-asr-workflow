@@ -5678,9 +5678,13 @@ class _FakeLauncherWindow:
     def __init__(self) -> None:
         self.events = SimpleNamespace(closing=_FakeEventHook(), shown=_FakeEventHook(), loaded=_FakeEventHook())
         self.loaded_urls: list[str] = []
+        self.original_url = self.real_url = self.current_url = None
 
     def load_url(self, url: str) -> None:
         self.loaded_urls.append(url)
+
+    def get_current_url(self) -> str | None:
+        return self.current_url
 
 
 @final
@@ -5740,7 +5744,7 @@ class LauncherRuntimeTests(unittest.TestCase):
         paths = LauncherPaths(
             root=Path("launcher-root"),
             env_path=Path("launcher-root/.env"),
-            launcher_html=Path("launcher-root/launcher.html"),
+            launcher_html=Path("launcher-root/MAW Editor/launcher.html"),
         )
         fake_window = _FakeLauncherWindow()
         fake_webview = mock.Mock()
@@ -5761,6 +5765,17 @@ class LauncherRuntimeTests(unittest.TestCase):
         create_kwargs = fake_webview.create_window.call_args.kwargs
         self.assertEqual(create_kwargs["url"], paths.launcher_html.resolve().as_uri())
         self.assertNotIn("html", create_kwargs)
+        trust = launcher_api_cls.return_value._github_star_source
+        fake_window.original_url = fake_window.real_url = create_kwargs["url"]
+        fake_window.current_url = fake_window.real_url.replace("MAW%20Editor", "MAW Editor")
+        self.assertTrue(trust())
+        for current in ("https://example.test/launcher.html", fake_window.current_url + "?other", None):
+            fake_window.current_url = current
+            self.assertFalse(trust())
+        fake_window.real_url = fake_window.current_url = "http://127.0.0.1:1234/launcher.html"
+        self.assertTrue(trust())
+        fake_window.current_url = "http://127.0.0.1:4321/launcher.html"
+        self.assertFalse(trust())
         fake_window.events.shown.fire()
         fake_window.events.loaded.fire()
         launcher_api_cls.return_value.pump.start.assert_called_once_with()
