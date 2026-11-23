@@ -100,7 +100,7 @@ uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 
-交互、布局和无法完成浏览器验证时的交付要求，见根 [AGENTS 的浏览器验证](../../AGENTS.md#浏览器验证)与 [UI 间距约定](../../AGENTS.md#ui-间距约定)。文本统一 UTF-8 / LF。
+编辑器可用 `uv run --no-sync python server-editor/serve.py --blank` 启动；在实际入口验证受影响的操作，例如拖动、播放、Seek 或保存。交互、布局和无法完成浏览器验证时的交付要求，见根 [AGENTS 的浏览器验证](../../AGENTS.md#浏览器验证)与 [UI 间距约定](../../AGENTS.md#ui-间距约定)。文本统一 UTF-8 / LF。
 
 ### PR 提交前检查
 

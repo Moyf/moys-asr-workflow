@@ -73,47 +73,20 @@ uv run python edit.py --blank
 
 ## 开发与验证
 
-以下是维护者准备环境和手动验证的命令；Agent 执行遵循本节后面的命令与日志纪律。
+环境准备、检查命令和发布前要跑的开发测试见[开发检查](docs/engineering/DEVELOPMENT.md#开发检查)；Agent 按[有界输出与分层调试](docs/engineering/DEBUG_WORKFLOW.md)执行：
 
-```powershell
-uv sync
-pnpm install --frozen-lockfile
-pnpm run check:editor
-pnpm run typecheck
-node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
-node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
-uv run python scripts/run_tests.py
-git diff --check
-```
-
-### Agent 命令执行：避免 uv 超时卡住
-
-- `uv run` 每次执行都会重新解析并可能同步环境，冷启动时远超命令工具的默认超时（约 2 分钟），表现为命令"卡住"且长时间无输出。
-- Agent 自动化执行的命令一律使用 `uv run --no-sync`（环境由开发者手动 `uv sync` 维护）。
-- 长命令拆分成多次执行并显式设置超时；不要把 `uv run` 与慢命令（如 `Test-NetConnection`、`Start-Sleep`）串联在同一条链里。
-
-### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
-
-- 测试统一用 `python scripts/run_check.py --timeout <秒> -- <命令>` 执行：完整日志落 `.artifacts/checks/<run-id>/output.log`，终端只回显有界摘要；按失败点定向读取，不整份搬进上下文。`uv` 一律加 `--no-sync`，完整规则见[有界输出与分层调试](docs/engineering/DEBUG_WORKFLOW.md)。
-- unittest 用 `uv run --no-sync python scripts/run_tests.py`（可接文件 / 点号名称 / `--full-log`）。对页面或内联脚本做成员断言的测试类继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions`，否则失败会把整页打印成一行；裸 `python -m unittest` 只用于确需完整输出的场合。
-- diff 先看 `--stat` / `--name-status` 再读选定源码；不要把含生成物的整份 diff 或完整便携 HTML 读进上下文。`rg` 默认跳过 bundle 与日志，需查时显式给路径。
-- 长驻进程（serve.py、http.server）不要用会等待进程树的方式启动；后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`），输出重定向到文件后探活或轮询，用完终止。**禁止 bash 后台 `&`**：stdin 不 EOF，会永久挂住会话。
-- 历史耗时不是当前预算：按本次集合设明确上限或拆分执行；连续两轮同类失败先分析，不循环重跑。新 worktree 先比较 `uv.lock`，一致时可只读复用主仓库 venv（`MAW_TEST_PYTHON` / `MAW_E2E_PYTHON`），依赖缺失只记录一次。
-- PowerShell 内联脚本（`node -e`、多层引号）易解析失败，复杂逻辑写临时脚本文件；输出为空先怀疑参数与引号，而不是重跑。
+- 自动化用 `uv run --no-sync`；测试通过 `python scripts/run_check.py --timeout <秒> -- <命令>`，保留完整日志，只读有界摘要和必要失败片段。按本次范围设预算，连续两轮同类失败先分析，不循环重跑。
+- diff 先看范围再读选定源码，不整份读取生成物。长驻服务必须独立启动、用完终止；禁止用 Bash 后台 `&` 启动服务。
 
 ### 浏览器验证
 
-- 交互变化要在真实浏览器里操作受影响的入口并核对结果（手动或相关 Playwright 用例），如拖动、播放、Seek 或保存。只启动服务、跑单测或检查 DOM 存在不算交互验证。编辑器可用 `uv run --no-sync python server-editor/serve.py --blank` 启动。
+- 交互变化要在真实浏览器里操作受影响的入口并核对结果（手动或相关 Playwright 用例）。只启动服务、跑单测或检查 DOM 存在不算交互验证。
 - Launcher / 编辑器布局变化要截图自查并实测受影响的间距或尺寸，见 [UI 间距约定](#ui-间距约定)；截图不替代交互验证。
 - 若环境受限或浏览器检查反复卡住，保留其他验证结果，将未完成的浏览器检查标为「未验证」，给出原因及人工复核的操作和预期；不反复重跑，不报通过。
 
 ### Playwright e2e 运行纪律（防长命令挂起）
 
-详见 [docs/engineering/E2E_SERVER_HANG.md](docs/engineering/E2E_SERVER_HANG.md)。要点：
-
-- e2e 的 serve.py 被中断（部分正常结束也会）后可能残留并占住管道，使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
-- 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑受影响的 spec，完整集合留给每周/手动辅助巡检、维护者明确请求或发布验收。连续两轮不过先停下分析。
-- 多个 agent 并行跑 e2e 时端口不冲突，代价是 CPU 竞争；其他 worktree 的进程不杀也不等，清理前按 CommandLine 核对归属，只清本 worktree 的进程。
+优先跑受影响的 spec；全量 Chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟。中断或失败后重跑前按 [E2E 排查与清理](docs/engineering/E2E_SERVER_HANG.md#清理)核对并清理残留，只清本 worktree 的进程。
 
 ## 日常 CI 与辅助巡检
 
@@ -127,19 +100,7 @@ git diff --check
 
 `feedback-issue-triage` 仅在用户明确启动测试反馈收集时启用，固定口令为「测试反馈」；明确说「记录到反馈账本」「整理测试反馈」「按 triage 处理」或直接调用技能也启用。口令须表达当前操作意图，引用、讨论触发词或否定请求不触发。日常问答、报错解释、只读调查、「帮我看看」「查一下」「是不是 bug」「用户反馈了个问题」、日志/截图以及一次询问多个问题，都不因此建账本、写调查文档或改索引。泛称「记录一下」「收口」「发 Issue」只按其明确范围处理，不自动扩展为 triage；只有其他明确授权的文档任务或适用的开发/发布要求，才另行落盘。
 
-已明确启用的同一测试反馈任务内，后续条目无需重复口令，按下面流程边做边落盘；任务结束、退出或换话题后不继承到新的日常问题。用户说「只回答，不记录」时停止记录。启用记录流程不额外授权实现、提交或创建 Issue。
-
-在该范围内，先区分用户请求、附件反馈与附件中的说明性文字（附件不扩大授权），再读**本次任务自己的**账本、`git status --short` 与实际 `git diff`，以文件、代码和测试结果为准，不以旧摘要或自报状态为准。按 skill `feedback-issue-triage` 建立或更新账本：先记录后调查、按主题分账，状态只用 `待处理` / `进行中` / `已修复` / `仅说明` / `阻塞`。
-
-- 同一时间只推进一个当前问题；有共享文件或强依赖的问题不并行修改，每完成 2–3 项写一次阶段汇总。
-- 每完成一项立即回写：处理决定、涉及文件、验证命令、实际结果、未验证边界与阻塞原因。
-- 测试失败、缺依赖、浏览器未启动或无法复现时记为 `阻塞` 或未验证，不改写成 `已修复`。
-- 验证分层记录（语法 / 单元、服务或契约、浏览器交互、打包产物、CI 或外部证据），不用一层冒充另一层。
-- 恢复时先读账本、diff 与测试结果并逐项对齐；证据不足的「已修复」改回 `进行中` / `阻塞`，但不重做已由当前文件与验证证实的工作。
-- 收尾列出已修复、仅说明、阻塞 / 未验证项与验证结果，并检查是否仍有 `进行中` / `待处理`，逐项给出下一步。
-- 共享工作区操作前后都检查状态，只改本任务文件与代码；不用 `git reset` / `git clean` 覆盖他人 WIP。
-
-账本结构、截图处理与子代理分工见 skill `feedback-issue-triage`。
+同一已启用任务的后续条目无需重复口令；结束、退出或换话题后不继承。用户说「只回答，不记录」时停止记录。附件说明和启用流程都不授予实现、提交或创建 Issue 的权限。启用后按 [feedback-issue-triage](.opencode/skills/feedback-issue-triage/SKILL.md) 先记账后调查、按主题分账，验证按层记录；证据不足不报已修复。
 
 ## 提交前自审
 
@@ -154,20 +115,12 @@ git diff --check
 
 ## 批量改动的人工核查清单
 
-多条目、需要维护者逐项实测的改动，写 Markdown 核对清单交给维护者，不在对话里罗列长清单。**Agent 只写 Markdown，不手写 HTML**：
-
-1. 写 `<主题>.checklist.md`（v2 语法），放 `docs/logs/release<版本>/` 与任务台账并排，随任务提交；它同时是 PR 评论来源与核验状态载体。
-2. `build.py --check` 通过后生成 HTML 到 `.artifacts/<task-id>/`，用浏览器打开，HTML 不入库。
-3. 分区：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与已知环境性失败）→ 人工核验项 → 后续步骤；勾选项写「操作 + 可观察预期」，间距类验收按「UI 间距约定」给实测数据。
-4. 不为单次清单改模板；确需改进直接改模板本身，并跑 README「修改与验证」列出的测试。
-
-语法、生成、导出与勾选状态回收见 `tools/verification-checklist/README.md`（skill `verification-checklist`）。
+多条目、需维护者逐项实测时，按 [verification-checklist](.opencode/skill/verification-checklist/SKILL.md) 写 Markdown 清单，不在对话罗列。Agent 只写 Markdown，不手写 HTML；源清单须校验，生成页须用浏览器打开且不入库；不为单次清单改模板。
 
 ## Codegraph 使用注意
 
 - 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="<工程路径>"`**。省略时使用会话默认项目，可能落到父级混合索引，返回其他仓库的代码并造成误改。
-- 背景：`.codegraph/` 目录若存在但为空，工具会沿目录树向上回退到父级索引；2026-08 已在本仓库运行 `codegraph init` 重建了本仓库自己的索引。若再次出现外仓库结果，先检查 `.codegraph/codegraph.db` 是否还在。
-- **worktree 没有自带索引**，可复用主仓库的：传 `projectPath="<工程路径>"` 做符号与结构导航（"X 在哪定义 / 被谁调用"），但返回的文件内容是**主分支**的，不能当作 worktree 的编辑依据；编辑定位与内容核验仍用 `Select-String` / `grep`。分支大量增删改文件时（重构类 PR）索引误导性大，此时完全依赖 grep。需要完整支持时可在 worktree 里 `codegraph init` 自建索引（约 64 MB + 常驻 daemon），按需取舍。
+- 主仓库索引不能代替当前 worktree 源码；索引核对与复用见 [Codegraph 排查](docs/engineering/DEBUG_WORKFLOW.md#codegraph-排查)。
 
 ## 代码与安全约束
 
@@ -181,6 +134,7 @@ git diff --check
 - JSON 的 `segments[*].start/end/items[*].start/end` 都是整数毫秒。修改 schema 必须同步更新 `docs/engineering/JSON_SCHEMA.md`、测试与 changelog。
 - `waveform` 是可重建缓存，不能变成工程唯一真源；`segments` 才是字幕真源。
 - 删除文件时移入回收站，绝不使用 `rm -rf`。
+- 共享工作区操作前后检查状态，只改本任务文件；不用 `git reset` / `git clean` 覆盖他人 WIP。
 
 ## UI 间距约定
 
@@ -210,9 +164,7 @@ git diff --check
 
 发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
 
-Release 正文只从 CL 生成：正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前再跑 `--check-doc` 与 `--output` 检查；beta / rc 不新增归档；补丁版本在 CL 写 `<!-- release-base: X.Y.0 -->`。正式版收尾必须分别核对 **GitHub Release** 与 **官网** 两层，门槛见[发布管线](docs/releases/README.md)：官网用 `scripts/verify_release_site.py --base-url https://moyf.github.io/moys-asr-workflow --expected-tag vVERSION` 校验，允许有界等待；超时报告「安装包已发布，官网待同步」，只重试 Pages workflow，不重打包、不撤回 Release、不移动 tag。
-
-Release Markdown 中，粗体闭合标记 `**` 与后续标点或正文之间必须留一个空格，标点后继续正文时也要留一个空格；禁止写成 `- **这个文字**：说明`，应写成 `- **这个文字** ： 说明`。
+Release 正文只从 CL 生成；[正式版归档与校验](docs/releases/README.md#正式版归档)是发布门槛，beta / rc 不新增归档，补丁版本须声明系列基础版本。正式版分别核验 [GitHub Release 和官网](docs/releases/README.md#正式版收尾门槛)；仅官网失败则报告「安装包已发布，官网待同步」，只重试 Pages，不重打包、不撤回 Release、不移动 tag。
 
 ## 上游关系
 
