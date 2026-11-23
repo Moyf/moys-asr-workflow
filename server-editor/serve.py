@@ -56,7 +56,7 @@ import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
 from maw.audio_loudness import LoudnessAnalyzer, validate_gain_db, volume_filter  # noqa: E402
-from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
+from maw.thumbnail_jobs import ThumbnailJobManager, launcher_thumbnails_pending  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
@@ -1918,6 +1918,8 @@ class EditorServer(ThreadingHTTPServer):
                                  f"{self.binding_generation}:{self.source_media_id}")
 
     def _project_binding_payload_locked(self) -> dict[str, object]:
+        pending = launcher_thumbnails_pending(self.thumbnail_jobs.path)
+        base_ready = self._thumbnail_base_ready()
         return {
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
@@ -1925,7 +1927,8 @@ class EditorServer(ThreadingHTTPServer):
             # A valid persisted base cache means the Launcher stage ran with
             # thumbnails enabled; without one the editor keeps its display
             # toggle off by default so opening a project never starts decoding.
-            "thumbnailBaseReady": self._thumbnail_base_ready(),
+            "thumbnailBaseReady": base_ready,
+            "thumbnailAutoPending": pending and not base_ready,
         }
 
     def _thumbnail_base_ready(self) -> bool:

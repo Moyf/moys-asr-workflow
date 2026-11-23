@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.4 之后 | 2026-11-22 | [缩略图后台化](release1.11.4/261122_缩略图后台化/缩略图后台化.checklist.md) / [独立审查](release1.11.4/261122_缩略图后台化/REVIEW_FINDINGS.md) | 编辑不等待缩略图，含抽帧测速与人工核验 |
 | 1.11.4 之后 | 2026-11-19 | [MOSS 云端供应商](release1.11.4/261119_MOSS云端供应商/MOSS_API_SUPPORT.md) / [独立审查](release1.11.4/261119_MOSS云端供应商/REVIEW_FINDINGS.md) / [人工清单](release1.11.4/261119_MOSS云端供应商/MOSS云端供应商.checklist.md) | 新增 moss-transcribe-diarize-pro 供应商（说话人 + keyterms + 自动断句）；本地验证 + 维护者实测一轮，字词时间码仍待实测补齐 |
 | 1.11.4 之后 | 2026-11-22 | [Launcher 最近工程展开与收起](release1.11.4/261122_Launcher最近工程/REVIEW_FINDINGS.md) | 默认 3 条、展开最多 10 条；含双向回归与审查结果 |
 | 1.11.4 之后 | 2026-11-21 | [文稿匹配对照](release1.11.4/261121_文稿匹配对照/文稿匹配对照.checklist.md) / [提交前自审](release1.11.4/261121_文稿匹配对照/REVIEW_FINDINGS.md) | 修复吞停顿/碎片替换/重叠失败三处匹配缺陷；Launcher 预览入口、三栏对照、底部双轨时间线与完整 MOSP 另存；原生选址待人工验收 |
