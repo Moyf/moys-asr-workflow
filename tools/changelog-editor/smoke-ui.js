@@ -371,6 +371,64 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
   }, clTextForReconnect);
   console.log('repo reconnect:', JSON.stringify(reconnect));
 
+  // 「未发布」带新图片 → 完成编辑弹出版本升格（不拦截）：检测、输入校验、取消、就地改名。
+  const promote = await page.evaluate(async () => {
+    const cl = `# Changelog\n\n## [未发布]\n\n### 🐛 修复\n\n- **测试条目** ： 说明。\n\n## [1.9.0] - 2026-08-15\n\n### 🐛 修复\n\n- 旧条目。\n`;
+    await loadClText(cl, '🧪 冒烟测试');
+    const out = {};
+    const parsed = S.parsed.get('未发布');
+    const card = parsed.cards.find((c) => c.kind === 'entry');
+    S.images.set('img-x', { id: 'img-x', blob: new Blob([new Uint8Array([1])]), size: 1, alt: 'a', filename: 'a.webp', base: 'a', cardKey: '未发布#0' });
+    card.images.push({ kind: 'new', id: 'img-x' });
+    markDirty();
+    out.blockedBefore = collectErrors('未发布').some((e) => e.includes('「未发布」区不支持配图'));
+    // 桩掉 applyFinish：真实路径会走下载并清空图片状态，这里只记录升格后的调用参数
+    const finishCalls = [];
+    applyFinish = (versions, archives) => { finishCalls.push([versions, [...archives]]); };
+    // 1) 完成编辑触发升格弹窗；非法版本 / 重复版本不通过；Esc 取消后小节保持未发布
+    $('#btn-finish').click();
+    await new Promise((r) => setTimeout(r, 80));
+    out.modalShown = Boolean($('#pv-version')) && Boolean($('#pv-date'));
+    out.dateDefault = /^\d{4}-\d{2}-\d{2}$/.test($('#pv-date').value);
+    $('#pv-version').value = 'junk!';
+    $('#pv-ok').click();
+    await new Promise((r) => setTimeout(r, 60));
+    out.badToast = $('#toast').textContent.includes('版本号不合法');
+    out.badStillOpen = $('#mask').classList.contains('show');
+    $('#pv-version').value = '1.9.0';
+    $('#pv-ok').click();
+    await new Promise((r) => setTimeout(r, 60));
+    out.dupToast = $('#toast').textContent.includes('已存在');
+    $('#mask').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 60));
+    out.cancelKept = S.sections.some((s) => s.name === '未发布') && S.parsed.has('未发布');
+    // 2) 填入合法版本 → 就地升格：改名 / 重挂 parsed / 图片 cardKey / 校验放行 / dirty 归属
+    $('#btn-finish').click();
+    await new Promise((r) => setTimeout(r, 80));
+    $('#pv-version').value = '1.12.0';
+    $('#pv-date').value = '2026-11-23';
+    $('#pv-ok').click();
+    await new Promise((r) => setTimeout(r, 120));
+    out.heading = S.sections[0].heading;
+    out.parsedRekeyed = S.parsed.has('1.12.0') && !S.parsed.has('未发布');
+    out.cardKey = S.images.get('img-x')?.cardKey;
+    out.errorsAfter = collectErrors('1.12.0');
+    out.dirtyNames = dirtyVersions().map((s) => s.name);
+    out.docHasHeading = serializeCurrentDoc().includes('## [1.12.0] - 2026-11-23');
+    // 4) 既有日期编辑同样必须落到 S.clText（serializeCurrentDoc 的结构真源）
+    $('#vh-date').value = '2026-12-01';
+    $('#vh-date').dispatchEvent(new Event('change'));
+    out.dateSynced = serializeCurrentDoc().includes('## [1.12.0] - 2026-12-01') && S.sections[0].heading === '## [1.12.0] - 2026-12-01';
+    out.sidebarBadge = [...document.querySelectorAll('#version-list .version-item')].some((el) => el.textContent.includes('1.12.0') && el.querySelector('.badge.stable'));
+    out.selectedNow = S.selected;
+    out.finishCalls = finishCalls;
+    // 3) 恢复冒烟基线
+    S.images.clear();
+    await loadClText(cl, '🧪 冒烟测试');
+    return out;
+  });
+  console.log('promote unreleased:', JSON.stringify(promote));
+
   console.log('page errors:', errors.length ? errors : 'none');
   await browser.close();
   process.exit(errors.length ? 1 : 0);
