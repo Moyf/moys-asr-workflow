@@ -1,3 +1,4 @@
+import { updateSelectionCountText } from './editor-overlay-cue-selection.js';
 import { splitGroupsAtCutPoints } from './editor-segment-ops.js';
 import { refreshColorAssignmentUi, refreshStickerAssignmentUi } from './editor-color-filter.js';
 import { stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
@@ -326,7 +327,7 @@ export function initMaweStickerPicker() {
           ).forEach((el) => el.classList.remove('selected'));
         }));
         updateMultiSelectionClasses();
-        window.MaweCuePanelWiring.updateSelectionCountText();
+        updateSelectionCountText();
       }
     }
     const action = allDisabled ? '启用' : '禁用';

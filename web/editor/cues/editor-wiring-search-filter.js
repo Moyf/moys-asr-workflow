@@ -1,24 +1,7 @@
+import { bindToolbarExportDropdown } from '../ui/editor-export-menus.js';
+import { renderColorFilterMenu, positionColorFilterMenu } from './editor-color-filter.js';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function initMaweSearchFilterWiring() {
 // === 颜色过滤 ===
 // 工程中存在彩色字幕时，在过滤输入框右侧显示 🎨 按钮：
 // 点击行（非 checkbox）= 只显示该颜色；勾选 checkbox = 多选；清除 = 全部显示。
@@ -61,11 +44,11 @@
 
 
 
-MaweColorFilter.renderColorFilterMenu();
+renderColorFilterMenu();
 
-MaweExportMenus.bindToolbarExportDropdown(
+bindToolbarExportDropdown(
   'color-filter-dropdown', 'color-filter-btn', 'color-filter-menu',
-  MaweColorFilter.positionColorFilterMenu,
+  positionColorFilterMenu,
 );
 
 // === 搜索 ===
@@ -79,3 +62,4 @@ MaweDom.searchEl.addEventListener('input', () => {
 });
 
 // === 编辑 ===
+}

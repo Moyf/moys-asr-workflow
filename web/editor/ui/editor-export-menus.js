@@ -296,3 +296,7 @@ export function initMaweExportMenus() {
     bindToolbarExportDropdown
   });
 }
+
+export function bindToolbarExportDropdown(...args) {
+  return window.MaweExportMenus.bindToolbarExportDropdown(...args);
+}

@@ -1,3 +1,4 @@
+import { selectOverlayCueRow } from '../cues/editor-overlay-cue-selection.js';
 export function initWiringAssCuePositionModule() {
 // Per-cue ASS positioning and scaling for every subtitle track.
 (function initAssCuePosition(global) {
@@ -153,7 +154,7 @@ export function initWiringAssCuePositionModule() {
     global.MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
-      if (located.kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(located.index);
+      if (located.kind === 'overlay') selectOverlayCueRow(located.index);
       else if (located.kind === 'extension') global.MaweSelection.selectOnlyExtension(located.index, global.MaweMultiSubtitleCore.getActiveExtensionTrack());
       else global.MaweSelection.selectOnly(located.index);
       event.preventDefault(); event.stopPropagation();
@@ -405,7 +406,7 @@ export function initWiringAssCuePositionModule() {
       const kind = box?.dataset.trackKind;
       const index = trackSegments(kind).findIndex(segment => segment?.id === id);
       if (index >= 0 && currentTargetId() !== id) {
-        if (kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(index);
+        if (kind === 'overlay') selectOverlayCueRow(index);
         else if (kind === 'extension') global.MaweSelection.selectOnlyExtension(index, global.MaweMultiSubtitleCore.getActiveExtensionTrack());
         else global.MaweSelection.selectOnly(index);
       }

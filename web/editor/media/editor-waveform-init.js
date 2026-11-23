@@ -1,3 +1,6 @@
+import { openOverlaySplitModal } from '../cues/editor-split-core.js';
+import { showOverlayContextMenu } from '../ui/editor-context-menus.js';
+import { selectOverlayCueRow, selectOverlayRange, toggleOverlaySelection } from '../cues/editor-overlay-cue-selection.js';
 import { isPlaybackActive } from './editor-media-playback.js';
 import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
 import * as markerEditing from '../markers/editor-marker-editing.js';
@@ -74,13 +77,13 @@ export function initMaweWaveformInit() {
       MaweCuePanel.setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
     },
     selectOverlayCue: (idx) => {
-      window.MaweCuePanelWiring.selectOverlayCueRow(idx);
+      selectOverlayCueRow(idx);
       MaweState.selection.overlayAnchor = idx;
     },
-    toggleOverlaySelection: (idx) => window.MaweCuePanelWiring.toggleOverlaySelection(idx),
+    toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
     selectOverlayRange: (idx) => {
-      if (MaweState.selection.overlayAnchor >= 0) window.MaweCuePanelWiring.selectOverlayRange(MaweState.selection.overlayAnchor, idx);
-      else window.MaweCuePanelWiring.selectOverlayCueRow(idx);
+      if (MaweState.selection.overlayAnchor >= 0) selectOverlayRange(MaweState.selection.overlayAnchor, idx);
+      else selectOverlayCueRow(idx);
       MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
@@ -116,7 +119,7 @@ export function initMaweWaveformInit() {
           const next = segments?.[nextIndex];
           if (!next || !waveform) return;
           if (track === 'extension') MaweSelection.selectOnlyExtension(nextIndex);
-          else if (track === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(nextIndex);
+          else if (track === 'overlay') selectOverlayCueRow(nextIndex);
           else MaweSelection.selectOnly(nextIndex);
           waveform.revealTime(Number(next.start), true);
           waveform.openCueQuickEditAtIndex(track, nextIndex);
@@ -140,7 +143,7 @@ export function initMaweWaveformInit() {
       const time = MaweSplitCore.splitTimeForTextOffset(segment, offset);
       const opened = track === 'extension'
         ? MaweSplitCore.openExtensionSplitModal(index, time, MaweMultiSubtitleCore.getActiveExtensionTrack(), { extensionOffset: offset, timeSource: 'text' })
-        : window.MaweOverlaySplitMerge.openOverlaySplitModal(index, time, { extensionOffset: offset, timeSource: 'text' });
+        : openOverlaySplitModal(index, time, { extensionOffset: offset, timeSource: 'text' });
       if (opened && MaweSplitCore.pendingLinkedSplit) MaweSplitCore.pendingLinkedSplit.onQuickEditSplitComplete = reopen;
       return opened;
     },
@@ -207,7 +210,7 @@ export function initMaweWaveformInit() {
     convertCueToOverlay: (idx) => convertMainCueToOverlayForDrag(idx),
     // Shift+拖动往返：叠加轨字幕拖回主轨空隙时移回主轨，返回新下标。
     convertOverlayCueToMainDrag: (idx) => convertOverlayCueToMainForDrag(idx),
-    showOverlayContextMenu: (x, y, idx) => window.MaweContextMenusWiring.showOverlayContextMenu(x, y, idx),
+    showOverlayContextMenu: (x, y, idx) => showOverlayContextMenu(x, y, idx),
     selectCue: (idx) => {
       MaweBindingAlign.selectCueByClick(idx);
       MaweSelection.lastClickedIdx = idx;
@@ -296,7 +299,7 @@ export function initMaweWaveformInit() {
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),
-    splitOverlayCueAtTime: (idx, timeMs) => window.MaweOverlaySplitMerge.openOverlaySplitModal(
+    splitOverlayCueAtTime: (idx, timeMs) => openOverlaySplitModal(
       idx, Number.isFinite(timeMs) ? MaweTimeline.timelineFrameAlignedMilliseconds(timeMs) : timeMs,
     ),
     getClickBehavior: () => MaweSettings.EDITOR_SETTINGS.clickBehavior,

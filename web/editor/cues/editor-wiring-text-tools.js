@@ -1,3 +1,4 @@
+export function initMaweTextToolsWiring() {
 // 「左右添加字符」自定义弹窗：左右两个输入框原样插入到选中字幕两端。
 document.getElementById('wrap-chars-cancel')?.addEventListener('click', MaweTextProcess.closeWrapCharsModal);
 MaweTextProcess.wrapCharsModal?.addEventListener('click', (event) => {
@@ -266,3 +267,4 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
     );
   });
 });
+}

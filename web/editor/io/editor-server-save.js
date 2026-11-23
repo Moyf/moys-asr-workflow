@@ -1,3 +1,4 @@
+import { selectOverlayCueRow } from '../cues/editor-overlay-cue-selection.js';
 // 服务器保存：保存目标、校验预览、自动保存调度。
 // ESM init 模块：initMaweServerSave 在原清单位次执行原 IIFE 体（挂
 // window.MaweServerSave 冻结门面——classic 侧出接口）；底部具名导出经门面
@@ -175,7 +176,7 @@ export function initMaweServerSave() {
       MaweSelection.selectOnlyExtension(segmentIndex, target.track || MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweSelection.lastClickedExtensionIdx = segmentIndex;
     } else if (target.kind === 'overlay') {
-      window.MaweCuePanelWiring.selectOverlayCueRow(segmentIndex);
+      selectOverlayCueRow(segmentIndex);
     } else {
       MaweSelection.selectOnly(segmentIndex);
       MaweSelection.lastClickedIdx = segmentIndex;
