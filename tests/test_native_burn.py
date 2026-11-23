@@ -538,11 +538,17 @@ class NativeBurnHTTPTests(unittest.TestCase):
             )
             try:
                 ready = root / "ready.json"
-                for _ in range(200):
+                # The editor child may rebuild the web bundle on a cold runner
+                # (observed on macOS release CI): esbuild can exceed the old
+                # 5s window while the process stays healthy. Bound the wait by
+                # the child's own lifetime instead of a fixed wall budget.
+                for _ in range(1200):
                     if (ready.exists() and ready.stat().st_size) or process.poll() is not None:
                         break
                     time.sleep(0.025)
-                self.assertIsNone(process.poll())
+                if process.poll() is not None:
+                    self.fail(f"editor child exited early with {process.returncode}; see {root / 'editor.log'}")
+                self.assertTrue(ready.exists(), f"editor child did not publish ready.json; see {root / 'editor.log'}")
                 launch = json.loads(ready.read_text())
                 port, token = launch["port"], launch["token"]
                 origin = f"http://127.0.0.1:{port}"
