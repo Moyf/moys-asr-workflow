@@ -104,6 +104,38 @@ test('right-click and batch wrapping preserve single fade markers with undo', as
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>>HELLO');
 });
 
+for (const { label, native, secure, reason } of [
+  { label: 'browser API missing', native: false, secure: true, reason: '当前浏览器未提供文件保存选择器' },
+  { label: 'Launcher session missing', native: true, secure: true, reason: '当前页面没有有效的启动器保存会话' },
+  { label: 'insecure page', native: false, secure: false, reason: '当前页面不是安全上下文' },
+]) {
+  test(`unavailable burn save stays visible until closed · ${label}`, async ({ page }) => {
+    const burnRequests = [];
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().includes('/api/exports/burned-video/jobs')) {
+        burnRequests.push(request.url());
+      }
+    });
+    await page.evaluate(({ native, secure }) => {
+      MaweBoot.SERVER_CONFIG.nativeBurnAvailable = native;
+      Object.defineProperty(window, 'showSaveFilePicker', { value: undefined });
+      Object.defineProperty(window, 'isSecureContext', { value: secure });
+    }, { native, secure });
+    await page.clock.install();
+    await page.locator('#burn-video-export-btn').click();
+    await page.locator('#burn-video-encoding [type="submit"]').click();
+    const card = page.locator('.hint-card.hint-warning').filter({ hasText: reason });
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('选择保存位置');
+    await expect(card).toContainText('打开编辑器');
+    await page.clock.fastForward(30_000);
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: '关闭' }).click();
+    await expect(card).toBeHidden();
+    expect(burnRequests).toEqual([]);
+  });
+}
+
 test('real editor burns SRT mode through the server job and saves an MP4', async ({ page }) => {
   const requests = [];
   page.on('request', request => {

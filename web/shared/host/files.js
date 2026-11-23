@@ -15,15 +15,27 @@ export function createFiles(dependencies) {
         throw error;
       }
     },
-    downloadBlob(blob, filename) {
+    downloadBlob(blob, filename, { separateFrame = false } = {}) {
       const url = environment.URL.createObjectURL(blob);
-      const anchor = environment.document.createElement('a');
+      const frame = separateFrame ? environment.document.createElement('iframe') : null;
+      if (frame) {
+        frame.hidden = true;
+        environment.document.body.appendChild(frame);
+      }
+      const target = frame?.contentDocument || environment.document;
+      const anchor = target.createElement('a');
       anchor.href = url;
       anchor.download = filename;
-      environment.document.body.appendChild(anchor);
-      anchor.click();
-      environment.document.body.removeChild(anchor);
-      environment.setTimeout(() => environment.URL.revokeObjectURL(url), 1000);
+      target.body.appendChild(anchor);
+      try {
+        anchor.click();
+      } finally {
+        target.body.removeChild(anchor);
+        environment.setTimeout(() => {
+          environment.URL.revokeObjectURL(url);
+          frame?.remove();
+        }, 1000);
+      }
     },
   });
 }

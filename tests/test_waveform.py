@@ -1269,7 +1269,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('gap-remove-subtitle-warning', page)
         self.assertIn('gapRemovedExportDropdown.hidden = !gaps.some((gap) => gap.removed);', source)
         self.assertIn("const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';", source)
-        self.assertIn('buildGapRemovedOtio()', page)
+        self.assertIn('MaweExportTimeline.buildGapRemovedOtio', page)
         self.assertIn('buildGapRemovedFfconcat()', page)
         self.assertIn('buildGapRemovedRegionsJson()', page)
         self.assertIn("schema: 'moy.asr.gap_removed_keep_regions.v1'", source)

@@ -782,7 +782,7 @@ export function initExportTimelineModule() {
 
 
 
-  async function downloadFile(content, filename, mime, accept, { usePicker = true, detailed = false } = {}) {
+  async function downloadFile(content, filename, mime, accept, { usePicker = true, detailed = false, separateFrame = false } = {}) {
     const isSrt = filename.toLowerCase().endsWith('.srt');
     const fileContent = isSrt
       ? new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(String(content))])
@@ -805,7 +805,7 @@ export function initExportTimelineModule() {
     }
     // 兜底：传统 anchor 下载（不弹路径选择）
     const blob = new Blob([fileContent], { type: mime + ';charset=utf-8' });
-    MaweHost.files.downloadBlob(blob, filename);
+    MaweHost.files.downloadBlob(blob, filename, { separateFrame });
     return detailed ? { status: 'dispatched' } : true;
   }
 
