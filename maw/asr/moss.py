@@ -10,6 +10,7 @@
 - 仅段级时间码：超长句段按标点/字数设置二次拆分（段内时间为文本占比
   插值并吸附语音能量谷，不携带 items 冒充词级精度）；需要精确字词时间码
   时在 Launcher 用对齐模型补齐
+- 句尾标点默认保留（与统一 CLI 契约一致），仅显式 --strip-tail-punct 剥除
 - 音频统一提取为 ogg + opus 24kbps 单声道 16kHz（约 10.8MB/小时）
 - 单次任务 ≤60 分钟（官方限制），超长素材请先用 -ll 截取或自行分割
 
@@ -53,6 +54,7 @@ from maw.moss import (
     AUDIO_BITRATE,
     AUDIO_SAMPLE_RATE,
     MAX_AUDIO_SECONDS,
+    MAX_AUDIO_SECONDS_TOLERANCE,
     load_config,
     transcribe,
 )
@@ -184,11 +186,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--keep-punct", action="store_true",
-        help="保留每条字幕末尾的逗号和句号（默认去除）",
+        help="兼容旧调用：默认已保留全部句尾标点；覆盖显式 --strip-tail-punct 删除设置",
     )
     parser.add_argument(
-        "--strip-tail-punct", default="，。；,.;",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
+        "--strip-tail-punct", default="",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
     )
     parser.add_argument(
         "-ll", "--length-limit", type=parse_duration, default=None,
@@ -306,7 +308,9 @@ def main() -> int:
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
 
-        if duration > MAX_AUDIO_SECONDS:
+        # 转码会引入毫秒级容器误差（如 3600s 素材 → 3600.006s）：恰好 60 分钟
+        # 的合法素材不能因舍入被拒，用小容差判定超限。
+        if duration > MAX_AUDIO_SECONDS + MAX_AUDIO_SECONDS_TOLERANCE:
             raise SystemExit(
                 f"[错误] 音频时长 {int(duration // 60)} 分钟超过 MOSS 单次任务上限"
                 f"（60 分钟）。请用 -ll 截取部分时长，或先把音频分割成多个文件。"

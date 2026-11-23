@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import io
 import json
+import re as _re
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from requests.exceptions import ConnectionError as RequestsConnectionError
+
+from tests.compact_assertions import CompactContainerAssertions
 
 from maw.moss import (
     AUDIO_BITRATE,
@@ -20,6 +25,7 @@ from maw.moss import (
     MAX_KEYTERMS,
     MAX_UPLOAD_BYTES,
     build_request_data,
+    MAX_AUDIO_SECONDS_TOLERANCE,
     load_config,
     normalize_keyterms,
     parse_result,
@@ -50,7 +56,7 @@ def _fake_response(
     )
 
 
-class MossConfigTests(unittest.TestCase):
+class MossConfigTests(CompactContainerAssertions, unittest.TestCase):
     def test_load_config_defaults(self) -> None:
         with mock.patch.dict("os.environ", {}, clear=True), \
              mock.patch("maw.moss._load_env_file", return_value={}):
@@ -71,10 +77,35 @@ class MossConfigTests(unittest.TestCase):
     def test_limit_constants_match_official_contract(self) -> None:
         self.assertEqual(MAX_UPLOAD_BYTES, 512 * 1024 * 1024)
         self.assertEqual(MAX_AUDIO_SECONDS, 60 * 60)
+        # 恰好等于上限的素材不因转码舍入被拒（3600s → ffprobe 3600.006s）
+        self.assertLess(MAX_AUDIO_SECONDS_TOLERANCE, 1.0)
+        self.assertGreater(MAX_AUDIO_SECONDS_TOLERANCE, 0.0)
         self.assertEqual(MAX_KEYTERMS, 20)
         self.assertEqual(MAX_KEYTERM_CHARS, 30)
         self.assertEqual(AUDIO_FORMAT, "ogg")
         self.assertEqual(AUDIO_BITRATE, "24k")
+
+    def test_cli_punctuation_defaults_follow_unified_contract(self) -> None:
+        # 统一 CLI 契约（docs/user/CLI.md）：未配置时保留全部句尾标点，
+        # 删除必须显式传入；MOSS 适配器与各供应商一致，不得自带删除默认值
+        import maw.asr.moss as moss_cli
+
+        source = Path(moss_cli.__file__).read_text(encoding="utf-8")
+        match = _re.search(
+            r'--strip-tail-punct", default="([^"]*)"', source
+        )
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), "")
+
+    def test_cli_duration_limit_uses_tolerance(self) -> None:
+        # 恰好 3600s（转码后读出 3600.006s）的素材不得被 60 分钟上限拒绝
+        import maw.asr.moss as moss_cli
+
+        source = Path(moss_cli.__file__).read_text(encoding="utf-8")
+        self.assertIn(
+            "MAX_AUDIO_SECONDS + MAX_AUDIO_SECONDS_TOLERANCE",
+            source,
+        )
 
 
 class MossKeytermTests(unittest.TestCase):
@@ -513,6 +544,121 @@ class MossTranscribeTests(unittest.TestCase):
                     )
 
         self.assertFalse(submit.called)
+
+
+class MossCliBehaviorTests(unittest.TestCase):
+    """驱动 main() 全流程的契约行为测试（媒体层与转写均 mock）。
+
+    两条源码字符串断言（默认标点 / 容差）守不住行为反转——见 PR #433
+    Greptile 意见；本类用真实输出对行为钉桩。
+    """
+
+    def _run_main(self, extra_args: list[str], *, duration: float):
+        """返回 (exit, system_exit, srt 内容或 None, stdout, stderr, transcribe)。
+
+        输出在 TemporaryDirectory 仍在作用域内时读取；main() 以 SystemExit
+        退出时其 code 记录在 system_exit。工程/HTML 路径经 --json/--no-html
+        关闭，SRT 写到临时目录。
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            media = root / "clip.mp3"
+            media.write_bytes(b"media")
+            output = root / "out.srt"
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            result = {
+                "text": "您好。",
+                "language": "",
+                "items": [],
+                "segments": [{"start": 0, "end": 900, "text": "您好。"}],
+                "timestamp_granularity": "segment",
+                "duration_ms": 900,
+            }
+            argv = [
+                "maw.asr.moss", str(media), "-o", str(output),
+                "--json", "--no-html", "--no-model-tag",
+                *extra_args,
+            ]
+            captured: dict[str, object] = {"code": None, "content": None}
+            with mock.patch("sys.argv", argv), \
+                 mock.patch("maw.asr.moss.load_config", return_value={"api_key": "key", "model": "moss-transcribe-diarize-pro"}), \
+                 mock.patch(
+                     "maw.asr.moss._resolve_media_tool",
+                     side_effect=lambda tool, _path=None: tool,
+                 ), \
+                 mock.patch("maw.asr.moss.resolve_default_audio_track", return_value=0), \
+                 mock.patch("maw.asr.moss.get_duration_sec", return_value=duration), \
+                 mock.patch("maw.asr.moss.extract_audio_ogg"), \
+                 mock.patch("maw.asr.moss.snap_cue_boundaries", return_value=0), \
+                 mock.patch("maw.asr.moss.transcribe", return_value=result) as transcribe, \
+                 redirect_stdout(stdout), redirect_stderr(stderr):
+                from maw.asr.moss import main
+
+                captured["code"] = None
+                try:
+                    captured["code"] = main()
+                except SystemExit as exit_error:
+                    captured["exit"] = exit_error.code
+                captured["content"] = (
+                    output.read_text(encoding="utf-8") if output.is_file() else None
+                )
+            return (
+                captured.get("code"),
+                captured.get("exit"),
+                captured["content"],
+                stdout.getvalue(),
+                stderr.getvalue(),
+                transcribe,
+            )
+
+    def test_default_run_keeps_trailing_punctuation(self) -> None:
+        code, exit_code, content, _stdout, _stderr, transcribe = self._run_main([], duration=1000.0)
+
+        self.assertEqual(code, 0)
+        self.assertIsNone(exit_code)
+        self.assertIn("您好。", content)
+        # 默认路径必须发起真实转写（未被前置校验拦截）
+        transcribe.assert_called_once()
+
+    def test_explicit_strip_removes_trailing_punctuation(self) -> None:
+        code, _exit_code, content, _stdout, _stderr, _transcribe = self._run_main(
+            ["--strip-tail-punct", "，。；,.;"], duration=1000.0,
+        )
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("您好。", content)
+        self.assertIn("您好", content)
+
+    def test_keep_punct_overrides_explicit_strip(self) -> None:
+        code, _exit_code, content, _stdout, _stderr, _transcribe = self._run_main(
+            ["--strip-tail-punct", "，。；,.;", "--keep-punct"], duration=1000.0,
+        )
+
+        self.assertEqual(code, 0)
+        self.assertIn("您好。", content)
+
+    def test_exactly_60_minutes_passes_after_transcode_rounding(self) -> None:
+        # 3600s 素材经 ogg/opus 转码读出 3600.006s：不得被上限拒绝
+        code, _exit_code, content, _stdout, _stderr, transcribe = self._run_main(
+            [], duration=3600.0065,
+        )
+
+        self.assertEqual(code, 0)
+        self.assertIn("您好。", content)
+        transcribe.assert_called_once()
+
+    def test_slightly_over_60_minutes_is_rejected_before_submit(self) -> None:
+        # 明显超限（> 0.1s 容差）的素材在提交前被拒，不发起网络转写
+        code, exit_code, content, _stdout, _stderr, transcribe = self._run_main(
+            [], duration=3600.2,
+        )
+
+        self.assertIsNone(code)  # main() 以 SystemExit 退出，未返回
+        # CLI 的用法错误 SystemExit 携带错误信息字符串（argparse 同款语义）
+        self.assertIn("超过 MOSS 单次任务上限", str(exit_code))
+        self.assertIsNone(content)
+        transcribe.assert_not_called()
 
 
 if __name__ == "__main__":
