@@ -10,19 +10,46 @@ const BURN_VIDEO_MIME = 'video/mp4';
 // 烧录阶段文本：key 与服务端 MediaJob.stage 对齐。
 const BURN_VIDEO_STAGES = {
   preparing: '正在读取源视频信息…',
+  subtitles: '正在准备字幕…',
+  filters: '正在准备视频滤镜…',
   burning: '正在烧录字幕…',
 };
+const BURN_FAILURE_STAGES = {
+  admission: '启动任务', status: '查询任务状态', preparing: '读取源文件',
+  subtitles: '准备字幕', filters: '准备视频滤镜', burning: '烧录编码', picker: '选择保存位置',
+  download: '下载视频', write: '写入文件',
+};
+const BURN_ASS_LAYOUT_ERRORS = new Set([
+  'ass-negative-spacing', 'ass-unsupported-geometry', 'ass-fixed-track-too-large',
+  'ass-fixed-track-overlap', 'ass-stack-too-large',
+]);
 const BURN_SESSION_KEY = 'maw-native-burn-session';
 let nativeBurnPicking = false;
 
+async function burnFetch(url, options, networkCode = 'local-connection') {
+  try {
+    return await MaweHost.server.fetch(url, options);
+  } catch (error) {
+    if (error?.name !== 'TypeError' && error?.name !== 'NetworkError') throw error;
+    throw Object.assign(new Error(), {name: error.name, code: networkCode});
+  }
+}
+
 async function nativeBurnPost(url, requestToken, fields) {
-  const response = await MaweHost.server.fetch(url, {
+  const nativeSave = url.endsWith('/native-save');
+  const response = await burnFetch(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requestToken, ...fields }),
-  });
-  const data = await response.json();
+  }, nativeSave ? 'native-write-unconfirmed' : 'local-connection');
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    if (nativeSave) throw Object.assign(new Error(), {name: error.name, code: 'native-write-unconfirmed', status: response.status});
+    throw error;
+  }
   if (!response.ok) {
-    throw Object.assign(new Error(data.error || `服务器返回 ${response.status}`), { code: data.code });
+    throw burnResponseError(data.error, response.status, data.code);
   }
   return data;
 }
@@ -89,10 +116,106 @@ function burnVideoSafeError(error, fallback) {
     return burnVideoText('与本地服务的连接中断，请重试');
   }
   if (typeof message !== 'string' || !message || message.length > 240
-      || /extract_extradata|No start code|Invalid data found|[A-Z]:[\\/]|maw-media-job-/i.test(message)) {
+      || /extract_extradata|No start code|Invalid data found|[\\/]|maw-media-job-/i.test(message)) {
     return burnVideoText(fallback);
   }
   return burnVideoText(message);
+}
+
+function burnProgressText(state) {
+  const { encoder, attempts } = state.burnDiagnostic || {};
+  if (state.stage === 'burning' && encoder && attempts?.some(attempt => attempt.encoder !== encoder)) {
+    return `${burnVideoText('上一次编码失败，正在换编码器重新烧录…')} (${encoder.toUpperCase()})`;
+  }
+  return burnVideoText(BURN_VIDEO_STAGES[state.stage] || '正在准备导出…');
+}
+
+function burnResponseError(message, status, code) {
+  return Object.assign(new Error(message || `${burnVideoText('HTTP 请求失败')} (${status})`),
+    { burnMessage: true, status, code });
+}
+
+function showBurnVideoFailure(error, { stage, mode, jobId, diagnostic, received, expected }) {
+  const tr = burnVideoText;
+  const failure = diagnostic?.failure;
+  if (failure) stage = failure.stage;
+  const kind = failure?.kind || error?.code;
+  const showKnownSubtitleError = stage === 'subtitles' && BURN_ASS_LAYOUT_ERRORS.has(kind);
+  const summary = kind === 'disk-full' || error?.name === 'QuotaExceededError'
+    ? tr('磁盘空间或配额不足，请释放空间或换一个保存位置')
+    : kind === 'permission' || ['NotAllowedError', 'SecurityError'].includes(error?.name)
+      ? tr('没有访问权限，请检查文件或保存位置的权限')
+      : kind === 'native-write-unconfirmed'
+        ? tr('与本地服务的连接中断，无法确认保存结果，请先检查目标文件')
+        : kind === 'local-connection' || (stage === 'download' && error?.name === 'TypeError')
+          ? tr(stage === 'download' ? '视频传输中断，请重试' : '与本地服务的连接中断，请重试')
+          : error?.burnMessage || showKnownSubtitleError
+            ? burnVideoSafeError(error, '没有可显示的错误摘要')
+            : tr({
+              write: '无法写入所选文件，请检查保存位置后重试',
+              picker: '无法打开视频保存位置选择器',
+              subtitles: '无法准备字幕内容',
+            }[stage] || '没有可显示的错误摘要');
+  const stageTitle = `${tr('烧录视频导出失败')} · ${tr(BURN_FAILURE_STAGES[stage] || '准备导出')}`;
+  const headline = `${stageTitle}：${summary}`;
+  // Only include structured fields, never arbitrary JS exceptions, request
+  // metadata, names, paths, tokens, or the subtitle payload.
+  const cleanCode = value => typeof value === 'string' && /^[\w.+~-]{1,96}$/.test(value) ? value : null;
+  const data = {
+    mawVersion: cleanCode(MaweBoot.SERVER_CONFIG?.burnVideoAppVersion),
+    ffmpegVersion: cleanCode(diagnostic?.ffmpegVersion),
+    mode: diagnostic?.mode || mode, stage, jobId: cleanCode(jobId),
+    errorType: cleanCode(failure?.type || error?.name),
+    errorCode: cleanCode(failure?.kind || error?.code),
+    httpStatus: Number.isInteger(error?.status) ? error.status : null,
+    occurredAt: new Date().toISOString(),
+  };
+  if (Number.isInteger(expected)) data.transfer = { receivedBytes: received, expectedBytes: expected };
+  const lines = [stageTitle];
+  const appendReasons = ({ reasons, stderrPresent }) => {
+    if (reasons?.length) lines.push(...reasons);
+    else if (stderrPresent === false) lines.push(tr('FFmpeg 未输出错误详情'));
+    else if (stderrPresent) lines.push(tr('FFmpeg 有输出，但没有可安全分享的已知报错'));
+  };
+  for (const [i, attempt] of (diagnostic?.attempts || []).entries()) {
+    const { encoder, exitCode, elapsedMs, exception } = attempt;
+    lines.push(`\n${i + 1}. ${encoder} · ${elapsedMs} ms · ${tr('退出码')}: ${exitCode ?? '—'}${exception ? ` · ${exception}` : ''}`);
+    if (exitCode !== 0) appendReasons(attempt);
+  }
+  if (failure && !diagnostic.attempts?.length) appendReasons(failure);
+  lines.push('', JSON.stringify(data, (_, value) => value ?? undefined, 2));
+  const report = lines.join('\n');
+  return MaweHint.flashHint(headline, 'warning', {
+    durationMs: 0, dismissible: true,
+    contentBuilder(card) {
+      const title = document.createElement('div');
+      title.textContent = headline;
+      const details = document.createElement('details');
+      details.className = 'hint-burn-detail';
+      const toggle = document.createElement('summary');
+      toggle.textContent = tr('查看诊断详情');
+      const text = document.createElement('pre');
+      text.className = 'hint-burn-report';
+      text.textContent = report;
+      details.append(toggle, text);
+      const actions = document.createElement('div');
+      actions.className = 'hint-burn-actions';
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.textContent = tr('复制诊断');
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(report);
+          copy.textContent = tr('已复制');
+        } catch (_) {
+          details.open = true;
+          copy.textContent = tr('复制失败，请手动选中诊断文字');
+        }
+      });
+      actions.append(copy);
+      card.append(title, actions, details);
+    },
+  });
 }
 
 function showBurnVideoSuccess(message, name, open = null, syncWarning = false) {
@@ -158,7 +281,7 @@ function showBurnVideoSuccess(message, name, open = null, syncWarning = false) {
   });
 }
 
-async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText, greenScreen = false }) {
+async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText, greenScreen = false, gapRemoved = false }) {
   const tr = burnVideoText;
   const config = MaweBoot.SERVER_CONFIG;
   if (window.__maweBurnVideoTask) return;
@@ -197,6 +320,8 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const fontsReady = needsAssFonts ? window.MaweAssFontAliases?.ensureCoverage?.() : null;
   const deferRequest = needsAssFonts && window.MaweAssFontAliases?.pending?.();
   const audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
+  const mode = greenScreen ? 'green-screen' : gapRemoved ? 'gap-removed' : 'full';
+  const failBeforeAdmission = (stage, error) => showBurnVideoFailure(error, { stage, mode });
   let request;
   const prepareRequest = () => {
     request = buildRequest();
@@ -205,7 +330,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   if (!deferRequest) {
     try { prepareRequest(); }
     catch (error) {
-      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
+      failBeforeAdmission('subtitles', error);
       return;
     }
     if (!request) return;
@@ -233,21 +358,26 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     }
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${burnVideoSafeError(error, '请检查保存位置权限后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
+    failBeforeAdmission('picker', error);
     return;
   } finally {
     if (nativeSession) nativeBurnPicking = false;
   }
   if (deferRequest) {
-    await fontsReady;
-    await window.MaweAssFontAliases?.whenReady?.();
+    try {
+      await fontsReady;
+      await window.MaweAssFontAliases?.whenReady?.();
+    } catch (error) {
+      failBeforeAdmission('subtitles', error);
+      return;
+    }
     if (!isBindingCurrent()) {
       MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频烧录'), 'warning');
       return;
     }
     try { prepareRequest(); }
     catch (error) {
-      MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
+      failBeforeAdmission('subtitles', error);
       return;
     }
     if (!request) return;
@@ -266,6 +396,10 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     return;
   }
 
+  let failureStage = 'admission';
+  let diagnostic;
+  let expectedLength;
+  let receivedLength = 0;
   let writable = null;
   let reader = null;
   let response = null;
@@ -410,7 +544,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     window.addEventListener('pagehide', requestStop);
     setProgress(tr('正在准备导出…'));
     // 客户端令牌让取消在服务器返回任务 ID 之前也安全（含页面关闭）。
-    const admission = await raceStop(MaweHost.server.fetch(jobsUrl, {
+    const admission = await raceStop(burnFetch(jobsUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MAW-Request-Token': requestToken },
       body: JSON.stringify({
         requestToken, bindingGeneration, sourceMediaId, ...request, ...sessionFields,
@@ -420,35 +554,38 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
       signal: task.controller.signal,
     }));
     let state = await raceStop(admission.json());
-    if (!admission.ok) throw new Error(state.error || `服务器返回 ${admission.status}`);
+    if (!admission.ok) throw burnResponseError(state.error, admission.status, state.code);
     if (typeof state.jobId !== 'string' || !state.jobId) throw new Error(tr('导出状态异常，请重试'));
     task.id = state.jobId;
+    failureStage = 'status';
     while (true) {
       ensureCurrent();
       if (state.jobId !== task.id || state.bindingGeneration !== bindingGeneration
           || state.sourceMediaId !== sourceMediaId) {
         throw new Error(tr('导出状态异常，请重试'));
       }
+      diagnostic = state.burnDiagnostic || diagnostic;
       if (state.state === 'ready') break;
-      if (state.state === 'failed' && typeof state.errorDetails === 'string' && state.errorDetails) {
-        // ffmpeg stderr 尾部只进控制台诊断，不拼进 toast 文案。
-        console.error('[MAW burn] ffmpeg stderr tail:', state.errorDetails.slice(-2000));
+      if (state.state === 'failed') {
+        failureStage = state.stage || failureStage;
+        throw burnResponseError(state.error || tr('导出状态异常，请重试'));
       }
       if (['failed', 'cancelled', 'completed'].includes(state.state)) throw new Error(state.error || tr('导出状态异常，请重试'));
       const percent = state.stage === 'burning' && typeof state.progress === 'number' ? state.progress : null;
-      setProgress(tr(BURN_VIDEO_STAGES[state.stage] || '正在准备导出…')
+      setProgress(burnProgressText(state)
         + (percent === null ? '' : ` ${Math.round(percent * 100)}%`), percent);
       await raceStop(pause());
-      const poll = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
+      const poll = await raceStop(burnFetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
         headers: statusHeaders, signal: task.controller.signal,
       }));
       state = await raceStop(poll.json());
-      if (!poll.ok) throw new Error(state.error || `服务器返回 ${poll.status}`);
+      if (!poll.ok) throw burnResponseError(state.error, poll.status, state.code);
     }
     ensureCurrent();
     if (nativeSession) {
       const jobUrl = `${jobsUrl}/${encodeURIComponent(task.id)}`;
       task.nativeSaving = true;
+      failureStage = 'write';
       setProgress(tr('正在写入烧录视频…'));
       let saved;
       try {
@@ -465,22 +602,25 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
       catch (error) { warnCleanup(error); }
       return;
     }
-    setProgress(tr('正在下载并写入视频…'), 0);
-    response = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
+    failureStage = 'download';
+    const savingLabel = tr('烧录完成，正在下载并保存…');
+    setProgress(savingLabel, 0);
+    response = await raceStop(burnFetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
       headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
     }));
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || `服务器返回 ${response.status}`);
+      throw burnResponseError(error.error, response.status, error.code);
     }
     const contentType = (response.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase();
-    if (contentType !== BURN_VIDEO_MIME) throw new Error(tr('导出文件格式不符合预期，请重试'));
-    if (!response.body?.getReader) throw new Error(tr('当前浏览器不支持流式保存视频'));
-    const expectedLength = Number(response.headers.get('Content-Length'));
+    if (contentType !== BURN_VIDEO_MIME) throw burnResponseError('导出文件格式不符合预期，请重试', response.status, 'invalid-content-type');
+    if (!response.body?.getReader) throw burnResponseError('当前浏览器不支持流式保存视频', response.status, 'stream-unavailable');
+    expectedLength = Number(response.headers.get('Content-Length'));
     if (!Number.isSafeInteger(expectedLength) || expectedLength <= 0) {
-      throw new Error(tr('服务器返回的视频大小无效'));
+      throw burnResponseError('服务器返回的视频大小无效', response.status, 'invalid-content-length');
     }
     ensureCurrent();
+    failureStage = 'write';
     const writablePromise = handle.createWritable();
     // 浏览器存储权限操作可能在停止之后才完成；迟到的 writable 也要丢弃。
     if (task) void writablePromise.then(value => {
@@ -488,21 +628,24 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     }).catch(() => {});
     writable = await raceStop(writablePromise);
     ensureCurrent();
+    failureStage = 'download';
     reader = response.body.getReader();
-    let receivedLength = 0;
     while (true) {
+      failureStage = 'download';
       const { done, value } = await raceStop(reader.read());
       ensureCurrent();
       if (done) break;
       if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
       receivedLength += value.byteLength;
-      if (receivedLength > expectedLength) throw new Error(tr('服务器返回的视频长度超出预期'));
+      if (receivedLength > expectedLength) throw burnResponseError('服务器返回的视频长度超出预期', response.status, 'length-overflow');
+      failureStage = 'write';
       await raceStop(writable.write(value));
       ensureCurrent();
-      setProgress(`${tr('正在下载并写入视频…')} ${Math.round(receivedLength / expectedLength * 100)}%`,
+      setProgress(`${savingLabel} ${Math.round(receivedLength / expectedLength * 100)}%`,
         receivedLength / expectedLength);
     }
-    if (receivedLength !== expectedLength) throw new Error(tr('视频传输不完整，未保存部分文件'));
+    if (receivedLength !== expectedLength) throw burnResponseError('视频传输不完整，未保存部分文件', response.status, 'truncated-download');
+    failureStage = 'write';
     ensureCurrent();
     committing = true;
     if (stopButton) stopButton.disabled = true;
@@ -522,7 +665,8 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
         warnCleanup(cleanupError);
       }
     } else {
-      MaweHint.flashHint(`${tr('烧录视频导出失败')}：${burnVideoSafeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning', { error, durationMs: 0, dismissible: true });
+      showBurnVideoFailure(error, { stage: failureStage, mode, jobId: task?.id, diagnostic,
+        received: receivedLength, expected: expectedLength });
     }
   } finally {
     if (!transferComplete && response?.body) {
@@ -584,6 +728,7 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
   void runBurnVideoJob({
     button: document.getElementById('download-gap-removed-burn-video'),
     label: '重组后烧录视频',
+    gapRemoved: true,
     startHint: '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。',
     successText: '重组后烧录视频已保存',
     suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,

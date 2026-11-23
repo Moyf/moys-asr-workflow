@@ -494,7 +494,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1316,8 +1316,10 @@
     const run = $("runToolboxAlignment");
     const stop = $("stopToolboxAlignment");
     if (!run || !stop) return;
-    run.textContent = t(alignmentRunning ? "toolbox_reopen_alignment" : "toolbox_run_alignment");
+    run.textContent = t($("toolboxRecordingInputMode").value === "recording"
+      ? "toolbox_transcribe_alignment" : "toolbox_run_alignment");
     run.disabled = busy;
+    $("toolboxAlignmentAutoSilence").disabled = busy;
     stop.classList.toggle("hidden", !alignmentRunning);
     stop.disabled = busy;
   }
@@ -1435,37 +1437,91 @@
     return paths;
   }
 
+  let pendingRecordingKey = null;
+  function recordingPreparationKey(scriptPath, transcription) {
+    // Compare the submitted settings in memory only. Ignore probe metadata and options
+    // overridden by recording preparation; compare the effective track, not probe state.
+    const { audioTrackCount, defaultAudioTrack, audioTrack, testRun, lengthLimit,
+      alignmentModel, alignmentModelPath, autoPostprocess, ...settings } = transcription;
+    return JSON.stringify([scriptPath, audioTrack ?? defaultAudioTrack ?? 0, settings]);
+  }
+
+  function changedRecordingNotice(running) {
+    if (document.documentElement.lang === "en") {
+      return running ? "Inputs changed. Cancel the previous transcription or wait for it to finish, then start again."
+        : "Inputs changed. The previous result was not opened; click again to use the current inputs.";
+    }
+    return running ? "输入已更改。请取消上一次转写或等待它完成，然后重新启动。"
+      : "输入已更改，未打开上一次结果。请再次点击以使用当前输入。";
+  }
+
   async function runToolboxAlignment() {
     if (busy) return;
     const paths = validateAlignmentInputs();
     if (!paths) return;
-    const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });
+    const autoMarkSilence = $("toolboxAlignmentAutoSilence").checked;
+    const gapRemove = autoMarkSilence ? alignmentGapRemoveFromControls({ normalizeFields: true }) : null;
     setBusy(true, "toolbox_status_alignment_starting");
     try {
       let inputs = paths;
       if ($("toolboxRecordingInputMode").value === "recording") {
-        const transcription = window.MAWLauncher.getTranscriptionPayload();
-        if (paths.mediaPath) {
-          transcription.mediaPath = paths.mediaPath;
-          transcription.audioTrack = window.MAWLauncher.getAudioTrackForMedia(paths.mediaPath);
+        const transcription = window.MAWLauncher.getRecordingReviewTranscriptionPayload(paths.mediaPath);
+        const key = recordingPreparationKey(paths.scriptPath, transcription);
+        if (pendingRecordingKey !== null && pendingRecordingKey !== key) {
+          const previous = await bridge("recording_review_status");
+          if (!previous.ok || previous.status === "running") {
+            const detail = previous.ok ? "" : `${postprocessErrorText(previous)}\n`;
+            setResult(`${detail}${changedRecordingNotice(true)}`, "error");
+            return;
+          }
+          pendingRecordingKey = null;
+          $("cancelRecordingPreparation").classList.add("hidden");
         }
-        const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
-        if (!started.ok) { setResult(started.error || postprocessErrorText(started), "error"); return; }
+        if (pendingRecordingKey === null) {
+          const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
+          if (!started.ok) { setResult(postprocessErrorText(started), "error"); return; }
+          pendingRecordingKey = key;
+        }
         $("cancelRecordingPreparation").classList.remove("hidden");
         let prepared;
         try {
-          do {
-            await new Promise(resolve => setTimeout(resolve, 400));
+          let pollDelay = 400;
+          let pollFailures = 0;
+          for (;;) {
+            await new Promise(resolve => setTimeout(resolve, pollDelay));
             prepared = await bridge("recording_review_status");
-            setResult(prepared.message || "", "info");
-          } while (prepared.status === "running");
-        } finally { $("cancelRecordingPreparation").classList.add("hidden"); }
+            if (!prepared.ok) {
+              if (++pollFailures >= 3) {
+                const hint = document.documentElement.lang === "en"
+                  ? "ASR may still be running. Click again to reconnect, or cancel below."
+                  : "转写可能仍在后台运行。再次点击可重新查询，也可以取消准备。";
+                setResult(`${postprocessErrorText(prepared)}\n${hint}`, "error");
+                return;
+              }
+              setResult(postprocessErrorText(prepared), "error");
+              pollDelay = 1500;
+              continue;
+            }
+            if (prepared.status !== "running") break;
+            pollFailures = 0;
+            pollDelay = 400;
+            if (prepared.message) setResult(prepared.message, "info");
+          }
+          pendingRecordingKey = null;
+        } finally { $("cancelRecordingPreparation").classList.toggle("hidden", pendingRecordingKey === null); }
         if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
+        const current = alignmentInputs();
+        if ($("toolboxRecordingInputMode").value !== "recording" || key !== recordingPreparationKey(
+          current.scriptPath, window.MAWLauncher.getRecordingReviewTranscriptionPayload(current.mediaPath),
+        )) {
+          setResult(changedRecordingNotice(false), "info");
+          return;
+        }
         inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
         $("toolboxAlignmentProjectPath").value = prepared.projectPath;
         window.MAWLauncher.setJsonPath(prepared.projectPath);
       }
-      const result = await bridge("start_alignment_server", { ...inputs, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
+      const result = await bridge("start_alignment_server", { ...inputs, autoMarkSilence, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
       if (!result.ok) {
         if (result.code?.startsWith("alignment_server_")) {
           alignmentRunning = false;
@@ -2214,7 +2270,7 @@
     $("postprocessScriptPath").value = String(match.scriptPath || "");
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
-    $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
+    $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols === true;
     $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
@@ -3032,8 +3088,15 @@
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
   $("toolboxRecordingInputMode").addEventListener("change", () => {
     $("toolboxAlignmentProjectDropZone").classList.toggle("hidden", $("toolboxRecordingInputMode").value === "recording");
+    renderAlignmentAction();
   });
-  $("cancelRecordingPreparation").addEventListener("click", () => { void bridge("cancel_recording_review"); });
+  $("toolboxAlignmentAutoSilence").addEventListener("change", () => {
+    $("toolboxAlignmentGapParameters").classList.toggle("hidden", !$("toolboxAlignmentAutoSilence").checked);
+  });
+  $("cancelRecordingPreparation").addEventListener("click", async () => {
+    const result = await bridge("cancel_recording_review");
+    if (!result.ok) setResult(postprocessErrorText(result), "error");
+  });
   $("runToolboxAlignment").addEventListener("click", () => { void runToolboxAlignment(); });
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runTimestampAlignment").addEventListener("click", () => { void runTimestampAlignment(); });
@@ -3158,6 +3221,7 @@
     }
   });
   $("toolboxInputPath").addEventListener("input", () => {
+    $("toolboxInputDropNotice").classList.add("hidden");
     clearChainSelection();
     inputManual = Boolean($("toolboxInputPath").value.trim());
     setFieldError("toolboxInputPath", "");
@@ -3362,6 +3426,17 @@
     if (event.stage === "done" && event.warnings?.length) setResult(`${t("toolbox_done")}\n${event.warnings.join("\n")}`, "success", { revealWarning: true });
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.openDroppedMosp = (path) => {
+    if (busy || mediaToolRunning) return false;
+    toolboxOpenMode = "manual";
+    selectToolboxSection("postprocess");
+    if ($("toolboxDrawer").classList.contains("hidden")) setOpen(true);
+    const input = $("toolboxInputPath");
+    input.value = path;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    $("toolboxInputDropNotice").classList.remove("hidden");
+    return true;
+  };
   window.MAWLauncher.openToolboxAiProcessing = () => {
     // DeepSeek 彩蛋提示里的「AI处理」入口：打开工具箱并切到 AI 处理标签页。
     toolboxOpenMode = "manual";

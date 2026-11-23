@@ -105,33 +105,117 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
   } finally {await server?.stop();cleanupTempDir(dir);}
 });
 
-test('Launcher recording mode reuses selected ASR settings and opens its raw project',async({page})=>{
+test('Launcher recording input labels follow the UI language without resetting the mode', async ({ page }) => {
+  await page.goto(pathToFileURL(resolve('web/launcher/index.html')).href);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#toolboxFab').click();
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxAlignmentTab').click();
+  const mode = page.locator('#toolboxRecordingInputMode');
+  const label = page.locator('label[for="toolboxRecordingInputMode"]');
+  await expect(label).toHaveText('输入方式');
+  await expect(mode.locator('option')).toHaveText(['使用已有原始 ASR 工程', '从录音开始']);
+  await mode.selectOption('recording');
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(label).toHaveText('Input mode');
+  await expect(mode.locator('option')).toHaveText(['Use an existing raw ASR project', 'Start from a recording']);
+  await expect(mode).toHaveValue('recording');
+  await expect(page.locator('#runToolboxAlignment')).toHaveText('Transcribe and open speech alignment');
+  await expect(page.locator('#cancelRecordingPreparation')).toHaveText('Stop transcription');
+  await page.evaluate(() => document.getElementById('langZh').click());
+  await expect(mode.locator('option:checked')).toHaveText('从录音开始');
+  await expect(mode).toHaveValue('recording');
+});
+
+for (const scenario of ['same inputs', 'new files', 'new service', 'model changed during polling']) {
+test(`Launcher recording mode: ${scenario}`,async({page})=>{
+  const changeInputs=scenario==='new files';
   await page.goto(pathToFileURL(resolve('web/launcher/index.html')).href);
   await page.waitForFunction(()=>window.MAWLauncher?.config?.postprocessProviders?.length>0);
+  await expect(page.locator('#mediaPath')).toHaveValue('');
   await page.locator('#toolboxFab').click();await page.locator('#toolboxUtilitiesPrimaryTab').click();await page.locator('#toolboxAlignmentTab').click();
+  const run=page.locator('#runToolboxAlignment');
+  const silence=page.locator('#toolboxAlignmentAutoSilence');
+  const parameters=page.locator('#toolboxAlignmentGapParameters');
+  await expect(run).toHaveText('打开口播对齐');
   await page.locator('#toolboxRecordingInputMode').selectOption('recording');
+  await expect(run).toHaveText('转写并打开口播对齐');
+  await expect(silence).not.toBeChecked();
+  await expect(parameters).toBeHidden();
+  await silence.check();
+  await expect(parameters).toBeVisible();
+  const silenceGap=await parameters.evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
+  expect(silenceGap).toBeGreaterThanOrEqual(8);
+  if (scenario!=='same inputs') {
+    await silence.uncheck();
+    await expect(parameters).toBeHidden();
+  }
   await expect(page.locator('#toolboxAlignmentProjectDropZone')).toBeHidden();
   await page.locator('#toolboxAlignmentScriptPath').fill('/tmp/script.txt');
-  await page.evaluate(()=>{
+  await page.locator('#toolboxUtilityMediaPath').fill('/tmp/audio.wav');
+  await page.evaluate((scenario)=>{
     const original=window.MAWLauncher.callBackend;
+    const getPayload=window.MAWLauncher.getRecordingReviewTranscriptionPayload;
+    window.MAWLauncher.getRecordingReviewTranscriptionPayload=media=>({
+      ...getPayload(media),
+      ...(window.recordingEndpoint ? {openaiBaseUrl:window.recordingEndpoint} : {}),
+      ...(window.recordingModel ? {modelId:window.recordingModel} : {}),
+    });
+    let polls=0;
+    window.recordingStarts=0;
     window.MAWLauncher.callBackend=async(method,payload)=>{
-      if(method==='start_recording_review'){window.recordingPayload=payload;return {ok:true,status:'running'};}
-      if(method==='recording_review_status')return {ok:true,status:'ready',projectPath:'/tmp/raw.mosp',scriptPath:'/tmp/script.txt',mediaPath:'/tmp/audio.wav'};
+      if(method==='start_recording_review'){window.recordingStarts++;window.recordingPayload=payload;return {ok:true,status:'running'};}
+      if(method==='recording_review_status'){
+        if(++polls<=3)return {ok:false,error:'Temporary status error'};
+        if (scenario==='new files' && polls===4) return {ok:true,status:'running'};
+        if (scenario==='model changed during polling' && polls===4) window.recordingModel='changed-model';
+        const isNew=window.recordingStarts===2;
+        return {ok:true,status:'ready',projectPath:isNew?'/tmp/new.mosp':'/tmp/raw.mosp',scriptPath:window.recordingPayload.scriptPath,mediaPath:window.recordingPayload.transcription.mediaPath};
+      }
       if(method==='start_alignment_server'){window.recordingServerPayload=payload;return {ok:true,url:'http://127.0.0.1:8260/'};}
       if(method==='open_url')return {ok:true};
       return original(method,payload);
     };
-  });
+  }, scenario);
   await page.locator('#runToolboxAlignment').click();
-  await expect(page.locator('#toolboxAlignmentProjectPath')).toHaveValue('/tmp/raw.mosp');
-  expect(await page.evaluate(()=>window.recordingPayload.scriptPath)).toBe('/tmp/script.txt');
+  await expect(page.locator('#toolboxResultText')).toHaveText('Temporary status error');
+  await expect(page.locator('#cancelRecordingPreparation')).toBeVisible();
+  await expect(page.locator('#toolboxResultText')).toContainText('再次点击可重新查询');
+  if (changeInputs) {
+    await page.locator('#toolboxAlignmentScriptPath').fill('/tmp/new.txt');
+    await page.locator('#toolboxUtilityMediaPath').fill('/tmp/new.wav');
+    await page.locator('#runToolboxAlignment').click();
+    await expect(page.locator('#toolboxResultText')).toContainText('输入已更改');
+    await expect(page.locator('#cancelRecordingPreparation')).toBeVisible();
+    expect(await page.evaluate(()=>window.recordingServerPayload)).toBeUndefined();
+  }
+  if (scenario==='new service') await page.evaluate(()=>{window.recordingEndpoint='https://example.test/v1';});
+  await page.locator('#runToolboxAlignment').click();
+  if (scenario==='model changed during polling') {
+    await expect(page.locator('#toolboxResultText')).toContainText('未打开上一次结果');
+    expect(await page.evaluate(()=>window.recordingServerPayload)).toBeUndefined();
+    await page.locator('#runToolboxAlignment').click();
+  }
+  const newTask=scenario!=='same inputs';
+  const expectedProject=newTask?'/tmp/new.mosp':'/tmp/raw.mosp';
+  const expectedScript=changeInputs?'/tmp/new.txt':'/tmp/script.txt';
+  const expectedMedia=changeInputs?'/tmp/new.wav':'/tmp/audio.wav';
+  await expect(page.locator('#toolboxAlignmentProjectPath')).toHaveValue(expectedProject);
+  await expect(page.locator('#cancelRecordingPreparation')).toBeHidden();
+  expect(await page.evaluate(()=>window.recordingPayload.scriptPath)).toBe(expectedScript);
+  expect(await page.evaluate(()=>window.recordingStarts)).toBe(newTask?2:1);
   expect(await page.evaluate(()=>window.recordingPayload.transcription.providerId)).toBeTruthy();
-  expect(await page.evaluate(()=>window.recordingServerPayload.projectPath)).toBe('/tmp/raw.mosp');
+  expect(await page.evaluate(()=>window.recordingPayload.transcription)).toMatchObject({mediaPath:expectedMedia,srtPath:''});
+  expect(await page.evaluate(()=>window.recordingServerPayload)).toMatchObject({projectPath:expectedProject,scriptPath:expectedScript,mediaPath:expectedMedia});
+  expect(await page.evaluate(()=>window.recordingServerPayload)).toMatchObject({
+    autoMarkSilence:scenario==='same inputs', gapRemove:scenario==='same inputs'?{minimum_ms:400}:null,
+  });
   const gap=await page.locator('#toolboxAlignmentInputs').evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(8);
   writeFileSync(test.info().outputPath("spacing.json"),JSON.stringify({minimum:8,measuredVerticalGap:gap},null,2));
   await page.locator('#toolboxAlignmentPanel').screenshot({path:test.info().outputPath('recording-launcher.png')});
 });
+}
 
 test('review can retry after failure and resume cancellation or source fill after reload',async({page})=>{
   const dir=makeTempDir('recording-lifecycle');let server;

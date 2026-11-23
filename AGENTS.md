@@ -152,7 +152,6 @@ uv run python edit.py --blank
 修复现有 PR 的 CI 回归或审查指出的问题时，完成相关验证后可直接同步目标分支、提交修复并普通推送至该 PR 的现有分支，不必逐次确认。
 
 
-
 1. **先说问题和结果**：标题写用户可感知的修复；开头两句交代触发场景、旧行为与期望行为。路径、布局或数据问题优先用一个最小前后对照，不铺背景。
 2. **正文默认四段**：「为什么改」→「改了什么」→「验证」→「边界 / 待确认」。目标是首屏能判断目的与风险；每段 2–4 条，每组最多 5 条。简单 PR 可合并小节，不为凑模板加内容。
 3. **只留审查必要信息**：改动按行为归纳；复杂链路最多列 3 个关键入口与审查点，不逐文件解释。原始日志、调试经过、完整命令矩阵放关联记录或折叠详情，不塞主文；关键命令应可复制，远端 reviewer 无法访问的本地路径不能作为唯一证据。
@@ -166,7 +165,7 @@ uv run python edit.py --blank
 
 条目面向用户，默认一句话「**简短标题** ： 结果」。不写实现细节、根因、重试过程、测试与边缘情况；操作步骤和限制放用户指南，技术细节放工程文档或日志。
 
-发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
+发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。新增远端、发布相关的推送、打 tag 或创建 GitHub Release 均需维护者明确授权；日常更新已开启的 PR 按上节执行。
 
 Release 正文只从 CL 生成；[正式版归档与校验](docs/releases/README.md#正式版归档)是发布门槛，beta / rc 不新增归档，补丁版本须声明系列基础版本。正式版分别核验 [GitHub Release 和官网](docs/releases/README.md#正式版收尾门槛)；仅官网失败则报告「安装包已发布，官网待同步」，只重试 Pages，不重打包、不撤回 Release、不移动 tag。
 

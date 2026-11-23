@@ -15,6 +15,7 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.11.4 之后 | 2026-11-23 | [GitHub Star 审查](release1.11.4/261123_GitHubStar/REVIEW_FINDINGS.md) / [人工核对](release1.11.4/261123_GitHubStar/GitHubStar.checklist.md) | Launcher 和本地编辑器星标入口，覆盖点击写入、回退及仓库导航；不调用真实 Star API |
+| 1.11.4 之后 | 2026-11-22 | [口播与文稿匹配核验](release1.11.4/261122_口播与文稿匹配核验/口播与文稿匹配.checklist.md) / [独立审查与处置](release1.11.4/261122_口播与文稿匹配核验/REVIEW_FINDINGS.md) | 口播准备、运行环境升级交互、逐字差异和多字符断句保留字词码 |
 | 1.11.4 之后 | 2026-11-22 | [缩略图后台化](release1.11.4/261122_缩略图后台化/缩略图后台化.checklist.md) / [独立审查](release1.11.4/261122_缩略图后台化/REVIEW_FINDINGS.md) | 编辑不等待缩略图，含抽帧测速与人工核验 |
 | 1.11.4 之后 | 2026-11-19 | [MOSS 云端供应商](release1.11.4/261119_MOSS云端供应商/MOSS_API_SUPPORT.md) / [独立审查](release1.11.4/261119_MOSS云端供应商/REVIEW_FINDINGS.md) / [人工清单](release1.11.4/261119_MOSS云端供应商/MOSS云端供应商.checklist.md) | 新增 moss-transcribe-diarize-pro 供应商（说话人 + keyterms + 自动断句）；本地验证 + 维护者实测一轮，字词时间码仍待实测补齐 |
 | 1.11.4 之后 | 2026-11-22 | [Launcher 最近工程展开与收起](release1.11.4/261122_Launcher最近工程/REVIEW_FINDINGS.md) | 默认 3 条、展开最多 10 条；含双向回归与审查结果 |
