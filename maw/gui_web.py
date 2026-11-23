@@ -97,6 +97,7 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
+from maw.script_match_review import ScriptMatchReview, ScriptMatchReviewApi
 from maw.tool_windows import open_comparison_window, timestamp_compare_payload, transcript_compare_payload
 from maw.media import probe_audio_tracks, resolve_project_media
 from maw.native_burn_host import BurnDialogBusy, BurnHost
@@ -123,7 +124,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _supports_item_timed_matching, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, ScriptMatchTrace, SubtitleMatchError, _read_script, match_script_project, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -2075,6 +2076,12 @@ class LauncherApi:
             return {"ok": False, "detail": str(error)}
 
     def preview_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._preview_script_match(payload, open_review=False)
+
+    def open_script_match_review(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._preview_script_match(payload, open_review=True)
+
+    def _preview_script_match(self, payload: Mapping[str, object], *, open_review: bool) -> dict[str, object]:
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         script_path = _optional_path(payload.get("scriptPath"))
@@ -2086,34 +2093,30 @@ class LauncherApi:
             except (PostprocessFileError, ProjectValidationFailed) as error:
                 return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
             try:
-                _, script_text = _read_script(script_path)
+                script_path, script_text = _read_script(script_path)
             except PostprocessFileError as error:
                 return {"ok": False, "preview": "", "errorCode": "script_invalid", "code": "script_invalid", "detail": str(error)}
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value))
             preserve = tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value))
             clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
-            prepared, _warning = prepare_script_text(
-                script_text,
-                extra_split if match_mode == "script" else (),
-                preserve if match_mode == "script" else (),
+            request = ScriptMatchRequest(
+                project_path, srt_path, script_path, OutputMode.JSON,
+                media_path=_optional_path(payload.get("mediaPath")),
+                extra_split_punctuation=extra_split, preserve_punctuation=preserve, match_mode=match_mode,
                 clean_markdown_symbols=clean_markdown_symbols,
             )
-            if match_mode == "script" and project_path is not None and _supports_item_timed_matching(project):
-                matched, warnings = _match_project_with_character_timings(
-                    project,
-                    prepared,
-                    extra_split,
-                    preserve,
+            trace = ScriptMatchTrace() if open_review else None
+            matched, warnings = match_script_project(project, project_path is not None, script_text, request, trace=trace)
+            if trace is not None:
+                source_path = project_path or srt_path
+                assert source_path is not None
+                review = ScriptMatchReview(
+                    project, matched, trace, source_path, script_path, warnings, match_mode,
+                    media=request.media_path, lang="en" if payload.get("lang") == "en" else "zh",
                 )
-            else:
-                matched, warnings = _match_project(
-                    project,
-                    prepared,
-                    DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split if match_mode == "script" else ()),
-                    frozenset(preserve if match_mode == "script" else ()),
-                    match_mode,
-                )
+                _open_script_match_review(self.paths.root, review)
+                return {"ok": True}
             segments = get_main_track(matched)["segments"]
             preview = "\n".join(
                 f"{index + 1}. {segment.get('text', '')}"
@@ -2156,8 +2159,8 @@ class LauncherApi:
             return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
         except ValueError as error:
             return {"ok": False, "preview": "", "errorCode": "match_invalid", "code": "match_invalid", "detail": str(error)}
-        except (OSError, UnicodeError):
-            return {"ok": False, "preview": "", "errorCode": "preview_failed"}
+        except (OSError, UnicodeError, RuntimeError) as error:
+            return {"ok": False, "preview": "", "errorCode": "preview_failed", "detail": str(error)}
 
     def choose_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         chosen = _folder_dialog()
@@ -4005,6 +4008,36 @@ class LauncherApi:
             if path:
                 self._emit(_route_dropped_path(path))
                 self.pump.flush()
+
+
+def _open_script_match_review(root: Path, review: ScriptMatchReview) -> None:
+    import webview
+
+    page = root / "web" / "launcher" / "script-match-review" / "index.html"
+    if not page.is_file():
+        raise OSError("Script match review page is missing.")
+    window: Window | None = None
+
+    def pick() -> Path | None:
+        if window is None or not _FILE_DIALOG_LOCK.acquire(blocking=False):
+            raise ValueError("文件选择窗口正在使用。" if review.lang != "en" else "A file dialog is already open.")
+        try:
+            suffix = "reviewed" if review.lang == "en" else "文稿核对"
+            selected = window.create_file_dialog(
+                SAVE_DIALOG, directory=str(review.source.parent),
+                save_filename=f"{review.source.stem}.{suffix}.mosp", file_types=("MOSP (*.mosp)",),
+            )
+            return Path(selected[0]) if selected else None
+        finally:
+            _FILE_DIALOG_LOCK.release()
+
+    title = "MAW Script Match Review" if review.lang == "en" else "MAW 文稿匹配对照"
+    window = webview.create_window(
+        title, url=page.resolve().as_uri(), js_api=ScriptMatchReviewApi(review, pick),
+        width=1240, height=830, min_size=(480, 520), background_color="#1c1c20", text_select=True,
+    )
+    if window is None:
+        raise RuntimeError("Could not open the script match review window.")
 
 
 def _pick_burn_target(window: Window, name: str, source: Path, lang: str) -> BurnDestination | None:

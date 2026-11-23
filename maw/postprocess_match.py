@@ -146,46 +146,9 @@ def run_script_match(
     check_match_cancelled(is_cancelled)
     script_path, script_text = _read_script(request.script_path)
     check_match_cancelled(is_cancelled)
-    if request.match_mode not in {"script", "text"}:
-        raise ValueError("不支持的文稿匹配模式")
-    extra_split_punctuation = request.extra_split_punctuation if request.match_mode == "script" else ()
-    preserve_punctuation = request.preserve_punctuation if request.match_mode == "script" else ()
-    prepared_script, punctuation_warning = prepare_script_text(
-        script_text,
-        extra_split_punctuation,
-        preserve_punctuation,
-        clean_markdown_symbols=request.clean_markdown_symbols,
-    )
-    check_match_cancelled(is_cancelled)
     if on_status is not None:
         on_status("toolbox_status_matching")
-    if (
-        request.match_mode == "script"
-        and source_project is not None
-        and _supports_item_timed_matching(project, is_cancelled=is_cancelled)
-    ):
-        matched, warnings = _match_project_with_character_timings(
-            project,
-            prepared_script,
-            request.extra_split_punctuation,
-            request.preserve_punctuation,
-            is_cancelled=is_cancelled,
-        )
-    else:
-        matched, warnings = _match_project(
-            project,
-            prepared_script,
-            DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
-            frozenset(request.preserve_punctuation),
-            request.match_mode,
-            is_cancelled=is_cancelled,
-        )
-    # Both character-timed and sentence-level matching must keep the same v2
-    # group contract. The fallback must not silently reassign grouped content.
-    old_active = [cue for cue in get_main_track(project)["segments"] if not cue.get("disabled")]
-    new_active_count = sum(not cue.get("disabled") for cue in get_main_track(matched)["segments"])
-    if new_active_count != len(old_active) and any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in old_active):
-        raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
+    matched, warnings = match_script_project(project, source_project is not None, script_text, request, is_cancelled=is_cancelled)
     check_match_cancelled(is_cancelled)
     if begin_commit is not None and not begin_commit():
         raise MatchCancelledError("文稿匹配已取消。")
@@ -200,10 +163,61 @@ def run_script_match(
         operation="match",
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
-        warnings=(f"文稿来源：{script_path}", punctuation_warning, *warnings),
+        warnings=(f"文稿来源：{script_path}", *warnings),
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
+
+
+def match_script_project(
+    project: JsonDict,
+    from_project: bool,
+    script_text: str,
+    request: ScriptMatchRequest,
+    *,
+    trace: ScriptMatchTrace | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> tuple[JsonDict, tuple[str, ...]]:
+    check_match_cancelled(is_cancelled)
+    if request.match_mode not in {"script", "text"}:
+        raise ValueError("不支持的文稿匹配模式")
+    extra_split_punctuation = request.extra_split_punctuation if request.match_mode == "script" else ()
+    preserve_punctuation = request.preserve_punctuation if request.match_mode == "script" else ()
+    prepared_script, punctuation_warning = prepare_script_text(
+        script_text,
+        extra_split_punctuation,
+        preserve_punctuation,
+        clean_markdown_symbols=request.clean_markdown_symbols,
+    )
+    check_match_cancelled(is_cancelled)
+    if (
+        request.match_mode == "script"
+        and from_project
+        and _supports_item_timed_matching(project, is_cancelled=is_cancelled)
+    ):
+        matched, warnings = _match_project_with_character_timings(
+            project,
+            prepared_script,
+            request.extra_split_punctuation,
+            request.preserve_punctuation,
+            is_cancelled=is_cancelled, trace=trace,
+        )
+    else:
+        matched, warnings = _match_project(
+            project,
+            prepared_script,
+            DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
+            frozenset(request.preserve_punctuation),
+            request.match_mode,
+            is_cancelled=is_cancelled, trace=trace,
+        )
+    # Both character-timed and sentence-level matching must keep the same v2
+    # group contract. The fallback must not silently reassign grouped content.
+    old_active = [cue for cue in get_main_track(project)["segments"] if not cue.get("disabled")]
+    new_active_count = sum(not cue.get("disabled") for cue in get_main_track(matched)["segments"])
+    if new_active_count != len(old_active) and any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in old_active):
+        raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
+    return matched, (punctuation_warning, *warnings)
 
 
 def prepare_script_text(

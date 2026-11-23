@@ -1428,3 +1428,5 @@ Object.assign(STRINGS.en, {
   toolbox_open_transcript_compare: "Transcript compare",
   toolbox_open_timestamp_compare: "Timestamp compare",
 });
+Object.assign(STRINGS.zh, { toolbox_open_match_review: "打开完整对照", toolbox_text_match_preview: "更正预览", toolbox_match_preview_pending: "正在匹配文稿与字幕，生成预览…" });
+Object.assign(STRINGS.en, { toolbox_open_match_review: "Open full comparison", toolbox_text_match_preview: "Correction preview", toolbox_match_preview_pending: "Matching the manuscript to the subtitles and preparing the preview…" });

@@ -1636,6 +1636,8 @@ textarea::placeholder {
   background: var(--bg-raised);
 }
 
+.match-review-link { margin-top: 8px; }
+.match-preview-pending { margin: 8px 0 0; color: var(--text-secondary); }
 .script-preview pre {
   max-height: 120px;
   margin: 6px 0 0;
