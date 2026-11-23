@@ -434,8 +434,40 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         handler.server = mock.Mock()
         handler.server.project.media_path = self.media
         handler.server.request_token = 'test-token'
+        handler.headers = {}
         handler.send_json = mock.Mock()
         return handler
+
+    def test_large_ass_request_requires_header_token_before_parsing(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.headers["Content-Length"] = str(16 * 1024 * 1024 + 1)
+        large_ass = "字" * (8 * 1024 * 1024 // 3 + 1)
+        handler.read_json_request = mock.Mock(return_value={
+            "requestToken": "test-token", "ass": large_ass, "timeMs": 0,
+        })
+        for token in ("", "ÿ", "wrong-token"):
+            handler.headers["X-MAW-Request-Token"] = token
+            handler.render_ass_frame()
+            handler.read_json_request.assert_not_called()
+            self.assertEqual(handler.send_json.call_args.args[0], 403)
+            self.assertTrue(handler.send_json.call_args.kwargs["close_connection"])
+
+        handler.headers["X-MAW-Request-Token"] = "test-token"
+        with mock.patch.object(server_editor, "editor_ffmpeg_binary", return_value=Path("ffmpeg")), \
+             mock.patch.object(server_editor, "render_ass_frame_png", return_value=(b"PNG", [])) as render:
+            handler.render_ass_frame()
+        handler.read_json_request.assert_called_once_with(max_bytes=48 * 1024 * 1024)
+        self.assertEqual(handler.send_json.call_args.args[0], 200)
+        self.assertIs(render.call_args.args[1], large_ass)
+
+    def test_srt_burn_keeps_its_existing_text_limit(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={
+            "requestToken": "test-token", "srt": "字" * (8 * 1024 * 1024 // 3 + 1),
+        })
+        handler.start_burn_video_job()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertIn("SRT 字幕内容超过 8 MB", handler.send_json.call_args.args[1]["error"])
 
     def test_ass_frame_endpoint_requires_token_and_valid_payload(self) -> None:
         handler = self._ass_frame_handler()
@@ -2527,11 +2559,27 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertFalse(forbidden["ok"])
                     self.assertFalse(style_path.is_file())
 
-                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token})
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                               "_revision": initial["_revision"]})
                     self.assertEqual(status, 200)
                     self.assertEqual(saved["assignments"]["srtBurnStyleId"], "studio")
                     self.assertTrue(style_path.is_file())
                     self.assertNotIn("requestToken", saved)
+
+                    status, conflict = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                                  "_revision": initial["_revision"]})
+                    self.assertEqual(status, 409)
+                    self.assertFalse(conflict["ok"])
+
+                    status, restored = request("/api/ass-styles", {**initial, "requestToken": server.request_token,
+                                                                  "_revision": saved["_revision"], "_backup": True})
+                    self.assertEqual(status, 200)
+                    backup = json.loads(style_path.with_suffix(".json.backup").read_text(encoding="utf-8"))
+                    self.assertEqual(backup["assignments"]["srtBurnStyleId"], "studio")
+
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                               "_revision": restored["_revision"]})
+                    self.assertEqual(status, 200)
 
                     status, loaded = request("/api/ass-styles")
                     self.assertEqual(status, 200)

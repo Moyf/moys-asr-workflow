@@ -190,6 +190,11 @@
 
 [打开正文](plans/ASS_CUE_SCALE.md)
 
+<a name="plan-ass-ktv-karaoke"></a>
+### ASS KTV（卡拉 OK）字幕样式支持方案
+
+[打开正文](plans/ASS_KTV_KARAOKE.md)；已实现 `\k` 整词跳变全链路（`\kf`/`\ko` 留作后续）：利用字词时间码逐字换色，无时间码的字幕保持默认输出。
+
 这些阶段方案保留原始基线与状态；是否继续实施以本分支代码、后续记录和维护者确认为准。编辑器设置方案已有实施记录，旧前端方案不代表当前代码布局。
 
 <a name="plan-ai-processing-review"></a>
@@ -262,3 +267,8 @@
 ### 媒体分层与可信报告
 
 [打开记录](logs/release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md)
+
+<a name="punctuation-1x-backport"></a>
+### 1.x 标点保留回移
+
+[机制、验证与集成边界](logs/release1.11.3/261114_1x标点保留/验证记录.md)

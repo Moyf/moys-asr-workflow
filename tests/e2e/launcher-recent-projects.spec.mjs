@@ -92,6 +92,47 @@ test('recent projects refresh after slow project readiness and when the launcher
   await expect(page.locator('#recentProjectsList')).toContainText('编辑器中打开.mosp');
 });
 
+test('recent projects start collapsed, expand to the full history and can be collapsed again', async ({page}, testInfo) => {
+  const entries = Array.from({length: 10}, (_, i) => ({path: `D:/Demo/project-${i + 1}.mosp`, name: `Project ${i + 1}`}));
+  await openLauncher(page, entries);
+  const list = page.locator('#recentProjectsList');
+  const visibleItems = list.getByRole('button');
+  const toggle = page.locator('#recentProjectsToggle');
+  await expect(visibleItems).toHaveText(entries.slice(0, 3).map(item => item.name));
+  await expect(toggle).toHaveText('显示更多');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  const gap = await list.evaluate(el => el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#serverCard').screenshot({path: testInfo.outputPath('recent-projects-collapsed.png')});
+  await toggle.focus();
+  await toggle.press('Enter');
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveText('收起');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(visibleItems).toHaveText(entries.map(item => item.name));
+  await page.locator('#serverCard').screenshot({path: testInfo.outputPath('recent-projects-expanded.png')});
+  await page.evaluate(() => {
+    window.__recentProjects.at(-1).name = 'Refreshed project';
+    window.dispatchEvent(new Event('focus'));
+  });
+  await expect(visibleItems.last()).toHaveText('Refreshed project');
+  await expect(visibleItems).toHaveCount(10);
+  await visibleItems.last().click();
+  await expect(page.locator('#jsonPath')).toHaveValue(entries.at(-1).path);
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(toggle).toHaveText('Show less');
+  await toggle.click();
+  await expect(toggle).toHaveText('Show more');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(visibleItems).toHaveCount(3);
+});
+
+test('exactly three recent projects need no toggle', async ({page}) => {
+  await openLauncher(page, [...projects, {path: 'D:/Demo/third.mosp', name: '第三个工程.mosp'}]);
+  await expect(page.locator('#recentProjectsList').getByRole('button')).toHaveCount(3);
+  await expect(page.locator('#recentProjectsToggle')).toBeHidden();
+});
+
 test('empty recent history hides the whole field', async ({page}) => {
   await openLauncher(page, []);
   await expect(page.locator('#recentProjectsField')).toBeHidden();

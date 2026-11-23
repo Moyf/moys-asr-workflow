@@ -15,6 +15,11 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.11.4 之后 | 2026-11-19 | [MOSS 云端供应商](release1.11.4/261119_MOSS云端供应商/MOSS_API_SUPPORT.md) / [独立审查](release1.11.4/261119_MOSS云端供应商/REVIEW_FINDINGS.md) / [人工清单](release1.11.4/261119_MOSS云端供应商/MOSS云端供应商.checklist.md) | 新增 moss-transcribe-diarize-pro 供应商（说话人 + keyterms + 自动断句）；本地验证 + 维护者实测一轮，字词时间码仍待实测补齐 |
+| 1.11.4 之后 | 2026-11-22 | [Launcher 最近工程展开与收起](release1.11.4/261122_Launcher最近工程/REVIEW_FINDINGS.md) | 默认 3 条、展开最多 10 条；含双向回归与审查结果 |
+| 1.11.4 之后 | 2026-11-21 | [文稿匹配对照](release1.11.4/261121_文稿匹配对照/文稿匹配对照.checklist.md) / [提交前自审](release1.11.4/261121_文稿匹配对照/REVIEW_FINDINGS.md) | 修复吞停顿/碎片替换/重叠失败三处匹配缺陷；Launcher 预览入口、三栏对照、底部双轨时间线与完整 MOSP 另存；原生选址待人工验收 |
+| 1.11.4 之后 | 2026-11-20 | [ASS 逐字换色独立审查](release1.11.4/261120_ASS逐字换色KTV/REVIEW_FINDINGS.md) / [方案](../plans/ASS_KTV_KARAOKE.md) | `\k` 卡拉 OK 全链路的提交前自审：无 blocker/major，libass 语义与分片重定基独立像素级复证，关闭态零回归 |
+| 1.11.4 之后 | 2026-11-21 | [官网单一真源](release1.11.4/261121_官网单一真源/实施与验证.md) / [独立审查](release1.11.4/261121_官网单一真源/REVIEW_FINDINGS.md) / [候选复核与授权](release1.11.4/261121_官网单一真源/候选复核与后续授权.md) / [增量盲审修复](release1.11.4/261121_官网单一真源/增量盲审修复与验证.md) | 官网从工作树隔离生成；候选修复、staging 授权与验证边界见后续记录 |
+| 1.11.4 之后 | 2026-11-20 | [faster-whisper 缺 CUDA 库反馈](release1.11.4/261120_faster-whisper缺CUDA库/TEST_FEEDBACK_faster-whisper.md) / [独立审查](release1.11.4/261120_faster-whisper缺CUDA库/REVIEW_FINDINGS.md) | cuBLAS 12 DLL 加载错误与运行环境/回退责任核对及实施；推理期缺库 auto 单次 CPU 回退与显式 CUDA 可操作报错，含红绿证据与审查处置 |
 | 1.11.4 之后 | 2026-11-19 | [Issue 408 本地运行环境安装](release1.11.4/261119_Issue408/TEST_FEEDBACK_Issue408.md) / [独立审查](release1.11.4/261119_Issue408/REVIEW_FINDINGS.md) | 锁定依赖的镜像回退与设置内错误提示 |
 | 1.11.3 之后 | 2026-11-18 | [1.11.4 发布记录](release1.11.3/261118_1.11.4发布/发布记录.md) | 补丁版本发布：macOS 缩略图测试竞态修复后移动 tag 重发布；含首次官网部署卡死与恢复、本机 winsecurity 环境问题定位 |
 | 1.11.3 之后 | 2026-11-18 | [PR405 Windows 预览异常](release1.11.3/261118_PR405预览异常/TEST_FEEDBACK_PR405预览异常.md) / [独立审查](release1.11.3/261118_PR405预览异常/REVIEW_FINDINGS.md) | 夹具修复后 Windows lite 预览通过；合并审阅补齐非托管回退接口，含真实签名反向验证，完整版模型端到端仍未测 |
@@ -32,6 +37,8 @@
 | 1.11.3 之后 | 2026-11-16 | [PR384 输入焦点与截帧状态](release1.11.3/261116_PR384_输入焦点与截帧状态/REVIEW_FINDINGS.md) | 保留迟到预设加载时的输入焦点，确定性覆盖播放/结束截帧状态及失败证据 |
 | 1.11.3 之后 | 2026-11-16 | [PR384 保存与字体同步](release1.11.3/261116_PR384_保存与字体同步/REVIEW_FINDINGS.md) | 修复持有边界时保存重放旧面板值，统一字号比较的字体就绪状态；CI 待验收 |
 | 1.11.3 之后 | 2026-11-16 | [PR374 CI修复](release1.11.3/261116_PR374_CI修复/TEST_FEEDBACK_CI.md) / [ASS参照核对](release1.11.3/261116_PR374_CI修复/ASS参照核对.md) / [独立审查](release1.11.3/261116_PR374_CI修复/REVIEW_FINDINGS.md) | Ubuntu像素参照与Windows JKL停止采样，保留严格裁切/时钟语义及真实正负对照 |
+| 1.11.3 之后 | 2026-11-15 | [ASS 样式库迁移复审](release1.11.3/261115_ASS样式库迁移/REVIEW_FINDINGS.md) / [人工核验](release1.11.3/261115_ASS样式库迁移/ASS样式库迁移.checklist.md) | 整库导入导出、历史格式、并发和恢复副本；跨机字体与 2.0 同步待验收 |
+| 1.11.3 之后 | 2026-11-14 | [1.x 标点保留](release1.11.3/261114_1x标点保留/验证记录.md) / [审查](release1.11.3/261114_1x标点保留/REVIEW_FINDINGS.md) / [人工核验](release1.11.3/261114_1x标点保留/标点保留.checklist.md) | 取消启动隐式清理，独立回移默认保留语义及 2.0 集成演练 |
 | 1.11.3 之后 | 2026-11-14 | [ASS 预览字体回退独立审查](release1.11.3/261114_ASS预览字体回退/REVIEW_FINDINGS.md) / [回退清单](release1.11.3/261114_ASS预览字体回退/fallback.checklist.md) | 保留字体别名并恢复系统回退顺序、Canvas / DOM 测量一致性及验证边界 |
 | 1.11.3 之后 | 2026-11-13 | [测试治理三阶段实施](release1.11.3/261113_测试成本与稳定性/实施结果报告.md) / [实施账本](release1.11.3/261113_测试成本与稳定性/IMPLEMENTATION_PLAN.md) / [独立审查](release1.11.3/261113_测试成本与稳定性/REVIEW_FINDINGS_三阶段.md) / [核对清单](release1.11.3/261113_测试成本与稳定性/测试治理.checklist.md) / [浏览器成本](release1.11.3/261113_测试成本与稳定性/浏览器成本分析.md) | 稳定性回归、确定性去重、保守补充矩阵与严格报告门禁；最终状态以实施账本和报告为准 |
 | 1.11.3 之后 | 2026-11-13 | [烧录、焦点与颜色测试修复](release1.11.3/261113_测试成本与稳定性/BROWSER_FIXES.md) / [独立审查](release1.11.3/261113_测试成本与稳定性/REVIEW_FINDINGS_浏览器回归.md) | 修复5项旧测试失败，补真实解绑、气泡/面板回退及明暗对比度验证；相关4个spec共94项通过，不含工具页任务 |

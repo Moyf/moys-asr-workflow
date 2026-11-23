@@ -20,6 +20,10 @@ from maw.ass_styles import (
     load_ass_style_library,
     normalize_ass_style_library,
     save_ass_style_library,
+    AssStyleConflict,
+    read_ass_style_state,
+    read_ass_style_backup,
+    save_ass_style_state,
 )
 from maw.postprocess_ffmpeg import _subtitle_filter
 
@@ -81,6 +85,7 @@ class AssStyleLibraryTests(unittest.TestCase):
             animations = find_ass_profile(library, "ass")["animations"]
             self.assertFalse(animations["fad"]["enabled"])
             self.assertFalse(animations["pop"]["enabled"])
+            self.assertFalse(animations["karaoke"]["enabled"])
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "ass-styles.json"
             for fad_enabled in (True, False):
@@ -93,6 +98,27 @@ class AssStyleLibraryTests(unittest.TestCase):
                         self.assertEqual(normalize_ass_style_library(library), library)
                         self.assertEqual(save_ass_style_library(library, path), library)
                         self.assertEqual(load_ass_style_library(path), library)
+
+    def test_karaoke_group_normalizes_enabled_and_backfills_legacy_libraries(self) -> None:
+        # 旧库没有 karaoke 组：归一化补默认值；开关状态与布尔归一化一致。
+        legacy = normalize_ass_style_library({})
+        self.assertEqual(legacy["assProfiles"][0]["animations"]["karaoke"], {"enabled": False})
+        enabled = normalize_ass_style_library({"assProfiles": [{"id": "ass", "animations": {
+            "karaoke": {"enabled": True},
+        }}]})
+        self.assertEqual(enabled["assProfiles"][0]["animations"]["karaoke"], {"enabled": True})
+        # 非法值（字符串/缺失/多余字段）回落默认，不抛异常。
+        broken = normalize_ass_style_library({"assProfiles": [{"id": "ass", "animations": {
+            "karaoke": {"enabled": "yes", "mode": "kf"},
+        }}]})
+        self.assertEqual(broken["assProfiles"][0]["animations"]["karaoke"], {"enabled": False})
+        saved = default_ass_style_library()
+        saved["assProfiles"][0]["animations"]["karaoke"] = {"enabled": True}
+        self.assertEqual(normalize_ass_style_library(saved), saved)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            self.assertEqual(save_ass_style_library(saved, path), saved)
+            self.assertEqual(load_ass_style_library(path), saved)
 
     def test_pop_animation_normalization_clamps_and_keeps_roundtrip(self) -> None:
         # 旧库没有 pop 组：归一化补默认值；非法值按边界收敛。
@@ -346,6 +372,37 @@ class AssStyleLibraryTests(unittest.TestCase):
             self.assertEqual(load_ass_style_library(path), saved)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema"], ASS_STYLE_LIBRARY_SCHEMA)
             self.assertFalse(list(path.parent.glob(f".{path.stem}.*.tmp")))
+
+    def test_revision_conflict_backup_and_corruption_do_not_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            initial = read_ass_style_state(path)
+            first = default_ass_style_library()
+            first["styles"][1]["fontSize"] = 120
+            saved = save_ass_style_state(first, initial["_revision"], backup=True, path=path)
+            self.assertEqual(read_ass_style_backup(path), default_ass_style_library())
+            with self.assertRaises(AssStyleConflict):
+                save_ass_style_state(default_ass_style_library(), initial["_revision"], path=path)
+            self.assertEqual(read_ass_style_state(path), saved)
+            path.write_text('{"version": 999, "schema": "moy.asr.ass_styles.v1"}', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                save_ass_style_state(first, saved["_revision"], path=path)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["version"], 999)
+
+    def test_failed_import_does_not_consume_previous_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            original = default_ass_style_library()
+            original["styles"][1]["fontSize"] = 71
+            first = save_ass_style_state(original, "missing", path=path)
+            updated = default_ass_style_library()
+            updated["styles"][1]["fontSize"] = 82
+            second = save_ass_style_state(updated, first["_revision"], backup=True, path=path)
+            with mock.patch("maw.ass_styles.save_ass_style_library", side_effect=PermissionError("blocked")):
+                with self.assertRaises(PermissionError):
+                    save_ass_style_state(original, second["_revision"], backup=True, path=path)
+            self.assertEqual(read_ass_style_state(path)["styles"][1]["fontSize"], 82)
+            self.assertEqual(read_ass_style_backup(path)["styles"][1]["fontSize"], 71)
 
     def test_srt_filter_uses_style_but_ass_filter_keeps_embedded_styles(self) -> None:
         style = {"fontName": "Arial", "fontSize": 24, "primaryColor": "#123456"}

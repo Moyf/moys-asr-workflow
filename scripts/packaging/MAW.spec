@@ -75,6 +75,10 @@ if sys.platform == "linux":
 
 datas = [
     (str(ROOT / "web"), "web"),
+    (str(ROOT / "tools" / "compare.html"), "tools"),
+    (str(ROOT / "tools" / "timestamp-compare.html"), "tools"),
+    (str(ROOT / "tools" / "shared" / "tool-page.css"), "tools/shared"),
+    (str(ROOT / "tools" / "shared" / "tool-page.js"), "tools/shared"),
     (str(ROOT / "server-editor"), "server-editor"),
     (str(ROOT / "server-align"), "server-align"),
     (str(ROOT / "LICENSE"), "."),

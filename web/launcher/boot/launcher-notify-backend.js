@@ -85,6 +85,10 @@ function notifySingleFailure(event) {
 }
 
 function handleBackendEvent(event) {
+  if (event.type === "editorShutdownPending") {
+    setStatus(errText("server_stop_pending"));
+    return;
+  }
   if (event.type === "batch_started" || event.type === "batchStarted") {
     resetBatchNotification(event.total);
   }
@@ -348,6 +352,9 @@ $("pickMedia").addEventListener("click", async () => { const result = await brid
 $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
 $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
 $("jsonPath").addEventListener("input", () => { setError("jsonPath", ""); resetServerMediaSelection(); }); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
+$("recentProjectsToggle").addEventListener("click", (event) => {
+  setRecentProjectsExpanded(event.currentTarget.getAttribute("aria-expanded") !== "true");
+});
 ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "mossKeyterms", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
 $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
 $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));

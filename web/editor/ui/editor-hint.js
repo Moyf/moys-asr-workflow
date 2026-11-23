@@ -27,6 +27,8 @@ export function initMaweHint() {
 
   const HINT_FADE_OUT_MS = 200;
 
+  const hintTimers = new WeakMap();
+
     // 与 editor.css 的 hint-fade-out 时长一致
 
   function applyHintPosition(position) {
@@ -37,6 +39,8 @@ export function initMaweHint() {
 
   function dismissHintCard(card) {
     if (!card || card.dataset.dismissed) return;
+    const timer = hintTimers.get(card);
+    if (timer) clearTimeout(timer.id);
     card.dataset.dismissed = '1';
     card.classList.add('hide');
     setTimeout(() => card.remove(), HINT_FADE_OUT_MS);
@@ -130,16 +134,20 @@ export function initMaweHint() {
 
 
   function flashHint(msg, type = 'default', options = {}) {
-    let stack = document.getElementById('hint-stack');
+    const stackId = options.position === 'bottom-right' ? 'hint-stack-bottom-right' : 'hint-stack';
+    let stack = document.getElementById(stackId);
     if (!stack) {
-      stack = document.createElement('div'); stack.id = 'hint-stack';
+      stack = document.createElement('div'); stack.id = stackId;
+      stack.setAttribute('aria-live', 'polite');
       document.body.appendChild(stack);
     }
-    // 先挤掉最早的再插入新卡片：溢出项立即移除（不走退场动画），
-    // 保证视觉上始终最多 3 条，不会出现第 4 条先闪现再挤出的跳动。
-    while (stack.children.length >= HINT_MAX_VISIBLE) {
-      const oldest = stack.firstElementChild;
-      oldest.dataset.dismissed = '1';  // 让其到期定时器空转
+    // 永久提示以及正在阅读的提示不能被后来的普通消息挤掉。
+    const transient = Array.from(stack.children).filter(card => !card.dataset.persistent && !card.dataset.paused);
+    while (transient.length >= HINT_MAX_VISIBLE) {
+      const oldest = transient.shift();
+      const timer = hintTimers.get(oldest);
+      if (timer) clearTimeout(timer.id);
+      oldest.dataset.dismissed = '1';
       oldest.remove();
     }
     const card = document.createElement('div');
@@ -152,12 +160,50 @@ export function initMaweHint() {
     card.className = typeClass ? `hint-card ${typeClass}` : 'hint-card';
     if (typeof options.contentBuilder === 'function') options.contentBuilder(card);
     else card.textContent = msg;
+    const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : HINT_DURATION_MS;
+    if (durationMs <= 0) card.dataset.persistent = '1';
+    if (options.dismissible) {
+      card.classList.add('hint-dismissible');
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'hint-close';
+      close.textContent = '×';
+      close.setAttribute('aria-label', global.MAWE_I18N?.translateText?.('关闭') || '关闭');
+      close.addEventListener('click', () => dismissHintCard(card));
+      card.appendChild(close);
+    }
     // 镜像放在卡片内容就绪之后：contentBuilder 路径 msg 可能为空，
     // 回退用卡片文本兜底，保证保存失败这类富卡片报错不漏镜像。
     consoleMirror.mirrorFeedback(String(msg || card.textContent || ''), type, options);
     stack.appendChild(card);
-    const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : HINT_DURATION_MS;
-    if (durationMs > 0) setTimeout(() => dismissHintCard(card), durationMs);
+    if (durationMs > 0) {
+      let remaining = durationMs;
+      let started = 0;
+      let hovering = false;
+      let focused = false;
+      const resume = () => {
+        if (hovering || focused || card.dataset.dismissed) return;
+        delete card.dataset.paused;
+        started = performance.now();
+        const id = setTimeout(() => dismissHintCard(card), remaining);
+        hintTimers.set(card, { id });
+      };
+      const pause = () => {
+        if (card.dataset.paused || card.dataset.dismissed) return;
+        const timer = hintTimers.get(card);
+        if (timer) clearTimeout(timer.id);
+        remaining = Math.max(0, remaining - (performance.now() - started));
+        card.dataset.paused = '1';
+      };
+      card.addEventListener('mouseenter', () => { hovering = true; pause(); });
+      card.addEventListener('mouseleave', () => { hovering = false; resume(); });
+      card.addEventListener('focusin', () => { focused = true; pause(); });
+      card.addEventListener('focusout', event => {
+        if (event.relatedTarget && card.contains(event.relatedTarget)) return;
+        focused = false; resume();
+      });
+      resume();
+    }
     return card;
   }
 

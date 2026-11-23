@@ -359,9 +359,12 @@
 
   function hideSplitPreview() {
     $("postprocessSplitPreview").classList.add("hidden");
+    $("postprocessSplitPreviewPending").classList.add("hidden");
     $("postprocessSplitPreviewText").textContent = "";
     $("postprocessSplitPreviewLabel").textContent = t("toolbox_split_preview");
     $("postprocessScriptPreview")?.classList.add("full-width-preview");
+    $("scriptMatchReviewError").textContent = "";
+    $("scriptMatchReviewError").classList.remove("visible");
   }
 
   function setMatchStats(message, kind = "") {
@@ -373,13 +376,13 @@
   async function refreshScriptPreview() {
     const requestId = ++scriptPreviewRequest;
     splitPreviewRequest += 1;
+    hideSplitPreview();
+    setMatchStats("");
     const path = $("postprocessScriptPath").value.trim();
     const preview = $("postprocessScriptPreview");
     if (!path || !SCRIPT_EXTS.has(extension(path))) {
       preview.classList.add("hidden");
       $("postprocessScriptPreviewText").textContent = "";
-      hideSplitPreview();
-      setMatchStats("");
       return;
     }
     const result = await bridge("read_script_preview", {
@@ -392,8 +395,6 @@
     if (requestId !== scriptPreviewRequest || path !== $("postprocessScriptPath").value.trim()) return;
     if (!result.ok) {
       preview.classList.add("hidden");
-      hideSplitPreview();
-      setMatchStats("");
       return;
     }
     $("postprocessScriptPreviewText").textContent = `${result.preview}${result.truncated ? "\n…" : ""}`;
@@ -407,19 +408,32 @@
     const path = $("postprocessScriptPath").value.trim();
     const mode = $("postprocessMatchMode").value;
     const paths = inputPaths();
-    if (!path || mode !== "script" || !paths || (!paths.projectPath && !paths.srtPath)) {
+    if (!path || !paths || (!paths.projectPath && !paths.srtPath) || !validateMatchPunctuation()) {
       hideSplitPreview();
       setMatchStats("");
       return;
     }
-    const result = await bridge("preview_script_match", {
+    const button = $("openScriptMatchReview");
+    const previewText = $("postprocessSplitPreviewText");
+    const pending = $("postprocessSplitPreviewPending");
+    const previewTitle = t(mode === "script" ? "toolbox_split_preview" : "toolbox_text_match_preview");
+    button.disabled = true;
+    button.classList.add("hidden");
+    previewText.classList.add("hidden");
+    previewText.textContent = "";
+    $("postprocessSplitPreviewLabel").textContent = previewTitle;
+    pending.classList.remove("hidden");
+    preview.classList.remove("hidden");
+    $("postprocessScriptPreview")?.classList.remove("full-width-preview");
+    const payload = {
       ...paths,
       scriptPath: path,
       matchMode: mode,
       extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
       preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
       cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
-    });
+    };
+    const result = await bridge("preview_script_match", payload);
     if (requestId !== splitPreviewRequest) return;
     if (!result.ok) {
       hideSplitPreview();
@@ -432,13 +446,34 @@
       );
       return;
     }
-    $("postprocessSplitPreviewText").textContent = result.preview;
+    pending.classList.add("hidden");
+    previewText.textContent = result.preview;
+    previewText.classList.remove("hidden");
+    button.classList.remove("hidden");
     const matchRate = Number.isFinite(Number(result.matchRate)) ? Math.round(Number(result.matchRate)) : null;
     $("postprocessSplitPreviewLabel").textContent = matchRate === null
-      ? t("toolbox_split_preview")
-      : `${t("toolbox_split_preview")}（${t("toolbox_match_rate")}：${matchRate}%）`;
-    preview.classList.remove("hidden");
-    $("postprocessScriptPreview")?.classList.remove("full-width-preview");
+      ? previewTitle
+      : `${previewTitle}（${t("toolbox_match_rate")}：${matchRate}%）`;
+    button.onclick = async () => {
+      if (requestId !== splitPreviewRequest) return;
+      button.disabled = true;
+      const status = $("scriptMatchReviewError");
+      status.textContent = "";
+      status.classList.remove("visible");
+      try {
+        const review = await bridge("open_script_match_review", { ...payload, lang: document.documentElement.lang });
+        if (requestId !== splitPreviewRequest) return;
+        if (!review.ok) throw new Error(review.detail || t("toolbox_match_preview_failed"));
+      } catch (error) {
+        if (requestId === splitPreviewRequest) {
+          status.textContent = error.message || t("toolbox_match_preview_failed");
+          status.classList.add("visible");
+        }
+      } finally {
+        if (requestId === splitPreviewRequest) button.disabled = false;
+      }
+    };
+    button.disabled = false;
     const originalCount = Number(result.originalSegmentCount);
     const matchedCount = Number(result.matchedSegmentCount);
     if (Number.isInteger(originalCount) && Number.isInteger(matchedCount) && originalCount > 0) {
@@ -459,7 +494,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1662,6 +1697,41 @@
     list.scrollTop = list.scrollHeight;
   }
 
+  // 对比窗口预载：优先原始输入 + 最新一条字幕产物（工程优先于 SRT）。
+  function comparisonPreloadPaths() {
+    const paths = [];
+    const original = document.querySelector("#toolboxChainOriginal [data-artifact-path]");
+    const input = inputPaths();
+    const source = original?.dataset.artifactPath || (input && (input.projectPath || input.srtPath)) || "";
+    if (source) paths.push(source);
+    const items = [...document.querySelectorAll("#toolboxChainList .toolbox-chain-item")];
+    for (let index = items.length - 1; index >= 0 && paths.length < 2; index--) {
+      const artifact = items[index].querySelector('[data-artifact-kind="project"], [data-artifact-kind="srt"]');
+      const path = artifact?.dataset.artifactPath || "";
+      if (path && !paths.includes(path)) paths.push(path);
+    }
+    return paths;
+  }
+
+  async function openCompareTool(tool, button) {
+    if (button.disabled) return;
+    const paths = comparisonPreloadPaths();
+    if (!paths.length) {
+      setFieldError("toolboxInputPath", t("toolbox_need_source"));
+      $("toolboxInputPath").focus();
+      return;
+    }
+    button.disabled = true;
+    try {
+      const result = await bridge("open_compare_tool", { tool, paths, lang: document.documentElement.lang });
+      if (!result.ok) throw new Error(result.detail || t("failed"));
+    } catch (error) {
+      setResult(error.message || t("failed"), "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   function applySubtitleResult(result, chain) {
     if (!$("toolboxChainOriginal")) {
       const input = inputPaths();
@@ -1707,6 +1777,11 @@
     setMatchStats(chain?.kind === "ai_cleanup" && result.stats ? aiCleanupStatsText(result.stats) : "");
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+    if (chain?.kind === "match" && chain.scriptPath && (result.projectPath || result.srtPath)) {
+      for (const warning of warnings) window.MAWLauncher.appendLog?.(warning);
+      setResult([t("toolbox_done"), t("toolbox_match_source").replace("{path}", () => chain.scriptPath), t("toolbox_match_compare_hint")].join("\n"), "success", { revealWarning: warnings.length > 0 });
+      return;
+    }
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
     if (result.diagnosticPath) warnings.push(`${t(chain?.operation === "resegment" ? "toolbox_resegment_record_path" : "toolbox_cleanup_record_path")} ${result.diagnosticPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
@@ -2243,7 +2318,7 @@
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "match" });
+      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath });
       else if (cancelled) setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -3090,6 +3165,8 @@
     syncInputName();
     void refreshScriptPreview();
   });
+  $("openTranscriptCompare").addEventListener("click", (event) => { void openCompareTool("transcript", event.currentTarget); });
+  $("openTimestampCompare").addEventListener("click", (event) => { void openCompareTool("timestamp", event.currentTarget); });
   $("toolboxUtilityMediaPath").addEventListener("input", () => {
     utilityMediaManual = Boolean($("toolboxUtilityMediaPath").value.trim());
     setFieldError("toolboxUtilityMediaPath", "");

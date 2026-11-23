@@ -45,6 +45,7 @@ async function editFirstCue(page, text) {
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(text);
 }
 
+// The two Chromium test identities in this spec are required by scripts/ci_acceptance.py.
 test('auto-saved text and cue times survive restarting the editor server', async ({ page }) => {
   const expected = cueContent(JSON.parse(readFileSync(projectPath, 'utf8')));
   expected[0].text = 'Alpha autosaved';

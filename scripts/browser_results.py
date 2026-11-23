@@ -41,7 +41,7 @@ def collection(report: dict) -> dict:
     return found
 
 
-def validate(listed: dict, actual: dict, current: int, total: int) -> dict:
+def validate(listed: dict, actual: dict, current: int, total: int, *, required_cases=()) -> dict:
     if not 1 <= current <= total:
         raise ValueError("invalid requested shard")
     for report in (listed, actual):
@@ -52,6 +52,9 @@ def validate(listed: dict, actual: dict, current: int, total: int) -> dict:
     expected, observed = collection(listed), collection(actual)
     if expected.keys() != observed.keys():
         raise ValueError("missing or unexpected browser cases relative to --list")
+    missing = set(required_cases) - expected.keys()
+    if missing:
+        raise ValueError(f"missing required browser cases: {sorted(missing)}")
     skipped = []
     for key, test in observed.items():
         for case in (expected[key], test):

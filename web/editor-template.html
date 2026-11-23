@@ -1954,10 +1954,13 @@ __WAVEFORM_CSS__
             <label class="ass-style-field">字号<input type="number" id="ass-style-font-size" data-ass-style-field="fontSize" min="1" max="512" step="1"></label>
             <label class="ass-style-field">字距<input type="number" id="ass-style-spacing" data-ass-style-field="spacing" min="-100" max="100" step="1"><span class="ass-style-unit">px</span></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
-            <label class="ass-style-color-field" id="ass-style-secondary-color-field" hidden title="次色仅在 \k 卡拉 OK 标签中使用，当前未支持">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-italic" data-ass-style-field="italic"> 斜体</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-underline" data-ass-style-field="underline"> 下划线</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-strike-out" data-ass-style-field="strikeOut"> 删除线</label>
+          </div>
+          <div class="ass-style-karaoke-row" id="ass-style-karaoke-row">
+            <label class="ass-style-color-field" id="ass-style-secondary-color-field" title="未唱字词的颜色（ASS 次色）">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
+            <small class="editor-settings-hint">仅在「输出方案」中勾选「\k 逐字换色（卡拉OK）」时生效</small>
           </div>
           <div class="ass-style-subheading ass-style-subheading-nested" id="ass-style-border-shadow-heading">边框与阴影</div>
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
@@ -2041,6 +2044,10 @@ __WAVEFORM_CSS__
           <div class="ass-animation-fields"><label>起点倍率<input type="number" id="ass-animation-pop-from" data-ass-animation="pop.fromScale" min="0.3" max="10" step="0.1"><span>×</span></label><label>入场<input type="number" id="ass-animation-pop-in" data-ass-animation="pop.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" id="ass-animation-pop-accel" data-ass-animation="pop.accel" min="0.01" max="100" step="0.1"></label></div>
           <small>文字从起点倍率对应的字号缓动落定到正常字号（默认 0.8，从小放大；大于 1 则从大缩小）。句级 <code>{{文字}}</code> 标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。</small>
         </div>
+        <div class="ass-animation-card">
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-karaoke-enabled" data-ass-animation="karaoke.enabled"> <code>\k</code> 逐字换色（卡拉OK）</label>
+          <small>按字词时间码逐字词从次色跳变到主色；未唱颜色用关联样式的「次色」。仅有字词时间码的主字幕生效，没有时间码或文本失配的句子保持普通输出。</small>
+        </div>
         <details class="ass-animation-advanced-group" id="ass-animation-advanced-group">
           <summary>进阶动画</summary>
           <div>
@@ -2071,9 +2078,32 @@ __WAVEFORM_CSS__
       <span id="ass-style-library-path-hint">样式库将根据打开方式保存。</span>
       <span id="ass-style-project-hint" role="status" hidden>工程内修改，未同步到用户级配置</span>
     </div>
-    <div class="ass-style-library-actions"><button type="button" id="ass-style-save" class="primary">保存样式库</button><button type="button" id="ass-style-window-close-footer">完成</button></div>
+    <div class="ass-style-library-actions">
+      <button type="button" id="ass-style-export-library">导出样式库</button>
+      <button type="button" id="ass-style-import-library">导入样式库</button>
+      <details class="ass-style-more-actions">
+        <summary>更多</summary>
+        <div class="ass-style-more-menu">
+          <button type="button" id="ass-style-restore-backup">恢复导入前副本</button>
+          <button type="button" id="ass-style-reload-library">重新加载</button>
+        </div>
+      </details>
+      <button type="button" id="ass-style-save" class="primary">保存样式库</button>
+      <button type="button" id="ass-style-window-close-footer">完成</button>
+    </div>
+    <input type="file" id="ass-style-import-file" accept=".json,application/json" hidden>
   </footer>
 </aside>
+
+<dialog class="modal ass-style-transfer-dialog" id="ass-style-import-dialog" aria-labelledby="ass-style-import-title">
+  <h3 id="ass-style-import-title">导入 ASS 样式库</h3>
+  <p class="modal-hint">样式库不包含字体文件、工程或特殊文本解析开关。请在目标电脑检查字体和实际效果。</p>
+  <label><input type="radio" name="ass-style-import-mode" value="merge" checked> 合并到当前库，保留当前默认设置</label>
+  <label><input type="radio" name="ass-style-import-mode" value="restore"> 恢复整个库，替换当前样式、方案和默认设置</label>
+  <p id="ass-style-import-summary" class="ass-style-import-summary" aria-live="polite"></p>
+  <pre id="ass-style-import-preview" class="ass-style-import-preview" aria-live="polite"></pre>
+  <div class="actions"><button type="button" id="ass-style-import-cancel">取消</button><button type="button" id="ass-style-import-confirm" class="primary">确认导入</button></div>
+</dialog>
 
 <aside class="editor-settings-window ass-frame-window" id="ass-frame-window" role="dialog" aria-modal="false" aria-label="ASS 实际画面预览" aria-hidden="true">
   <header class="editor-settings-window-header" id="ass-frame-drag-handle">

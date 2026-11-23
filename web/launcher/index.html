@@ -502,7 +502,10 @@
           <p id="jsonPathError" class="field-error"></p>
         </div>
         <div id="recentProjectsField" class="field recent-projects-field hidden">
-          <span class="recent-projects-label" data-i18n="recent_projects">最近工程</span>
+          <div class="recent-projects-header">
+            <span class="recent-projects-label" data-i18n="recent_projects">最近工程</span>
+            <button id="recentProjectsToggle" class="recent-projects-toggle hidden" type="button" aria-expanded="false" aria-controls="recentProjectsList" data-i18n="recent_projects_show_more">显示更多</button>
+          </div>
           <div id="recentProjectsList" class="recent-projects-list"></div>
         </div>
         <div id="serverMediaField" class="field hidden">
@@ -590,6 +593,11 @@
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
           <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入，或查看报告）</p>
           <div id="toolboxChainList" class="toolbox-chain-list"></div>
+          <div class="toolbox-compare-row">
+            <span class="toolbox-chain-heading" data-i18n="toolbox_compare_heading">对比工具</span>
+            <button id="openTranscriptCompare" class="ghost" type="button" data-i18n="toolbox_open_transcript_compare">转写对比</button>
+            <button id="openTimestampCompare" class="ghost" type="button" data-i18n="toolbox_open_timestamp_compare">时间码对比</button>
+          </div>
         </div>
         <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
           <div class="toolbox-tab-list toolbox-tab-list-5">
@@ -929,9 +937,12 @@
                <div class="toolbox-preset-label" data-i18n="toolbox_script_preview">处理后文稿预览（前 240 字）</div>
                <pre id="postprocessScriptPreviewText"></pre>
              </div>
-             <div id="postprocessSplitPreview" class="script-preview hidden" aria-live="polite">
-                <div id="postprocessSplitPreviewLabel" class="toolbox-preset-label" data-i18n="toolbox_split_preview">拆分预览</div>
-               <pre id="postprocessSplitPreviewText"></pre>
+              <div id="postprocessSplitPreview" class="script-preview hidden">
+                 <div id="postprocessSplitPreviewLabel" class="toolbox-preset-label" data-i18n="toolbox_split_preview">拆分预览</div>
+                 <p id="postprocessSplitPreviewPending" class="match-preview-pending hidden" role="status" data-i18n="toolbox_match_preview_pending">正在匹配文稿与字幕，生成预览…</p>
+                 <pre id="postprocessSplitPreviewText" aria-live="polite"></pre>
+                <button id="openScriptMatchReview" class="inline-link match-review-link" type="button" data-i18n="toolbox_open_match_review">打开完整对照</button>
+                <p id="scriptMatchReviewError" class="field-error" role="status"></p>
              </div>
            </div>
           <p id="postprocessScriptPathError" class="field-error"></p>
