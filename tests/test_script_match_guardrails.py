@@ -77,3 +77,28 @@ class ScriptMatchGuardrailTests(unittest.TestCase):
         assert result.project_path is not None
         first = get_main_track(read_project(result.project_path))["segments"][0]
         self.assertEqual(first["items"], [cue(0, 1000, "甲乙丙新"), cue(5000, 6000, "丁戊己")])
+
+    def test_timed_matching_accepts_zero_duration_punctuation(self) -> None:
+        result = self.match([
+            {**cue(0, 1000, "你好。"), "items": [cue(100, 900, "你好"), cue(900, 900, "。")]},
+            cue(2000, 3000, "再见", timed=True),
+        ], "你好。\n再见。")
+        assert result.project_path is not None
+        first = get_main_track(read_project(result.project_path))["segments"][0]
+        self.assertEqual((first["start"], first["end"], first["text"]), (100, 900, "你好。"))
+
+    def test_zero_duration_word_routes_to_segment_match(self) -> None:
+        result = self.match([
+            {**cue(0, 900, "Hello world"), "items": [cue(100, 500, "Hello"), cue(500, 500, "world")]},
+            cue(1000, 1500, "and"), cue(2000, 3000, "goodbye", timed=True),
+        ], "Hello world\nand\ngoodbye")
+        assert result.project_path is not None
+        self.assertEqual([s["start"] for s in get_main_track(read_project(result.project_path))["segments"]], [0, 1000, 2000])
+
+    def test_incomplete_word_coverage_keeps_original_cue_span(self) -> None:
+        original = [{**cue(0, 1000, "ABCD"), "items": [cue(0, 100, "A")]},
+                    cue(2000, 3000, "EFGH", timed=True), cue(4000, 5000, "IJKL")]
+        result = self.match(original, "ABCD\nEFGH\nIJKL")
+        first = get_main_track(read_project(result.project_path))["segments"][0]
+        self.assertEqual((first["text"], first["start"], first["end"], first["items"]),
+                         ("ABCD", 0, 1000, original[0]["items"]))

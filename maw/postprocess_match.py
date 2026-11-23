@@ -30,6 +30,8 @@ from scripts.mosp_match_text import (
     clean_markdown_text,
     clean_markdown_inline_symbols,
     generate_matched_mosp,
+    normalize_character,
+    normalize_text,
 )
 
 
@@ -136,7 +138,7 @@ def run_script_match(
     if (
         request.match_mode == "script"
         and source_project is not None
-        and _has_complete_item_timings(project, is_cancelled=is_cancelled)
+        and _supports_item_timed_matching(project, is_cancelled=is_cancelled)
     ):
         matched, warnings = _match_project_with_character_timings(
             project,
@@ -239,12 +241,22 @@ def processed_script_text(
     return "\n".join(_split_script_segments(normalized_text, split_punctuation, preserved))
 
 
-def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None) -> bool:
+def _supports_item_timed_matching(project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None) -> bool:
+    """Decide whether the character-timed matcher can carry this project.
+
+    A few segments without word items are normal (the ASR service sometimes
+    omits them); those get character timings synthesised from the segment
+    bounds before matching.  The timed path is only used when a strict
+    majority of enabled segments carry complete item timings, so projects
+    without real word timings keep using the structure-preserving path.
+    """
+
     check_match_cancelled(is_cancelled)
     segments = get_main_track(project)["segments"]
     if not isinstance(segments, list) or not segments:
         return False
     enabled_count = 0
+    timed_count = 0
     for segment in segments:
         check_match_cancelled(is_cancelled)
         if not isinstance(segment, dict):
@@ -254,7 +266,7 @@ def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], 
         enabled_count += 1
         items = segment.get("items")
         if not isinstance(items, list) or not items:
-            return False
+            continue
         for item in items:
             check_match_cancelled(is_cancelled)
             if (
@@ -266,7 +278,61 @@ def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], 
                 or isinstance(item.get("end"), bool)
             ):
                 return False
-    return enabled_count > 0
+            if item["end"] < item["start"] or (
+                item["end"] == item["start"] and _has_matchable_text(item["text"], is_cancelled)
+            ):
+                return False
+        source_text = normalize_text(segment["text"], is_cancelled=is_cancelled)
+        item_text = "".join(normalize_text(item["text"], is_cancelled=is_cancelled) for item in items)
+        if source_text != item_text:
+            return False
+        if source_text:
+            timed_count += 1
+    return enabled_count > 0 and timed_count * 2 > enabled_count
+
+
+def _has_matchable_text(text: str, is_cancelled: Callable[[], bool] | None) -> bool:
+    for character in text:
+        check_match_cancelled(is_cancelled)
+        if normalize_character(character):
+            return True
+    return False
+
+
+def _synthesize_missing_item_timings(
+    segments: list[JsonDict],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> int:
+    """Give segments without word items a single segment-wide item.
+
+    The timed matcher distributes characters across an item's timespan, so a
+    segment-wide item yields uniform character timing.  Segments whose text
+    has no matchable characters contribute nothing, matching the item-based
+    behaviour.
+    """
+
+    check_match_cancelled(is_cancelled)
+    synthesized = 0
+    for segment in segments:
+        check_match_cancelled(is_cancelled)
+        items = segment.get("items")
+        if isinstance(items, list) and items:
+            continue
+        text = segment.get("text")
+        if not isinstance(text, str):
+            continue
+        try:
+            start = _integer_field(segment, "start")
+            end = _integer_field(segment, "end")
+        except ValueError:
+            continue
+        if end <= start:
+            continue
+        segment["items"] = [{"start": start, "end": end, "text": text}]
+        if _has_matchable_text(text, is_cancelled):
+            synthesized += 1
+    return synthesized
 
 
 def _match_project_with_character_timings(
@@ -293,6 +359,7 @@ def _match_project_with_character_timings(
         for segment in matcher_main["segments"]
         if isinstance(segment, dict) and segment.get("disabled") is not True
     ]
+    synthesized = _synthesize_missing_item_timings(matcher_main["segments"], is_cancelled=is_cancelled)
     active_ids = {segment["id"] for segment in matcher_main["segments"]}
     # The filtered project is only a temporary matcher input. Keep disabled
     # cues and their relations in the original until the final transaction.
@@ -323,7 +390,7 @@ def _match_project_with_character_timings(
     if not isinstance(raw_matched, dict):
         raise ValueError("character matcher returned an invalid project")
     preserved_extras = _merge_unmatched_source_segments(
-        get_main_track(matcher_project)["segments"],
+        [s for s in source_segments if s.get("disabled") is not True],
         raw_matched,
         report,
         is_cancelled=is_cancelled,
@@ -338,6 +405,8 @@ def _match_project_with_character_timings(
     warnings: list[str] = [
         f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
     ]
+    if synthesized:
+        warnings.append(f"{synthesized} 个字幕段缺少字词时间码，已按原字幕起止时间估算。")
     if unanchored := _report_integer(report, "unanchored_manuscript_cues"):
         warnings.append(f"{unanchored} 个文稿段没有对应的原字幕字符，未生成字幕。")
     if _report_integer(report, "unplaced_manuscript_characters"):

@@ -69,6 +69,28 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("今天好，\n", rendered)
         self.assertIn("天气。", rendered)
 
+    def test_timed_matching_uses_segment_bounds_for_missing_items(self) -> None:
+        self.project_path.write_text(json.dumps({"segments": [
+            {"start": 0, "end": 600, "text": "甲", "items": [{"start": 100, "end": 400, "text": "甲"}]},
+            {"start": 1000, "end": 1600, "text": "乙丙", "items": []},
+            {"start": 1800, "end": 1900, "text": ""},
+            {"start": 2000, "end": 2700, "text": "丁", "items": [{"start": 2100, "end": 2600, "text": "丁"}]},
+            {"start": 3000, "end": 3500, "text": "戊", "items": [{"start": 3100, "end": 3400, "text": "戊"}]},
+        ]}, ensure_ascii=False), encoding="utf-8")
+        self.script_path.write_text("甲\n乙\n丙\n丁\n戊", encoding="utf-8")
+
+        result = run_script_match(ScriptMatchRequest(self.project_path, None, self.script_path, OutputMode.JSON))
+
+        assert result.project_path is not None
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual(
+            [(segment["start"], segment["end"], segment["text"]) for segment in segments],
+            [(100, 400, "甲"), (1000, 1300, "乙"), (1300, 1600, "丙"),
+             (1800, 1900, ""), (2100, 2600, "丁"), (3100, 3400, "戊")],
+        )
+        self.assertFalse(segments[3].get("items"))
+        self.assertTrue(any("1 个字幕段缺少字词时间码" in warning for warning in result.warnings))
+
     def test_disabled_segments_are_not_consumed_by_script_match(self) -> None:
         self.project_path.write_text(
             json.dumps(
