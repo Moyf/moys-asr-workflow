@@ -283,7 +283,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     setProgress(tr('正在准备导出…'));
     // 客户端令牌让取消在服务器返回任务 ID 之前也安全（含页面关闭）。
     const admission = await raceStop(MaweHost.server.fetch(jobsUrl, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MAW-Request-Token': requestToken },
       body: JSON.stringify({
         requestToken, bindingGeneration, sourceMediaId, ...request,
         admissionToken, admissionDeadline: Date.now() + 60000,

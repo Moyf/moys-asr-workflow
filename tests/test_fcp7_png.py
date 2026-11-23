@@ -49,6 +49,17 @@ class FramePlanTests(unittest.TestCase):
         result = plan(HEADER + event() + event("0:00:02.40", "0:00:02.80", "NEXT", "maw:main:1"))
         self.assertEqual(result["tracks"][0]["spans"], [(0, 50), (60, 70)])
 
+    def test_large_ass_still_obeys_the_utf8_text_limit(self):
+        ass = HEADER + event(text=r"{\1a&HFF&\2a&HFF&\t(-2,-1,1,\1a&HFF&)}主持：正文") + event(
+            text=r"{\3a&HFF&\4a&HFF&}{\c&H0000FF&}主持：{\c&HFFFFFF&}正文")
+        remaining = 12 * 1024 * 1024 - len(ass.encode("utf-8")) - 2
+        ass += ";" + "字" * (remaining // 3) + " " * (remaining % 3) + "\n"
+        result = plan(ass)
+        self.assertEqual(result["tracks"][0]["spans"], [(0, 50)])
+        self.assertEqual(result["samples"], 1)
+        with self.assertRaisesRegex(ValueError, "12 MB"):
+            plan(ass + "字")
+
     def test_only_fade_windows_expand_to_individual_frames(self):
         result = plan(HEADER + event(text=r"{\fad(200,120)}FADE"))
         spans = result["tracks"][0]["spans"]
@@ -81,6 +92,16 @@ class FramePlanTests(unittest.TestCase):
                       + event(name="maw:extension:0", layer=1))
         self.assertEqual([(t["layer"], t["lane"]) for t in result["tracks"]], [(0, 0), (0, 1), (1, 0)])
         self.assertEqual(result["tracks"][0]["ass"].count("Dialogue:"), 2)
+
+    def test_lane_assignment_keeps_ass_order_even_with_out_of_order_starts(self):
+        ass = (HEADER + event("0:00:01.00", "0:00:02.00")
+               + event("0:00:00.50", "0:00:01.50", name="maw:main:1")
+               + event("0:00:01.50", "0:00:02.40", name="maw:main:2"))
+        result = plan(ass)
+        self.assertEqual([(t["lane"], t["spans"]) for t in result["tracks"]],
+                         [(0, [(25, 50)]), (1, [(13, 38), (38, 60)])])
+        with self.assertRaisesRegex(ValueError, "需要按每轨字幕起始时间排列"):
+            plan(ass + ";" + "字" * (4 * 1024 * 1024 // 3) + "\n")
 
     def test_invalid_rate_dimensions_and_empty_tracks_rejected(self):
         with self.assertRaises(ValueError):
