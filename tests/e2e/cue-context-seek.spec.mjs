@@ -50,6 +50,25 @@ test('cue-list context menu jumps to the subtitle and plays when click behavior 
   await openCueListContextMenu(page, TARGET_CUE_IDX);
   const jumpAndPlayItem = page.locator('#ctxmenu .item', { hasText: JUMP_AND_PLAY_LABEL });
   await expect(jumpAndPlayItem).toBeVisible();
+  // Observe the real media seek synchronously, before playback advances.
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    const nativeTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+    window.__cueContextSeekTime = null;
+    window.__cueContextSeeked = false;
+    Object.defineProperty(player, 'currentTime', {
+      configurable: true,
+      enumerable: nativeTime.enumerable,
+      get() { return nativeTime.get.call(this); },
+      set(value) {
+        nativeTime.set.call(this, value);
+        window.__cueContextSeekTime = nativeTime.get.call(this);
+      },
+    });
+    player.addEventListener('seeked', () => {
+      if (window.__cueContextSeekTime !== null) window.__cueContextSeeked = true;
+    });
+  });
   await jumpAndPlayItem.click();
 
   // Then: the media playhead seeks to that cue start and playback is running.
@@ -57,9 +76,10 @@ test('cue-list context menu jumps to the subtitle and plays when click behavior 
     const media = document.getElementById('player');
     return { currentTime: media.currentTime, paused: media.paused };
   })).toMatchObject({ paused: false });
-  const currentTime = await page.evaluate(() => document.getElementById('player').currentTime);
-  expect(currentTime).toBeGreaterThanOrEqual(TARGET_CUE_START_SEC - 0.5);
-  expect(currentTime).toBeLessThanOrEqual(TARGET_CUE_START_SEC + 0.5);
+  await expect.poll(() => page.evaluate(() => window.__cueContextSeeked)).toBe(true);
+  const seekTime = await page.evaluate(() => window.__cueContextSeekTime);
+  expect(seekTime).toBeGreaterThanOrEqual(TARGET_CUE_START_SEC - 0.5);
+  expect(seekTime).toBeLessThanOrEqual(TARGET_CUE_START_SEC + 0.5);
 });
 
 test('cue-list context menu omits jump-and-play when click behavior is select-and-seek', async ({ page }) => {
