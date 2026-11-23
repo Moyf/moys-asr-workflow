@@ -96,6 +96,10 @@ export function createUtilsModule(dependencies) {
       return null;
     }
     if (!Array.isArray(entries) || !entries.length) return null;
+    // 投影失败的条目（可听序列失配或部分匹配歧义，如重复字「哈哈」对单个
+    // 「哈」的时间码）保留原始 item 文本且不带 allocated 标记：位置无法唯
+    // 一确定，整句回落普通输出，不猜最早匹配（PR #411 外审 Major）。
+    if (entries.some((entry) => entry.allocated !== true)) return null;
     const eventStartMs = Number(options.eventStartMs) || 0;
     const eventEndMs = Math.max(eventStartMs + 1, Number(options.eventEndMs) || eventStartMs + 1);
     const mapTime = typeof options.mapTime === 'function' ? options.mapTime : value => value;

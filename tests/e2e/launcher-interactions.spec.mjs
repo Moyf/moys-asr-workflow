@@ -1777,6 +1777,43 @@ test('server timeout diagnostics are visible and copied with the error report', 
   expect(report).toContain('Connection refused');
 });
 
+test('launcher points to the required project instead of opening an empty editor', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoLauncher(page);
+  const input = page.locator('#jsonPath');
+  const error = page.locator('#jsonPathError');
+  await page.evaluate(() => {
+    document.querySelector('.shell-scroll').scrollTop = 0;
+    window.__openUrlCalls = [];
+    window.open = (url) => { window.__openUrlCalls.push(String(url)); return null; };
+  });
+
+  await page.locator('#openMawe').click();
+  await expect(error).toHaveText('请先选择或拖入工程文件，再打开编辑器。');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveClass(/invalid/);
+  await expect(input).toBeInViewport({ ratio: 1 });
+  await expect(error).toBeInViewport({ ratio: 1 });
+  const spacing = await error.evaluate(element =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  expect(await page.evaluate(() => window.__openUrlCalls)).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('launcher-required-project.png') });
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const pulseDurations = await page.locator('#openMawe').evaluate((button) => {
+    button.click();
+    return document.getElementById('jsonPath').getAnimations()
+      .map(animation => animation.effect.getTiming().duration);
+  });
+  expect(pulseDurations).toContain(650);
+
+  await input.fill('D:/Demo/clip.mosp');
+  await expect(error).toBeHidden();
+  await page.locator('#openMawe').click();
+  await expect.poll(() => page.evaluate(() => window.__openUrlCalls.length)).toBe(1);
+});
+
 test('launcher reports a server disconnect without manual refresh', async ({ page }) => {
   await gotoLauncher(page);
   await page.locator('#settingsButton').click();
@@ -1794,6 +1831,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
     };
   });
 
+  await page.locator('#jsonPath').fill('D:/Demo/clip.mosp');
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
   await expect(page.locator('#openMawe')).toContainText('打开编辑器');
@@ -1857,6 +1895,7 @@ test('restarting after a server disconnect does not reopen the editor page', asy
   });
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
+  await page.locator('#jsonPath').fill('D:/Demo/clip.mosp');
   await page.locator('#openMawe').click();
   await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);

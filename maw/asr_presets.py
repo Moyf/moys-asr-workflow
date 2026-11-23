@@ -21,7 +21,7 @@ TEXT_FIELDS = (
     "qwenAudioHotwordsMode", "qwenAudioHotwords",
     "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral",
     "sonioxContextTerms", "sonioxContextTranslationTerms",
-    "openaiKeywords", "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
+    "openaiKeywords", "mossKeyterms", "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
 )
 BOOL_FIELDS = ("speakerColors", "generateSpectral", "generateKeyframes", "generateThumbnails", "debugRaw", "testRun", "qwenAudioKeepDialect")
 # Form inputs that share the single "promptContext" preset value across providers.
@@ -63,6 +63,8 @@ def validate_options(options: object) -> dict:
         # Presets saved before the base thumbnail switch predate this switch;
         # they migrate to the current default (on), matching the checked box.
         options.setdefault("generateKeyframes", True)
+        # Presets saved before the MOSS cloud provider predate keyterms.
+        options.setdefault("mossKeyterms", "")
         # Older presets stored per-provider prompt/context fields; they all map
         # to the single shared promptContext value now.
         options["promptContext"] = "\n".join(dict.fromkeys(
