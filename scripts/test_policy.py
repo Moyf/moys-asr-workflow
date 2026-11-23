@@ -5,6 +5,7 @@ import os
 
 PYTHON_PACKS = ("common", "media", "long-media", "tools", "manual")
 WINDOWS_FFMPEG_TESTS = (
+    "tests.test_alignment_ffmpeg_worker.AlignmentFfmpegWorkerTests.test_worker_does_not_treat_scripts_as_executables",
     "tests.test_ffmpeg.FfmpegResolverTests.test_windows_python_module_does_not_shadow_path_executables",
     "tests.test_ffmpeg.FfmpegResolverTests.test_windows_scripts_are_not_accepted_as_ffmpeg_executables",
 )

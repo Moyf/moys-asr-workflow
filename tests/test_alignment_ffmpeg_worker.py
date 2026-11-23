@@ -10,6 +10,7 @@ import tempfile
 import threading
 import unittest
 from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -419,10 +420,12 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
         repo = str(Path(__file__).resolve().parents[1])
         self.helper.write_text(
             "import json, os, sys\n"
-            "if sys.platform == 'darwin' and not os.environ.get('TEST_NATIVE_PLATFORM'): sys.platform = 'linux'\n"
+            "if sys.platform == 'darwin': sys.platform = 'linux'\n"
             f"sys.path.insert(0, {repo!r})\n"
             "from maw.ffmpeg import resolve_ffmpeg_tools\n"
-            "tools = resolve_ffmpeg_tools()\n"
+            "homebrew = os.environ.get('TEST_HOMEBREW_BIN')\n"
+            "tools = (resolve_ffmpeg_tools(platform='darwin', macos_directories=[homebrew])\n"
+            "         if homebrew else resolve_ffmpeg_tools())\n"
             "extraction = 'not-run'\n"
             "if os.name != 'nt':\n"
             "    from pathlib import Path\n"
@@ -469,7 +472,7 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=True), \
              mock.patch.object(sys, "frozen", True, create=True), \
              mock.patch.object(sys, "executable", str(self.root / "MAW.exe")), \
-             mock.patch.object(sys, "platform", "linux" if sys.platform == "darwin" and not env.get("TEST_NATIVE_PLATFORM") else sys.platform), \
+             mock.patch.object(sys, "platform", "linux" if sys.platform == "darwin" else sys.platform), \
              mock.patch.object(sys, "_MEIPASS", str(self.root / "resources"), create=True), \
              mock.patch.object(local_runtime, "managed_runtime_status", return_value=status), \
              mock.patch.object(local_runtime.LOCAL, "bundle_path", return_value=self.helper):
@@ -533,7 +536,7 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
         finally:
             self.root = old_root
 
-    @unittest.skipUnless(os.name == "nt", "Windows PATHEXT behavior")
+    @unittest.skipUnless(os.name == "nt", "Windows PATHEXT resolution")
     def test_worker_does_not_treat_scripts_as_executables(self):
         for tool in ("ffmpeg", "ffprobe"):
             for suffix in (".py", ".cmd"):
@@ -544,12 +547,19 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
         result = self.run_child(env=env)
         self.assertEqual((result["ffmpeg"], result["ffprobe"]), ("", ""))
 
-    @unittest.skipUnless(sys.platform == "darwin" and Path("/opt/homebrew/bin/ffprobe").is_file(), "requires macOS Homebrew ffprobe")
     def test_partial_configuration_preserves_bundled_probe_before_homebrew(self):
         bundled = self.tools(self.root / "ffmpeg" / "bin", "ffmpeg", "ffprobe")
         custom = self.tools(self.root / "custom", "ffmpeg")
-        result = self.run_child(env={"PATH": "", "FFMPEG_PATH": str(self.root / "custom"), "PYTHONDONTWRITEBYTECODE": "1", "TEST_NATIVE_PLATFORM": "1"})
-        self.assertEqual((result["ffmpeg"], result["ffprobe"]), (custom["ffmpeg"], bundled["ffprobe"]))
+        homebrew_dir = self.root / "homebrew"
+        homebrew = self.tools(homebrew_dir, "ffprobe")
+        env = {"PATH": "", "FFMPEG_PATH": str(self.root / "custom"), "TEST_HOMEBREW_BIN": str(homebrew_dir)}
+        parent_resolver = partial(local_runtime.resolve_ffmpeg_tools, platform="darwin", macos_directories=[homebrew_dir])
+        with mock.patch.object(local_runtime, "resolve_ffmpeg_tools", parent_resolver):
+            result = self.run_child(env=env)
+            self.assertEqual((result["ffmpeg"], result["ffprobe"]), (custom["ffmpeg"], bundled["ffprobe"]))
+            Path(bundled["ffprobe"]).rename(self.root / "unused-probe")
+            result = self.run_child(env=env)
+            self.assertEqual((result["ffmpeg"], result["ffprobe"]), (custom["ffmpeg"], homebrew["ffprobe"]))
 
     def test_inherited_internal_probe_override_is_not_trusted_by_parent(self):
         rogue = self.tools(self.root / "rogue", "ffprobe")
