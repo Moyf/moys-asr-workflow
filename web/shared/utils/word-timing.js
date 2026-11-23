@@ -36,7 +36,11 @@ export function createWordTiming(dependencies) {
       previousEnd = end;
     });
     const texts = wordTextsFromSource(segment?.text, entries) || partialWordTextsFromSource(segment?.text, entries);
-    if (texts) entries.forEach((entry, index) => { entry.text = texts[index]; });
+    // allocated 标记条目文本是否来自成功投影：全量覆盖或唯一部分匹配时
+    // 写入 true；两种投影都失败（可听序列失配或部分匹配存在歧义，如重复
+    // 字）时不写入该字段，条目保留原始 item 文本。下游需要唯一位置的消费
+    // 者（卡拉 OK 规划）据此整句回落，不做最早匹配的猜测。
+    if (texts) entries.forEach((entry, index) => { entry.text = texts[index]; entry.allocated = true; });
     return entries;
   }
 

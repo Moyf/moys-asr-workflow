@@ -26,6 +26,12 @@
 
 修复后复验：`pnpm run check:editor` 新鲜；node 397 例（含 `test_ass_karaoke` 11、`test_ass_canvas_raster` 13）与 Python 48 例（`test_editor_assets`、`test_ass_styles`）全绿；`git diff --check` 干净。
 
+## PR 411 外审跟进（2026-11-23）
+
+- **Major（drunkenQCat 两轮指出），已修复。** 重复文字 + 部分时间码歧义：句文 `哈哈` 只有单个 `哈` 的时间码（800–1400ms）时，初版导出 `{\k80}{\k120}哈哈`——贪心锚定第一个 `哈`，两字同窗口换色，违反「失配逐句回落」的 PR 承诺（本机复现 `.artifacts/ktv-semantics/repro_ambiguous.mjs`）。修复：`getWordTimingEntries` 以 `allocated` 标记条目文本是否来自成功投影（全量覆盖或唯一部分匹配），`assKaraokePlan` 见未标记条目整句回落；唯一部分覆盖（`哈再见` → `{\k200}哈再见`）保持不变。新增双向用例（`tests/test_ass_karaoke.mjs`：歧义句无 `\k`、对照句保留注入），反向验证去掉检查后用例真实变红（10 过 1 败 → 恢复后 11/11）。
+- 官网副本 Minor 已在前轮 `70b186d7` 销项（外审第二轮确认）；后续 main 已改为隔离目录生成、无需提交副本。
+- 维护者曾在合并前裁定「暂时接受该边界」，本跟进按维护者 2026-11-23 指示转为立即修复。
+
 ## 未测边界（PR 描述如实声明）
 
 - 真实浏览器播放预览（Canvas 逐帧双色）与 serve.py 单帧实际画面浮层未人工验收（静态审查 + raster 单测 + DOM 实测门控/间距覆盖；间距实测 10px）。
