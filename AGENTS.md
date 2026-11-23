@@ -3,6 +3,9 @@
 ## 核心原则
 
 - **不要默认用户提出的问题定义就是正确的**。你先分析用户真正想解决的底层需求，判断有没有把症状误认为原因、把手段误认为目标。如果存在更值得解决的问题，直接指出来。
+- **先读再改**：以当前工作树为准，读相关实现、直接调用方与现有测试，找最小正确改动。
+- **优先复用**：沿用现有模块与约定；够用就不加依赖、不为假设需求新增抽象、不顺手重构。最小改动不能削弱安全、防数据丢失、可访问性或用户明确要求。
+- **验证变化**：有实质逻辑变化时，补或扩展最小回归用例。交付时分开说明已验证、失败、跳过和未验证项；对缺口给出原因和下一步。
 
 ## 项目目标
 
@@ -48,9 +51,12 @@ web/launcher/                      # Launcher 前端
 docs/user/LOCAL_ASR.md             # 本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。ESM 工厂与仍保留 classic 共享作用域的接线并存，数量随迁移变化，以 `pnpm run build:editor` 输出的 `Editor: N ESM factories / M sources` 为准；该命令由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
+`web/` 是编辑器和 Launcher 的前端源码目录。页面从 bundle 加载主脚本；改了 JS、装配清单或构建配置，先重建受影响的 bundle，再检查新鲜度：
 
-Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建（bundle 与 `.meta.json` 不进 Git，maw_gui.py 启动时会自动重建过期产物），运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
+- 编辑器：`pnpm run build:editor`，再 `pnpm run check:editor`。装配与领域分工见[编辑器源码地图](docs/engineering/DEVELOPMENT.md#编辑器源码地图)；新业务写进所属领域，不扩大入口。
+- Launcher：`pnpm run build:launcher`，再 `pnpm run check:launcher`。装配顺序见 `web/launcher-scripts.txt`；`batch.js` / `postprocess.js` 独立加载，经 `window.MAWLauncher` 接入。
+
+bundle 与 `.meta.json` 不入 Git。源码入口会校验并自动重建过期产物（需要 Node 与 `pnpm install`）；发布包预先构建，运行不需要 Node。CSS 与 HTML 模板仍在渲染时读取；开发时可用 [dev / watcher 命令](docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
@@ -80,8 +86,6 @@ uv run python scripts/run_tests.py
 git diff --check
 ```
 
-源码装配结构（加载守卫入口、`editor-wiring-*.js`、工厂注册与依赖注入）见[开发概览的编辑器源码地图](docs/engineering/DEVELOPMENT.md#编辑器源码地图)。新业务逻辑写入所属领域模块，不扩大入口；目录位置不决定执行顺序。
-
 ### Agent 命令执行：避免 uv 超时卡住
 
 - `uv run` 每次执行都会重新解析并可能同步环境，冷启动时远超命令工具的默认超时（约 2 分钟），表现为命令"卡住"且长时间无输出。
@@ -97,17 +101,11 @@ git diff --check
 - 历史耗时不是当前预算：按本次集合设明确上限或拆分执行；连续两轮同类失败先分析，不循环重跑。新 worktree 先比较 `uv.lock`，一致时可只读复用主仓库 venv（`MAW_TEST_PYTHON` / `MAW_E2E_PYTHON`），依赖缺失只记录一次。
 - PowerShell 内联脚本（`node -e`、多层引号）易解析失败，复杂逻辑写临时脚本文件；输出为空先怀疑参数与引号，而不是重跑。
 
-自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
+### 浏览器验证
 
-```powershell
-uv run python server-editor\serve.py --blank
-```
-
-### 编辑器脚本是构建产物：改 web/ 后必须重建 bundle
-
-编辑器页面（serve.py 与便携页）加载 esbuild 产物 `web/editor/boot/editor-bundle.js`，不是 `web/` 下的散装源文件；改完源码不重建，刷新页面与 e2e 都还是旧代码。源码改动后执行 `node scripts\build-editor.mjs --write`（或 `pnpm run build:editor`；`--check` 只校验新鲜度，`watch:editor` 可挂监视）。
-
-bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前、`edit.py --blank` 前会校验并自动重建；打包脚本与发布 CI 在打包前显式构建。构建与发布细节见[开发概览](docs/engineering/DEVELOPMENT.md#编辑器源码地图)。
+- 交互变化要在真实浏览器里操作受影响的入口并核对结果（手动或相关 Playwright 用例），如拖动、播放、Seek 或保存。只启动服务、跑单测或检查 DOM 存在不算交互验证。编辑器可用 `uv run --no-sync python server-editor/serve.py --blank` 启动。
+- Launcher / 编辑器布局变化要截图自查并实测受影响的间距或尺寸，见 [UI 间距约定](#ui-间距约定)；截图不替代交互验证。
+- 若环境受限或浏览器检查反复卡住，保留其他验证结果，将未完成的浏览器检查标为「未验证」，给出原因及人工复核的操作和预期；不反复重跑，不报通过。
 
 ### Playwright e2e 运行纪律（防长命令挂起）
 
@@ -116,7 +114,6 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 - e2e 的 serve.py 被中断（部分正常结束也会）后可能残留并占住管道，使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
 - 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑受影响的 spec，完整集合留给每周/手动辅助巡检、维护者明确请求或发布验收。连续两轮不过先停下分析。
 - 多个 agent 并行跑 e2e 时端口不冲突，代价是 CPU 竞争；其他 worktree 的进程不杀也不等，清理前按 CommandLine 核对归属，只清本 worktree 的进程。
-- 浏览器验证是可选项：逻辑验证优先单测；反复卡住就降级为人工验收，不要阻塞。
 
 ## 日常 CI 与辅助巡检
 
@@ -189,10 +186,8 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 - 新增按钮、输入框、提示行等 UI 元素时，必须与上下相邻元素保持垂直间隔（用 `margin` 或父容器 `gap`），不得紧贴；移动、新增一行按钮或区块后，要检查它与上方元素的间距。
 - 注意本项目 `.field` 只有 `margin-top`（没有下边距）、`.hint` 是 `margin: 0`：紧跟在 `.field` 后面的提示行 / 按钮行 / 独立区块必须自带 `margin-top`，不能指望对方留白。
-- 间距验收必须用实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能凭截图目测「看起来有间距」——这条规则反复被违反过，目测判断不可靠。
-- 凡是改动 Launcher / 编辑器布局的任务，收尾前把涉及区域截图自查一遍。
-- 编写或修改 `tools/` 下的浏览器工具页（含脚本生成的 HTML 页）前，必须先读 [tools/TOOL_PAGE_GUIDE.md](tools/TOOL_PAGE_GUIDE.md) 并遵循，交付前按文末清单自查；工具 Markdown 展示复用 `tools/shared/` 的 Marked + DOMPurify 封装，原 README 是真源，离线副本须生成并检查新鲜度。
-- 工具页文字严禁小于 **11px**（含徽章、时间码、刻度、伪元素与精简/窄屏模式）；OCR 确认页是控件样式基准，精简只裁辅助信息、不缩字号；新增或调整工具须同步 `tools/catalog.js` 与工具 README，让[工具功能介绍页](tools/index.html)保持准确。
+- 间距验收必须记录实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能只看截图。
+- 改 `tools/` 浏览器工具页（含脚本生成页）前，必须先读并遵循 [工具页规范](tools/TOOL_PAGE_GUIDE.md)，按文末清单自查。工具页文字不得小于 **11px**；Markdown 展示复用 `tools/shared/` 的 Marked + DOMPurify 封装；新增或调整工具后同步相关 README 与 `tools/catalog.js`，用生成脚本更新并检查离线说明副本。
 
 ## PR 描述：先让 reviewer 看懂
 
