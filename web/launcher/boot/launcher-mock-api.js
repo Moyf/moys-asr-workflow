@@ -199,7 +199,7 @@ function mockApi() {
           supportsLanguage: false,
           note: "多人转写向云端服务：媒体会直接上传到 MOSS（模思智能开放平台）；单次任务需 ≤60 分钟；自动识别语言，不支持指定语言。",
           commonLanguages: [],
-          models: [{ id: "moss-transcribe-diarize-pro", label: "MOSS 转写说话人分离（Pro）", envKey: "MOSS_API_KEY", note: "多人转写与说话人分离；仅段级时间码，可用对齐模型补齐字词时间码。", priceNote: "MOSS 参考价：说话人分离转写促销价 ¥1.20 / 小时（原价 ¥2 / 小时）", supportsSpeaker: true, supportsKeywords: true, languages: [] }],
+          models: [{ id: "moss-transcribe-diarize-pro", label: "MOSS 转写说话人分离（Pro）", envKey: "MOSS_API_KEY", note: "多人转写与说话人分离；超长句段按断句设置自动拆分，字词时间码可用对齐模型补齐。", priceNote: "MOSS 参考价：说话人分离转写促销价 ¥1.20 / 小时（原价 ¥2 / 小时）", supportsSpeaker: true, supportsKeywords: true, languages: [] }],
           regions: [],
           languages: []
         },

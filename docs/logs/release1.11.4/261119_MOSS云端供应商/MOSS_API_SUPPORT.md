@@ -43,7 +43,7 @@
 
 ## 验证记录
 
-命令经 `python scripts/run_check.py --timeout N -- <cmd>` 执行（result.json 与完整输出落 `.artifacts/checks/<run-id>/`）；Python 用主仓库 venv（`D:\Codes\moys-asr-workflow\.venv`，本 worktree venv 缺依赖）。
+命令经 `python scripts/run_check.py --timeout N -- <cmd>` 执行（result.json 与完整输出落 `.artifacts/checks/<run-id>/`）；Python 只读复用主仓库 venv（本 worktree venv 当时缺依赖）。
 
 | 层 | 命令 / 内容 | 结果 |
 | --- | --- | --- |
@@ -57,7 +57,7 @@
 | typecheck | `tsc -p web/tsconfig.typecheck.json` | 无错误 |
 | 编辑器契约 | `node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs`；`node scripts/build-editor.mjs --check` | 通过、fresh |
 | e2e（受影响单 spec） | `npx playwright test ... tests/e2e/launcher-interactions.spec.mjs` | 64 通过（1.1m） |
-| 全量 Python | `python scripts/run_tests.py` | 3353 项：除 `test_runtime_winsecurity` 2 个错误外全过（该 2 项在主仓库同样红，为本机 `D:\Codes` ACL 环境问题，与本分支无关） |
+| 全量 Python | `python scripts/run_tests.py` | 3353 项：除 `test_runtime_winsecurity` 2 个错误外全过（该 2 项在主仓库同样红，为本机仓库所在目录的 ACL 环境问题，与本分支无关） |
 | 无 Key 路径 | 真实 1s wav + 空 `MOSS_API_KEY` 跑 `-m maw.asr.moss` | 友好中文报错退出，音频提取正常 |
 | 硬扫 | `git diff --check`；`python scripts/check_personal_paths.py --diff-ref main` | 干净 |
 

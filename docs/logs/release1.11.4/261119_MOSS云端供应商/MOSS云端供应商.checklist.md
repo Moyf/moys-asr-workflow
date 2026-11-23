@@ -47,7 +47,7 @@ status: pending
 
 - [ ] **确认环境性失败与本分支无关**
   （操作）在本机跑 `uv run --no-sync python -m unittest tests.test_runtime_winsecurity`（或 CI 上看该文件结果）
-  （预期）失败与 MOSS 改动无关联（D:\Codes 目录 ACL 环境问题）；CI 上应全绿
+  （预期）失败与 MOSS 改动无关联（本机仓库所在目录的 ACL 环境问题）；CI 上应全绿
   （说明）worktree 与主仓库本机均红；若 CI 也红需另行立案
   <!-- id: moss-auto-env -->
 
