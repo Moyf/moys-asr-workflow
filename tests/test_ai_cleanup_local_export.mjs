@@ -30,7 +30,7 @@ test('ASS cache retains raw identity but invalidates equal-text selections with 
 });
 
 function runtime() {
-  const context = { window: {}, document: { querySelectorAll: () => [], getElementById: () => null } };
+  const context = { URL, window: {}, document: { querySelectorAll: () => [], getElementById: () => null } };
   loadEditorModule(context, 'shared/editor-utils.js');
   const core = context.window.AsrGapRemoveCore;
   const utils = context.window.AsrEditorUtils;
@@ -324,22 +324,31 @@ test('OTIO media binding follows project media and rejects stale server paths af
   assert.equal(timeline.mediaTargetUrl(), 'file:///media/portable.mp4', 'file URL playback still provides a valid native source');
 });
 
-test('OTIO native media paths encode URI delimiters and retain their file identity', () => {
+test('OTIO source, cut and sticker clips preserve literal local paths that need URL escaping', () => {
   const { context, timeline } = runtime();
-  for (const [path, url] of [
-    ['/media/plain.wav', 'file:///media/plain.wav'],
-    ['/media/中文 100%/#take?1.wav', 'file:///media/%E4%B8%AD%E6%96%87%20100%25/%23take%3F1.wav'],
-    ['C:\\Media\\中文 100%\\#take.wav', 'file:///C:/Media/%E4%B8%AD%E6%96%87%20100%25/%23take.wav'],
+  for (const [path, expected, name] of [
+    ['/media/plain.wav', 'file:///media/plain.wav', 'plain.wav'],
+    ['/media/中文 100%/#take?1.wav', '/media/中文 100%/#take?1.wav', '#take?1.wav'],
+    ['C:\\Media\\中文 100%\\#take%20.wav', 'C:/Media/中文 100%/#take%20.wav', '#take%20.wav'],
+    ['\\\\nas\\share\\A B.wav', '//nas/share/A B.wav', 'A B.wav'],
+    ['file:///media/%E4%B8%AD%20%23%3F%2520.wav', '/media/中 #?%20.wav', '中 #?%20.wav'],
+    ['file:///media/legacy#part?1.wav', '/media/legacy#part?1.wav', 'legacy#part?1.wav'],
+    ['file:///C:/Media/clip%20one.wav', 'C:/Media/clip one.wav', 'clip one.wav'],
   ]) {
     context.MaweBoot.DATA.media = path;
-    assert.equal(timeline.mediaTargetUrl(), url);
-    assert.equal(timeline.stickerTargetUrl(path), url);
-    const parsed = new URL(url);
-    assert.equal(parsed.search, '');
-    assert.equal(parsed.hash, '');
-    assert.equal(decodeURIComponent(parsed.pathname).replace(/^\/(?=[A-Za-z]:\/)/, ''), path.replaceAll('\\', '/'));
+    for (const gapRemoved of [false, true]) {
+      const payload = JSON.parse(timeline.buildTimelineOtio({ gapRemoved }));
+      assert.equal(payload.metadata.moy.source_media, expected);
+      for (const track of payload.tracks.children) {
+        for (const clip of track.children) {
+          assert.equal(clip.name, name);
+          assert.equal(clip.media_references.DEFAULT_MEDIA.target_url, expected);
+        }
+      }
+    }
+    const sticker = timeline.buildStickerOtioTrack([{ idx: 0, startMs: 0, endMs: 1000, absPath: path }]);
+    assert.equal(sticker.track.children[0].media_references.DEFAULT_MEDIA.target_url, expected);
   }
-  assert.equal(timeline.stickerTargetUrl('file:///media/already%20encoded.wav'), 'file:///media/already%20encoded.wav');
 });
 
 test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained main text', () => {

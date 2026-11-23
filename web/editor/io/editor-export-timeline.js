@@ -237,16 +237,23 @@ export function initExportTimelineModule() {
 
 
   function stickerTargetUrl(absPath) {
-    let value = String(absPath || '').trim();
+    let value = String(absPath || '');
     if (!value) return '';
-    if (value.startsWith('file://')) {
-      value = value.replace(/^file:\/+/, '');
-      if (/^[A-Za-z]:/.test(value)) return `file:///${value.replace(/\\/g, '/')}`;
-      return `file:///${value.replace(/^\/+/, '').replace(/\\/g, '/')}`;
+    if (/^file:\/\//i.test(value)) {
+      try {
+        // Older projects can store a file URL with raw filename delimiters.
+        const url = new URL(value.replaceAll('#', '%23').replaceAll('?', '%3F'));
+        const pathname = decodeURIComponent(url.pathname);
+        value = url.hostname ? `//${url.hostname}${pathname}` : pathname.replace(/^\/(?=[A-Za-z]:\/)/, '');
+      } catch {
+        return value;
+      }
     }
-    // Native paths are not URLs yet: encode delimiters so a filename's # or ?
-    // cannot become a fragment or query, and literal % is not decoded as an escape.
-    value = encodeURI(value.replace(/\\/g, '/')).replace(/[?#]/g, char => char === '?' ? '%3F' : '%23');
+    if (/^(?:[A-Za-z]:|\\\\)/.test(value)) value = value.replace(/\\/g, '/');
+    // Resolve looks up escaped characters literally. Use an absolute filesystem
+    // path when a file URL would require escaping, including literal %, # and ?.
+    if (encodeURI(value) !== value || /[?#]/.test(value)) return value;
+    if (value.startsWith('//')) return `file:${value}`;
     if (/^[A-Za-z]:/.test(value)) return `file:///${value}`;
     return `file:///${value.replace(/^\/+/, '')}`;
   }
@@ -257,18 +264,18 @@ export function initExportTimelineModule() {
     // Browser-local replacements have no native path. Neither the old server
     // binding nor a not-yet-updated currentSrc may identify the replacement.
     if (MaweProjectMediaInputs.currentMediaBlobUrl) return '';
-    const media = String(MaweBoot.DATA.media || '').trim();
-    if (/^file:\/\//i.test(media) || /^[A-Za-z]:[\\/]/.test(media) || media.startsWith('/')) {
+    const media = String(MaweBoot.DATA.media || '');
+    if (/^(?:file:\/\/|[A-Za-z]:[\\/]|\/|\\\\)/i.test(media)) {
       return stickerTargetUrl(media);
     }
     // Portable projects keep a relative media reference. The localhost host
     // already resolved its source; this binding is cleared on project import.
-    const boundMedia = String(MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath || '').trim();
-    if (/^file:\/\//i.test(boundMedia) || /^[A-Za-z]:[\\/]/.test(boundMedia) || boundMedia.startsWith('/')) {
+    const boundMedia = String(MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath || '');
+    if (/^(?:file:\/\/|[A-Za-z]:[\\/]|\/|\\\\)/i.test(boundMedia)) {
       return stickerTargetUrl(boundMedia);
     }
     const current = String(MaweCoreState.player?.currentSrc || '').trim();
-    if (/^file:\/\//i.test(current)) return current;
+    if (/^file:\/\//i.test(current)) return stickerTargetUrl(current);
     return '';
   }
 
@@ -742,7 +749,7 @@ export function initExportTimelineModule() {
 
 
   // 表情包导出的两种交付格式：
-  //   .otio（original 模式，引用 file:// 路径）始终可用
+  //   .otio（original 模式，引用本机路径）始终可用
   //   .otioz（服务器打包 zip）需要 server-editor + 已绑定工程文件，否则灰显并说明原因
   const STICKER_OTIOZ_BUTTONS = ['download-sticker-otioz', 'download-gap-removed-sticker-otioz'];
 
@@ -863,14 +870,8 @@ export function initExportTimelineModule() {
 
 
   function otioMediaName(targetUrl) {
-    const raw = String(targetUrl || '').split(/[?#]/, 1)[0].replace(/[\\/]+$/, '');
-    const candidate = raw.split(/[\\/]/).pop() || '';
-    if (!candidate) return '';
-    try {
-      return decodeURIComponent(candidate);
-    } catch {
-      return candidate;
-    }
+    const raw = String(targetUrl || '').replace(/\/+$/, '');
+    return raw.split('/').pop() || '';
   }
 
 

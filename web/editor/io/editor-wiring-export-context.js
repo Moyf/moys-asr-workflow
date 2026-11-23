@@ -194,7 +194,7 @@ function buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFr
 
 
 // 表情包导出的两种交付格式：
-//   .otio（original 模式，引用 file:// 路径）始终可用
+//   .otio（original 模式，引用本机路径）始终可用
 //   .otioz（服务器打包 zip）需要 server-editor + 已绑定工程文件，否则灰显并说明原因
 
 
