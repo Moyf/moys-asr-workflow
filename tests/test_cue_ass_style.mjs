@@ -18,6 +18,13 @@ for (const role of ['main', 'extension', 'overlay']) test(`cue style overrides o
   if (role === 'extension') options.extensionSegments = [cue, peer];
   if (role === 'overlay') options.overlaySegments = [cue, peer];
   const output = h.buildAssPayload(role === 'main' ? [cue, peer] : [], options);
+  const migrated = h.importProject({ segments: [cue, peer] }).project;
+  const reopened = JSON.parse(JSON.stringify(migrated));
+  const migratedCues = reopened.tracks[0].segments;
+  const migratedOptions = { ...options, cueStyles: reopened.cue_styles };
+  if (role === 'extension') migratedOptions.extensionSegments = migratedCues;
+  if (role === 'overlay') migratedOptions.overlaySegments = migratedCues;
+  assert.equal(h.buildAssPayload(role === 'main' ? migratedCues : [], migratedOptions), output);
   assert.match(output, /Style: Cue_0,Arial,112,/);
   assert.equal((output.match(/^Style: Cue_0,/gm) || []).length, 1);
   assert.match(output, /Dialogue: [^\n]*,Cue_0,,[^\n]*Styled/);
@@ -35,7 +42,7 @@ test('cue style survives project roundtrip and rejects malformed snapshots', () 
   const style = { name: 'Local', fontSize: 93, vendor: { retained: true } };
   const project = h.importProject({ segments: [{ start: 0, end: 1000, text: 'a', assStyle: style }] }).project;
   assert.deepEqual(JSON.parse(JSON.stringify(h.importProject(project).project)), JSON.parse(JSON.stringify(project)));
-  assert.deepEqual(JSON.parse(JSON.stringify(project.tracks[0].segments[0].assStyle)), style);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.cue_styles.find(entry => entry.id === project.tracks[0].segments[0].cue_style_id).style)), style);
   for (const invalid of [null, [], 'preset']) {
     const copy = JSON.parse(JSON.stringify(project)); copy.tracks[0].segments[0].assStyle = invalid;
     assert.throws(() => h.importProject(copy), /assStyle/);

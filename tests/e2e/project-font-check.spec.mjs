@@ -180,7 +180,7 @@ test('only explicit fonts are checked and mapping covers track, cue and preview 
   await expect(box).toHaveCount(0);
   const fontNames = () => page.evaluate(() => ({
     track: MaweBoot.DATA.styles.find(style => style.id === MaweBoot.DATA.tracks[0].style.style_id).fontName,
-    cue: MaweBoot.DATA.tracks[0].segments[0].assStyle.fontName,
+    cue: MaweBoot.DATA.cue_styles.find(entry => entry.id === MaweBoot.DATA.tracks[0].segments[0].cue_style_id).style.fontName,
     preview: MaweBoot.DATA.preview.subtitle.font_family,
   }));
   expect(await fontNames()).toEqual({ track: 'Good Font', cue: 'Good Font', preview: 'Good Font' });
@@ -204,10 +204,10 @@ test('legacy font name replacement covers track and cue styles', async ({ page }
   await box.getByText('确认并替换旧名称').click();
   await expect(box).toHaveCount(0);
   expect(await page.evaluate(() => [MaweBoot.DATA.styles.find(style => style.id === 'old').fontName,
-    MaweBoot.DATA.tracks[0].segments[0].assStyle.fontName])).toEqual(['Good Font', 'Good Font']);
+    MaweBoot.DATA.cue_styles.find(entry => entry.id === MaweBoot.DATA.tracks[0].segments[0].cue_style_id).style.fontName])).toEqual(['Good Font', 'Good Font']);
   await page.evaluate(() => MaweHistory.performUndo());
   expect(await page.evaluate(() => [MaweBoot.DATA.styles.find(style => style.id === 'old').fontName,
-    MaweBoot.DATA.tracks[0].segments[0].assStyle.fontName])).toEqual(['Old Font', 'Old Font']);
+    MaweBoot.DATA.cue_styles.find(entry => entry.id === MaweBoot.DATA.tracks[0].segments[0].cue_style_id).style.fontName])).toEqual(['Old Font', 'Old Font']);
 });
 
 test('explicit preview font preset is checked but the default is silent', async ({ page }) => {

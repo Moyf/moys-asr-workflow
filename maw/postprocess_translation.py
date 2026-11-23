@@ -6,7 +6,7 @@ import copy
 
 from maw.project import normalize_project
 from maw.project_preview import JsonDict
-from maw.project_tracks import get_main_track, get_track, project_tracks
+from maw.project_tracks import cue_style_writer, get_main_track, get_track, project_tracks
 
 _TRACK_PRESENTATION_FIELDS = frozenset(
     {"assOverride"} | {f"{kind}_group_{suffix}" for kind in ("color", "sticker") for suffix in ("id", "metadata")}
@@ -38,6 +38,14 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
             raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID。")
         if not str(translated.get("text") or "").strip() and str(source.get("text") or "").strip():
             raise ValueError(f"第 {index} 条翻译结果为空。")
+    used_styles = {cue["cue_style_id"] for cue in translated_segments if "cue_style_id" in cue}
+    if used_styles:
+        store = cue_style_writer(combined)
+        remap = {entry["id"]: store({k: v for k, v in entry.items() if k != "id"})
+                 for entry in translated_project["cue_styles"] if entry["id"] in used_styles}
+        for cue in translated_segments:
+            if "cue_style_id" in cue:
+                cue["cue_style_id"] = remap[cue["cue_style_id"]]
     if "markers" in translated_project:
         combined["markers"] = copy.deepcopy(translated_project["markers"])
     bilingual = combined.setdefault("bilingual", {})

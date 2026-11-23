@@ -103,7 +103,11 @@ class ProjectTracksTests(unittest.TestCase):
         project = canonical()
         project["processing_overrides"] = {"text": [{"type": "wrap", "wraps": [{"id": "custom", "vendor": 1}], "vendor": 2}], "vendor": 3}
         project["tracks"][0]["segments"][0]["assStyle"] = {"vendor": 4}
-        self.assertEqual(normalize_project(project), project)
+        migrated = normalize_project(project)
+        self.assertEqual(migrated["processing_overrides"], project["processing_overrides"])
+        self.assertEqual(migrated["cue_styles"], [{"id": "cue-style-1", "style": {"vendor": 4}}])
+        self.assertEqual(migrated["tracks"][0]["segments"][0]["cue_style_id"], "cue-style-1")
+        self.assertEqual(normalize_project(migrated), migrated)
         bad = copy.deepcopy(project)
         bad["processing_overrides"]["text"][0]["wraps"][0]["id"] = "unknown"
         self.assertRejected(bad, "$.processing_overrides")

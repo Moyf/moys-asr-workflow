@@ -80,7 +80,10 @@ for (const variant of ['default', 'karaoke']) {
   editor(`imports an actual 1.x ${variant} export and round-trips it in 2.0`, async ({ libraryEditor }, info) => {
     const { page, projectPath } = libraryEditor;
     const initialProjectFile = readFileSync(projectPath, 'utf8');
-    const cueStyle = () => page.evaluate(() => MaweBoot.DATA.tracks.find(track => track.role === 'main').segments[0].assStyle);
+    const cueStyle = () => page.evaluate(() => {
+      const cue = MaweBoot.DATA.tracks.find(track => track.role === 'main').segments[0];
+      return MaweBoot.DATA.cue_styles.find(entry => entry.id === cue.cue_style_id).style;
+    });
     const snapshot = await cueStyle();
     expect(snapshot).toMatchObject({ name: 'Saved cue style', fontSize: 73 });
     const sourcePath = fileURLToPath(new URL(`../fixtures/ass-styles/main-f345a896-${variant}.json`, import.meta.url));

@@ -9,9 +9,8 @@ test.beforeAll(async () => {
   const audio = join(dir, 'synthetic.wav');
   projectPath = generateProjectJson(join(dir, 'project.mosp'));
   const project = JSON.parse(readFileSync(projectPath, 'utf8'));
-  project.tracks.find(track => track.role === 'main').segments[0].assStyle = {
-    id: 'ass', name: 'Project snapshot', fontSize: 73,
-  };
+  project.cue_styles = [{ id: 'pinned', style: { id: 'ass', name: 'Project snapshot', fontSize: 73 } }];
+  project.tracks.find(track => track.role === 'main').segments[0].cue_style_id = 'pinned';
   writeFileSync(projectPath, JSON.stringify(project), 'utf8');
   generateWav(audio, DURATION_MS / 1000);
   server = await startServer(projectPath, audio, await findFreePort());
@@ -149,11 +148,11 @@ test('merges and restores an exported library and rejects stale writes', async (
   const projectSnapshot = () => page.evaluate(() => {
     const project = window.MaweBoot.DATA;
     const cue = project.tracks.find(track => track.role === 'main').segments[0];
-    return { schema: project.schema, assStyle: cue.assStyle };
+    return { schema: project.schema, assStyle: project.cue_styles.find(entry => entry.id === cue.cue_style_id).style };
   });
   const beforeImport = await projectSnapshot();
   expect(beforeImport).toMatchObject({ schema: 'moy.asr.project.v2', assStyle: { id: 'ass', fontSize: 73 } });
-  await expect(page.locator('#ass-style-project-hint')).toBeVisible();
+  await expect(page.locator('#ass-style-project-hint')).toBeHidden();
   const projectFile = readFileSync(projectPath, 'utf8');
   await page.locator('#ass-style-window').screenshot({ path: test.info().outputPath('ass-library.png') });
   await page.locator('#ass-style-export-library').click();

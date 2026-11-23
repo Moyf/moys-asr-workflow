@@ -208,6 +208,7 @@ export function createUtilsModule(dependencies) {
       : normalizeAssFontSize(baseStyle.fontSize);
     const title = normalizeAssHeaderValue(options.title ?? options.projectName);
     const speakerProject = options.speakerProject ?? getProject?.();
+    const cueStyles = new Map((options.cueStyles || speakerProject?.cue_styles || []).map(entry => [entry.id, entry.style]));
     const availableColorStyles = normalizeAssColorStyles(options.colorStyles);
     // Keep legacy five-color ASS byte-stable. A collapsed palette still exports
     // any extra color that an actual cue uses, without emitting unused variants.
@@ -260,8 +261,9 @@ export function createUtilsModule(dependencies) {
     const stackItems = [];
     const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText, shake = false) => {
       const colorName = colorNameFor(segment, context);
-      if (segment.assStyle && typeof segment.assStyle === 'object' && !Array.isArray(segment.assStyle)) {
-        style = normalizeAssStyle(segment.assStyle, ASS_DEFAULT_ASS_STYLE, 'cue');
+      const snapshot = cueStyles.get(segment.cue_style_id) || segment.assStyle;
+      if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+        style = normalizeAssStyle(snapshot, ASS_DEFAULT_ASS_STYLE, 'cue');
         style.fontName = canonicalizeAssFontName(style.fontName);
         if (assColorGroupsSupported && knownColor(colorName)) {
           style = assStyleVariant(style, colorStyles.find(entry => entry.name === colorName)?.value || '#ffffff', colorStyle);

@@ -29,6 +29,36 @@ class MigrationSaveTests(unittest.TestCase):
             project['subtitle_groups'] = {'next_id': 1, 'color': [], 'sticker': []}
         return project
 
+    def test_takeover_compares_definitions_behind_identical_main_cue_ids(self):
+        original = self.legacy(None)
+        original["segments"][0]["assStyle"] = {"id": "custom", "fontSize": 32}
+        first = server_editor.normalize_project(original)
+        original["segments"][0]["assStyle"]["fontSize"] = 64
+        second = server_editor.normalize_project(original)
+        self.assertEqual(first["tracks"], second["tracks"])
+        self.assertFalse(server_editor._attach_segments_match(first, second))
+        second["cue_styles"][0]["style"]["fontSize"] = 32
+        self.assertTrue(server_editor._attach_segments_match(first, second))
+        second["cue_styles"][0]["library_id"] = "custom"
+        self.assertFalse(server_editor._attach_segments_match(first, second))
+
+    def test_inline_style_v2_source_survives_normal_save_and_backup(self):
+        source = self.root / 'inline.mosp'
+        raw = server_editor.normalize_project(self.legacy(None))
+        raw['tracks'][0]['segments'][0]['assStyle'] = {'fontSize': 73}
+        source.write_text(json.dumps(raw), encoding='utf-8')
+        original = source.read_bytes()
+        project = self.load(source)
+        with server_editor.EditorServer(('127.0.0.1', 0), project, no_waveform=True) as server:
+            self.assertTrue(server.project_binding_payload()['requiresMigrationSaveAs'])
+            for options in ({}, {'backup_limit': 2, 'backup_only': True}, {'filename': source.name}):
+                with self.assertRaises(server_editor.SaveProjectError):
+                    server.save_project(project.data, **options)
+            saved, _ = server.save_project(project.data, filename='references.mosp')
+            self.assertFalse(server.project_binding_payload()['requiresMigrationSaveAs'])
+            self.assertEqual(json.loads(saved.read_bytes())['cue_styles'][0]['style']['fontSize'], 73)
+        self.assertEqual(source.read_bytes(), original)
+
     def test_legacy_requires_new_save_as_then_normal_save(self):
         for index, schema in enumerate((None, 'moy.asr.project.v1', 'moy.asr.project.v1.5')):
             with self.subTest(schema=schema):

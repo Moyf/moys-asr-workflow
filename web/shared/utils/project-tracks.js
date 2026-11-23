@@ -1,3 +1,4 @@
+import { migrateCueStyles, compactCueStyles } from './cue-styles.js';
 import { selectTracks } from './track-policy.js';
 // The only project-level subtitle model. Legacy containers are accepted solely
 // by importProject; consumers receive track entities from one canonical tree.
@@ -278,6 +279,32 @@ export function createUtilsModule() {
       if (value !== id(value)) return error(path, 'must not have surrounding whitespace');
       return null;
     };
+    const cueIds = new Set();
+    if (own(project, 'cue_styles')) {
+      if (!Array.isArray(project.cue_styles)) return error('$.cue_styles', 'must be an array');
+      for (const [i, entry] of project.cue_styles.entries()) {
+        const path = `$.cue_styles[${i}]`;
+        if (!object(entry)) return error(path, 'must be an object');
+        const invalid = identifierError(entry.id, path + '.id');
+        if (invalid) return invalid;
+        if (cueIds.has(entry.id)) return error(path + '.id', 'must be a unique style ID');
+        cueIds.add(entry.id);
+        if (!object(entry.style)) return error(path + '.style', 'must be an object');
+        if (own(entry, 'library_id')) {
+          const invalidLibrary = identifierError(entry.library_id, path + '.library_id');
+          if (invalidLibrary) return invalidLibrary;
+        }
+      }
+    }
+    for (const [i, track] of tracks.entries()) {
+      if (!Array.isArray(track?.segments)) continue;
+      for (const [j, cue] of track.segments.entries()) {
+        if (!object(cue) || !own(cue, 'cue_style_id')) continue;
+        const path = `$.tracks[${i}].segments[${j}]`;
+        if (own(cue, 'assStyle')) return error(path + '.assStyle', 'cannot coexist with cue_style_id');
+        if (!cueIds.has(cue.cue_style_id)) return error(path + '.cue_style_id', 'must reference an existing cue style');
+      }
+    }
     if (own(project, 'styles')) {
       if (!Array.isArray(project.styles)) return error('$.styles', 'must be an array');
       for (const [index, style] of project.styles.entries()) {
@@ -649,6 +676,12 @@ export function createUtilsModule() {
     return project;
   }
 
+  function requiresProjectMigrationSaveAs(raw) {
+    return raw?.schema !== PROJECT_TRACKS_SCHEMA || !Array.isArray(raw.speakers)
+      || (Array.isArray(raw.tracks) && raw.tracks.some(track => Array.isArray(track?.segments)
+        && track.segments.some(cue => object(cue) && own(cue, 'assStyle'))));
+  }
+
   function importProject(raw) {
     if (!object(raw)) fail('$', 'must be an object');
     if (own(raw, 'schema') && raw.schema !== PROJECT_TRACKS_SCHEMA && !LEGACY_SCHEMAS.has(raw.schema)) fail('$.schema', 'unsupported project schema');
@@ -658,6 +691,7 @@ export function createUtilsModule() {
     let project;
     try { project = upgradeProjectSpeakers(candidate); }
     catch (error) { throw new ProjectTracksError([{ path: error.path || '$.speakers', message: error.message }]); }
+    migrateCueStyles(project);
     const result = validateTracksProject(project);
     if (!result.ok) throw new ProjectTracksError(result.errors);
     let changes = changesBetween(raw, project);
@@ -701,6 +735,7 @@ export function createUtilsModule() {
     const snapshot = clone(project);
     for (const field of CACHE_FIELDS) delete snapshot[field];
     delete snapshot._dirty;
+    compactCueStyles(snapshot);
     for (const track of projectTracks(snapshot)) delete track._dirty;
     for (const segment of iterSegments(snapshot)) {
       delete segment._dirty;
@@ -712,6 +747,6 @@ export function createUtilsModule() {
     return selectTracks(project, subtitleTracks, surface, { includeOverlay });
   }
   return Object.freeze({ PROJECT_TRACKS_SCHEMA, ProjectTracksError, importProject, migrateProjectTracks, makeProject,
-    validateTracksProject, getTrack, getTracksByRole, getMainTrack, getExtensionTrack, getOverlayTrack,
+    requiresProjectMigrationSaveAs, validateTracksProject, getTrack, getTracksByRole, getMainTrack, getExtensionTrack, getOverlayTrack,
     projectTracks, iterSegments, snapshotProjectContent, selectSubtitleTracks });
 }

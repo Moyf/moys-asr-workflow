@@ -41,6 +41,22 @@ def _basic_project() -> dict[str, object]:
 
 
 class ProjectAssExportTests(unittest.TestCase):
+    def test_reference_export_matches_inline_style_before_and_after_save(self):
+        source = _basic_project()
+        style = {"id": "narrator", "fontName": "Arial", "fontSize": 91, "vendor": {"x": 1}}
+        for cue in source["segments"]:
+            cue["assStyle"] = style
+        project = normalize_project(source)
+        self.assertEqual(len(project["cue_styles"]), 1)
+        self.assertNotIn("assStyle", project["tracks"][0]["segments"][0])
+        options = {"title": "Styles", "play_resolution": (1920, 1080)}
+        output = render_project_ass(project, **options)
+        self.assertIn("Style: Cue_0,Arial,91,", output)
+        self.assertEqual(output, render_project_ass(source, **options))
+        reopened = json.loads(json.dumps(project))
+        reopened["cue_styles"][0]["style"]["fontSize"] = 78
+        self.assertIn("Style: Cue_0,Arial,78,", render_project_ass(reopened, **options))
+
     def test_render_matches_editor_non_ass_branch_header_and_default_style(self) -> None:
         content = render_project_ass(_basic_project(), title="演示", play_resolution=(1920, 1080))
         lines = content.splitlines()

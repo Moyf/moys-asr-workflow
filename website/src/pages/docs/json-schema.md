@@ -756,7 +756,9 @@ v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `sec
 
 ## 二、segment 对象
 
-v2 工程可在根字段 `styles` 保存 ASS 样式快照，轨道的 `style.style_id` 必须引用其中的样式；`style.forked` 表示与本机样式库分离。可选布尔字段 `style.font_default` 标记自动建立的系统默认轨道字体；用户选择轨道样式或编辑字体后移除此标记。自动初始化时若本机样式库使用了自定义字体，该字体不是默认值，保存后重开会检查可用性。单句 `assStyle` 独立于轨道样式。工程只记录字体名和样式参数，不包含字体文件。
+v2 工程可在根字段 `styles` 保存 ASS 样式快照，轨道的 `style.style_id` 必须引用其中的样式；`style.forked` 表示与本机样式库分离。可选布尔字段 `style.font_default` 标记自动建立的系统默认轨道字体；用户选择轨道样式或编辑字体后移除此标记。自动初始化时若本机样式库使用了自定义字体，该字体不是默认值，保存后重开会检查可用性。单句使用独立的 `cue_styles` 表。工程只记录字体名和样式参数，不包含字体文件。
+
+可选根字段 `cue_styles` 是数组。条目示例为 `{"id":"cue-style-1","library_id":"ass","style":{"id":"ass","fontSize":64}}`。工程内 ID 唯一，区分大小写；三个轨道角色共用。渲染使用条目的 `style` 对象，保留旧快照中的扩展字段。`library_id` 保存跟随的库 ID，省略即固定。同一参数和跟随状态可共享条目，固定一条字幕不会改变其他句子。加载时双字段 `assStyle` 与 `cue_style_id` 并存、引用悬空或条目 ID 重复均报路径错误。带内联单句样式的旧 v2 文件首次保存时也须另存。
 
 `segments[i]` 的字段定义：
 
@@ -787,7 +789,7 @@ v2 工程可在根字段 `styles` 保存 ASS 样式快照，轨道的 `style.sty
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
-| `assStyle` | `object` | 否 | 主、副或叠加字幕的独立 ASS 样式快照；缺省继承当前默认样式，不依赖外部样式库 |
+| `cue_style_id` | `string` | 否 | 主、副及叠加轨共用的工程单句样式 ID，必须指向根表 `cue_styles` 中的一项。缺省继承轨道样式 |
 | `assOverride` | `object` | 否 | 主、副和叠加字幕的逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
@@ -1063,7 +1065,7 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 | `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
 | `segments[i].assOverride` | object | ❌ | 可选逐句 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用该句有效样式锚点；空对象归一化为省略。主、副和叠加字幕均应用该字段 |
-| `segments[i].assStyle` | object | ❌ | 单句 ASS 样式快照；主、副和叠加字幕可保存，缺省使用对应默认样式 |
+| `tracks[*].segments[i].cue_style_id` | string | ❌ | 引用根表 `cue_styles`；读取旧内联 `assStyle` 时按完整内容去重并转为固定引用 |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
