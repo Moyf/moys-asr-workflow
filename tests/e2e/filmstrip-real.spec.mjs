@@ -103,13 +103,40 @@ test('real video frames stay cached during playback, stop decoding and resume th
   writeFileSync(testInfo.outputPath('filmstrip-real-evidence.json'),JSON.stringify({states:states.map(({state,decoding,samples})=>({state,decoding,samples:samples.length})),releaseCount:requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length},null,2)+'\n');
 });
 
+test('hidden filmstrip sends only playback controls from the real video player',async({page})=>{
+  await disableOnboarding(page);
+  await page.addInitScript(()=>localStorage.setItem('mawe-filmstrip-mode','hidden'));
+  const requests=[];
+  page.on('request',request=>{
+    const path=new URL(request.url()).pathname;
+    if(path.startsWith('/api/thumbnails')) requests.push({path,body:request.postDataJSON()});
+  });
+  await page.goto(server.url);
+  await expect(page.locator('#waveform-thumbnail-mode')).toHaveValue('hidden');
+  const playbackResponse=playing=>page.waitForResponse(response=>
+    new URL(response.url()).pathname==='/api/thumbnails/demand'
+    && response.request().postDataJSON()?.playing===playing);
+  const started=playbackResponse(true);
+  await page.evaluate(()=>{const player=document.getElementById('player');player.muted=true;return player.play();});
+  expect((await started).ok()).toBe(true);
+  const stopped=playbackResponse(false);
+  await page.evaluate(()=>document.getElementById('player').pause());
+  expect((await stopped).ok()).toBe(true);
+  await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+  for(const {path,body} of requests) {
+    expect(path).toBe('/api/thumbnails/demand');
+    expect(body).toMatchObject({visible:false,decode:false,ranges:[]});
+  }
+});
+
 test('hide cache assertion tolerates a completed decode but rejects cache disposal',async({page})=>{
   // Exercise the production controller and real Chromium image decoding, with
   // explicit gates rather than a timing-dependent sleep or a fake bytes getter.
   const source=readFileSync(new URL('../../web/editor/media/editor-thumbnails.js',import.meta.url),'utf8');
   for(const dispose of [false,true]){
     await page.goto('about:blank');
-    const moduleSource=dispose?source.replace('release(false); onChange(true); return;','release(true); onChange(true); return;'):source;
+    const moduleSource=dispose?source.replace('} else release(false);','} else release(true);'):source;
     if(dispose)expect(moduleSource).not.toBe(source);
     await page.evaluate(async source=>{
       const moduleUrl=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));

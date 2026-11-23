@@ -7,7 +7,7 @@
 1. 确认当前 worktree、分支、`git status --short`、`git log -1 --oneline`，记录任务基线。
 2. 检查已安装的 Python / Node 与依赖。Python 测试优先直接指定现有解释器；若复用另一 worktree 的 venv，先比较 `uv.lock`，不得同步修改共享环境。给 Node 设置 `MAW_TEST_PYTHON`，给 e2e 设置 `MAW_E2E_PYTHON`。两者用途不同。
 3. 需要 Node 依赖时在当前 worktree 执行一次 `pnpm install --frozen-lockfile`。只有浏览器层需要 Chromium；不要为纯日志、Python 标准库或 Node 标准库测试安装整套环境。
-4. `uv run --no-sync` 不负责准备依赖；冷环境缺包时先记录缺什么，再选择现有环境或一次性同步。不要通过换临时目录、缓存目录、重装环境来反复试同一功能失败。
+4. 普通 `uv run` 可能在冷环境中解析和同步依赖而超时；Agent 用 `uv run --no-sync`，缺包只记录一次，再选择现有环境或由开发者同步。不要通过换临时目录、缓存目录、重装环境来反复试同一功能失败。
 
 Windows 沙箱的系统临时目录若不可写，可为**当前测试进程**设置 `TEMP` / `TMP` 为本 worktree 的 `.artifacts/checks/tmp`；不要修改全局环境。进程树清理若被沙箱拒绝，运行器会记录 `cleanup_error`，不能把它报告为完整清理成功。
 
@@ -27,6 +27,11 @@ Windows 沙箱的系统临时目录若不可写，可为**当前测试进程**�
 - bundle 冲突通过源码与清单解决后重建；不要手动合并生成 JS。`blank-editor.html` 仍只在发布或维护者要求时重建。
 - `debug.log` 已从版本索引移除并忽略，本 worktree 的原文件保留；不会清理其他工作区的日志。
 
+### Codegraph 排查
+
+- 调用要显式传 `projectPath`。`.codegraph/` 为空时可能回退到父级索引；若出现外仓库文件，先查仓库的 `.codegraph/codegraph.db`。
+- worktree 默认没有独立索引，可用主仓库索引做符号／调用关系导航，内容以当前 worktree 的 `rg` / `Select-String` 和原文件为准。大量增删改时直接搜索当前源码；确需独立索引才在该 worktree 运行 `codegraph init`。
+
 ## 有界执行入口
 
 在待验证的 worktree 根目录执行，示例中的 `python` 必须指向选定的已安装解释器：
@@ -40,6 +45,8 @@ python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/
 ```
 
 `--` 后是可执行文件与参数，不是 shell 表达式；管道、重定向和环境变量赋值在外层处理。运行器关闭 stdin，stdout / stderr 合并直接写文件，避免等待继承管道的 EOF。
+
+仓库 unittest 用 `uv run --no-sync python scripts/run_tests.py`，可接文件、点号名称或 `--full-log`；裸 `python -m unittest` 只用于确需完整输出的诊断或上面的标准库探针。对页面或内联脚本做成员断言的测试类继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions`，避免失败时把整页打印成一行。
 
 `scripts/run_tests.py --parallel N` 仅在不指定 targets 的平铺测试发现中按文件并行。发现测试子包（子目录含 `__init__.py`）时会提示并回退标准串行发现，保留包初始化和 `load_tests` 的执行、筛选与错误；文件自身的 `load_tests` 仍接收原始 `--pattern`，返回的自定义用例和导入的测试类都会执行。指定 targets 时同样回退串行；默认不加 `--parallel` 的行为不变。
 
@@ -65,10 +72,10 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 超过一两次工具超时的命令（全量 Python、Playwright、codemod、打包）不要在前台等，也不要把工具超时当成兜底：
 
 - **后台启动**：`Start-Process -WindowStyle Hidden`（不要 `-NoNewWindow`，它会占住当前控制台），stdout / stderr 重定向到文件后再按端口或日志探活。e2e 日常入口是 `scripts/run-e2e.ps1`；`scripts/refactor-tools/run-e2e-bg.ps1` + `poll-e2e.ps1` 是更早的后台封装，仍可用。
-- **轮询而不是等**：查 PID 是否存活、日志尾部是否仍在增长；每条命令给显式时限（短命令 60 秒，测试类按本次集合 5–15 分钟）。
+- **轮询而不是等**：查 PID 是否存活、日志尾部是否仍在增长；每条命令给显式时限（短命令 60 秒，测试类按本次集合 5–15 分钟）。不要把 `uv run` 与 `Test-NetConnection`、`Start-Sleep` 等慢命令串联。
 - **真卡还是在跑**：日志中的进度计数仍在增加、进程存活，就继续等；两者都不满足时才按中断处理。
 - **超时 / 中断后先回收本次进程树**：`scripts/run_check.py` 按本次 PID 处理（Windows `taskkill /T`，POSIX 新进程组）；e2e 服务由 fixture 的 `stop()` 负责。**禁止按 node / chrome / python 进程名批量清理**，会误杀其他 worktree 与用户进程；归属核对与清理命令见 [E2E 残留服务进程与长命令挂起](E2E_SERVER_HANG.md)。
-- **大段参数与字节保真**：Windows 命令行上限约 32K，长文本、JSON、报告不要塞进 `node -e`、`git commit -m` 之类的 argv；写临时 UTF-8 无 BOM 文件，用 `--body-file` / `-F` / 文件加载器传入。超过三行的内联逻辑写成 `.mjs` / `.ps1` 再执行，`git show ref:path` 等落盘用 node 或 `cmd /c "... > file"`，避免编码与缓冲差异。仓库源码保持 LF 与无 BOM，PowerShell 产物先用 node / python 规范化再入库。
+- **大段参数与字节保真**：Windows 命令行上限约 32K，长文本、JSON、报告不要塞进 `node -e`、`git commit -m` 之类的 argv；写临时 UTF-8 无 BOM 文件，用 `--body-file` / `-F` / 文件加载器传入。超过三行或引号复杂的内联逻辑写成 `.mjs` / `.ps1` 再执行；输出意外为空时先核对参数与引号。`git show ref:path` 等落盘用 node 或 `cmd /c "... > file"`，避免编码与缓冲差异。仓库源码保持 LF 与无 BOM，PowerShell 产物先用 node / python 规范化再入库。
 - **不要用 bash 后台 `&`**：stdin 仍挂在会话管道上，命令工具会等进程树而永久阻塞；长驻服务用独立终端或上面两种方式启动，用完必须终止。
 
 ## 按变化选择测试层
