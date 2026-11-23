@@ -3,7 +3,7 @@
 - 基线：`fix/per-cue-style`，基于 `045667a5`（origin/main）加本任务全部未提交改动（2 个新文件 + 16 个修改文件）。
 - 范围：编辑器单句 ASS 样式「快照 + 自动跟随」（纯函数、wiring 模块、提示与按钮、i18n、e2e 改写、文档），不改工程格式。
 - 审查方式：未参与实现的独立 agent 只读审查 `git diff HEAD` 全部改动与关键调用链（editor-state / editor-commands / editor-history / storage / cue-panel / i18n），实跑单测与静态检查，并用 node 临时探针实证纯函数边界；主会话对 finding 逐条处置。维护者复核把审查代理误判为 nit 的 R1 升级回 major，另提出 R2 与两项勘误。
-- 结论（维护者复核后）：修复 R1（major）、R2 后 0 blocker / 0 major；N2 / N3 / N5 / N6 接受现状或记录为后续可选项。无未处置 blocker / major。
+- 结论（维护者复核后）：修复 R1（major）、R2 后 0 blocker / 0 major；N2 / N3 / N5 / N6 / N7 接受现状或记录为后续可选项。无未处置 blocker / major。
 
 ## Findings 与处置
 
@@ -45,6 +45,11 @@
 
 - 全仓仅剩定义与导出表；唯一调用点已改用 `assStyleContentKey`。保留导出兼容便携页 / 外部消费，2.0 格式改造（Issue #434）时顺带清理。
 
+### N7（nit，维护者二次复核提出，接受）：换库后才出现的样式不清跟随记录
+
+- `noteLibraryReplaced` 只比较换库前后都在库里的样式。在别的窗口删除某样式，之后又以不同内容恢复，再撤销时，本会话内跟随过该样式的句子仍会被重对齐到恢复后的内容。
+- 需要「删除、以不同内容恢复、撤销」连续发生，且只影响本会话内跟随过的句子。被改写的句子快照不进撤销历史，原样式只能重新做出后再选回去。处置：本次接受，2.0 样式表改造（Issue #434）后不再有逐句快照。
+
 ## 审查者已核实、无需处置的维度
 
 1. 纯函数边界：空库 / null / 缺 id / 空组均安全返回（探针实测）；`normalizeAssStyle` 键序固定；raw 快速路径方向正确（raw 相等 ⟹ 键相等，跳过安全），raw 不等的回退分支缺陷见 R1（已修复）；`builtin` 字段两侧同用默认 fallback，不会假分叉。
@@ -63,6 +68,6 @@
 
 ## 遗留提醒
 
-- 本分支 HEAD（045667a5）是 main 的祖先：提 PR 前需 fetch 并合并目标分支、解决冲突。
+- 已合并 `origin/main`（`e6423be4`，合并提交 `19169131`），CHANGELOG 与日志索引自动合并、无冲突。合并后复验：Node 单测（脚本语法与顺序、`editor_utils`、`waveform_js`、单句样式）457/457；chromium e2e 中与样式库或单句样式相关的 11 个 spec 262 过 1 既有 skip（8.6 分钟）；`check:editor`、`check:launcher`、`typecheck`、`git diff --check`、`check_docs.py`、个人路径检查通过。
 - 人工核验项（真实工程的跟随 / 按钮 / 撤销 / 导入观感）见同目录 `单句样式跟随样式库.checklist.md`；自动化通过不代替人工确认。
 - 2.0 存储改造（工程内样式表 + 引用）见 Issue #434，N2 / N6 的根治都在那一步。
