@@ -400,6 +400,36 @@ test('runtime upgrade and alignment model states distinguish files, validation, 
   await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-dependency-status.png') });
 });
 
+test('MOSS API key and credit links share one callout', async ({ page }, testInfo) => {
+  await gotoLauncher(page);
+  await page.evaluate(() => {
+    window.openedKeyUrls = [];
+    window.open = url => { window.openedKeyUrls.push(url); };
+  });
+  await page.locator('#provider').selectOption('moss');
+  const callout = page.locator('.key-hint-callout');
+  await expect(callout).toHaveText('在 MOSS 控制台 获取或查看 API Key；在 MOSS Create 可领取免费积分 ↗', { useInnerText: true });
+  await callout.locator('#openKeyUrl').click();
+  await callout.locator('#mossCreditsUrl').click();
+  await expect.poll(() => page.evaluate(() => window.openedKeyUrls)).toEqual([
+    'https://platform.moss.cn/app/api-keys', 'https://create.moss.cn/',
+  ]);
+  const gap = await callout.evaluate(node => node.getBoundingClientRect().top
+    - document.getElementById('keyStatus').getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#apiKeyField').screenshot({ path: testInfo.outputPath('moss-key-callout.png') });
+  await page.locator('#settingsButton').click();
+  await page.locator('#langEn').click();
+  await page.locator('#settingsClose').click();
+  await expect(callout).toHaveText('Get or view an API Key from MOSS Console and claim free credits at MOSS Create ↗', { useInnerText: true });
+  await page.locator('#settingsButton').click();
+  await page.locator('#langZh').click();
+  await page.locator('#settingsClose').click();
+  await page.locator('#provider').selectOption('qwen');
+  await expect(callout.locator('#mossCreditsUrl')).toBeHidden();
+  await expect(callout).toContainText('获取或查看 API Key ↗');
+});
+
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');

@@ -57,7 +57,9 @@ async function saveStickerDirectory(path) { $("stickerDir").value = path; const 
 function renderKeyHint() {
   const current = provider();
   const isOpenai = current?.id === "openai";
-  $("openKeyUrl").textContent = isOpenai ? t("openai_official") : (current?.keyButtonLabel || current?.label || "");
+  const isMoss = current?.id === "moss";
+  $("openKeyUrl").textContent = isOpenai ? t("openai_official")
+    : isMoss ? t("moss_console") : (current?.keyButtonLabel || current?.label || "");
   $("openKeyHintOr")?.classList.toggle("hidden", !isOpenai);
   const openRouterLink = $("openRouterKeyUrl");
   if (openRouterLink) {
@@ -65,9 +67,9 @@ function renderKeyHint() {
     openRouterLink.classList.toggle("hidden", !isOpenai);
   }
   const suffix = $("keyHintSuffix");
-  if (suffix) suffix.textContent = t(isOpenai ? "openai_key_hint_suffix" : "key_hint_suffix");
+  if (suffix) suffix.textContent = t(isOpenai ? "openai_key_hint_suffix" : isMoss ? "moss_key_hint_suffix" : "key_hint_suffix");
   const mossCredits = $("mossCreditsHint");
-  if (mossCredits) mossCredits.classList.toggle("hidden", current?.id !== "moss");
+  if (mossCredits) mossCredits.classList.toggle("hidden", !isMoss);
 }
 function renderKeyStatus() { const masked = state.config && !isLocalProvider() ? provider().maskedApiKey : ""; $("keyStatus").textContent = masked ? t("key_loaded").replace("{key}", masked) : t("key_empty"); }
 function syncQwenAudioOptions(model) { const enabled = provider().id === "qwen" && Boolean(model?.supportsContext || model?.supportsHotwords); $("qwenAudioOptions").classList.toggle("hidden", !enabled); $("qwenAudioContextField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsContext)); $("qwenAudioKeepDialectField").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsKeepDialect)); $("qwenAudioHotwordsSection").classList.toggle("hidden", !(provider().id === "qwen" && model?.supportsHotwords)); syncQwenAudioHotwordsMode(); }
