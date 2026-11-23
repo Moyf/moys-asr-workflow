@@ -54,7 +54,7 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def _run_full_video(self, source: Path | None = None):
+    def _run_full_video(self, source: Path | None = None, **encoding):
         source = source or self.source
 
         def run(command, **kwargs):
@@ -68,7 +68,7 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
         with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
             return server_editor.burn_ass_video(
                 source, [], ASS_TEXT, self.output,
-                ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"), **encoding,
             )
 
     def test_full_video_burn_builds_launcher_style_encoder_command(self) -> None:
@@ -91,6 +91,12 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(command[command.index("-movflags") + 1], "+faststart")
         self.assertNotIn("-progress", command)
         self.assertEqual(command[-1], str(self.output))
+
+    def test_full_video_burn_passes_custom_quality_preset_and_audio_bitrate(self):
+        self._run_full_video(crf=26, preset="slow", audio_bitrate="128k")
+        command = next(command for command in self.calls if "-crf" in command)
+        self.assertEqual([command[command.index(flag) + 1] for flag in ("-crf", "-preset", "-b:a")],
+                         ["26", "slow", "128k"])
 
     def test_fixed_gain_full_green_and_interval_audio_is_applied_once(self):
         def run(command, **kwargs):
@@ -460,6 +466,26 @@ class BurnVideoJobHttpTests(unittest.TestCase):
             self.assertEqual(status, 202)
             self.wait(started['jobId'], 'ready')
             self.assertEqual(captured['audio_gain_db'], 6)
+
+    def test_http_encoding_validation_and_job_snapshot(self):
+        for encoding in ([], None, {"crf": True}, {"crf": 9.5}, {"crf": 52},
+                         {"preset": "invalid"}, {"audioBitrate": "1k"}):
+            with self.subTest(encoding=encoding):
+                self.assertEqual(self.request(self.base, self.payload(encoding=encoding))[0], 400)
+        captured = {}
+
+        def burn(source, intervals, ass, output, **kwargs):
+            captured.update(kwargs)
+            output.write_bytes(b"burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            settings = {"crf": 0, "preset": "slow", "audioBitrate": "128k"}
+            status, started = self.request(self.base, self.payload(encoding=settings))
+            self.assertEqual(status, 202)
+            self.wait(started["jobId"], "ready")
+        self.assertEqual([captured[key] for key in ("crf", "preset", "audio_bitrate")], [0, "slow", "128k"])
 
     def test_http_loudness_pins_preview_media_and_rejects_stale_binding(self):
         preview = self.root / 'converted.mp4'

@@ -118,6 +118,9 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
   const reply = data => ({ok: true, json: async () => data});
   let openError = null;
   let grantRemoved = false;
+  let cancelPicker = false;
+  const pickerHint = '请稍等片刻，在 Launcher 的文件选择器中选择保存路径。';
+  const normalHints = () => f.body.children.find(c => c.id === 'hint-stack')?.children || [];
   Object.assign(f.window, {
     location: {hash: '#maw-burn-host=grant', pathname: '/', search: '?lang=en'},
     MAWE_I18N: {language: 'en', translateText: text => text},
@@ -133,7 +136,11 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
       server: {fetch: async (url, options) => {
         calls.push([url, options.body ? JSON.parse(options.body) : null]);
         if (url.endsWith('/native-session')) return reply({nativeSession: 'session'});
-        if (url.endsWith('/native-target')) return reply({nativeTarget: 'opaque', name: 'source.mp4'});
+        if (url.endsWith('/native-target')) {
+          assert.ok(normalHints().some(card => card.textContent === pickerHint && card.dataset.persistent === '1'));
+          assert.ok(!normalHints().some(card => card.textContent === 'start'));
+          return reply(cancelPicker ? {cancelled: true} : {nativeTarget: 'opaque', name: 'source.mp4'});
+        }
         if (url === '/jobs') return reply({jobId: 'job', state: 'ready', bindingGeneration: 1, sourceMediaId: 'media'});
         if (url.endsWith('/native-save')) return reply({name: 'source.mp4', syncWarning: true});
         if (url.endsWith('/native-open')) return openError || reply({openRequested: true});
@@ -144,8 +151,19 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
   });
   vm.runInContext(fs.readFileSync('web/editor/io/editor-wiring-burn-video.js', 'utf8'), f.context);
   const button = f.document.createElement('button');
-  await f.context.runBurnVideoJob({button, label: 'burn', suggestedName: 'result.mp4',
-    startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})});
+  const options = {button, label: 'burn', suggestedName: 'result.mp4',
+    startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})};
+  cancelPicker = true;
+  await f.context.runBurnVideoJob(options);
+  f.advance(200);
+  assert.ok(!normalHints().some(card => card.textContent === pickerHint || card.textContent === 'start'));
+  assert.deepEqual(calls.map(([url]) => url), ['/jobs/native-session', '/jobs/native-target']);
+  calls.splice(1);
+  cancelPicker = false;
+  await f.context.runBurnVideoJob(options);
+  f.advance(200);
+  assert.ok(!normalHints().some(card => card.textContent === pickerHint));
+  assert.ok(normalHints().some(card => card.textContent === 'start'));
   assert.equal(grantRemoved, true);
   assert.deepEqual(calls.map(([url]) => url), ['/jobs/native-session', '/jobs/native-target', '/jobs', '/jobs/job/native-save', '/jobs/job']);
   const [_, choose, admission] = calls;

@@ -1451,7 +1451,7 @@ test('keeps inline edits after switching to another dual-column subtitle', async
     .toBe('副轨修改后保留');
 });
 
-test('imports an extension SRT with 300ms preview, dual columns, split dialog, and pair deletion undo', async ({ page }) => {
+test('imports an extension SRT with 300ms preview, dual columns, split dialog, and secondary-only Delete', async ({ page }) => {
   await importPair(page);
   await expect(page.locator('#multi-subtitle-import-description')).toHaveText('请选择你要执行的行为：');
   await expect(page.locator('#multi-subtitle-import-preview')).toContainText('自动绑定 2 条');
@@ -1538,13 +1538,23 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   expect(mainSegments[0].end).toBe(mainSegments[1].start);
   expect(extensionSegments[0].end).toBe(extensionSegments[1].start);
 
-  // 清空主轨选择后只选中一条已绑定副字幕，Delete 必须成对删除；Ctrl+Z 恢复。
+  // 只选中已绑定副字幕，Delete 解除绑定但保留主字幕；Ctrl+Z 恢复。
   await page.keyboard.press('Escape');
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ selectBoundSubtitlePair: false }));
+  const counts = () => page.evaluate(() => ({
+    main: MaweBoot.DATA.segments.length,
+    extension: MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length,
+    bindings: MaweMultiSubtitleCore.getMultiSubtitleState().bindings.length,
+  }));
+  const beforeDelete = await counts();
   await page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension').click();
   await page.keyboard.press('Delete');
-  await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(3);
+  expect(await counts()).toEqual({
+    main: beforeDelete.main, extension: beforeDelete.extension - 1, bindings: beforeDelete.bindings - 1,
+  });
+  await expect(page.locator('#hint-stack')).toContainText('已解除 1 组绑定，主字幕已保留');
   await page.keyboard.press('ControlOrMeta+z');
-  await expect(page.locator('#cues-container > .multi-dual-cue')).toHaveCount(4);
+  expect(await counts()).toEqual(beforeDelete);
 });
 
 test('auto-submits a linked split after both subtitle lanes are confirmed', async ({ page }) => {
@@ -2561,9 +2571,15 @@ async function extensionColorRefState(page) {
   return page.evaluate(inspectExtensionColorRefs);
 }
 
-test('merging bound main cues keeps extension color group refs valid', async ({ page }) => {
+test('merging bound main cues keeps extension color refs and the left cue position', async ({ page }) => {
   await disableOnboarding(page);
   await importColoredPair(page);
+  const position = { pos: { x: 320, y: 140 } };
+  await page.evaluate(value => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    track.segments[0].assOverride = value;
+    track.segments[1].assOverride = { pos: { x: 720, y: 170 } };
+  }, position);
 
   await page.locator('.multi-cue-column.main').filter({ hasText: 'First main.' }).click();
   await page.locator('.multi-cue-column.main').filter({ hasText: 'Second main.' }).click({ modifiers: ['ControlOrMeta'] });
@@ -2575,6 +2591,7 @@ test('merging bound main cues keeps extension color group refs valid', async ({ 
   expect(merged.count).toBe(4);
   expect(merged.colors[0]).toBe('red');
   expect(merged.refs[3]).toBe(2);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride)).toEqual(position);
 
   // 撤销必须完整恢复合并前的颜色组布局（拆组/平移都发生在同一条历史记录里）。
   await page.keyboard.press('ControlOrMeta+z');
@@ -2605,6 +2622,121 @@ test('merging and deleting extension cues directly keeps color group refs valid'
   expect(deleted.invalid).toEqual([]);
   expect(deleted.count).toBe(3);
   expect(deleted.colors[2]).toBe('green');
+});
+
+test('right-click deletes only secondary cues regardless of the main selection', async ({ page }) => {
+  await disableOnboarding(page);
+  await importColoredPair(page);
+  const snapshot = () => page.evaluate(() => ({
+    main: MaweBoot.DATA.segments.map(segment => segment.id),
+    extension: MaweMultiSubtitleCore.getActiveExtensionTrack().segments.map(segment => segment.id),
+    bindings: MaweMultiSubtitleCore.getMultiSubtitleState().bindings.map(binding => binding.id),
+  }));
+  const before = await snapshot();
+  const targets = await page.evaluate(() => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    return track.segments.flatMap((_, i) => MaweMultiSubtitleCore.bindingForExtensionIndex(i, track) ? [i] : []);
+  });
+  expect(targets.length).toBeGreaterThanOrEqual(2);
+  const [first, second] = targets;
+  const row = index => page.locator(`.multi-cue-column.extension [data-ext-idx="${index}"], .multi-cue-column.extension[data-ext-idx="${index}"]`).first();
+  await row(first).click();
+  await row(second).click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.locator('#sel-count')).toHaveText('4');
+  await row(second).click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '删除 2 条副字幕' }).click({ timeout: 3000 });
+  const after = await snapshot();
+  expect(after.extension).toEqual(before.extension.filter((_, i) => i !== first && i !== second));
+  expect(after.main).toEqual(before.main);
+  expect(after.bindings).toHaveLength(before.bindings.length - 2);
+  await expect(page.locator('#hint-stack')).toContainText('已删除 2 条副字幕，已解除 2 组绑定，主字幕已保留');
+  expect((await extensionColorRefState(page)).invalid).toEqual([]);
+  await page.keyboard.press('ControlOrMeta+z');
+  expect(await snapshot()).toEqual(before);
+
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ selectBoundSubtitlePair: false }));
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'First main.' }).click();
+  await expect(page.locator('#sel-count')).toHaveText('1');
+  await row(first).click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '删除副字幕' }).click();
+  const single = await snapshot();
+  expect(single.extension).toEqual(before.extension.filter((_, i) => i !== first));
+  expect(single.main).toEqual(before.main);
+  expect(single.bindings).toHaveLength(before.bindings.length - 1);
+  await expect(page.locator('#hint-stack')).toContainText('已删除 1 条副字幕，已解除 1 组绑定，主字幕已保留');
+});
+
+test('group clicks and waveform main range selection update each selected column', async ({ page }) => {
+  await disableOnboarding(page);
+  await importColoredPair(page);
+  await page.evaluate(() => {
+    MaweSettings.updateEditorSettings({ selectGroupMembers: true, selectBoundSubtitlePair: true });
+    const [head, member] = MaweBoot.DATA.segments;
+    head.color = { name: 'red', value: '#e74c3c', start: head.start, end: member.end };
+    member.color_ref = { name: 'red', headIdx: 0 };
+  });
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'First main.' }).click();
+  await expect(page.locator('.multi-cue-column.selected')).toHaveCount(4, { timeout: 2500 });
+  await expect(page.locator('#sel-count')).toHaveText('4');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.multi-cue-column.selected')).toHaveCount(0);
+  // The main-only marquee dispatch uses this batched API; verify its projection
+  // without depending on zoom level or waveform coordinates for this fixture.
+  await page.evaluate(() => MaweSelection.addManyToSelection([0, 1]));
+  await expect(page.locator('.multi-cue-column.selected')).toHaveCount(4);
+  await expect(page.locator('#sel-count')).toHaveText('4');
+});
+
+test('Delete removes the full mixed selection but no unselected cue', async ({ page }) => {
+  await disableOnboarding(page);
+  await importColoredPair(page);
+  const snapshot = () => page.evaluate(() => ({
+    main: MaweBoot.DATA.segments.map(segment => segment.id),
+    extension: MaweMultiSubtitleCore.getActiveExtensionTrack().segments.map(segment => segment.id),
+    bindings: MaweMultiSubtitleCore.getMultiSubtitleState().bindings.map(binding => binding.id),
+  }));
+  // First choose just a main cue; Ctrl-clicking a bound secondary cue then adds
+  // that cue and its automatically selected main counterpart.
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ selectBoundSubtitlePair: false }));
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'First main.' }).click();
+  const firstPair = page.locator('.multi-dual-cue[data-main-idx="0"]');
+  await expect(firstPair.locator('.multi-cue-column.main')).toHaveClass(/selected/);
+  await expect(firstPair.locator('.multi-cue-column.extension')).not.toHaveClass(/selected/);
+  const visual = await firstPair.evaluate(row => {
+    const [main, secondary] = row.children;
+    return {
+      rowOutline: getComputedStyle(row).outlineStyle,
+      mainOutline: getComputedStyle(main).outlineStyle,
+      secondaryOutline: getComputedStyle(secondary).outlineStyle,
+      gap: secondary.getBoundingClientRect().left - main.getBoundingClientRect().right,
+    };
+  });
+  expect(visual).toMatchObject({ rowOutline: 'none', mainOutline: 'solid', secondaryOutline: 'none' });
+  expect(visual.gap).toBeGreaterThanOrEqual(8);
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ selectBoundSubtitlePair: true }));
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' }).click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.locator('#sel-count')).toHaveText('3');
+  await expect(page.locator('.multi-cue-column.selected')).toHaveCount(3);
+  await page.locator('#cues-container').screenshot({ path: test.info().outputPath('mixed-selection.png') });
+  const before = await snapshot();
+  await page.keyboard.press('Delete');
+  const after = await snapshot();
+  expect(after.main).toEqual(before.main.slice(2));
+  expect(after.extension).toEqual(before.extension.filter((_, index) => index !== 1));
+  expect(after.bindings).toHaveLength(before.bindings.length - 2);
+  expect((await extensionColorRefState(page)).invalid).toEqual([]);
+  await page.keyboard.press('ControlOrMeta+z');
+  expect(await snapshot()).toEqual(before);
+
+  // The explicitly main-track context menu still cascades to its bound
+  // secondary cue even when paired selection is disabled.
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ selectBoundSubtitlePair: false }));
+  const main = page.locator('.multi-cue-column.main').filter({ hasText: 'First main.' });
+  await main.click();
+  await expect(page.locator('#sel-count')).toHaveText('1');
+  await main.click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '删除字幕' }).click();
+  expect(await snapshot()).toMatchObject({ main: before.main.slice(1), extension: before.extension.slice(1) });
 });
 
 test('hides the extension preview while the playhead is in its timing gap', async ({ page }) => {

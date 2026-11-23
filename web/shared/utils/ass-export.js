@@ -517,8 +517,7 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    // 副字幕位置由其样式预设（对齐 + MarginV）决定：排布计划把副字幕当作
-    // 固定层（见 assCreateStackPlan），不再强制排在主字幕上方。
+    // 未逐句定位的副字幕从样式对齐与 MarginV 排布；绝对坐标由共用计划应用。
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment, index) => {
         if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
