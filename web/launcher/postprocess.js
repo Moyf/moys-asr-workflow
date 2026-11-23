@@ -63,6 +63,7 @@
   let postprocessCancelling = false;
   let postprocessSettingsActionVisible = false;
   let inputManual = false;
+  const comparisonByInput = new Map();
   let utilityMediaManual = false;
   let timestampMediaManual = false;
   let subtitleBurnManual = false;
@@ -706,6 +707,7 @@
     name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
     name.title = path;
     name.classList.toggle("empty", !hasPath);
+    renderChainSource(comparisonByInput.get(path)?.sourcePath);
   }
 
   function syncUtilityMediaName() {
@@ -756,6 +758,7 @@
       const next = autoSourcePath();
       if ($("toolboxInputPath").value !== next) {
         $("toolboxInputPath").value = next;
+        clearChainSelection();
         setFieldError("toolboxInputPath", "");
       }
     }
@@ -1697,20 +1700,14 @@
     list.scrollTop = list.scrollHeight;
   }
 
-  // 对比窗口预载：优先原始输入 + 最新一条字幕产物（工程优先于 SRT）。
   function comparisonPreloadPaths() {
-    const paths = [];
-    const original = document.querySelector("#toolboxChainOriginal [data-artifact-path]");
     const input = inputPaths();
-    const source = original?.dataset.artifactPath || (input && (input.projectPath || input.srtPath)) || "";
-    if (source) paths.push(source);
-    const items = [...document.querySelectorAll("#toolboxChainList .toolbox-chain-item")];
-    for (let index = items.length - 1; index >= 0 && paths.length < 2; index--) {
-      const artifact = items[index].querySelector('[data-artifact-kind="project"], [data-artifact-kind="srt"]');
-      const path = artifact?.dataset.artifactPath || "";
-      if (path && !paths.includes(path)) paths.push(path);
-    }
-    return paths;
+    const path = input?.projectPath || input?.srtPath;
+    if (!path) return [];
+    const comparison = comparisonByInput.get(path);
+    if (!comparison) return [path];
+    const { sourcePath, resultPath } = comparison;
+    return sourcePath === resultPath ? [sourcePath] : [sourcePath, resultPath];
   }
 
   async function openCompareTool(tool, button) {
@@ -1732,31 +1729,48 @@
     }
   }
 
-  function applySubtitleResult(result, chain) {
-    if (!$("toolboxChainOriginal")) {
-      const input = inputPaths();
-      const path = (input && (input.projectPath || input.srtPath)) || result.sourceProjectPath || result.sourceSrtPath;
-      if (path && SUBTITLE_EXTS.has(extension(path))) {
-        const original = document.createElement("div");
-        original.id = "toolboxChainOriginal";
-        original.className = "toolbox-chain-original";
-        const label = document.createElement("span");
-        label.className = "toolbox-chain-label";
-        label.dataset.i18n = "toolbox_chain_original";
-        label.textContent = t("toolbox_chain_original");
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "toolbox-chain-source";
-        button.dataset.artifactKind = extension(path) === ".srt" ? "srt" : "project";
-        button.dataset.artifactName = fileName(path);
-        button.dataset.artifactPath = path;
-        renderArtifactButton(button);
-        button.addEventListener("click", () => selectChainPath(path, button));
-        button.addEventListener("contextmenu", event => openArtifactMenu(event, path, button));
-        original.append(label, button);
-        $("toolboxChainList").prepend(original);
-      }
-    }
+  function renderChainSource(path) {
+    const original = $("toolboxChainOriginal");
+    if (original?.querySelector("button").dataset.artifactPath === path) return;
+    original?.remove();
+    if (!path) return;
+
+    const item = document.createElement("div");
+    item.id = "toolboxChainOriginal";
+    item.className = "toolbox-chain-original";
+    const label = document.createElement("span");
+    label.className = "toolbox-chain-label";
+    label.dataset.i18n = "toolbox_chain_original";
+    label.textContent = t("toolbox_chain_original");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toolbox-chain-source";
+    button.dataset.artifactKind = extension(path) === ".srt" ? "srt" : "project";
+    button.dataset.artifactName = fileName(path);
+    button.dataset.artifactPath = path;
+    renderArtifactButton(button);
+    button.addEventListener("click", () => selectChainPath(path, button));
+    button.addEventListener("contextmenu", event => openArtifactMenu(event, path, button));
+    item.append(label, button);
+    $("toolboxChainList").prepend(item);
+  }
+
+  function rememberComparison(input, result) {
+    const inputPath = [input.projectPath, input.srtPath, result.sourceProjectPath, result.sourceSrtPath]
+      .find(path => SUBTITLE_EXTS.has(extension(path)));
+    const resultPath = result.projectPath || result.srtPath;
+    if (!inputPath || !resultPath) return;
+
+    // The source opens the latest result; each historical result opens its own pair.
+    const sourcePath = comparisonByInput.get(inputPath)?.sourcePath || inputPath;
+    const comparison = { sourcePath, resultPath };
+    comparisonByInput.set(sourcePath, comparison);
+    if (result.projectPath) comparisonByInput.set(result.projectPath, comparison);
+    if (result.srtPath) comparisonByInput.set(result.srtPath, comparison);
+  }
+
+  function applySubtitleResult(result, chain, input) {
+    rememberComparison(input, result);
     if (result.projectPath) {
       $("jsonPath").value = result.projectPath;
       $("jsonPath").dispatchEvent(new Event("change", { bubbles: true }));
@@ -2320,7 +2334,7 @@
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath });
+      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath }, paths);
       else if (cancelled) setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -2353,7 +2367,7 @@
         reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked),
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
+      if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" }, paths);
       else if (result.code === "postprocess_cancelled") setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -2457,7 +2471,7 @@
         ...(scriptMode ? scriptAlignmentPayload() : {}),
       });
       if (result.ok) {
-        applySubtitleResult(result, { kind: scriptMode ? "scriptAlignment" : "timestamps" });
+        applySubtitleResult(result, { kind: scriptMode ? "scriptAlignment" : "timestamps" }, paths);
         if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success", { revealWarning: Boolean(result.warnings?.length) });
       }
       else {
@@ -2511,7 +2525,7 @@
         report: $("ocrReport").checked,
         ...ocrRegionPayload(),
       });
-      if (result.ok) applySubtitleResult(result, { kind: "ocr" });
+      if (result.ok) applySubtitleResult(result, { kind: "ocr" }, paths);
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -2718,7 +2732,7 @@
         skipTargetLanguage: $("postprocessSkipTarget").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
+      if (result.ok) applySubtitleResult(result, { kind: "llm", operation }, paths);
       else if (result.code === "postprocess_cancelled") setResult(t("toolbox_ai_cancelled"));
       else {
         const message = result.code === "custom_prompt_required"
@@ -2748,7 +2762,7 @@
     setBusy(true, "toolbox_status_starting");
     try {
       const result = await bridge("run_fixed_process", { ...paths, replacements, conversion });
-      if (result.ok) applySubtitleResult(result, { kind: "fixed" });
+      if (result.ok) applySubtitleResult(result, { kind: "fixed" }, paths);
       else setResult(result.error || result.detail || t("failed"), "error");
     } finally {
       setBusy(false);
@@ -3387,8 +3401,7 @@
     updateBackfillLabels();
   };
   window.MAWLauncher.onProjectPathChanged = () => {
-    if (!alignmentProjectManual) $("toolboxAlignmentProjectPath").value = $("jsonPath").value.trim();
-    syncAlignmentNames();
+    syncPaths();
   };
   window.MAWLauncher.onAlignmentModelsChanged = () => {
     renderTimestampModel();

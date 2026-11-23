@@ -144,54 +144,116 @@ test('script match completion points to the comparison tools and keeps diagnosti
   await page.locator('#toolboxResult').screenshot({ path: screenshotPath('match-result-summary.png') });
 });
 
-test('compare tools open from the artifact chain with the source preloaded', async ({ page }) => {
+async function openLauncherComparisonFixture(page) {
   await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
   await completeStaticLauncherDiscovery(page);
   await page.locator('#toolboxFab').click();
+  await page.locator('#toolboxMatchTab').click();
   await page.evaluate(() => {
     const original = window.MAWLauncher.callBackend;
-    window.compareCalls = [];
+    window.comparisonFixture = { compares: [], matches: [], reviews: [] };
     window.MAWLauncher.callBackend = async (method, payload) => {
+      const fixture = window.comparisonFixture;
+      if (method === 'read_script_preview') return { ok: true, preview: '文稿' };
+      if (method === 'preview_script_match') return { ok: true, preview: '匹配结果' };
+      if (method === 'run_script_match') {
+        const source = payload.projectPath || payload.srtPath;
+        fixture.matches.push(source);
+        if (fixture.deferMatch) await new Promise(resolve => { fixture.finishMatch = resolve; });
+        const output = source.replace(/\.[^.]+$/, payload.srtPath ? '.branch' : '.match');
+        return { ok: true, projectPath: `${output}.mosp`, srtPath: `${output}.srt` };
+      }
       if (method === 'open_compare_tool') {
-        window.compareCalls.push(payload);
+        fixture.compares.push(payload);
+        return { ok: true };
+      }
+      if (method === 'open_script_match_review') {
+        fixture.reviews.push(payload);
         return { ok: true };
       }
       return original(method, payload);
     };
-    const list = document.getElementById('toolboxChainList');
-    const item = document.createElement('div');
-    item.className = 'toolbox-chain-item';
-    const files = document.createElement('div');
-    files.className = 'toolbox-chain-files';
-    const artifact = document.createElement('button');
-    artifact.dataset.artifactKind = 'project';
-    artifact.dataset.artifactPath = 'D:\\Demo\\source.文稿匹配.mosp';
-    files.append(artifact);
-    item.append(files);
-    list.append(item);
-    document.getElementById('toolboxChain').classList.remove('hidden');
   });
-  await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
+  await page.locator('#postprocessScriptPath').fill('D:\\Demo\\script.txt');
+}
+
+test('both comparison tools pair each independent input with its own matching result', async ({ page }) => {
+  await openLauncherComparisonFixture(page);
+  const input = page.locator('#toolboxInputPath');
+  const run = page.locator('#runScriptMatch');
+  const transcript = page.getByRole('button', { name: '转写对比' });
+  await input.fill('D:\\Demo\\A.mosp');
+  await run.click();
+  await expect(input).toHaveValue('D:\\Demo\\A.match.mosp');
   const spacing = await page.locator('.toolbox-compare-row').evaluate(row => row.getBoundingClientRect().top - document.getElementById('toolboxChainList').getBoundingClientRect().bottom);
   expect(spacing).toBeGreaterThanOrEqual(8);
-  await page.getByRole('button', { name: '转写对比' }).click();
-  await expect.poll(() => page.evaluate(() => window.compareCalls.length)).toBe(1);
+  await transcript.click();
+  await input.fill('D:\\Demo\\B.mosp');
+  await run.click();
+  await expect(input).toHaveValue('D:\\Demo\\B.match.mosp');
+  await transcript.click();
   await page.getByRole('button', { name: '时间码对比' }).click();
-  await expect.poll(() => page.evaluate(() => window.compareCalls.length)).toBe(2);
-  const payloads = await page.evaluate(() => window.compareCalls);
-  expect(payloads.map(payload => payload.tool)).toEqual(['transcript', 'timestamp']);
-  for (const payload of payloads) {
-    expect(payload.paths).toEqual(['D:\\Demo\\source.mosp', 'D:\\Demo\\source.文稿匹配.mosp']);
-    expect(payload.lang).toBe('zh-CN');
-  }
+  await expect.poll(() => page.evaluate(() => window.comparisonFixture.compares)).toEqual([
+    { tool: 'transcript', paths: ['D:\\Demo\\A.mosp', 'D:\\Demo\\A.match.mosp'], lang: 'zh-CN' },
+    { tool: 'transcript', paths: ['D:\\Demo\\B.mosp', 'D:\\Demo\\B.match.mosp'], lang: 'zh-CN' },
+    { tool: 'timestamp', paths: ['D:\\Demo\\B.mosp', 'D:\\Demo\\B.match.mosp'], lang: 'zh-CN' },
+  ]);
+  expect(await page.evaluate(() => window.comparisonFixture.matches)).toEqual(['D:\\Demo\\A.mosp', 'D:\\Demo\\B.mosp']);
+  await expect(page.locator('#toolboxChainOriginal button')).toHaveAttribute('data-artifact-path', 'D:\\Demo\\B.mosp');
+
+  await input.fill('D:\\Demo\\unprocessed.srt');
+  await transcript.click();
+  await expect.poll(() => page.evaluate(() => window.comparisonFixture.compares.at(-1)?.paths)).toEqual(['D:\\Demo\\unprocessed.srt']);
   await page.evaluate(() => {
-    document.getElementById('toolboxChainList').replaceChildren();
-    const input = document.getElementById('toolboxInputPath');
-    input.value = '';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('jsonPath').value = '';
+    document.getElementById('srtPath').value = '';
   });
-  await page.getByRole('button', { name: '转写对比' }).click();
-  await page.waitForTimeout(150);
-  expect(await page.evaluate(() => window.compareCalls.length)).toBe(2);
+  await input.clear();
+  await transcript.click();
   await expect(page.locator('#toolboxInputPathError')).not.toHaveText('');
+  expect(await page.evaluate(() => window.comparisonFixture.compares.length)).toBe(4);
+});
+
+test('follow-on and branched results keep their original input, including after an input switch during processing', async ({ page }) => {
+  await openLauncherComparisonFixture(page);
+  const input = page.locator('#toolboxInputPath');
+  const run = page.locator('#runScriptMatch');
+  const transcript = page.getByRole('button', { name: '转写对比' });
+  const latestComparison = () => page.evaluate(() => window.comparisonFixture.compares.at(-1)?.paths);
+
+  await input.fill('D:\\Demo\\A.mosp');
+  await run.click();
+  await expect(input).toHaveValue('D:\\Demo\\A.match.mosp');
+  await run.click();
+  await expect(input).toHaveValue('D:\\Demo\\A.match.match.mosp');
+  await transcript.click();
+  await expect.poll(latestComparison).toEqual(['D:\\Demo\\A.mosp', 'D:\\Demo\\A.match.match.mosp']);
+
+  await input.fill('D:\\Demo\\B.mosp');
+  await page.evaluate(() => { window.comparisonFixture.deferMatch = true; });
+  await run.click();
+  await page.waitForFunction(() => Boolean(window.comparisonFixture.finishMatch));
+  const firstSrt = page.locator('.toolbox-chain-item [data-artifact-kind="srt"]').first();
+  await firstSrt.click();
+  await expect(input).toHaveValue('D:\\Demo\\A.match.srt');
+  await transcript.click();
+  await expect.poll(latestComparison).toEqual(['D:\\Demo\\A.mosp', 'D:\\Demo\\A.match.mosp']);
+  await page.evaluate(() => {
+    window.comparisonFixture.deferMatch = false;
+    window.comparisonFixture.finishMatch();
+  });
+  await expect(input).toHaveValue('D:\\Demo\\B.match.mosp');
+  await transcript.click();
+  await expect.poll(latestComparison).toEqual(['D:\\Demo\\B.mosp', 'D:\\Demo\\B.match.mosp']);
+
+  await firstSrt.click();
+  await page.getByRole('button', { name: '打开完整对照' }).click();
+  await expect.poll(() => page.evaluate(() => window.comparisonFixture.reviews.at(-1)?.srtPath)).toBe('D:\\Demo\\A.match.srt');
+  await run.click();
+  await expect(page.locator('.toolbox-chain-item')).toHaveCount(4);
+  await transcript.click();
+  await expect.poll(latestComparison).toEqual(['D:\\Demo\\A.mosp', 'D:\\Demo\\A.match.branch.mosp']);
+  expect(await page.evaluate(() => window.comparisonFixture.matches)).toEqual([
+    'D:\\Demo\\A.mosp', 'D:\\Demo\\A.match.mosp', 'D:\\Demo\\B.mosp', 'D:\\Demo\\A.match.srt',
+  ]);
 });
