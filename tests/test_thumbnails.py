@@ -68,6 +68,50 @@ class ThumbnailTests(unittest.TestCase):
                 with self.assertRaises(t.ThumbnailError):
                     t.probe_video(path)
 
+    def test_optional_tail_failures_preserve_valid_header_duration(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "video.mkv"
+            path.write_bytes(b"video")
+            header = json.dumps({"streams": [{"index": 0, "codec_type": "video", "start_time": "5"}],
+                "format": {"format_name": "matroska,webm", "start_time": "5", "duration": "720"}}).encode()
+            for failure in (t.ThumbnailError("thumbnail command exceeded output budget"),
+                            t.ThumbnailError("thumbnail probe exceeded output budget"),
+                            t.ThumbnailError("thumbnail command timed out"), OSError("probe unavailable"),
+                            subprocess.CompletedProcess([], 1, b"", b"seek failed"),
+                            subprocess.CompletedProcess([], 0, b"{truncated", b"")):
+                with self.subTest(failure=failure), \
+                     mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), \
+                     mock.patch.object(t, "_run", side_effect=[
+                         subprocess.CompletedProcess([], 0, header, b""), failure]):
+                    self.assertEqual(t.probe_video(path), t.VideoInfo(0, 720_000, 5000))
+
+    def test_probe_cancellation_and_initial_failures_still_propagate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "video.mkv"
+            path.write_bytes(b"video")
+            header = json.dumps({"streams": [{"index": 0, "codec_type": "video"}],
+                "format": {"format_name": "matroska", "duration": "720"}}).encode()
+            for initial, error in ((True, t.ThumbnailError("thumbnail command timed out")),
+                                   (True, t.ThumbnailCancelled("thumbnail request cancelled")),
+                                   (False, t.ThumbnailCancelled("thumbnail request cancelled"))):
+                responses = [error] if initial else [subprocess.CompletedProcess([], 0, header, b""), error]
+                with self.subTest(initial=initial, error=error), \
+                     mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), \
+                     mock.patch.object(t, "_run", side_effect=responses):
+                    with self.assertRaises(type(error)):
+                        t.probe_video(path, cancel=threading.Event())
+
+            cancel = threading.Event()
+            def cancel_tail(command, **kwargs):
+                if "-read_intervals" in command:
+                    cancel.set()
+                    raise t.ThumbnailError("thumbnail command exceeded output budget")
+                return subprocess.CompletedProcess(command, 0, header, b"")
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), \
+                 mock.patch.object(t, "_run", side_effect=cancel_tail):
+                with self.assertRaises(t.ThumbnailCancelled):
+                    t.probe_video(path, cancel=cancel)
+
     def test_keyframe_scan_does_not_start_another_chunk_after_deadline(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "long.mp4"

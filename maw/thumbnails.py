@@ -151,6 +151,30 @@ def probe_video(media_path: Path | str, *, ffprobe_path: str | None = None, ffmp
             duration = max(duration, format_duration)
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError("invalid video duration")
+        if "matroska" in format_info.get("format_name", "").split(",") and number(stream.get("duration")) is None:
+            # Older Matroska muxers can report the last PTS as the end, omitting
+            # that frame's duration. Inspect only the tail, without decoding or
+            # guessing a frame duration from nominal FPS (which breaks VFR).
+            tail_command = [str(tool), "-v", "error", "-read_intervals", f"{origin + duration:.6f}%",
+                            "-show_entries", "packet=stream_index,pts_time,duration_time", "-of", "json", str(path)]
+            try:
+                tail = _run(tail_command, timeout_s=20, cancel=cancel)
+                if not tail.returncode:
+                    media_streams = {row["index"] for row in payload["streams"]
+                                     if row.get("codec_type") in ("video", "audio") and not row.get("disposition", {}).get("attached_pic")}
+                    for packet in json.loads(tail.stdout).get("packets", []):
+                        pts = number(packet.get("pts_time"))
+                        span = number(packet.get("duration_time"))
+                        if packet.get("stream_index") in media_streams and pts is not None and span is not None and span > 0:
+                            duration = max(duration, pts + span - origin)
+            except ThumbnailCancelled:
+                raise
+            except (ThumbnailError, OSError, KeyError, TypeError, ValueError):
+                # Tail correction is optional; keep the valid header duration
+                # when a long GOP exceeds the bounded scan or probing fails.
+                pass
+        if cancel is not None and cancel.is_set():
+            raise ThumbnailCancelled("thumbnail request cancelled")
         return VideoInfo(int(stream["index"]), round(duration * 1000), round(origin * 1000), max(0, round((stream_start-origin) * 1000)))
     except StopIteration:
         return None
