@@ -22,7 +22,7 @@ function fixture() {
   window: {}, clearTimeout() {},
   refreshServerMedia: async () => ({hasMedia: false, mediaExists: false}),
   bridge: async (method, payload) => { calls.push({method, ...payload}); return {ok: false}; },
-  applyErrorResult() {}, expandServer() {}, syncFlvHints() {},
+   applyErrorResult() {}, expandServer() {}, syncFlvHints() {}, renderMessage() {},
   });
   for (const file of ['forms/launcher-form-sync.js', 'forms/launcher-media-form.js', 'boot/launcher-settings-startup.js']) {
     vm.runInContext(readFileSync(new URL(`../web/launcher/${file}`, import.meta.url), 'utf8'), context);
@@ -65,7 +65,6 @@ function pendingMediaFixture() {
   const pending = [];
   const hidden = new Map();
   $('serverMediaField').classList.toggle = (name, value) => hidden.set(name, value);
-  context.renderMessage = () => {};
   context.bridge = (_method, payload) => new Promise(resolve => pending.push({payload, resolve}));
   vm.runInContext(readFileSync(new URL('../web/launcher/server/launcher-media-server.js', import.meta.url), 'utf8'), context);
   return {context, $, pending, hidden};

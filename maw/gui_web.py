@@ -2205,6 +2205,8 @@ class LauncherApi:
 
     def start_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
+        if not json_text:
+            return _error_result("jsonPath", "server_project_required")
         port = _port(payload)
         url = f"http://127.0.0.1:{port}/"
         launch_url = f"{url}?lang={_gui_lang(payload)}"
@@ -2215,25 +2217,19 @@ class LauncherApi:
             timeout=0.25,
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
-        ) and (not json_text or not owned_server_running):
-            if json_text:
-                return _error_result("port", "server_media_busy", "")
-            return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
-        if not json_text:
-            # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
-            command = build_serve_command(None, None, port)
-        else:
-            json_path = Path(json_text).expanduser()
-            if not json_path.exists():
-                return _error_result("jsonPath", "json_not_found", str(json_path))
-            media_state = self.check_server_media({"jsonPath": str(json_path)})
-            media_text = str(payload.get("mediaPath") or "").strip()
-            media_path = Path(media_text).expanduser() if media_text else None
-            if media_path and not media_path.exists():
-                media_path = None
-            if (not media_state.get("hasMedia") or not media_state.get("mediaExists")) and media_path is None:
-                return _error_result("serverMediaPath", "server_media_missing", str(media_state.get("mediaPath") or ""))
-            command = build_serve_command(json_path, media_path, port, remember_media=payload.get("rememberMedia") is True)
+        ) and not owned_server_running:
+            return _error_result("port", "server_media_busy", "")
+        json_path = Path(json_text).expanduser()
+        media_state = self.check_server_media({"jsonPath": str(json_path)})
+        if media_state.get("field") == "jsonPath":
+            return media_state
+        media_text = str(payload.get("mediaPath") or "").strip()
+        media_path = Path(media_text).expanduser() if media_text else None
+        if media_path and not media_path.exists():
+            media_path = None
+        if (not media_state.get("hasMedia") or not media_state.get("mediaExists")) and media_path is None:
+            return _error_result("serverMediaPath", "server_media_missing", str(media_state.get("mediaPath") or ""))
+        command = build_serve_command(json_path, media_path, port, remember_media=payload.get("rememberMedia") is True)
         command.append("--no-open")
         if self._stop_owned_server() is None:
             return _error_result("port", "server_stop_pending")
@@ -2465,15 +2461,18 @@ class LauncherApi:
 
     def check_server_media(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
+        no_media = {"hasMedia": False, "mediaPath": "", "mediaExists": False}
         if not json_text:
-            return {"ok": False, "hasMedia": False, "mediaPath": "", "mediaExists": False, "error": "Project file is required."}
+            return {**no_media, **_error_result("jsonPath", "server_project_required")}
         json_path = Path(json_text).expanduser()
         try:
             data = json.loads(json_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, json.JSONDecodeError) as error:
-            return {"ok": False, "hasMedia": False, "mediaPath": "", "mediaExists": False, "error": str(error)}
+        except (FileNotFoundError, NotADirectoryError):
+            return {**no_media, **_error_result("jsonPath", "json_not_found", str(json_path))}
+        except (OSError, ValueError) as error:
+            return {**no_media, **_error_result("jsonPath", "server_project_unreadable", str(error))}
         if not isinstance(data, dict):
-            return {"ok": False, "hasMedia": False, "mediaPath": "", "mediaExists": False, "error": "Project file must contain a JSON object."}
+            return {**no_media, **_error_result("jsonPath", "server_project_unreadable", "Project file must contain a JSON object.")}
         resolution = resolve_project_media(json_path, data)
         resolved = resolution.resolved_path
         requested = resolution.requested_path

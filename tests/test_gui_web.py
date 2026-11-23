@@ -3751,16 +3751,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(detail, "HTTP 404")
 
-    def test_start_server_returns_existing_server_url_without_spawning(self) -> None:
-        """Given a responding port, When starting server, Then it reports the existing server instead of spawning."""
-        with mock.patch("maw.gui_web._wait_for_server", return_value=True):
-            with mock.patch("maw.gui_web.subprocess.Popen") as popen:
-                result = self.api.start_server({"port": "9876", "guiLang": "zh"})
+    def test_start_server_requires_a_project_before_probing_or_spawning(self) -> None:
+        with mock.patch("maw.gui_web._wait_for_server") as probe, \
+                mock.patch("maw.gui_web.popen_process_tree") as spawn:
+            result = self.api.start_server({"jsonPath": "  ", "port": "9876"})
 
-        self.assertTrue(result["ok"])
-        self.assertTrue(result["serverAlreadyRunning"])
-        self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
-        popen.assert_not_called()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "server_project_required")
+        probe.assert_not_called()
+        spawn.assert_not_called()
 
     def test_start_server_does_not_silently_ignore_manual_media_on_another_server(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
@@ -3926,6 +3926,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertFalse(result["hasMedia"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "server_project_unreadable")
+
+    def test_check_server_media_reports_missing_project_at_the_project_field(self) -> None:
+        result = self.api.check_server_media({"jsonPath": str(self.root / "missing.mosp")})
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["mediaExists"])
+        self.assertEqual(result["field"], "jsonPath")
+        self.assertEqual(result["code"], "json_not_found")
 
     def test_start_server_requires_manual_media_when_project_media_missing(self) -> None:
         """Given project media is unusable, When no override is provided, Then server blocks."""

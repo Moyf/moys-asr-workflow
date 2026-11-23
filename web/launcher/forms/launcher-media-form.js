@@ -117,7 +117,7 @@ function setServerMedia(path) {
   }
   return setDroppedPath("serverMediaPath", value);
 }
-function resetServerMediaSelection() { $("serverMediaPath").value = ""; $("serverRememberMedia").checked = true; syncFlvHints(); }
+function resetServerMediaSelection() { $("serverMediaPath").value = ""; $("serverRememberMedia").checked = true; $("serverMediaField").classList.add("hidden"); setError("serverMediaPath", ""); syncFlvHints(); }
 function setJsonPath(path) { if ($("jsonPath").value !== path) resetServerMediaSelection(); $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
 function applyErrorResult(result, logDetail = true, noticeOptions) {
   const detail = result.detail || result.error || "";

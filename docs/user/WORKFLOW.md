@@ -73,7 +73,7 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 
 ## 4. 打开工程并编辑
 
-在 Launcher 点击打开编辑器。源码可以直接启动：
+在 Launcher 选好工程后点击「打开编辑器」；转写完成后会自动填入生成的工程。源码可以直接启动：
 
 ```sh
 uv run --no-sync python server-editor/serve.py "example.mosp"
@@ -85,7 +85,7 @@ Server 只监听 `127.0.0.1`，会根据工程的 `media` 引用加载媒体，�
 uv run --no-sync python server-editor/serve.py "example.mosp" -m "moved-video.mp4"
 ```
 
-没有现成工程，也可先打开空白编辑器，再新建工程或拖入媒体、SRT：
+没有现成工程，从 Launcher 的「工具箱 → 生成波形」可以用媒体创建工程，无需转写。源码也可先打开空白编辑器，再新建工程或拖入媒体、SRT：
 
 ```sh
 uv run --no-sync python server-editor/serve.py --blank
