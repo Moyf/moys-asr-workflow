@@ -3074,19 +3074,19 @@
   .cue.dirty { border-left-color: var(--amber); }
   .cue.editing { background: var(--amber-soft); border-left-color: var(--amber); cursor: text; }
   /* 选中用琥珀色系（内描边环），与 active 的蓝色系明确区分 */
-  .cue.selected { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber); }
-  .cue.selected.active { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: inset 0 0 0 1px var(--amber); }
+  .cue.selected:where(:not(.multi-dual-cue)) { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber); }
+  .cue.selected.active:where(:not(.multi-dual-cue)) { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: inset 0 0 0 1px var(--amber); }
   /* 选中行的悬停：.cue.selected 源序晚于 .cue:hover 会在等特异性下盖住悬停，
      故显式补 selected:hover —— 保持琥珀身份但加深底色、把内环升到 amber-hover。 */
-  .cue.selected:hover {
+  .cue.selected:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--amber) 26%, transparent);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
-  .cue.selected.active:hover {
+  .cue.selected.active:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--accent) 42%, transparent);
     box-shadow: inset 0 0 0 1px var(--accent-hover);
   }
-  .cue.selected.has-color:hover {
+  .cue.selected.has-color:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--accent) 30%);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
@@ -3101,11 +3101,11 @@
     box-shadow: inset 0 0 0 1px var(--color-bar, #777);
   }
   /* 选中 + 播放中 + 有分组色：原色为主、轻混 accent 表示叠加状态，选中环保持琥珀 */
-  .cue.selected.has-color.active {
+  .cue.selected.has-color.active:where(:not(.multi-dual-cue)) {
     background: color-mix(in srgb, var(--color-bar, #777) 38%, var(--accent) 22%);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
-  .cue.selected.has-color.active:hover {
+  .cue.selected.has-color.active:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--color-bar, #777) 44%, var(--accent) 28%);
     box-shadow: inset 0 0 0 1px var(--color-bar, #777);
   }
@@ -3114,11 +3114,12 @@
   .cue.disabled .text { color: var(--text-muted); }
   .cue.disabled .time, .cue.disabled .index { color: var(--text-faint); }
   .cue.disabled.active { background: var(--accent-tint-strong); border-left: 3px dashed var(--accent); }
-  .cue.disabled.selected { background: var(--accent-tint); border-left: 3px dashed var(--accent-hover); }
-  .cue.disabled.selected:hover { background: var(--accent-tint-strong); border-left: 3px dashed var(--accent); }
+  .cue.disabled.selected:where(:not(.multi-dual-cue)) { background: var(--accent-tint); border-left: 3px dashed var(--accent-hover); }
+  .cue.disabled.selected:where(:not(.multi-dual-cue)):hover { background: var(--accent-tint-strong); border-left: 3px dashed var(--accent); }
   .cue.disabled.active .text { color: var(--text-secondary); }
   /* Selection stays visible over hover/active colour rings, including disabled rows. */
-  .cue.selected {
+  .cue.selected:where(:not(.multi-dual-cue)),
+  .multi-cue-column.selected {
     outline: 1px solid var(--selection-yellow-line);
     outline-offset: -1px;
   }
@@ -3158,6 +3159,14 @@
     width: min(560px, calc(100vw - 32px)); min-width: 0;
   }
   .modal h3 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-primary); font-weight: 600; }
+  .modal.burn-video-encoding { width: min(520px, calc(100vw - 32px)); min-width: 0; margin: auto; overflow: auto; }
+  .modal.burn-video-encoding:not([open]) { display: none; }
+  .burn-video-encoding::backdrop { background: #0007; }
+  .burn-video-encoding-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px 16px; }
+  .modal .burn-video-encoding-fields label { margin: 0 0 8px; }
+  .burn-video-encoding-fields small { display: block; margin-top: 8px; color: var(--text-secondary); }
+  .burn-video-encoding [role="status"] { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; }
+  .burn-video-encoding .actions { flex-wrap: wrap; }
   .modal label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 4px 0; }
   .modal input[type=text], .modal input[type=number] {
     width: 100%; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
@@ -3408,6 +3417,8 @@
       var(--wave-disabled-b) 5px 10px
     );
   }
+  /* 双列仍用行级 selected 给导航定位，选区视觉只画真实选中的列。 */
+  .multi-cue-column.selected { background-color: var(--amber-soft); }
   .multi-cue-column.disabled .index,
   .multi-cue-column.disabled .time,
   .multi-cue-column.disabled .text { color: var(--text-muted); }

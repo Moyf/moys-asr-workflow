@@ -453,7 +453,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweSelection.selectedIdxs.size === 0) return;
   e.preventDefault();
   e.stopPropagation();
-  MaweSegmentOps.deleteSegments([...MaweSelection.selectedIdxs]);
+  MaweSegmentOps.deleteSegments([...MaweSelection.selectedIdxs], [...MaweSelection.selectedExtensionIdxs]);
 });
 
 // 波形工具切换：V=选择（默认），R=剃刀，Esc=切回选择。与 J/K/L 一样只在

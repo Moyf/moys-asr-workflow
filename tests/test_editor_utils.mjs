@@ -6356,6 +6356,30 @@ test('buildAssPayload writes extension cues on layer 1 with a single Extension s
   assert.ok(extensionStyle.endsWith(',10,10,166,1'));
 });
 
+test('secondary cue position is fixed without changing other secondary cues or applying scale', () => {
+  const main = [{ start: 0, end: 1000, text: 'main' }];
+  const automatic = { id: 'auto', start: 0, end: 1000, text: 'Automatic' };
+  const manual = { id: 'manual', start: 100, end: 900, text: 'Manual',
+    assOverride: { pos: { x: 320, y: 140 }, scale: 1.8 } };
+  const frame = extensionSegments => {
+    let plan;
+    const ass = helpers.buildAssPayload(main, {
+      assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 100 },
+      extensionSegments, onAssPlan: value => { plan = value; },
+    });
+    return { ass, items: helpers.assStackFrame(plan, 500).items };
+  };
+  const baseline = frame([automatic]).items.find(item => item.segment.id === 'auto');
+  const { ass, items } = frame([automatic, manual]);
+  const positioned = items.find(item => item.segment.id === 'manual');
+  assert.deepEqual({ ...positioned.anchor }, { x: 320, y: 140 });
+  assert.equal(positioned.cueScale, 1);
+  assert.deepEqual(items.find(item => item.segment.id === 'auto').anchor, baseline.anchor);
+  const dialogue = ass.split('\n').filter(line => line.startsWith('Dialogue: 1,') && line.includes('Manual'));
+  assert.ok(dialogue.length > 0 && dialogue.every(line => line.includes('\\pos(320,140)')));
+});
+
 test('buildAssPayload chains the overlay anchor above the extension track', () => {
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },

@@ -120,10 +120,19 @@ test('real editor burns SRT mode through the server job and saves an MP4', async
   });
   await expect(page.locator('#burn-video-export-btn')).toBeVisible();
   await page.locator('#burn-video-export-btn').click();
+  const dialog = page.locator('#burn-video-encoding');
+  await expect(dialog).toBeVisible();
+  const gaps = await dialog.evaluate(element => [...element.querySelectorAll('.burn-video-encoding-fields small')]
+    .map(hint => hint.getBoundingClientRect().top - hint.previousElementSibling.getBoundingClientRect().bottom));
+  expect(Math.min(...gaps)).toBeGreaterThanOrEqual(8);
+  await dialog.screenshot({ path: test.info().outputPath('burn-encoding.png') });
+  await dialog.locator('#burn-video-crf').fill('25');
+  await dialog.locator('[type="submit"]').click();
   await expect.poll(() => page.evaluate(() => window.burnSaved), { timeout: 45_000 }).toBe(true);
   expect(requests).toHaveLength(1);
   expect(requests[0].srt).toContain('HELLO');
   expect(requests[0].ass).toBeUndefined();
+  expect(requests[0].encoding).toEqual({ crf: 25, preset: 'medium', audioBitrate: '192k' });
   expect(await page.evaluate(() => String.fromCharCode(...burnBytes.slice(4, 8)))).toBe('ftyp');
   await expect(page.locator('#burn-video-export-btn')).toBeEnabled();
 });
