@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 import sys
+from datetime import timedelta
 from pathlib import Path
 from fractions import Fraction
 from itertools import product
@@ -26,6 +27,7 @@ Style: Default,Arial,28,&H0000CCFF,&H0000CCFF,&H00000000,&H80000000,0,0,0,0,100,
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+KARAOKE_HEADER = HEADER.replace("&H0000CCFF,&H0000CCFF", "&H0000CCFF,&H00FF0000")
 
 
 def event(start="0:00:00.00", end="0:00:02.00", text="STATIC", name="maw:main:0", layer=0):
@@ -84,6 +86,31 @@ class FramePlanTests(unittest.TestCase):
     def test_fractional_fps_samples_only_active_ass_times(self):
         spans = plan(HEADER + event("0:00:00.01", "0:00:01.01"), fps="30000/1001")["tracks"][0]["spans"]
         self.assertEqual(spans, [(1, 31)])
+
+    def test_long_karaoke_export_budgets_holds_instead_of_every_frame(self):
+        ass = KARAOKE_HEADER + "".join(
+            event(f"{timedelta(seconds=3 * i)}.00", f"{timedelta(seconds=3 * (i + 1))}.00",
+                  r"{\k20}{\k80}ONE {\k120}TWO {\k80}THREE", f"maw:main:{i}")
+            for i in range(1500)
+        )
+        for fmt in ("png", "webp"):
+            with self.subTest(fmt=fmt):
+                result = plan(ass, fps="60", duration_ms=4_500_000, image_format=fmt)
+                self.assertEqual(result["durationFrames"], 270_000)
+                self.assertEqual(result["samples"], 6000)
+                spans = result["tracks"][0]["spans"]
+                self.assertEqual(spans[:4], [(0, 12), (12, 60), (60, 132), (132, 180)])
+                self.assertEqual(spans[-1][1], 270_000)
+
+    def test_other_karaoke_modes_and_ambiguous_timings_are_sampled_densely(self):
+        events = [event(text=r"{\k10}A{" + tag + "}BC")
+                  for tag in (r"\K50", r"\kf50", r"\ko50", r"\kt50", r"\k-50", r"\k(50)",
+                              r"\k50.5", r"\t(100,200,\k50)", r"\k214748365")]
+        events.append(event(text=r"{\k10}ABC").replace("0,0,0,,", "0,0,0,Banner;10;,"))
+        for dialogue in events:
+            with self.subTest(dialogue=dialogue):
+                spans = plan(KARAOKE_HEADER + dialogue)["tracks"][0]["spans"]
+                self.assertEqual(spans, [(n, n + 1) for n in range(50)])
 
     def test_overlap_lanes_keep_cue_slices_together_and_layers_ordered(self):
         result = plan(HEADER + event(end="0:00:01.00")
@@ -229,6 +256,46 @@ for fmt in ('png', 'webp'):
                     with Image.open(io.BytesIO(reference.stdout)) as expected:
                         diff = ImageChops.difference(expected.convert('RGB'), composed.convert('RGB'))
                         self.assertLessEqual(max(high for _, high in diff.getextrema()), 3, (tag,frame))
+
+    def test_karaoke_holds_with_fades_match_direct_libass_around_word_boundaries(self):
+        class Job:
+            def check_cancelled(self): pass
+            def update(self, *args): pass
+            def run_command(self, args, timeout, cwd):
+                return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+
+        ass = (KARAOKE_HEADER + event("0:00:01.10", "0:00:03.10",
+            r"{\fad(200,160)}{\k75}{\k45}A{\1c&H00FF00&}B{\k0}C{\k27}D{\i1}E{\i0}")
+            + event("0:00:03.45", "0:00:03.90", r"{\pos(100,140)}{\k0}S{\k15}L{\k25}ICE"))
+        ffmpeg = shutil.which("ffmpeg")
+        frames = (65, 66, 67, 77, 78, 79, 110, 111, 112, 113, 137, 138, 139, 153, 154, 155, 156,
+                  176, 177, 184, 185, 186, 206, 207, 208, 215, 216, 217, 233, 234, 235)
+        frame_size = 320 * 180 * 3
+        for fps, fmt in product(("60", "60000/1001"), ("png", "webp")):
+            with self.subTest(fps=fps, fmt=fmt), tempfile.TemporaryDirectory() as temporary:
+                job = Job(); job.directory = Path(temporary); job.output = job.directory / "manifest.json"
+                (job.directory / "reference.ass").write_text(ass, encoding="utf-8")
+                result = render_png_assets(job, plan(ass, fps=fps, duration_ms=4000, image_format=fmt),
+                                           Path(ffmpeg), job.directory / "package")
+                self.assertLess(result["sampleCount"], 40)
+                rate = Fraction(fps)
+                timing = "+".join(f"eq(N,{i})*{n * rate.denominator}" for i, n in enumerate(frames))
+                direct = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                    f"color=black:s=320x180:r={fps},format=rgb24", "-vf",
+                    f"settb=1/{rate.numerator},setpts='{timing}',ass=reference.ass,settb=1/1,setpts=N",
+                    "-frames:v", str(len(frames)), "-r", "1", "-threads", "1", "-f", "rawvideo", "pipe:1"],
+                    cwd=job.directory, capture_output=True, check=True, timeout=30)
+                self.assertEqual(len(direct.stdout), len(frames) * frame_size)
+                for index, frame in enumerate(frames):
+                    composite = Image.new("RGBA", (320, 180), (0, 0, 0, 255))
+                    for clip in result["tracks"][0]["clips"]:
+                        if clip["startFrame"] <= frame < clip["endFrame"]:
+                            with Image.open(job.directory / "images" / clip["filename"]) as image:
+                                composite = Image.alpha_composite(composite, image.convert("RGBA"))
+                    start = index * frame_size
+                    expected = Image.frombytes("RGB", (320, 180), direct.stdout[start:start + frame_size])
+                    difference = ImageChops.difference(expected, composite.convert("RGB"))
+                    self.assertLessEqual(max(high for _, high in difference.getextrema()), 3, frame)
 
     def test_all_transparent_subtitles_do_not_publish_an_empty_timeline(self):
         class Job:
