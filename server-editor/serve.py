@@ -66,6 +66,8 @@ from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
 from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_style_state, save_ass_style_state  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
+from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic, ffmpeg_version  # noqa: E402
+from maw.diagnostics import app_version  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
     MediaJobManager, MediaJobUnavailable,
@@ -1090,6 +1092,21 @@ def burn_ass_video(
     一致），enable 区间使用与 ass 相同的时间轴。
     """
     audio_gain_db = validate_gain_db(audio_gain_db)
+    if job:
+        with job.manager.lock:
+            job.burn_diagnostic = {
+                "mode": "green-screen" if green_screen else "gap-removed" if intervals else "full",
+                "ffmpegVersion": None, "encoder": None, "attempts": [],
+            }
+        try:
+            version_result = job.run_command([str(ffmpeg_path), "-version"], timeout=3, cwd=output_path.parent)
+            version = ffmpeg_version(version_result.stdout or "") if version_result.returncode == 0 else None
+            with job.manager.lock:
+                job.burn_diagnostic["ffmpegVersion"] = version
+        except MediaJobCancelled:
+            raise
+        except (OSError, subprocess.SubprocessError, RuntimeError):
+            pass  # Diagnostic metadata must not prevent a normal burn.
     try:
         source = source_path.expanduser().resolve(strict=True)
     except OSError as error:
@@ -1113,8 +1130,6 @@ def burn_ass_video(
         raise BurnVideoExportError("绿幕视频暂不支持表情包烧录")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
-    if job:
-        job.update("preparing")
     probe = None
     if subtitle_format == "srt":
         probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
@@ -1125,6 +1140,8 @@ def burn_ass_video(
         # Width/height are part of the existing stream signature, after codec/tag.
         width, height = video.codec_signature[4:6]
         resolution = (width, height) if all(type(value) is int and value > 0 for value in (width, height)) else ASS_FALLBACK_PLAY_RESOLUTION
+        if job:
+            job.update("subtitles")
         srt_path = output_path.with_name("burn.srt")
         srt_path.write_text(ass_text, encoding="utf-8", newline="\n")
 
@@ -1143,6 +1160,8 @@ def burn_ass_video(
             raise BurnVideoExportError("SRT 字幕转换失败，请检查字幕和样式", details=error) from error
     # 最终任务副本也统一归一化：旧客户端或异步字体表尚未就绪时，不能
     # 依赖前端改写；SRT 转换产物同样经过这里，保留事件和内联样式原文。
+    if job:
+        job.update("subtitles")
     ass_text, _ = normalize_ass_text_fontnames(ass_text)
     ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
     sticker_input_args = _burn_sticker_input_args(stickers)
@@ -1164,7 +1183,12 @@ def burn_ass_video(
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
-        probe = probe or _probe_gap_removed_video(source, ffprobe_path, job=job)
+        if probe is None:
+            if job:
+                job.update("preparing")
+            probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        if job:
+            job.update("filters")
         audio_streams = [stream for stream in probe.streams if stream.codec_signature[0] == "audio"]
         audio_count = len(audio_streams)
         # Input-side accurate seeking bounds decoding to the requested hull;
@@ -1193,12 +1217,18 @@ def burn_ass_video(
                             "-bsf:v", "setts=pts=PTS:dts=DTS:duration='if(gt(DURATION,0),DURATION,if(gt(NEXT_DTS,DTS),NEXT_DTS-DTS,PREV_OUTDURATION))'",
                             "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
     elif stickers:
+        if job:
+            job.update("preparing")
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
+        if job:
+            job.update("filters")
         graph_path = output_path.with_suffix(".filters")
         graph_path.write_text(';\n'.join(_burn_sticker_chain_lines(stickers, "[0:v:0]")) + '\n',
                               encoding="utf-8", newline="\n")
         filter_args = ["-/filter_complex", str(graph_path), "-map", "[burn_video]", "-map", "0:a?"]
     else:
+        if job:
+            job.update("preparing")
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
         filter_args = ["-map", "0:v:0", "-map", "0:a?", "-vf", "ass=filename='burn.ass'"]
 
@@ -1215,6 +1245,8 @@ def burn_ass_video(
     ]
     last_error: BurnVideoExportError | None = None
     for encoder in attempts:
+        if job:
+            job.begin_burn_attempt(encoder)
         output_path.unlink(missing_ok=True)
         command = [
             *common_command,
@@ -1225,7 +1257,6 @@ def burn_ass_video(
         ]
         if job:
             command.extend(("-progress", "pipe:1", "-nostats"))
-            job.update("burning")
         command.append(str(output_path))
         glyph_tail = ""
         def inspect_glyphs(chunk):
@@ -1241,12 +1272,29 @@ def burn_ass_video(
                     "请在字幕样式中更换可用字体。", details=glyph_tail)
         try:
             def run_encode(args):
-                return job.run_command(args, timeout=86_400, duration_ms=duration_ms,
-                                       cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
-                    args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                    timeout=86_400, check=False, cwd=output_path.parent,
-                    startupinfo=startupinfo(), creationflags=creationflags(),
-                )
+                if not job:
+                    return subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                          timeout=86_400, check=False, cwd=output_path.parent,
+                                          startupinfo=startupinfo(), creationflags=creationflags())
+                started = time.monotonic()
+                attempt = {"encoder": encoder, "exitCode": None}
+                try:
+                    result = job.run_command(args, timeout=86_400, duration_ms=duration_ms,
+                                             cwd=output_path.parent, on_stderr=inspect_glyphs)
+                    attempt["exitCode"] = result.returncode
+                    attempt.update(ffmpeg_diagnostic(result.stderr or ""))
+                    return result
+                except MediaJobCancelled:
+                    raise
+                except Exception as error:
+                    attempt["exception"] = type(error).__name__
+                    if isinstance(error, BurnVideoExportError):
+                        attempt.update(ffmpeg_diagnostic(error.details or ""))
+                    raise
+                finally:
+                    if not job.cancelled.is_set():
+                        attempt["elapsedMs"] = round((time.monotonic() - started) * 1000)
+                        job.record_burn_attempt(attempt)
             completed = run_encode(command)
             # FFmpeg 9 removed filter_complex_script. Older installations that
             # predate option-file syntax may still use it; retry only a parser
@@ -1274,7 +1322,11 @@ def burn_ass_video(
                 f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
                 "请在字幕样式中更换可用字体。", details=stderr)
         if completed.returncode != 0:
-            last_error = BurnVideoExportError("视频烧录失败，请检查源文件或缩短区间后重试", details=stderr)
+            reasons = ffmpeg_diagnostic(stderr)["reasons"]
+            message = ("烧录临时目录空间不足，请释放空间后重试"
+                       if {"no space left on device", "disk quota exceeded"}.intersection(reasons)
+                       else "FFmpeg 编码异常退出")
+            last_error = BurnVideoExportError(message, details=stderr)
             if requested_encoder != "auto" or encoder == "cpu":
                 output_path.unlink(missing_ok=True)
                 raise last_error
@@ -1723,6 +1775,7 @@ def build_server_page(
         "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
         "canGapRemovedMediaExport": can_gap_media_export,
         "burnVideoJobsUrl": BURN_JOBS,
+        "burnVideoAppVersion": app_version(),
         "nativeBurnAvailable": native_burn,
         "fcp7PngJobsUrl": "/api/exports/fcp7-png/jobs",
         "canBurnVideoExport": bool(
@@ -3592,12 +3645,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             tools = editor_ffmpeg_tools()
             if tools.ffmpeg is None or tools.ffprobe is None:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False, "error": "视频烧录需要可用的 FFmpeg 和 FFprobe",
+                    "ok": False, "code": "media-tools-missing", "error": "视频烧录需要可用的 FFmpeg 和 FFprobe",
                 })
                 return
             if not self.editor_server.ensure_libass_supported(tools.ffmpeg):
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False,
+                    "ok": False, "code": "libass-missing",
                     "error": "当前 FFmpeg 未编译 libass（ass 滤镜），无法烧录字幕；"
                              "请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。",
                 })
@@ -3626,7 +3679,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     del native.targets[request["nativeTarget"]]
             self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)}, close_connection=True)
+            if error.errno is None:
+                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "code": "burn-authorization", "error": str(error)},
+                               close_connection=True)
+            else:
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False, "code": "permission", "error": "无法访问烧录文件，请检查文件权限",
+                })
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
         except MediaJobCancelled as error:
@@ -3636,7 +3695,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (OSError, MediaJobUnavailable) as error:
             if job is not None:
                 self.editor_server.media_jobs.cancel(job.id)
-            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
+            kind = burn_error_kind(error)
+            message = {
+                "disk-full": "烧录临时目录空间不足，请释放空间后重试",
+                "permission": "无法访问烧录文件，请检查文件权限",
+            }.get(kind, "无法创建烧录任务，请检查临时目录")
+            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                "ok": False, "code": kind or "burn-admission-unavailable", "error": message,
+            })
 
     def gap_removed_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
         self._media_job_request(path, prefix="/api/exports/gap-removed-video/jobs",

@@ -192,7 +192,9 @@ test('stack rejects negative spacing and does not silently fit tiny formatted ru
     runs: [{ text: 'TEXT', size: 'small' }] });
   const profile = h.normalizeAssProfile({ animations: {} });
   assert.equal(h.assCreateStackPlan({ profile, items: [item('main')] }).slices[0].legacy, true);
-  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] }).diagnostics[0].message, /负字距/);
+  const spacingError = h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] }).diagnostics[0];
+  assert.equal(spacingError.code, 'ass-negative-spacing');
+  assert.match(spacingError.message, /负字距/);
   style.spacing = 0;
   const enormous = { ...item('extension'), runs: [{ text: ('BIG\n').repeat(200) }] };
   assert.match(h.assCreateStackPlan({ profile, items: [item('main'), enormous] }).diagnostics[0].message, /固定副字幕超出/);
