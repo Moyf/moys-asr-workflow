@@ -1475,7 +1475,8 @@
     '添加规则': 'Add rule', '启用': 'Enabled', '正则': 'Regex', '上移': 'Move up', '下移': 'Move down',
     '单句 ASS 样式': 'Cue ASS style', '继承默认样式': 'Inherit default style',
     '（工程内保存）': ' (saved in project)',
-    '工程内修改，未同步到用户级配置': 'Project styles differ and are not synced to user settings',
+    '工程内句子的样式与样式库不一致': 'Cue styles in the project differ from the style library',
+    '用样式库更新': 'Update from style library',
     '正在加载预设库…': 'Loading preset library…', '正在保存用户级预设库…': 'Saving the user-level preset library…',
     '请先选择要处理的字幕': 'Select subtitles to process first', '正在生成预览…': 'Preparing preview…',
     '预设名称': 'Preset name', '删除这个预设？': 'Delete this preset?',
@@ -2029,6 +2030,10 @@
     if (match) return `${match[1]} changed (${match[2]} unchanged)`;
     match = /^(\d+)\s*个样式\s*·\s*(\d+)\s*个 ASS 方案$/.exec(text);
     if (match) return `${match[1]} styles · ${match[2]} ASS profiles`;
+    match = /^工程内\s*(\d+)\s*句的样式与样式库不一致$/.exec(text);
+    if (match) return `${match[1]} cues in the project differ from the style library`;
+    match = /^已更新\s*(\d+)\s*句的样式$/.exec(text);
+    if (match) return `Updated styles for ${match[1]} cues`;
     match = /^(.+?)\s+·\s*无逐句动画$/.exec(text);
     if (match) return `${match[1]} · No per-cue animations`;
     match = /^第\s*(\d+)\s*条\s*字幕文本$/.exec(text);

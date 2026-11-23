@@ -383,7 +383,7 @@ export function initMaweCuePanel() {
     const styles = window.MaweAssStorageWiring?.styles() || [];
     const savedStyle = segment?.assStyle;
     const libraryStyle = savedStyle && styles.find((style) => style.id === savedStyle.id);
-    const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
+    const snapshotKey = window.AsrEditorUtils.assStyleContentKey;
     const matchesLibrary = libraryStyle && snapshotKey(savedStyle) === snapshotKey(libraryStyle);
 
     select.disabled = !segment;

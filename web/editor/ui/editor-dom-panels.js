@@ -106,6 +106,7 @@ const assStyleDeleteButton = document.getElementById('ass-style-delete');
 const assStyleResetButton = document.getElementById('ass-style-reset');
 const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-hint');
 const assStyleProjectHint = document.getElementById('ass-style-project-hint');
+const assStyleProjectUpdateButton = document.getElementById('ass-style-project-update');
 
 // 先登记所有可独立激活的非模态浮层。嵌套在全局设置窗口里的齿轮弹窗会
 // 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
@@ -166,6 +167,7 @@ domPanelsState.value = Object.freeze({
   assStylePreviewModeHint,
   assStylePreviewSample,
   assStyleProjectHint,
+  assStyleProjectUpdateButton,
   assStyleResetButton,
   assStyleSaveButton,
   assStyleSettingsLink,
