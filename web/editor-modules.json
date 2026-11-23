@@ -642,10 +642,34 @@
       "exportName": "initMaweSettingsInitWiring"
     },
     {
+      "file": "editor/ui/editor-wiring-settings-help.js",
+      "kind": "init",
+      "name": "settings-help-wiring-init",
+      "exportName": "initMaweSettingsHelpWiring"
+    },
+    {
+      "file": "editor/ui/editor-wiring-theme-split-settings.js",
+      "kind": "init",
+      "name": "theme-split-settings-wiring-init",
+      "exportName": "initMaweThemeSplitSettingsWiring"
+    },
+    {
+      "file": "editor/ui/editor-wiring-display-behavior.js",
+      "kind": "init",
+      "name": "display-behavior-wiring-init",
+      "exportName": "initMaweDisplayBehaviorWiring"
+    },
+    {
       "file": "editor/styles/editor-wiring-appearance-settings.js",
       "kind": "init",
       "name": "editor-wiring-appearance-settings-init",
       "exportName": "initAppearanceSettingsWiring"
+    },
+    {
+      "file": "editor/ui/editor-wiring-gap-panel.js",
+      "kind": "init",
+      "name": "gap-panel-wiring-init",
+      "exportName": "initMaweGapPanelWiring"
     },
     {
       "file": "editor/markers/editor-wiring-markers.js",
@@ -660,16 +684,34 @@
       "exportName": "initMaweCuePanelWiring"
     },
     {
+      "file": "editor/cues/editor-wiring-search-filter.js",
+      "kind": "init",
+      "name": "search-filter-wiring-init",
+      "exportName": "initMaweSearchFilterWiring"
+    },
+    {
       "file": "editor/cues/editor-wiring-overlay-split-merge.js",
       "kind": "init",
       "name": "overlay-split-merge-wiring-init",
       "exportName": "initOverlaySplitMergeWiring"
     },
     {
+      "file": "editor/cues/editor-wiring-list-navigation.js",
+      "kind": "init",
+      "name": "list-navigation-wiring-init",
+      "exportName": "initMaweListNavigationWiring"
+    },
+    {
       "file": "editor/media/editor-ass-preview-refresh.js",
       "kind": "init",
       "name": "ass-preview-refresh-init",
       "exportName": "initMaweAssPreviewRefresh"
+    },
+    {
+      "file": "editor/cues/editor-wiring-word-timing.js",
+      "kind": "init",
+      "name": "word-timing-wiring-init",
+      "exportName": "initMaweWordTimingWiring"
     },
     {
       "file": "editor/media/editor-wiring-media-controls.js",
@@ -738,6 +780,12 @@
       "exportName": "initMaweBurnVideoWiring"
     },
     {
+      "file": "editor/ui/editor-wiring-toolbar-menus.js",
+      "kind": "init",
+      "name": "toolbar-menus-wiring-init",
+      "exportName": "initMaweToolbarMenusWiring"
+    },
+    {
       "file": "editor/io/editor-wiring-project-inputs.js",
       "kind": "init",
       "name": "project-inputs-wiring-init",
@@ -754,6 +802,12 @@
       "kind": "init",
       "name": "sticker-root-wiring-init",
       "exportName": "initMaweStickerRootWiring"
+    },
+    {
+      "file": "editor/cues/editor-wiring-text-tools.js",
+      "kind": "init",
+      "name": "text-tools-wiring-init",
+      "exportName": "initMaweTextToolsWiring"
     },
     {
       "file": "editor/cues/editor-wiring-overlay-actions.js",

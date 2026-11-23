@@ -1,3 +1,4 @@
+export function initMaweSettingsHelpWiring() {
 // 设置搜索：侧栏列出设置项，路径放在提示行，仅在用户选择后跳转。
 (function initSettingsSearch() {
   'use strict';
@@ -427,3 +428,4 @@ if (MaweDom.helpPanel) {
 
 // 明暗主题与界面强调色：令牌全部定义在 CSS，
 // 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。
+}

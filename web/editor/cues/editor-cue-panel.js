@@ -1,7 +1,8 @@
+import { buildOverlayCueEl } from './editor-overlay-cue-rows.js';
 import { applyCharCount, buildBoundExtensionIds, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort, speakerName } from './editor-cue-elements.js';
 import { captureCueListRenderAnchor, invalidateCueListVisualAnchorRestore, restoreCueListRenderAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
 import { startEdit } from './editor-inline-edit.js';
-import { openExtensionSplitModal, splitAtCursor, splitTimeForTextOffset } from './editor-split-core.js';
+import { openExtensionSplitModal, openOverlaySplitModal, splitAtCursor, splitTimeForTextOffset } from './editor-split-core.js';
 import { refreshTimedTextEditButton } from './editor-timed-text-edit.js';
 import { formatTimelineTimecode, millisecondsFromFrameNumber, parseFrameTimecode, projectTimebase, syncProjectTimebaseAndBindingOffsets, timelineIsFrameMode, timelineMinimumDurationMs, timelineTimingAdapter } from './editor-timeline.js';
 import { syncTextChange } from './editor-word-timing.js';
@@ -72,7 +73,7 @@ export function initMaweCuePanel() {
       });
     });
   }
-  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));
+  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));
   rows.sort((a, b) => a.start - b.start || a.order - b.order);
   rows.forEach((row) => cueFragment.appendChild(row.el));
   MaweCoreState.container.appendChild(cueFragment);
@@ -696,7 +697,7 @@ export function initMaweCuePanel() {
     commitCuePanelEdit();
     const cursorOffset = MaweDom.cuePanelText.selectionStart;
     const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
-    window.MaweOverlaySplitMerge.openOverlaySplitModal(target.index, splitTime);
+    openOverlaySplitModal(target.index, splitTime);
     return;
   }
   if (target.kind === 'extension') {

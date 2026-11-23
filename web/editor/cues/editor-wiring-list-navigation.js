@@ -1,7 +1,4 @@
-
-
-
-
+export function initMaweListNavigationWiring() {
 // === 滚动 ===
 
 
@@ -132,3 +129,4 @@ document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoun
 
 
 // === 单击/双击/Shift/Ctrl ===
+}

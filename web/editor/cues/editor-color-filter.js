@@ -1,3 +1,4 @@
+import { updateSelectionCountText } from './editor-overlay-cue-selection.js';
 import { speakerName, updateCueColorPresentation, updateCueStickerPresentation } from './editor-cue-elements.js';
 import { commitCuePanelEdit, renderCurrentCuePanel } from './editor-cue-panel.js';
 import { applySearch } from './editor-search.js';
@@ -237,7 +238,7 @@ export function initMaweColorFilter() {
   });
   updateMultiSelectionClasses();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  window.MaweCuePanelWiring.updateSelectionCountText();
+  updateSelectionCountText();
   MaweHint.flashHint(`已选中 ${MaweSelection.selectedIdxs.size} 条过滤字幕`, MaweSelection.selectedIdxs.size ? 'success' : 'invalid');
 }
 

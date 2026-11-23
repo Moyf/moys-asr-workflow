@@ -1,5 +1,4 @@
-import { isPlaybackActive } from '../media/editor-media-playback.js';
-import { getOverlayTrack } from './overlay-track.js';
+import { updateSelectionCountText } from './editor-overlay-cue-selection.js';
 
 export function initMaweCuePanelWiring() {
 'use strict';
@@ -12,12 +11,6 @@ export function initMaweCuePanelWiring() {
 
 
 
-// 已选计数涵盖主轨/副轨/叠加轨三个选区集。
-function updateSelectionCountText() {
-  MaweDom.selCountEl.textContent = String(
-    MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
-  );
-}
 // “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
 
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
@@ -88,9 +81,6 @@ function updateSelectionCountText() {
 
 
 
-function setCurrentCuePanelOverlayIndex(index) {
-  MaweCuePanel.setCuePanelTarget('overlay', index);
-}
 
 
 
@@ -216,116 +206,7 @@ MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCur
 
 
 
-// 叠加字幕行选中高亮与选中计数统一同步：叠加轨没有 multi-cue 类，
-// 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
-function syncOverlaySelectionClasses() {
-  MaweCoreState.container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
-    if (!MaweState.selection.indices('overlay').has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
-  });
-  MaweState.selection.indices('overlay').forEach((index) => {
-    MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
-  });
-  updateSelectionCountText();
-}
 
-function selectOverlayCueRow(index, { focusEditor = false } = {}) {
-  // 与副字幕 selectOnlyExtension 同一逻辑：点击叠加字幕先清空主轨/副轨
-  // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
-  MaweCuePanel.commitCuePanelEdit();
-  MaweSelection.clearSelection({ silent: true });
-  MaweState.selection.add('overlay', index);
-  MaweState.selection.overlayAnchor = index;
-  MaweCuePanel.setCuePanelTarget('overlay', index);
-  if (focusEditor) MaweCuePanel.focusCuePanelText(index, 'overlay');
-  syncOverlaySelectionClasses();
-  MaweCoreState.waveformEditor?.updateSelection();
-  const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
-  if (row) MaweCueListAnchor.scrollCueIntoViewIfNeeded(row);
-}
-
-function selectOverlayRange(fromIndex, toIndex) {
-  const segments = getOverlayTrack()?.segments || [];
-  const from = Math.max(0, Math.min(fromIndex, toIndex));
-  const to = Math.min(segments.length - 1, Math.max(fromIndex, toIndex));
-  MaweState.selection.clear('overlay');
-  for (let index = from; index <= to; index += 1) {
-    if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) continue;
-    MaweState.selection.add('overlay', index);
-  }
-  MaweCuePanel.setCuePanelTarget('overlay', toIndex);
-  syncOverlaySelectionClasses();
-  MaweCoreState.waveformEditor?.updateSelection();
-  const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${toIndex}"]`);
-  if (row) MaweCueListAnchor.scrollCueIntoViewIfNeeded(row);
-}
-
-function toggleOverlaySelection(index) {
-  if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
-  const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
-  if (MaweState.selection.indices('overlay').has(index)) {
-    MaweState.selection.remove('overlay', index);
-    row?.classList.remove('selected');
-  } else {
-    MaweState.selection.add('overlay', index);
-    row?.classList.add('selected');
-  }
-  MaweState.selection.overlayAnchor = index;
-  // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
-  MaweCuePanel.setCuePanelTarget('overlay', index);
-  updateSelectionCountText();
-  MaweCoreState.waveformEditor?.updateSelection();
-}
-
-function buildOverlayCueEl(seg, index) {
-  const el = MaweCueElements.buildCueEl(seg, index, { overlayTrack: true });
-  el.classList.add('overlay-track-cue');
-  el.dataset.overlayIdx = String(index);
-  el.removeAttribute('data-idx');
-  el.classList.toggle('selected', MaweState.selection.indices('overlay').has(index));
-  el.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (event.shiftKey && MaweState.selection.overlayAnchor >= 0) {
-      selectOverlayRange(MaweState.selection.overlayAnchor, index);
-      return;
-    }
-    if (event.ctrlKey || event.metaKey) {
-      toggleOverlaySelection(index);
-      return;
-    }
-    selectOverlayCueRow(index);
-    const segment = getOverlayTrack()?.segments?.[index];
-    if (!segment) return;
-    const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
-    // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
-    // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
-    const wasPlaying = isPlaybackActive();
-    MawePlaybackLoop.suppressCueListAutoScroll = true;
-    try {
-      MaweCoreState.waveformEditor?.revealTime(segment.start, true);
-      if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
-        MaweTextCleanup.seekFromWaveform(segment.start / 1000, { mouseClick: true });
-      }
-    } finally {
-      MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;
-    }
-    if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-and-play' && MaweCoreState.player.paused && !wasPlaying) MaweMediaPlayback.togglePlayback();
-    if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick) {
-      const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
-      if (row) MaweCueListAnchor.scrollCueToCenter(row);
-    }
-  });
-  el.addEventListener('dblclick', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    selectOverlayCueRow(index, { focusEditor: true });
-  });
-  el.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    window.MaweContextMenusWiring.showOverlayContextMenu(event.clientX, event.clientY, index);
-  });
-  return el;
-}
 
 
 
@@ -341,12 +222,5 @@ function buildOverlayCueEl(seg, index) {
 
 // === 字数 ===
 
-window.MaweCuePanelWiring = Object.freeze({
-  updateSelectionCountText,
-  selectOverlayCueRow,
-  selectOverlayRange,
-  syncOverlaySelectionClasses,
-  toggleOverlaySelection,
-  buildOverlayCueEl,
-});
+window.MaweCuePanelWiring = Object.freeze({ updateSelectionCountText });
 }

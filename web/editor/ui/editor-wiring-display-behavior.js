@@ -1,3 +1,6 @@
+import { getMaweDomPanels } from './editor-dom-panels.js';
+
+export function initMaweDisplayBehaviorWiring() {
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowIndexToggle, 'cueListShowIndex');
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowTimeToggle, 'cueListShowTime');
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowStickerToggle, 'cueListShowSticker');
@@ -52,8 +55,8 @@ MaweDom.stickerBurnModeSelect?.addEventListener('change', () => {
 MaweDom.clickTargetSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickTarget: MaweSettings.normalizeClickTarget(MaweDom.clickTargetSelect.value) });
 });
-window.MaweDomPanelsWiring.pauseOnMouseClickToggle?.addEventListener('change', () => {
-  MaweSettings.updateEditorSettings({ pauseOnMouseClick: window.MaweDomPanelsWiring.pauseOnMouseClickToggle.checked });
+getMaweDomPanels().pauseOnMouseClickToggle?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({ pauseOnMouseClick: getMaweDomPanels().pauseOnMouseClickToggle.checked });
 });
 MaweDom.keyboardOperationReferenceSelect?.addEventListener('change', () => {
   const mode = MaweSettings.normalizeKeyboardOperationReferenceMode(MaweDom.keyboardOperationReferenceSelect.value);
@@ -196,3 +199,4 @@ MaweDom.ninjaSlashRotateInput?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ ninjaSlashRotateAmplitude: MaweSettings.clampNinjaSlashRotateAmplitude(MaweDom.ninjaSlashRotateInput.value) });
   MaweDom.ninjaSlashRotateInput.value = String(MaweSettings.EDITOR_SETTINGS.ninjaSlashRotateAmplitude);
 });
+}
