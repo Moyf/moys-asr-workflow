@@ -2019,9 +2019,15 @@
     width: 42px; height: 26px; min-width: 42px; padding: 2px;
     background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer;
   }
-  /* 次色只服务 \k 卡拉 OK 标签，当前不支持，字段默认隐藏。 */
+  /* 次色只服务 \k 逐字换色（卡拉 OK），字段默认隐藏。 */
   .ass-style-color-field[hidden] { display: none; }
   .ass-style-color-field input[type="color"]:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  /* 次色独占一行：颜色块与提示并排；方案未开启逐字换色时禁用输入并降透明度。 */
+  .ass-style-karaoke-row { display: flex; align-items: center; gap: 10px; }
+  .ass-style-karaoke-row .ass-style-color-field { flex: 0 0 auto; }
+  .ass-style-karaoke-row .editor-settings-hint { flex: 1 1 auto; min-width: 0; }
+  .ass-style-karaoke-row.is-disabled .ass-style-color-field { opacity: 0.55; }
+  .ass-style-karaoke-row.is-disabled .ass-style-color-field input[type="color"] { cursor: not-allowed; }
   .ass-style-toggle-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .ass-style-check { display: flex; align-items: center; gap: 7px; min-height: var(--control-h); color: var(--text-secondary); font-size: 12px; }
   .ass-style-check input { flex: 0 0 auto; }

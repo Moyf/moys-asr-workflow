@@ -263,7 +263,7 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
       // Locally projected cues are temporary objects. Keep raw identity stable,
       // but include retained item boundaries so equal repeated text cannot hide
       // a different selection or a source restoration from the cached plan.
-      const retainedItems = cue !== identity ? JSON.stringify(cue.items) : '';
+      const retainedItems = cue !== identity ? JSON.stringify(cue.items) : cue.items;
       if (!previous || previous[0] !== identity || previous[1] !== cue.start || previous[2] !== cue.end
         || previous[3] !== cue.text || previous[4] !== cue.disabled || previous[5] !== color
         || previous[6] !== cue.speaker || previous[7] !== cue.id
@@ -357,8 +357,15 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
     const style = { ...animated, spacing: animated.spacing * scale,
       outline: animated.outline * scale, shadow: animated.shadow * scale,
       __assMove: item.legacy && !item.manual && item.role === 'main' && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
+    // KTV：逐 run 标注已唱/未唱（翻转时刻 ≤ 当前播放进度即已唱）；包裹后的
+    // runs 经 assStackWrappedRuns 展开继承 karaoke 元数据，这里只加只读标记。
+    const karaokeElapsed = item.karaoke ? Number(tMs) - item.start : 0;
+    const runs = item.karaoke
+      ? item.runs.map(run => run.karaoke === undefined ? run
+        : { ...run, ktvSung: karaokeElapsed >= run.karaoke.flipMs })
+      : item.runs;
     return { visible: true, role: item.role, manual: item.manual === true, cueId: item.segment.id ?? item.index,
-      runs: item.runs, style, animation,
+      runs, style, animation,
       shakeOffset: item.shakeOffset || null,
       fractionalFontSize: !item.legacy || item.sharedStackCue,
       nativeFontSize: Math.max(1, animated.fontSize * scale), alignment: item.alignment,

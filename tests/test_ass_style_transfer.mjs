@@ -25,7 +25,7 @@ for (const [variant, enabled] of [['default', false], ['karaoke', true]]) {
     const assigned = library.assProfiles.find(profile => profile.id === library.assignments.assExportProfileId);
     assert.equal(assigned.animations.karaoke.enabled, enabled);
     assert.deepEqual(library, input.library);
-    assert.equal(warnings.some(warning => warning.includes('逐字换色设置')), enabled);
+    assert.deepEqual(warnings, []);
     assert.deepEqual(transfer.validate({ ...input, library }).library, library);
   });
 }
@@ -36,6 +36,27 @@ test('a supported karaoke group does not allow unknown or invalid fields', () =>
   assert.throws(() => transfer.validate(input), /karaoke\.enabled/u);
   input.assProfiles[0].animations.karaoke = { enabled: true, unknown: 'value' };
   assert.throws(() => transfer.validate(input), /karaoke\.unknown/u);
+});
+
+test('v2 libraries predating karaoke import with disabled defaults and preserve explicit settings', () => {
+  const historical = utils.defaultAssStyleLibrary();
+  delete historical.assProfiles[0].animations.karaoke;
+  const migrated = transfer.validate(historical);
+  assert.equal(migrated.library.assProfiles[0].animations.karaoke.enabled, false);
+  assert.ok(migrated.warnings.some(warning => warning.includes('animations.karaoke')));
+
+  for (const enabled of [false, true]) {
+    const current = utils.defaultAssStyleLibrary();
+    current.assProfiles[0].animations.karaoke.enabled = enabled;
+    const result = transfer.validate(current);
+    assert.equal(result.library.assProfiles[0].animations.karaoke.enabled, enabled);
+    assert.ok(!result.warnings.some(warning => warning.includes('animations.karaoke')));
+  }
+  const incomplete = utils.defaultAssStyleLibrary();
+  incomplete.assProfiles[0].animations.karaoke = {};
+  assert.throws(() => transfer.validate(incomplete), /karaoke\.enabled 缺失/u);
+  incomplete.assProfiles[0].animations.karaoke = { enabled: 'invalid' };
+  assert.throws(() => transfer.validate(incomplete), /karaoke\.enabled 的值无效/u);
 });
 
 test('missing dependencies and future versions are rejected', () => {
