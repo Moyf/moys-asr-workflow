@@ -484,13 +484,18 @@ export function initMaweServerSave() {
       const nativeSession = await connection;
       if (!current()) return;
       if (!nativeSession) throw new Error('启动器编辑器会话无效，请从启动器重新打开');
-      const response = await MaweHost.server.fetch('/api/project/native-pick', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestToken, nativeSession, language: window.MAWE_I18N?.language === 'en' ? 'en' : 'zh',
-        }),
-      });
-      const result = await response.json();
+      const { response, result } = await MaweHint.withLauncherPickerHint(
+        '请在 Launcher 的文件选择器中选择工程。如果提示重新定位媒体，请选择原始音视频。',
+        async () => {
+          const response = await MaweHost.server.fetch('/api/project/native-pick', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requestToken, nativeSession, language: window.MAWE_I18N?.language === 'en' ? 'en' : 'zh',
+            }),
+          });
+          return { response, result: await response.json() };
+        },
+      );
       if (!current()) return;
       if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
       if (result.cancelled) return;

@@ -54,11 +54,16 @@ export function initStickerRootModule() {
         picking = true;
         syncBrowseControls();
         try {
-          const response = await MaweHost.server.fetch('/api/stickers/native-pick-root', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, nativeSession }),
-          });
-          const result = await response.json();
+          const { response, result } = await MaweHint.withLauncherPickerHint(
+            '请在 Launcher 的文件夹选择器中选择表情包目录。',
+            async () => {
+              const response = await MaweHost.server.fetch('/api/stickers/native-pick-root', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, nativeSession }),
+              });
+              return { response, result: await response.json() };
+            },
+          );
           if (!current()) return;
           if (!response.ok || !result.ok) throw new Error(result.error || String(response.status));
           if (!result.cancelled && typeof result.root === 'string') {
@@ -101,15 +106,30 @@ export function initStickerRootModule() {
     const saved = scope === 'default' ? getDefaultRoot() : projectRoot();
     return applyRoot(scope, input.value, { exact: nativePaths.get(input) === input.value || saved === input.value });
   }
+  function hasStickerReferences() {
+    const project = MaweBoot.DATA;
+    const tracks = [project, project.overlay_track, ...(project.multi_subtitle?.tracks || [])];
+    return tracks.some(track => track?.segments?.some(segment => segment.sticker || segment.sticker_ref));
+  }
   async function applyRoot(scope, value, { exact = false } = {}) {
     const root = exact ? value : normalizeRoot(value), generation = ++epoch;
     const status = scope === 'default' ? defaultStatus : projectStatus;
-    busy = true; syncControls(); status.textContent = '正在读取并验证表情包目录…';
+    let declined = false;
+    busy = true; syncControls();
     try {
       await enqueue(async () => {
         if (generation !== epoch) return;
         const active = scope === 'project' || !projectRoot();
         const effective = scope === 'project' ? root || getDefaultRoot() : root;
+        if (active && effective !== (MaweBoot.STICKER_ROOT || '') && hasStickerReferences()) {
+          const message = '当前工程已有表情包。更换目录可能导致部分表情包无法显示或导出；原有引用不会删除。确定更换吗？';
+          if (!global.confirm(global.MAWE_I18N?.translateText?.(message) || message)) {
+            declined = true;
+            if (scope === 'project' && !root) overrideToggle.checked = Boolean(projectRoot());
+            return;
+          }
+        }
+        status.textContent = '正在读取并验证表情包目录…';
         const result = await requestRoot(effective, active);
         if (generation !== epoch) return;
         const checked = result?.root || effective;
@@ -122,7 +142,7 @@ export function initStickerRootModule() {
       });
     } catch (error) {
       if (generation === epoch) status.textContent = '读取失败：' + (error.message || error) + '。当前有效目录和表情包保持不变。';
-    } finally { if (generation === epoch) { busy = false; syncControls(); } }
+    } finally { if (generation === epoch) { busy = false; syncControls(!declined); } }
   }
   function activateProjectRoot() {
     const generation = ++epoch, root = projectRoot() || getDefaultRoot();

@@ -22,7 +22,7 @@ function fixture(transport) {
     } },
     MaweProjectLoad: { projectBindingEpoch: 0, detachServerProjectSaving() { detached++; } },
     MaweProjectSave: { inlineEditHasUncommittedText: () => false },
-    MaweHint: { flashHint: message => hints.push(message) },
+    MaweHint: { flashHint: message => hints.push(message), withLauncherPickerHint: (_message, pick) => pick() },
     MaweHost: { server: { fetch(url, options) {
       const body = JSON.parse(options.body);
       calls.push({ url, body });
