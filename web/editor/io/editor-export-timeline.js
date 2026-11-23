@@ -241,8 +241,10 @@ export function initExportTimelineModule() {
     if (!value) return '';
     if (/^file:\/\//i.test(value)) {
       try {
-        // Older projects can store a file URL with raw filename delimiters.
-        const url = new URL(value.replaceAll('#', '%23').replaceAll('?', '%3F'));
+        // Older projects can store file URLs with raw %, # and ? in the path.
+        const escaped = value.replace(/%(?![0-9a-f]{2})/gi, '%25')
+          .replaceAll('#', '%23').replaceAll('?', '%3F');
+        const url = new URL(escaped);
         const pathname = decodeURIComponent(url.pathname);
         value = url.hostname ? `//${url.hostname}${pathname}` : pathname.replace(/^\/(?=[A-Za-z]:\/)/, '');
       } catch {

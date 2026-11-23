@@ -333,6 +333,7 @@ test('OTIO source, cut and sticker clips preserve literal local paths that need 
     ['\\\\nas\\share\\A B.wav', '//nas/share/A B.wav', 'A B.wav'],
     ['file:///media/%E4%B8%AD%20%23%3F%2520.wav', '/media/中 #?%20.wav', '中 #?%20.wav'],
     ['file:///media/legacy#part?1.wav', '/media/legacy#part?1.wav', 'legacy#part?1.wav'],
+    ['file:///media/中文 100%/#take?1%20%2520.wav', '/media/中文 100%/#take?1 %20.wav', '#take?1 %20.wav'],
     ['file:///C:/Media/clip%20one.wav', 'C:/Media/clip one.wav', 'clip one.wav'],
   ]) {
     context.MaweBoot.DATA.media = path;
