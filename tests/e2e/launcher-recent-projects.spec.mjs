@@ -109,6 +109,36 @@ test('launcher distinguishes a missing project from missing project media', asyn
   expect(await page.evaluate(() => window.__serverStarted)).toBe(false);
 });
 
+test('a toolbox-style project path update clears a previous project error', async ({page}) => {
+  await openLauncher(page);
+  const path = page.locator('#jsonPath');
+  const error = page.locator('#jsonPathError');
+  const updatePath = (value) => path.evaluate((input, next) => {
+    input.value = next;
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+  }, value);
+
+  await page.locator('#recentProjectsList button').last().click();
+  await expect(error).toBeVisible();
+  await updatePath('D:/Demo/moved-media.mosp');
+  await expect(page.locator('#serverMediaField')).toBeVisible();
+  await expect(error).toBeHidden();
+  await expect(path).not.toHaveClass(/invalid/);
+
+  await page.locator('#recentProjectsList button').last().click();
+  await expect(error).toBeVisible();
+  await updatePath('D:/Demo/current.mosp');
+  await expect(error).toBeHidden();
+  await expect(path).not.toHaveClass(/invalid/);
+
+  await page.locator('#recentProjectsList button').last().click();
+  await expect(error).toBeVisible();
+  await updatePath('');
+  await expect(error).toBeHidden();
+  await page.locator('#openMawe').click();
+  await expect(error).toHaveText('请先选择或拖入工程文件，再打开编辑器。');
+});
+
 test('recent projects refresh after slow project readiness and when the launcher regains focus', async ({page}) => {
   await openLauncher(page);
   await page.locator('#recentProjectsList button').first().click();
