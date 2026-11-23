@@ -83,7 +83,7 @@ def allowed_platform_skip(test_id: str, reason: str) -> bool:
                 or identity in {"test_process_tree_posix.RealPosixGroupTests.test_exited_root_live_child_is_reclaimed",
                                 "test_process_tree_posix.RealPosixGroupTests.test_exited_root_sigterm_ignoring_child_is_reclaimed"}
                 and reason == "POSIX process groups require a POSIX host")
-    return (WINDOWS_RUNTIME_SKIP_REASONS.get(identity) == reason
+    return ((identity, reason) in WINDOWS_RUNTIME_SKIP_REASONS.items()
             or identity in {name.removeprefix("tests.") for name in WINDOWS_FFMPEG_TESTS} and reason == "Windows PATHEXT resolution"
             or identity == "test_gui_web.GuiWebBridgeTests.test_open_output_folder_uses_startfile_on_windows"
             and reason == "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath"

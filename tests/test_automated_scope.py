@@ -57,6 +57,17 @@ class AutomatedScopeTests(unittest.TestCase):
         with mock.patch.object(os, "name", "posix"):
             self.assertFalse(test_policy.allowed_platform_skip(identity, reason))
 
+    def test_windows_runtime_skip_requires_both_identity_and_reason(self):
+        identity = "tests.test_runtime_winsecurity.WindowsSecurityIntegrationTests.test_atomic_private_creation_and_reuse"
+        reason = "Actual Windows token and ACL APIs"
+        with mock.patch.object(os, "name", "posix"):
+            self.assertTrue(test_policy.allowed_platform_skip(identity, reason))
+            self.assertFalse(test_policy.allowed_platform_skip(identity, "Missing dependency"))
+            self.assertFalse(test_policy.allowed_platform_skip(identity + "_other", reason))
+            self.assertFalse(test_policy.allowed_platform_skip(identity + "_other", None))
+        with mock.patch.object(os, "name", "nt"):
+            self.assertFalse(test_policy.allowed_platform_skip(identity, reason))
+
 
 if __name__ == "__main__":
     unittest.main()
