@@ -67,6 +67,7 @@ class AlignmentState:
     project: dict[str, object]
     alignment: dict[str, object]
     gap_remove_override: dict[str, int | float] | None = None
+    auto_mark_silence: bool = True
 
     def payload(self) -> dict[str, object]:
         media_kind = ""
@@ -351,6 +352,8 @@ def load_state(
     script_path: Path,
     media_path: Path | None,
     gap_remove_override: Mapping[str, object] | None = None,
+    *,
+    auto_mark_silence: bool = True,
 ) -> AlignmentState:
     project = read_project(project_path)
     script = script_path.read_text(encoding="utf-8-sig")
@@ -369,6 +372,7 @@ def load_state(
         project,
         alignment,
         normalized_gap_remove,
+        auto_mark_silence,
     )
 
 
@@ -424,6 +428,8 @@ def _load_waveform_cache(project: dict[str, object], media_path: Path | None) ->
 
 
 def _gap_detection_kwargs(state: AlignmentState) -> dict[str, object]:
+    if not state.auto_mark_silence:
+        return {"detect_audio_gaps": False}
     settings = state.gap_remove_override
     if settings is None:
         return {}
@@ -490,6 +496,7 @@ def main() -> int:
     parser.add_argument("--gap-lead-in-ms", type=int, help="自动空隙的前端预留量（由 Launcher 传入时使用面板值）")
     parser.add_argument("--gap-lead-out-ms", type=int, help="自动空隙的后端预留量（由 Launcher 传入时使用面板值）")
     parser.add_argument("--no-open", action="store_true", help="只启动服务，不自动打开浏览器")
+    parser.add_argument("--no-auto-mark-silence", action="store_true", help="不根据波形自动标记静音")
     args = parser.parse_args()
 
     project_path = Path(args.project_path).expanduser().resolve()
@@ -515,6 +522,7 @@ def main() -> int:
             script_path,
             Path(args.media).expanduser() if args.media else None,
             gap_remove_override or None,
+            auto_mark_silence=not args.no_auto_mark_silence,
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.error(str(error))

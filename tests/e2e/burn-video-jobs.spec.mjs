@@ -186,6 +186,42 @@ test('binding change while the encoding dialog is open does not open the save pi
   });
 });
 
+test('burn diagnostics card expands, copies, and leaves room between controls', async ({ page }, testInfo) => {
+  await fixture('burn', async (origin) => {
+    await install(page, origin, 'burn');
+    await page.addStyleTag({ path: join(root, 'web', 'editor.css') });
+    const hintSource = fs.readFileSync(join(root, 'web', 'editor/ui/editor-hint.js'), 'utf8')
+      .replace(/^import .*;\n/m, '').replace('export function initMaweHint()', 'function initMaweHint()');
+    await page.addScriptTag({
+      content: `const createConsoleMirrorModule = () => ({ mirrorFeedback() {} }); ${hintSource}\ninitMaweHint();`,
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {value: {writeText: async text => { window.copied = text; }}});
+      showBurnVideoFailure(burnResponseError('FFmpeg 编码异常退出'), {
+        stage: 'burning', mode: 'full', jobId: 'fixture-job',
+        diagnostic: {ffmpegVersion: '8.0', attempts: [
+          {encoder: 'nvenc', exitCode: 7, elapsedMs: 1550, reasons: ['cannot load nvcuda.dll'], stderrPresent: true},
+          {encoder: 'cpu', exitCode: 1, elapsedMs: 1700, stderrPresent: false},
+        ]},
+      });
+    });
+    const card = page.locator('.hint-card.hint-warning');
+    const details = card.locator('details');
+    await expect(card.locator('pre')).toBeHidden();
+    await details.locator('summary').click();
+    await expect(card.locator('pre')).toContainText('FFmpeg 未输出错误详情');
+    await card.getByRole('button', { name: '复制诊断' }).click();
+    await expect(card.getByRole('button', { name: '已复制' })).toBeVisible();
+    expect(await page.evaluate(() => window.copied)).toContain('fixture-job');
+    expect(await card.evaluate(el => {
+      const [title, actions, report] = el.children;
+      return Math.min(actions.getBoundingClientRect().top - title.getBoundingClientRect().bottom,
+        report.getBoundingClientRect().top - actions.getBoundingClientRect().bottom);
+    })).toBeGreaterThanOrEqual(8);
+    await card.screenshot({ path: testInfo.outputPath('burn-diagnostic.png') });
+  });
+});
+
 for (const [buttonId, label, expected] of [
   ['#burn-video-export-btn', '烧录视频', { ass: '[Script Info] full' }],
   ['#download-gap-removed-burn-video', '重组后烧录视频',

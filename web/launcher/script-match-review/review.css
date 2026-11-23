@@ -66,6 +66,10 @@ tbody tr[data-active] { background: var(--accent-soft); }
 .badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; color: var(--amber); background: var(--amber-soft); }
 .badge.changed { color: var(--info); background: var(--accent-tint); }
 .badge.manual { color: var(--green); background: var(--green-soft); }
+.badge.manuscript { color: var(--amber); background: var(--amber-soft); }
+.diff-char { color: inherit; border-radius: 2px; text-decoration-thickness: 2px; }
+ins.diff-char { background: color-mix(in srgb, var(--green) 52%, var(--bg-panel)); text-decoration-line: underline; text-underline-offset: .16em; }
+del.diff-char { background: color-mix(in srgb, var(--red) 25%, var(--bg-panel)); text-decoration-line: line-through; }
 .muted { color: var(--text-muted); }
 .candidate { border-left: 2px solid var(--accent); padding-left: 8px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: start; }

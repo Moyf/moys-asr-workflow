@@ -635,7 +635,10 @@ export function createUtilsModule(dependencies) {
         width: resolution.width, height: resolution.height, measure: options.measureAssRun });
       if (typeof options.onAssPlan === 'function') options.onAssPlan({ ...plan, profile });
       if (options.allowAssPlanDiagnostics) return '';
-      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
+      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) {
+        const { code, message } = plan.diagnostics[0];
+        throw Object.assign(new Error(message), { code });
+      }
       events.length = 0;
       const number = value => Number(value.toFixed(4));
       const transform = profile.animations.t;

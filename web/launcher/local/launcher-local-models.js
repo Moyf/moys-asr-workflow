@@ -448,11 +448,13 @@ function renderLocalRuntime() {
   button.classList.toggle("hidden", !installing && runtime.status === "ready");
   button.textContent = installing || runtime.status === "installing" ? t("local_runtime_cancel") : (upgrade ? t("local_runtime_upgrade_action") : (runtime.status === "missing" ? t("local_runtime_install") : t("local_runtime_repair")));
   $("refreshLocalRuntime").disabled = installing;
-  const progress = $("localRuntimeProgress");
-  progress.classList.toggle("hidden", !installing);
+  $("localRuntimeProgress").classList.toggle("hidden", !installing);
+  renderLocalRuntimeProgress();
+  renderLocalRuntimeInventory();
+}
+function renderLocalRuntimeProgress() {
   $("localRuntimeProgressBar").style.width = `${Math.max(0, Math.min(100, state.localRuntimeProgress))}%`;
   $("localRuntimeProgressMessage").textContent = state.localRuntimeProgressMessage || "";
-  renderLocalRuntimeInventory();
 }
 function renderOcrRuntime() {
   const runtime = state.config?.ocrRuntime || {};

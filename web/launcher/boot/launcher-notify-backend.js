@@ -84,6 +84,30 @@ function notifySingleFailure(event) {
   sendSystemNotification(t("notify_single_failed_title"), body);
 }
 
+function localRuntimeIsInstalling() {
+  return state.localRuntimeInstalling || state.config?.localRuntime?.status === "installing";
+}
+
+function handleBackendEvents(events) {
+  let progress = null;
+  const logs = [];
+  function flushRuntimeUpdates() {
+    if (progress) handleBackendEvent(progress);
+    if (logs.length) appendRuntimeLogLines(logs);
+    progress = null;
+    logs.length = 0;
+  }
+  for (const event of events) {
+    if (localRuntimeIsInstalling()) {
+      if (event.type === "localRuntimeProgress") { progress = event; continue; }
+      if (event.type === "log" && event.message?.startsWith("[runtime] ")) { logs.push(event.message); continue; }
+    }
+    flushRuntimeUpdates();
+    handleBackendEvent(event);
+  }
+  flushRuntimeUpdates();
+}
+
 function handleBackendEvent(event) {
   if (event.type === "editorShutdownPending") {
     setStatus(errText("server_stop_pending"));
@@ -152,11 +176,11 @@ function handleBackendEvent(event) {
     setStatus(t("alignment_model_cancelled"));
   }
   if (event.type === "localRuntimeProgress") {
-    const runtime = state.config?.localRuntime || {};
-    if (state.localRuntimeInstalling || runtime.status === "installing") {
+    if (localRuntimeIsInstalling()) {
       state.localRuntimeProgress = Number(event.percent || 0);
       state.localRuntimeProgressMessage = event.message || "";
-      renderLocalRuntime();
+      if ($("localRuntimeProgress").classList.contains("hidden")) renderLocalRuntime();
+      else renderLocalRuntimeProgress();
     }
   }
   if (event.type === "localRuntimeReady") {
@@ -301,9 +325,10 @@ function handleBackendEvent(event) {
   }
   if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
   if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
-  if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
+  if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "", event.fileCount, event.targetId);
 }
-window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents: handleBackendEvents, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher.getRecordingReviewTranscriptionPayload = recordingReviewTranscriptionPayload;
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));

@@ -364,9 +364,6 @@ def _match_project_with_character_timings(
     check_match_cancelled(is_cancelled)
     split_punctuation = DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
     preserved = frozenset(preserve_punctuation)
-    if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
-        return _match_project(project, script_text, split_punctuation, preserved, "script", is_cancelled=is_cancelled, trace=trace)
-
     source_segments = project.get("segments")
     if not isinstance(source_segments, list):
         raise ValueError("project segments must be an array")
