@@ -66,6 +66,7 @@ from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
 from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_style_state, save_ass_style_state  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
+from maw.github_star import check_maw_starred, star_maw  # noqa: E402
 from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic, ffmpeg_version  # noqa: E402
 from maw.diagnostics import app_version  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
@@ -88,7 +89,7 @@ from maw.gui_platform import creationflags, restore_host_library_path, startupin
 from maw.postprocess_ffmpeg import (  # noqa: E402
     ASS_FALLBACK_PLAY_RESOLUTION, DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET,
     MediaToolError, convert_srt_to_ass, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    normalize_burn_encoding_settings, normalize_video_encoder, video_encoder_attempts, video_encoder_options,
     _green_screen_input, _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
@@ -1096,6 +1097,9 @@ def burn_ass_video(
     audio_track: int = 0,
     subtitle_format: str = "ass",
     audio_gain_db: float = 0,
+    crf: int = DEFAULT_BURN_CRF,
+    preset: str = DEFAULT_BURN_PRESET,
+    audio_bitrate: str = DEFAULT_BURN_AUDIO_BITRATE,
 ) -> Path:
     """Burn ASS, or convert SRT using the library's burn style before encoding.
 
@@ -1265,9 +1269,9 @@ def burn_ass_video(
         output_path.unlink(missing_ok=True)
         command = [
             *common_command,
-            *video_encoder_options(encoder, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET),
+            *video_encoder_options(encoder, crf, preset),
             "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", DEFAULT_BURN_AUDIO_BITRATE,
+            "-c:a", "aac", "-b:a", audio_bitrate,
             "-movflags", "+faststart",
         ]
         if job:
@@ -1832,6 +1836,7 @@ def build_server_page(
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
             "settingsUrl": "/api/settings",
+            "githubStarUrl": "/api/github-star",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
             "textProcessingPresetsUrl": "/api/text-processing-presets",
@@ -3174,6 +3179,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path in ("/api/github-star/status", "/api/github-star"):
+            self.github_star_request(write=path == "/api/github-star")
         elif path == "/api/ass-styles":
             self.update_ass_styles()
         elif path == "/api/text-processing-presets":
@@ -3227,6 +3234,23 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_ograf()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
+
+    def github_star_request(self, *, write: bool) -> None:
+        # Only the existing editor request token is accepted, not a repo or command.
+        try:
+            check_native_origin(self)
+            request = self.read_json_request(max_bytes=1024)
+            self._check_request_token(request)
+            if request.keys() != {"requestToken"}:
+                raise ValueError("Unexpected GitHub Star request fields")
+        except PermissionError:
+            self.send_json(HTTPStatus.FORBIDDEN, {"starred": None}, close_connection=True)
+            return
+        except ValueError:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"starred": None}, close_connection=True)
+            return
+        starred = (True if star_maw() else None) if write else check_maw_starred()
+        self.send_json(HTTPStatus.OK, {"starred": starred})
 
     def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
         """Opaque assets and current binding only; client paths are never accepted."""
@@ -3709,6 +3733,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if self.editor_server.native_burn is None:
                     raise PermissionError("启动器编辑器会话无效，请从启动器重新打开")
             audio_gain_db = validate_gain_db(request.get("audioGainDb", 0))
+            encoding = {}
+            if "encoding" in request:
+                raw_encoding = request["encoding"]
+                if not isinstance(raw_encoding, dict):
+                    raise ValueError("视频编码参数必须是对象")
+                try:
+                    crf, preset, audio_bitrate = normalize_burn_encoding_settings(
+                        raw_encoding.get("crf"), raw_encoding.get("preset"), raw_encoding.get("audioBitrate"),
+                    )
+                except MediaToolError as error:
+                    raise ValueError(str(error)) from error
+                encoding = {"crf": crf, "preset": preset, "audio_bitrate": audio_bitrate}
             admission_token = request.get("admissionToken")
             if "admissionToken" in request:
                 self.editor_server.media_jobs.validate_admission_token(admission_token)
@@ -3766,7 +3802,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                             "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
                     ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
-                    subtitle_format=subtitle_format, stickers=stickers, audio_gain_db=audio_gain_db, **options)
+                    subtitle_format=subtitle_format, stickers=stickers, audio_gain_db=audio_gain_db,
+                    **encoding, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:

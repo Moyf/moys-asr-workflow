@@ -118,10 +118,8 @@ export function initMaweSelection() {
   cancelPendingExtensionBinding();
   applyMainSelectionClasses((el) => el.classList.remove('selected'));
   MaweState.selection.clear('main');
-  selectedExtensionIdxs.forEach((index) => {
-    MaweCoreState.container.querySelectorAll(`.multi-cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`)
-      .forEach((el) => el.classList.remove('selected'));
-  });
+  MaweCoreState.container.querySelectorAll('.multi-cue.selected, .multi-cue-column.selected')
+    .forEach((el) => el.classList.remove('selected'));
   MaweState.selection.clear('extension');
   MaweState.selection.indices('overlay').forEach((index) => {
     MaweCoreState.container.querySelectorAll(`.cue[data-overlay-idx="${index}"]`)
@@ -152,7 +150,7 @@ export function initMaweSelection() {
 
 
   function updateMultiSelectionClasses() {
-    MaweCoreState.container.querySelectorAll('.multi-cue').forEach((element) => {
+    MaweCoreState.container.querySelectorAll('.multi-cue, .multi-cue-column').forEach((element) => {
       const mainIndex = element.dataset.mainIdx == null ? -1 : Number(element.dataset.mainIdx);
       const extensionIndex = element.dataset.extIdx == null ? -1 : Number(element.dataset.extIdx);
       const selected = (Number.isInteger(mainIndex) && selectedIdxs.has(mainIndex))
@@ -345,6 +343,7 @@ export function initMaweSelection() {
   syncBoundSelection('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
+  updateMultiSelectionClasses();
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   setCurrentCuePanelIndex(idx);
@@ -376,6 +375,7 @@ export function initMaweSelection() {
   hideCueSplitPreview();
   added.forEach((idx) => syncBoundSelection('main', idx));
   applyMainSelectionClasses((el) => el.classList.add('selected'));
+  updateMultiSelectionClasses();
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   setCurrentCuePanelIndex(added[added.length - 1]);

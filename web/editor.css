@@ -1508,11 +1508,34 @@
     border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
     background: var(--bg-input); color: var(--text-secondary); font-size: 12px;
   }
-  a.editor-settings-about-entry { color: var(--text-primary); text-decoration: none; transition: background var(--t-fast), border-color var(--t-fast); }
-  a.editor-settings-about-entry:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  a.editor-settings-about-entry:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  :is(a, button).editor-settings-about-entry { color: var(--text-primary); text-decoration: none; transition: background var(--t-fast), border-color var(--t-fast); }
+  :is(a, button).editor-settings-about-entry:hover:where(:not(:disabled)) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  :is(a, button).editor-settings-about-entry:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  button.editor-settings-about-entry { font-family: inherit; line-height: inherit; text-align: start; cursor: pointer; }
+  .editor-settings-about-entry[hidden] { display: none; }
   .editor-settings-about-entry > span:first-child { min-width: 0; overflow-wrap: anywhere; }
   .editor-settings-about-action { flex: 0 0 auto; color: var(--accent); white-space: nowrap; }
+  /* The visible state button fills the entire About grid cell, including its padding. */
+  #editor-about-github-star-entry { display: grid; place-items: stretch; min-width: 0; }
+  #editor-about-github-star-entry[hidden] { display: none; }
+  #editor-about-github-thanks { position: relative; }
+  .editor-about-star-spark {
+    position: absolute; top: 50%; left: 50%; pointer-events: none;
+    font-size: 20px; line-height: 1; opacity: 1;
+    animation: editor-about-star-pop 450ms linear both;
+  }
+  @keyframes editor-about-star-pop {
+    from { transform: translate(-50%, -50%); opacity: 1; }
+    35% { transform: translate(-50%, calc(-50% - 6px)); opacity: 1; }
+    to { transform: translate(-50%, calc(-50% - 16px)) scale(1.1); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .editor-about-star-spark { transform: translate(-50%, -50%); animation-name: editor-about-star-fade; }
+  }
+  @keyframes editor-about-star-fade {
+    from, 35% { opacity: 1; }
+    to { opacity: 0; }
+  }
   .editor-settings-about-placeholder { flex: 0 0 auto; color: var(--text-muted); white-space: nowrap; }
   html[lang="en"] .editor-settings-about-locale-zh,
   html:not([lang="en"]) .editor-settings-about-locale-en { display: none; }
@@ -1708,15 +1731,14 @@
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
   .editor-settings-panel input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-  /* 通用按钮样式不作用于设置导航标签：标签有独立的基础/hover/active 外观，
-     否则这里的更高优先级会在 hover 时盖掉 active 高亮。 */
-  .editor-settings-panel button:not(.editor-settings-nav-tab):not(.editor-settings-segment) {
+  /* 设置导航、分段控件和关于页入口各自管理外观，不套用通用按钮样式。 */
+  .editor-settings-panel button:not(.editor-settings-nav-tab):not(.editor-settings-segment):where(:not(.editor-settings-about-entry)) {
     min-width: 26px; padding: 3px 7px; color: var(--btn-text); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer;
     transition: background var(--t-fast), border-color var(--t-fast), filter var(--t-fast);
   }
-  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab):not(.editor-settings-segment) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab):not(.editor-settings-segment) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-panel button:hover:not(:disabled):not(.editor-settings-nav-tab):not(.editor-settings-segment):where(:not(.editor-settings-about-entry)) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .editor-settings-panel button:focus-visible:not(.editor-settings-nav-tab):not(.editor-settings-segment):where(:not(.editor-settings-about-entry)) { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-panel button:not(.editor-settings-nav-tab).editor-settings-inline-action {
     min-width: 0; padding: 0 2px; color: var(--accent); background: transparent; border: 0;
     border-radius: var(--radius-sm); font: inherit; line-height: inherit; text-decoration: underline;
@@ -3052,19 +3074,19 @@
   .cue.dirty { border-left-color: var(--amber); }
   .cue.editing { background: var(--amber-soft); border-left-color: var(--amber); cursor: text; }
   /* 选中用琥珀色系（内描边环），与 active 的蓝色系明确区分 */
-  .cue.selected { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber); }
-  .cue.selected.active { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: inset 0 0 0 1px var(--amber); }
+  .cue.selected:where(:not(.multi-dual-cue)) { background: var(--amber-soft); box-shadow: inset 0 0 0 1px var(--amber); }
+  .cue.selected.active:where(:not(.multi-dual-cue)) { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: inset 0 0 0 1px var(--amber); }
   /* 选中行的悬停：.cue.selected 源序晚于 .cue:hover 会在等特异性下盖住悬停，
      故显式补 selected:hover —— 保持琥珀身份但加深底色、把内环升到 amber-hover。 */
-  .cue.selected:hover {
+  .cue.selected:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--amber) 26%, transparent);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
-  .cue.selected.active:hover {
+  .cue.selected.active:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--accent) 42%, transparent);
     box-shadow: inset 0 0 0 1px var(--accent-hover);
   }
-  .cue.selected.has-color:hover {
+  .cue.selected.has-color:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--color-bar, #777) 30%, var(--accent) 30%);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
@@ -3079,11 +3101,11 @@
     box-shadow: inset 0 0 0 1px var(--color-bar, #777);
   }
   /* 选中 + 播放中 + 有分组色：原色为主、轻混 accent 表示叠加状态，选中环保持琥珀 */
-  .cue.selected.has-color.active {
+  .cue.selected.has-color.active:where(:not(.multi-dual-cue)) {
     background: color-mix(in srgb, var(--color-bar, #777) 38%, var(--accent) 22%);
     box-shadow: inset 0 0 0 1px var(--amber-hover);
   }
-  .cue.selected.has-color.active:hover {
+  .cue.selected.has-color.active:where(:not(.multi-dual-cue)):hover {
     background: color-mix(in srgb, var(--color-bar, #777) 44%, var(--accent) 28%);
     box-shadow: inset 0 0 0 1px var(--color-bar, #777);
   }
@@ -3092,11 +3114,12 @@
   .cue.disabled .text { color: var(--text-muted); }
   .cue.disabled .time, .cue.disabled .index { color: var(--text-faint); }
   .cue.disabled.active { background: var(--accent-tint-strong); border-left: 3px dashed var(--accent); }
-  .cue.disabled.selected { background: var(--accent-tint); border-left: 3px dashed var(--accent-hover); }
-  .cue.disabled.selected:hover { background: var(--accent-tint-strong); border-left: 3px dashed var(--accent); }
+  .cue.disabled.selected:where(:not(.multi-dual-cue)) { background: var(--accent-tint); border-left: 3px dashed var(--accent-hover); }
+  .cue.disabled.selected:where(:not(.multi-dual-cue)):hover { background: var(--accent-tint-strong); border-left: 3px dashed var(--accent); }
   .cue.disabled.active .text { color: var(--text-secondary); }
   /* Selection stays visible over hover/active colour rings, including disabled rows. */
-  .cue.selected {
+  .cue.selected:where(:not(.multi-dual-cue)),
+  .multi-cue-column.selected {
     outline: 1px solid var(--selection-yellow-line);
     outline-offset: -1px;
   }
@@ -3136,6 +3159,14 @@
     width: min(560px, calc(100vw - 32px)); min-width: 0;
   }
   .modal h3 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-primary); font-weight: 600; }
+  .modal.burn-video-encoding { width: min(520px, calc(100vw - 32px)); min-width: 0; margin: auto; overflow: auto; }
+  .modal.burn-video-encoding:not([open]) { display: none; }
+  .burn-video-encoding::backdrop { background: #0007; }
+  .burn-video-encoding-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px 16px; }
+  .modal .burn-video-encoding-fields label { margin: 0 0 8px; }
+  .burn-video-encoding-fields small { display: block; margin-top: 8px; color: var(--text-secondary); }
+  .burn-video-encoding [role="status"] { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; }
+  .burn-video-encoding .actions { flex-wrap: wrap; }
   .modal label { display: block; font-size: 12px; color: var(--text-secondary); margin: 8px 0 4px 0; }
   .modal input[type=text], .modal input[type=number] {
     width: 100%; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
@@ -3386,6 +3417,8 @@
       var(--wave-disabled-b) 5px 10px
     );
   }
+  /* 双列仍用行级 selected 给导航定位，选区视觉只画真实选中的列。 */
+  .multi-cue-column.selected { background-color: var(--amber-soft); }
   .multi-cue-column.disabled .index,
   .multi-cue-column.disabled .time,
   .multi-cue-column.disabled .text { color: var(--text-muted); }

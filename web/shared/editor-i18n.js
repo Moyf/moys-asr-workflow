@@ -169,6 +169,20 @@
     "FFmpeg 将重新编码源视频并烧录当前字幕；长视频可能需要较长时间。": "FFmpeg will re-encode the source video with current subtitles; long videos may take a while.",
     "将当前字幕烧录进源视频；关闭 ASS 模式时使用样式库指定的 SRT 烧录样式，输出 MP4。": "Burn current subtitles into the source video as MP4; with ASS mode off, use the library’s assigned SRT burn style.",
     '主字幕 ASS 定位': 'Main ASS cue positioning',
+    '副字幕 ASS 定位': 'Secondary ASS cue positioning',
+    '选择副字幕，选中后拖动 ASS 位置': 'Select the secondary cue, then drag its ASS position',
+    '烧录编码设置': 'Burn encoding settings',
+    '画质 CRF': 'Quality CRF',
+    '数值越大，画质越低、文件通常越小；不保证与原片同大小。': 'Higher values lower quality and usually produce smaller files. Output may still be larger than the source.',
+    '编码预设': 'Encoder preset',
+    '仅 CPU 编码使用；较慢的预设通常压缩得更好。': 'CPU encoding only. Slower presets usually compress better.',
+    '音频码率': 'Audio bitrate',
+    '每条音轨的码率；数值越高，音频通常越大。': 'Bitrate per audio track. Higher rates usually produce larger audio streams.',
+    '保存为默认参数': 'Save as defaults',
+    '已保存为默认参数': 'Saved as defaults',
+    '无法保存默认参数': 'Could not save defaults',
+    '选择保存位置…': 'Choose save location…',
+    '请稍等片刻，在 Launcher 的文件选择器中选择保存路径。': 'Please wait a moment, then choose where to save in the Launcher file picker.',
     '重置定位': 'Reset position', '重置大小': 'Reset size', '倍率': 'Scale',
     'ASS 字幕缩放倍率': 'ASS subtitle scale multiplier',
     'ASS 锚点 X': 'ASS anchor X', 'ASS 锚点 Y': 'ASS anchor Y',
@@ -278,6 +292,9 @@
     '观看视频 ↗': 'Watch video ↗',
     '项目与社区': 'Project and community',
     'GitHub 仓库': 'GitHub repository',
+    '星标': 'Star',
+    '⭐️ 一键加星': '⭐️ Add Star',
+    '⭐️ 感谢你的星星！': '⭐️ Thanks!',
     '打开仓库 ↗': 'Open repository ↗',
     '加入社区 ↗': 'Join community ↗',
     '打开小店 ↗': 'Open shop ↗',
@@ -2213,6 +2230,10 @@
     if (match) return `Merge ${match[1]} subtitles`;
     match = /^已合并\s+(\d+)\s+条副字幕(，原绑定已解除)?$/.exec(text);
     if (match) return `Merged ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? '; previous bindings were removed' : ''}`;
+    match = /^(已)?删除\s+(\d+)\s+条副字幕$/.exec(text);
+    if (match) return `${match[1] ? 'Deleted' : 'Delete'} ${match[2]} secondary subtitle${match[2] === '1' ? '' : 's'}`;
+    match = /^已删除 (\d+) 条副字幕，已解除 (\d+) 组绑定，主字幕已保留$/.exec(text);
+    if (match) return `Deleted ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'} and removed ${match[2]} binding${match[2] === '1' ? '' : 's'}. Main subtitles were kept.`;
     match = /^已绑定主字幕\s+(\d+)\s+与副字幕\s+(\d+)$/.exec(text);
     if (match) return `Bound main subtitle ${match[1]} to secondary subtitle ${match[2]}`;
     match = /^已替换主字幕\s+(\d+)\s+的绑定，改为副字幕\s+(\d+)$/.exec(text);

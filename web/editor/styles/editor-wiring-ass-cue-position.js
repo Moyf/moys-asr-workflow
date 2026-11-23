@@ -1,5 +1,5 @@
 export function initWiringAssCuePositionModule() {
-// Main-cue ASS positioning and per-cue scaling.
+// ASS positioning; per-cue scaling is available on main and overlay tracks.
 (function initAssCuePosition(global) {
   'use strict';
   const panel = document.getElementById('ass-cue-position');
@@ -14,36 +14,37 @@ export function initWiringAssCuePositionModule() {
   let drag = null;
   let scaleDrag = null;
   let scaleWheel = null;
-  const target = () => {
-    const current = global.MaweCuePanel.getCurrentCuePanelTarget();
-    return current?.kind === 'main' || current?.kind === 'overlay' ? current : null;
-  };
+  const target = () => global.MaweCuePanel.getCurrentCuePanelTarget();
   const trackSegments = kind => kind === 'overlay'
     ? (global.MaweBoot.DATA.overlay_track?.segments || [])
-    : global.MaweBoot.DATA.segments;
-  // 同一 id 命中两条轨在正常工程里不可能（main-/overlay- 前缀），仍按当前
-  // 面板目标轨优先，避免异常数据时拖错轨。
-  function locateSegment(id) {
-    for (const kind of (target()?.kind === 'overlay' ? ['overlay', 'main'] : ['main', 'overlay'])) {
-      const segments = trackSegments(kind);
-      const index = segments.findIndex(segment => segment?.id === id);
-      if (index >= 0) return { kind, index, segment: segments[index] };
-    }
-    return null;
+    : kind === 'extension' ? (global.MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
+      : global.MaweBoot.DATA.segments;
+  function locateSegment(kind, id) {
+    const segments = trackSegments(kind);
+    const index = segments.findIndex(segment => segment?.id === id);
+    return index >= 0 ? { kind, index, segment: segments[index] } : null;
   }
-  const trackLabel = kind => kind === 'overlay' ? '叠加字幕' : '主字幕';
+  const trackLabel = kind => ({ overlay: '叠加字幕', extension: '副字幕', main: '主字幕' })[kind];
+  function selectCue(kind, index) {
+    if (kind === 'overlay') global.MaweCuePanelWiring.selectOverlayCueRow(index);
+    else if (kind === 'extension') global.MaweSelection.selectOnlyExtension(index);
+    else global.MaweSelection.selectOnly(index);
+  }
+  const targetMatches = (kind, id) => {
+    const current = target();
+    return current?.kind === kind && current.segment.id === id;
+  };
   const enabled = () => global.MaweSettings.EDITOR_SETTINGS.assMode === true;
   const roundPosition = value => Math.floor(Number(value) + 0.5);
   const roundScale = value => Number(Number(value).toFixed(2));
   const clampScale = value => Math.min(5, Math.max(0.1, value));
   const currentScale = segment => segment.assOverride?.scale || 1;
   const translated = value => global.MAWE_I18N?.translateText?.(value) || value;
-  function singleSelected(id) {
-    const current = target();
-    const selected = global.MaweState.selection.indices(current?.kind === 'overlay' ? 'overlay' : 'main');
-    return selected.size === 1 && current?.segment.id === id;
+  function singleSelected(kind, id) {
+    return kind !== 'extension' && targetMatches(kind, id)
+      && global.MaweState.selection.indices(kind).size === 1;
   }
-  function recordFor(segment, kind = target()?.kind === 'overlay' ? 'overlay' : 'main') {
+  function recordFor(segment, kind = target()?.kind) {
     return global.MaweAssCanvas.lastRender?.tracks.find(item => item.role === kind && item.cueId === segment.id && !item.skipped);
   }
   function anchorFor(segment) {
@@ -56,9 +57,10 @@ export function initWiringAssCuePositionModule() {
     const cached = idleAnchors.get(segment);
     if (plan && cached?.plan === plan) return { ...cached.anchor };
     if (!plan) global.MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true, onAssPlan: value => { plan = value; } });
-    const slice = plan?.slices.find(slice => slice.items.some(item => item.segment.id === segment.id));
+    const matches = item => item.role === target()?.kind && item.segment.id === segment.id;
+    const slice = plan?.slices.find(slice => slice.items.some(matches));
     const item = slice && global.AsrEditorUtils.assStackFrame(plan, slice.start + Math.min(10, (slice.end - slice.start) / 2)).items
-      .find(item => item.segment.id === segment.id);
+      .find(matches);
     const resolution = global.MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
     const style = item?.style || global.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE;
     const anchor = item?.anchor || global.AsrEditorUtils.assCanvasAnchorPoint({
@@ -141,18 +143,17 @@ export function initWiringAssCuePositionModule() {
     global.MawePlaybackLoop.refreshSubtitlePreview();
     sync();
   }
-  function start(event, id, box) {
+  function start(event, kind, id, box) {
     if (!enabled() || event.button !== 0 || drag || scaleDrag) return;
     if (scaleWheel) finishScaleWheel();
-    const located = locateSegment(id);
+    const located = locateSegment(kind, id);
     if (!located) return;
     global.MaweCuePanel.commitCuePanelEdit();
     global.MaweGapPlayback?.cancelPendingPlayback();
     global.MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
-    if (currentTargetId() !== id) {
-      if (located.kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(located.index);
-      else global.MaweSelection.selectOnly(located.index);
+    if (!targetMatches(kind, id)) {
+      selectCue(kind, located.index);
       event.preventDefault(); event.stopPropagation();
       return;
     }
@@ -181,10 +182,10 @@ export function initWiringAssCuePositionModule() {
     global.MawePlaybackLoop.refreshSubtitlePreview();
     event.preventDefault(); event.stopPropagation();
   }
-  function startScale(event, id, handle) {
-    if (!enabled() || event.button !== 0 || drag || scaleDrag || !singleSelected(id)) return;
+  function startScale(event, kind, id, handle) {
+    if (!enabled() || event.button !== 0 || drag || scaleDrag || !singleSelected(kind, id)) return;
     if (scaleWheel) finishScaleWheel();
-    const located = locateSegment(id);
+    const located = locateSegment(kind, id);
     const segment = located?.segment;
     const record = segment && recordFor(segment, located.kind);
     if (!segment || !record?.bounds) return;
@@ -230,7 +231,7 @@ export function initWiringAssCuePositionModule() {
   function wheelScale(event) {
     if (!enabled() || drag || scaleDrag || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
     const current = target();
-    if (!current || !singleSelected(current.segment.id)) return;
+    if (!current || !singleSelected(current.kind, current.segment.id)) return;
     const overlay = global.MaweDom.overlayEl;
     const record = recordFor(current.segment);
     if (global.MaweDom.overlayToggle?.checked !== true || overlay.dataset.assMode !== 'true'
@@ -263,12 +264,13 @@ export function initWiringAssCuePositionModule() {
     // 叠加字幕行常驻倍率入口：ASS 模式选中叠加 cue 即可输入缩放，无需先在
     // 画布上改出覆盖；主字幕保持「有覆盖才显示」的既有行为，不增加编辑区高度。
     const overlayTarget = current?.kind === 'overlay';
-    panel.hidden = !enabled() || !current || (!overlayTarget && !override?.pos && !override?.scale);
+    const showScale = overlayTarget || (current?.kind === 'main' && Boolean(override?.scale));
+    panel.hidden = !enabled() || !current || (!override?.pos && !showScale);
     if (current) {
       panel.setAttribute('aria-label', translated(`${trackLabel(current.kind)} ASS 定位`));
     }
     positionControls.hidden = !override?.pos;
-    scaleControls.hidden = !override?.scale && !overlayTarget;
+    scaleControls.hidden = !showScale;
     if (!panel.hidden) {
       const anchor = anchorFor(current.segment);
       if (override?.pos) {
@@ -282,8 +284,7 @@ export function initWiringAssCuePositionModule() {
     const frame = global.MaweAssCanvas.lastRender;
     const visible = new Set();
     if (enabled() && global.MaweDom.overlayToggle.checked) for (const record of frame?.tracks || []) {
-      // 主字幕与叠加字幕都提供画布选择/拖动/缩放；扩展轨是固定层，不参与。
-      if ((record.role !== 'main' && record.role !== 'overlay') || record.skipped || !record.bounds) continue;
+      if (!['main', 'overlay', 'extension'].includes(record.role) || record.skipped || !record.bounds) continue;
       const kind = record.role;
       const id = record.cueId;
       const key = `${kind}:${id}`;
@@ -294,7 +295,7 @@ export function initWiringAssCuePositionModule() {
         box.dataset.cueId = String(id);
         box.dataset.trackKind = kind;
         box.setAttribute('aria-label', translated(`选择${trackLabel(kind)}，选中后拖动 ASS 位置`));
-        box.addEventListener('pointerdown', event => start(event, id, box));
+        box.addEventListener('pointerdown', event => start(event, kind, id, box));
         box.addEventListener('pointermove', move);
         box.addEventListener('pointerup', event => { if (event.pointerId === drag?.pointerId) { move(event); finish(); } });
         box.addEventListener('pointercancel', () => finish(true));
@@ -307,6 +308,7 @@ export function initWiringAssCuePositionModule() {
       const bounds = record.bounds;
       Object.assign(box.style, { left: `${bounds.left / frame.playResX * 100}%`, top: `${bounds.top / frame.playResY * 100}%`,
         width: `${(bounds.right - bounds.left) / frame.playResX * 100}%`, height: `${(bounds.bottom - bounds.top) / frame.playResY * 100}%` });
+      if (kind === 'extension') continue;
       let cueHandles = handles.get(key);
       if (!cueHandles) {
         cueHandles = ['nw', 'ne', 'sw', 'se'].map(corner => {
@@ -316,7 +318,7 @@ export function initWiringAssCuePositionModule() {
           handle.dataset.cueId = String(id);
           handle.dataset.trackKind = kind;
           handle.setAttribute('aria-label', translated(`调整${trackLabel(kind)}大小（${{ nw: '左上', ne: '右上', sw: '左下', se: '右下' }[corner]}角）`));
-          handle.addEventListener('pointerdown', event => startScale(event, id, handle));
+          handle.addEventListener('pointerdown', event => startScale(event, kind, id, handle));
           handle.addEventListener('pointermove', moveScale);
           handle.addEventListener('pointerup', event => { if (event.pointerId === scaleDrag?.pointerId) { moveScale(event); finishScaleDrag(); } });
           handle.addEventListener('pointercancel', () => finishScaleDrag(true));
@@ -326,7 +328,7 @@ export function initWiringAssCuePositionModule() {
         });
         handles.set(key, cueHandles);
       }
-      const canScale = singleSelected(id);
+      const canScale = singleSelected(kind, id);
       for (const handle of cueHandles) {
         const corner = handle.dataset.corner;
         handle.hidden = !canScale;
@@ -400,16 +402,12 @@ export function initWiringAssCuePositionModule() {
       const id = box?.dataset.cueId;
       const kind = box?.dataset.trackKind;
       const index = trackSegments(kind).findIndex(segment => segment?.id === id);
-      if (index >= 0 && currentTargetId() !== id) {
-        if (kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(index);
-        else global.MaweSelection.selectOnly(index);
-      }
+      if (index >= 0 && !targetMatches(kind, id)) selectCue(kind, index);
     }
     if (!target()?.segment.assOverride?.pos) return;
     const step = event.shiftKey ? 10 : 1;
     nudge(delta[0] * step, delta[1] * step, element);
   }, true);
-  function currentTargetId() { return target()?.segment.id; }
   global.addEventListener('blur', () => {
     finish(true); finishScaleDrag(true); finishScaleWheel();
   });

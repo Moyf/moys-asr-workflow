@@ -502,7 +502,7 @@ def run_burn_subtitles(
         media = _validated_media_path(
             request.media_path or Path(""), extensions=MEDIA_EXTENSIONS, label="audio/video media"
         )
-    crf, preset, audio_bitrate = _burn_encoding_settings(request)
+    crf, preset, audio_bitrate = normalize_burn_encoding_settings(request.crf, request.preset, request.audio_bitrate)
     output_source = subtitle if green_screen else media
     assert output_source is not None
     output = _available_media_output(
@@ -960,15 +960,19 @@ def _convert_project_to_ass(project_path: Path, *, play_resolution: tuple[int, i
     return Path(temporary_name)
 
 
-def _burn_encoding_settings(request: BurnSubtitleRequest) -> tuple[int, str, str]:
+def normalize_burn_encoding_settings(
+    crf: object = None, preset: object = None, audio_bitrate: object = None,
+) -> tuple[int, str, str]:
     """Return validated (crf, preset, audio_bitrate), falling back to defaults."""
-    crf = DEFAULT_BURN_CRF if request.crf is None else request.crf
-    if not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
+    crf = DEFAULT_BURN_CRF if crf is None else crf
+    if type(crf) is not int or not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
         raise MediaToolError(f"CRF must be an integer between {MIN_BURN_CRF} and {MAX_BURN_CRF}")
-    preset = DEFAULT_BURN_PRESET if not str(request.preset or "").strip() else str(request.preset).strip()
+    preset = str(preset).strip() if preset is not None else DEFAULT_BURN_PRESET
+    preset = preset or DEFAULT_BURN_PRESET
     if preset not in X264_PRESETS:
         raise MediaToolError(f"unsupported x264 preset: {preset}")
-    audio_bitrate = DEFAULT_BURN_AUDIO_BITRATE if not str(request.audio_bitrate or "").strip() else str(request.audio_bitrate).strip()
+    audio_bitrate = str(audio_bitrate).strip() if audio_bitrate is not None else DEFAULT_BURN_AUDIO_BITRATE
+    audio_bitrate = audio_bitrate or DEFAULT_BURN_AUDIO_BITRATE
     if audio_bitrate not in AUDIO_BITRATES:
         raise MediaToolError(f"unsupported audio bitrate: {audio_bitrate}")
     return crf, preset, audio_bitrate

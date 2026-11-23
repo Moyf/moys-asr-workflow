@@ -282,7 +282,103 @@ function showBurnVideoSuccess(message, name, open = null, syncWarning = false) {
   });
 }
 
-async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText, greenScreen = false, gapRemoved = false }) {
+function openBurnEncodingDialog(options) {
+  if (window.__maweBurnVideoTask || nativeBurnPicking || document.getElementById('burn-video-encoding')) return;
+  const tr = burnVideoText;
+  const config = MaweBoot.SERVER_CONFIG;
+  if (!burnVideoMediaCurrent(config)) return;
+  const binding = {
+    jobsUrl: config.burnVideoJobsUrl, requestToken: config.requestToken,
+    bindingGeneration: config.bindingGeneration, sourceMediaId: config.sourceMediaId,
+    sourceName: config.burnVideoSourceName, bindingEpoch: window.MaweProjectLoad?.projectBindingEpoch,
+  };
+  const defaultsKey = 'mawe.burnVideoEncoding';
+  const presets = ['veryfast', 'fast', 'medium', 'slow', 'veryslow'];
+  const bitrates = ['96k', '128k', '160k', '192k', '224k', '256k', '320k'];
+  const storage = MaweHost.storage;
+  let defaults;
+  try { defaults = JSON.parse(storage.getItem(defaultsKey)); } catch { /* storage unavailable */ }
+  const dialog = document.createElement('dialog');
+  dialog.id = 'burn-video-encoding';
+  dialog.className = 'modal burn-video-encoding';
+  dialog.setAttribute('aria-labelledby', 'burn-video-encoding-title');
+  dialog.innerHTML = `<h3 id="burn-video-encoding-title"></h3>
+    <form>
+      <div class="burn-video-encoding-fields">
+        <div><label for="burn-video-crf"></label>
+          <input id="burn-video-crf" type="number" required min="0" max="51" step="1" aria-describedby="burn-video-crf-help">
+          <small id="burn-video-crf-help"></small></div>
+        <div><label for="burn-video-preset"></label>
+          <select id="burn-video-preset" aria-describedby="burn-video-preset-help"></select>
+          <small id="burn-video-preset-help"></small></div>
+        <div><label for="burn-video-audio-bitrate"></label>
+          <select id="burn-video-audio-bitrate" aria-describedby="burn-video-audio-help"></select>
+          <small id="burn-video-audio-help"></small></div>
+      </div>
+      <p role="status" hidden></p>
+      <div class="actions">
+        <button type="button" data-save-defaults></button>
+        <button type="button" data-cancel></button>
+        <button type="submit" class="primary"></button>
+      </div>
+    </form>`;
+  const find = selector => dialog.querySelector(selector);
+  const labels = {
+    h3: '烧录编码设置',
+    '[for="burn-video-crf"]': '画质 CRF',
+    '#burn-video-crf-help': '数值越大，画质越低、文件通常越小；不保证与原片同大小。',
+    '[for="burn-video-preset"]': '编码预设',
+    '#burn-video-preset-help': '仅 CPU 编码使用；较慢的预设通常压缩得更好。',
+    '[for="burn-video-audio-bitrate"]': '音频码率',
+    '#burn-video-audio-help': '每条音轨的码率；数值越高，音频通常越大。',
+    '[data-save-defaults]': '保存为默认参数',
+    '[data-cancel]': '取消',
+    '[type="submit"]': '选择保存位置…',
+  };
+  for (const [selector, text] of Object.entries(labels)) find(selector).textContent = tr(text);
+  const crf = find('#burn-video-crf');
+  crf.value = Number.isInteger(defaults?.crf) && defaults.crf >= 0 && defaults.crf <= 51 ? defaults.crf : 21;
+  const preset = find('#burn-video-preset');
+  preset.append(...presets.map(value => new Option(value, value)));
+  preset.value = presets.includes(defaults?.preset) ? defaults.preset : 'medium';
+  const audioBitrate = find('#burn-video-audio-bitrate');
+  audioBitrate.append(...bitrates.map(value => new Option(`${parseInt(value, 10)} kbps`, value)));
+  audioBitrate.value = bitrates.includes(defaults?.audioBitrate) ? defaults.audioBitrate : '192k';
+  const form = find('form');
+  const values = () => ({ crf: crf.valueAsNumber, preset: preset.value, audioBitrate: audioBitrate.value });
+  const status = find('[role="status"]');
+  dialog.addEventListener('keydown', event => event.stopPropagation());
+  form.addEventListener('input', () => { status.hidden = true; });
+  find('[data-save-defaults]').addEventListener('click', () => {
+    if (!form.reportValidity()) return;
+    status.hidden = false;
+    try {
+      storage.setItem(defaultsKey, JSON.stringify(values()));
+      status.textContent = tr('已保存为默认参数');
+    } catch {
+      status.textContent = tr('无法保存默认参数');
+    }
+  });
+  find('[data-cancel]').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    dialog.close();
+    if (!burnVideoBindingCurrent(config, binding)) {
+      MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频烧录'), 'warning');
+      return;
+    }
+    // Call directly from the submit gesture so the browser save picker has activation.
+    void runBurnVideoJob({ ...options, encoding: values() });
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+async function runBurnVideoJob({
+  button, label, buildRequest, suggestedName, startHint, successText,
+  greenScreen = false, gapRemoved = false, encoding = null,
+}) {
   const tr = burnVideoText;
   const config = MaweBoot.SERVER_CONFIG;
   if (window.__maweBurnVideoTask) return;
@@ -326,7 +422,10 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   let request;
   const prepareRequest = () => {
     request = buildRequest();
-    if (request) request.audioGainDb = audioGainDb;
+    if (request) {
+      request.audioGainDb = audioGainDb;
+      if (encoding) request.encoding = encoding;
+    }
   };
   if (!deferRequest) {
     try { prepareRequest(); }
@@ -337,11 +436,13 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     if (!request) return;
   }
 
-  MaweHint.flashHint(tr(startHint), 'info');
+  if (!nativeSession) MaweHint.flashHint(tr(startHint), 'info');
+  let pickerHint;
   let handle;
   try {
     if (nativeSession) {
       nativeBurnPicking = true;
+      pickerHint = MaweHint.flashHint(tr('请稍等片刻，在 Launcher 的文件选择器中选择保存路径。'), 'info', { durationMs: 0 });
       const basename = suggestedName.slice(0, -4).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 220);
       handle = await nativeBurnPost(`${jobsUrl}/native-target`, requestToken, {
         nativeSession, admissionToken, bindingGeneration, sourceMediaId, suggestedName: `${basename || 'export'}.mp4`,
@@ -363,6 +464,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     return;
   } finally {
     if (nativeSession) nativeBurnPicking = false;
+    if (pickerHint) MaweHint.dismissHintCard(pickerHint);
   }
   if (deferRequest) {
     try {
@@ -524,6 +626,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   try {
     // 选择器等待期间另一个入口可能已经开始任务；二次确认避免并发。
     if (window.__maweBurnVideoTask) return;
+    if (nativeSession) MaweHint.flashHint(tr(startHint), 'info');
     task = { id: null, controller: new AbortController(), stopRequested: false, cancelRequest: null, requestStop };
     window.__maweBurnVideoTask = task;
     button.disabled = true;
@@ -714,7 +817,7 @@ function buildBurnVideoSubtitles(gapRemoved = false) {
 }
 
 document.getElementById('burn-video-export-btn')?.addEventListener('click', () => {
-  void runBurnVideoJob({
+  openBurnEncodingDialog({
     button: document.getElementById('burn-video-export-btn'),
     label: '烧录视频',
     startHint: 'FFmpeg 将重新编码源视频并烧录当前字幕；长视频可能需要较长时间。',
@@ -726,7 +829,7 @@ document.getElementById('burn-video-export-btn')?.addEventListener('click', () =
 
 // 入口二：「去空隙导出 → 重组后烧录视频」。保留区间 + 收缩时间轴 ASS；重新编码使切点帧级精确。
 document.getElementById('download-gap-removed-burn-video')?.addEventListener('click', () => {
-  void runBurnVideoJob({
+  openBurnEncodingDialog({
     button: document.getElementById('download-gap-removed-burn-video'),
     label: '重组后烧录视频',
     gapRemoved: true,

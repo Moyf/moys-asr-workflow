@@ -13,7 +13,7 @@ import tempfile
 import time
 import webbrowser
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -41,6 +41,7 @@ from maw.asr_presets import (
 from maw.asr_errors import api_key_error_code, asr_error_code, redact_asr_text
 from maw.ass_styles import find_ass_style, load_ass_style_library
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
+from maw.github_star import check_maw_starred, star_maw
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
@@ -531,6 +532,7 @@ class LauncherApi:
         self._native_project_picker: Callable[[], Path | None] | None = None
         self._native_media_picker: Callable[[str], Path | None] | None = None
         self._native_sticker_picker: Callable[[], Path | None] | None = None
+        self._github_star_source: Callable[[], bool] | None = None
         self._native_burn_host: BurnHost | None = None
         self._native_burn_port: int | None = None
         self._recording_preparation = None
@@ -2176,6 +2178,22 @@ class LauncherApi:
         filename = Path(current or str(default_srt_path(Path(media or "output.mp3")))).name
         chosen = _file_dialog(open_dialog=False, save_filename=filename, file_types=("SRT (*.srt)",))
         return _dialog_result(chosen)
+
+    def _is_github_star_source(self) -> bool:
+        source = self._github_star_source
+        if source is None:
+            return False
+        try:
+            return source()
+        except Exception:
+            return False
+
+    def github_star_status(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return {"starred": check_maw_starred() if payload == {} and self._is_github_star_source() else None}
+
+    def github_star(self, payload: Mapping[str, object]) -> dict[str, object]:
+        starred = payload == {} and self._is_github_star_source() and star_maw()
+        return {"starred": True if starred else None}
 
     def open_url(self, payload: Mapping[str, object]) -> dict[str, object]:
         url = str(payload.get("url") or "").strip()
@@ -4119,6 +4137,23 @@ def _pick_burn_target(window: Window, name: str, source: Path, lang: str) -> Bur
         _FILE_DIALOG_LOCK.release()
 
 
+def _launcher_url_matches(current: str | None, expected: str | None) -> bool:
+    if not current or not expected:
+        return False
+    if current == expected:
+        return True
+    # WebView2 exposes the display form of System.Uri, which may unescape
+    # spaces in file paths. Keep loopback URLs and all other URLs exact.
+    current_url, expected_url = urlsplit(current), urlsplit(expected)
+    return (
+        current_url.scheme == expected_url.scheme == "file"
+        and current_url.netloc == expected_url.netloc
+        and current_url.query == expected_url.query
+        and current_url.fragment == expected_url.fragment
+        and unquote(current_url.path, errors="strict") == unquote(expected_url.path, errors="strict")
+    )
+
+
 def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | None = None) -> None:
     import webview
 
@@ -4163,6 +4198,14 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
         def _on_loaded() -> None:
             api.pump.start()
 
+        def _trusted_launcher_page() -> bool:
+            # pywebview may serve a file through its private loopback server.
+            current = window.get_current_url()
+            return window.original_url == launcher_url and _launcher_url_matches(
+                str(current) if current else None, window.real_url
+            )
+
+        api._github_star_source = _trusted_launcher_page
         window.events.loaded += _on_loaded
     icon = _launcher_icon_path()
     webview.start(
