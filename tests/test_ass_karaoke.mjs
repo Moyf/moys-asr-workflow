@@ -75,6 +75,17 @@ test('items whose text cannot map onto the cue fall back per cue', () => {
   assert.ok(dialogues(mismatched).some(line => line.includes('再见')));
   assert.ok(dialogues(mismatched).some(line => line.includes('{\\k50}你')));
 
+  // 重复字 + 单个部分时间码：位置无法唯一确定（最早/最晚匹配分歧），
+  // 整句回落普通输出，不猜最早匹配（PR #411 外审 Major 的复现形态）。
+  const repeated = {
+    start: 0, end: 2000, text: '哈哈',
+    items: [{ text: '哈', start: 800, end: 1400 }],
+  };
+  const repeatedOutput = h.buildAssPayload([repeated],
+    { assStyle: { fontSize: 64 }, assProfile: karaokeProfile });
+  assert.ok(!dialogues(repeatedOutput).some(line => line.includes('\\k')));
+  assert.ok(dialogues(repeatedOutput).some(line => line.includes('哈哈')));
+
   const partial = {
     start: 0, end: 2000, text: '你好世界',
     items: [
