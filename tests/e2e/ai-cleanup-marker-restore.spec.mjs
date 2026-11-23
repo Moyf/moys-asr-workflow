@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import {
   cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, startServer,
+  generateWav, makeTempDir, openSettingsPage, startServer,
 } from './helpers.mjs';
 
 let tempDir;
@@ -187,9 +187,14 @@ test('partial and edited regions use current coverage; existing actions and meas
   await page.locator('.markers-item[data-marker-id="review"] .markers-item-edit').click();
   await expect(page.locator('.markers-item[data-marker-id="review"] .markers-ai-review-mute-toggle')).toHaveText('设静音');
   await page.locator('#markers-manage').click();
-  await openPopup(page);
+  const switchLanguage = async () => {
+    await openSettingsPage(page, 'interface');
+    await page.locator('#language-toggle').click();
+    await page.locator('#editor-settings-close').click();
+  };
   for (const language of ['zh', 'en']) {
-    await page.evaluate(language => MAWE_I18N.applyLanguage(language), language);
+    if (language === 'en') await switchLanguage();
+    await openPopup(page);
     await expect(action).toHaveText(language === 'zh' ? '移除' : 'Remove');
     const geometry = await popup.evaluate(element => {
       const swatches = element.querySelector('.markers-color-swatches').getBoundingClientRect();
@@ -213,10 +218,8 @@ test('partial and edited regions use current coverage; existing actions and meas
   }
   await page.mouse.move(0, 0);
   await popup.screenshot({ path: test.info().outputPath('auto-marker-popup-en.png') });
-  await page.evaluate(() => {
-    MAWE_I18N.applyLanguage('zh');
-    MaweMarkerEditing.updateMarkerFields('auto', { start: 1800, end: 2400 });
-  });
+  await switchLanguage();
+  await page.evaluate(() => MaweMarkerEditing.updateMarkerFields('auto', { start: 1800, end: 2400 }));
   await openPopup(page);
   await expect(action).toHaveText('恢复');
   await action.click();
