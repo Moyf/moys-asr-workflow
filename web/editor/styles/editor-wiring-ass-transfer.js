@@ -21,7 +21,6 @@ export function translateAssTransferMessage(value) {
     '没有找到导入前的样式库副本。': 'No pre-import backup was found.',
     '样式库已被其他窗口修改，请重新加载后再保存。': 'The library was changed in another window; reload it before saving.',
     '旧版本样式库会按当前规则补充和迁移字段。': 'Fields from the older library will be filled in and migrated using current rules.',
-    '逐字换色设置会随样式库保留，当前版本暂不应用该效果。': 'Karaoke settings will be kept. This version does not apply the effect.',
   };
   if (Object.hasOwn(fixed, text)) return fixed[text];
   const patterns = [
@@ -120,8 +119,6 @@ export function createAssStyleTransfer(utils) {
     return { library: normalized, warnings: [
       ...(raw.version === 1 ? ['旧版本样式库会按当前规则补充和迁移字段。'] : []),
       ...changes.map(path => `已迁移：${path}`),
-      ...(normalized.assProfiles.some(profile => profile.animations.karaoke.enabled)
-        ? ['逐字换色设置会随样式库保留，当前版本暂不应用该效果。'] : []),
     ] };
   }
   function nextId(source, entries, kind) {

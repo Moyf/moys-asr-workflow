@@ -49,6 +49,7 @@ test('without a new media selection the existing bound editor can be reused', as
   await vm.runInContext('openServerEditor()', context);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, 'open_url');
+  assert.equal(calls[0].editor, true);
 });
 
 test('resetting the project clears stale manual media and restores remember default', () => {

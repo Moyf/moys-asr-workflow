@@ -373,20 +373,24 @@ class MediaJobsTests(unittest.TestCase):
         self.assertIsNone(self.manager.active)
 
     def test_real_progress_pipe_is_drained_during_process_execution(self):
-        observed = threading.Event()
+        release = Path(self.temp.name) / "progress-observed"
         def runner(job):
             job.update("rebuilding")
             result = job.run_command([sys.executable, "-u", "-c",
-                "import time; print('out_time_us=500000', flush=True); time.sleep(.3)"], duration_ms=1000)
+                "import sys, time\nfrom pathlib import Path\n"
+                "print('out_time_us=500000', flush=True)\n"
+                "while not Path(sys.argv[1]).exists(): time.sleep(.02)\n", str(release)],
+                duration_ms=1000, timeout=15)
             self.assertEqual(result.returncode, 0)
         job = self.start(runner)
-        deadline = time.monotonic() + 2
-        while time.monotonic() < deadline and job.state == "running":
-            if job.snapshot()["progress"] == .5:
-                observed.set()
-                break
-            time.sleep(.01)
-        self.assertTrue(observed.is_set())
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and job.snapshot()["progress"] != .5:
+                time.sleep(.02)
+            self.assertEqual(job.snapshot()["progress"], .5)
+            self.assertEqual(job.snapshot()["state"], "running")
+        finally:
+            release.touch()
         self.wait(job, "ready")
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")

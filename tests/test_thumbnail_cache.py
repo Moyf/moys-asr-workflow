@@ -91,6 +91,48 @@ class ThumbnailCacheTests(unittest.TestCase):
         asset = first["samples"][0]["asset"]
         self.assertIsNotNone(c.read_asset(self.media, asset, cache_revision=second["cache_revision"]))
 
+    def test_manifest_reads_committed_frames_during_uncommitted_writer(self):
+        self._assert_manifest_reads_during_writer(expected_auto_vacuum=2)
+
+    def test_legacy_manifest_reads_committed_frames_during_uncommitted_writer(self):
+        root = c.cache_root()
+        root.mkdir(parents=True)
+        with contextlib.closing(sqlite3.connect(root / "frames.sqlite3")) as db, db:
+            db.execute("CREATE TABLE legacy_marker (id INTEGER)")
+        self._assert_manifest_reads_during_writer(expected_auto_vacuum=0)
+
+    def _assert_manifest_reads_during_writer(self, expected_auto_vacuum):
+        c.register_frames(self.media, [FrameResult(0, 0, "target", jpeg())], info=self.video)
+        c.register_keyframe_marks(self.media, [0], info=self.video)
+        c._session.clear()
+        c._session_assets.clear()
+        done, results, errors = threading.Event(), [], []
+
+        def read_manifest():
+            try:
+                results.append(c.sample_manifest(self.media, [0]))
+            except Exception as error:
+                errors.append(error)
+            finally:
+                done.set()
+
+        with contextlib.closing(c._connect()) as writer:
+            self.assertEqual(writer.execute("PRAGMA auto_vacuum").fetchone()[0], expected_auto_vacuum)
+            writer.execute("BEGIN IMMEDIATE")
+            writer.execute("INSERT INTO bases VALUES(?,?,?,?)", ("uncommitted", "other", 1, 0))
+            thread = threading.Thread(target=read_manifest)
+            thread.start()
+            try:
+                completed_before_commit = done.wait(2)
+            finally:
+                writer.rollback()
+                thread.join(6)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(completed_before_commit, "manifest read waited for unrelated writer")
+        self.assertEqual(errors, [])
+        self.assertEqual(results[0]["samples"][0]["status"], "target")
+        self.assertEqual(results[0]["keyframes"][0]["requested_ms"], 0)
+
     def test_duration_limit_bounds_grid_and_marks_manifest(self):
         """限长构建只覆盖前 N 秒网格，写独立 sidecar，并在命中校验里要求同限。"""
         with mock.patch.object(c, "extract_keyframes", return_value=[]) as keyframes:

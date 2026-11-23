@@ -236,7 +236,8 @@ export function createUtilsModule(dependencies) {
     // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
     // fromScale < 1 为「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
     pop: Object.freeze({ enabled: false, fromScale: 0.7, inMs: 120, accel: 1 }),
-    // Preserve imported 1.x settings until 2.0 supports karaoke rendering.
+    // 卡拉 OK（\k 整词跳变）：开启后对带字词时间码的主字幕逐字词上色，
+    // 无时间码或文本失配的句子静默回落普通输出。首期仅 enabled 一个开关。
     karaoke: Object.freeze({ enabled: false }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,

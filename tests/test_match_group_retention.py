@@ -1,13 +1,18 @@
+import contextlib
+import io
 import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from maw.postprocess import OutputMode
-from maw.postprocess_io import read_project
+from maw.postprocess_ai_cleanup import AiCleanupRequest, run_ai_cleanup
+from maw.postprocess_io import read_project, render_srt
 from maw.postprocess_match import ScriptMatchRequest, run_script_match
 from maw.project_tracks import get_main_track
-from scripts.mosp_match_text import AlignmentError, generate_matched_mosp
+from scripts.mosp_match_text import AlignmentError, generate_matched_mosp, main as match_main
 
 
 def project():
@@ -15,7 +20,132 @@ def project():
     return json.loads(fixture.read_text(encoding="utf-8"))
 
 
+def three_cue_project():
+    original = project()
+    main = get_main_track(original)["segments"]
+    main[0].update(text="戊己", items=[{"start": 1200, "end": 2300, "text": "戊己"}])
+    for index, start, end, text in [(0, 0, 1000, "甲乙丙丁"), (2, 4000, 5000, "庚辛")]:
+        main.insert(index, {"id": f"other-{index}", "start": start, "end": end, "text": text,
+                            "items": [{"start": start, "end": end, "text": text}]})
+    return original
+
+
 class ScriptMatchGroupRetentionTests(unittest.TestCase):
+    def test_equal_count_after_anchor_filter_cannot_reassign_bound_identity(self):
+        original = three_cue_project()
+        with self.assertRaisesRegex(AlignmentError, "绑定"):
+            generate_matched_mosp(json.dumps(original), "甲乙\n新\n丙丁\n戊己庚辛", require_cue_anchor=True)
+
+    def test_cli_rejects_equal_count_resegment_without_writing_artifacts(self):
+        for protected in ("binding", "color", "sticker"):
+            original = three_cue_project()
+            if protected != "binding":
+                original["bindings"] = []
+            main = get_main_track(original)["segments"][1]
+            if protected != "color":
+                del main["color_group_id"]
+            if protected == "sticker":
+                main["sticker_group_id"] = "sticker-2"
+                original["subtitle_groups"]["sticker"] = [
+                    {"id": "sticker-2", "value": {"name": "cat", "rel": "cat.png"}}
+                ]
+            for policy in ("fuzzy", "strict", "nearest"):
+                with self.subTest(protected=protected, policy=policy), TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    source, manuscript = root / "input.mosp", root / "script.txt"
+                    source.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+                    manuscript.write_text("甲乙\n丙丁\n戊己庚辛", encoding="utf-8")
+                    before = source.read_bytes()
+                    stderr = io.StringIO()
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                        status = match_main([
+                            "-m", str(source), "-t", str(manuscript), "--mismatch-policy", policy,
+                            "--report", str(root / "report.json"),
+                        ])
+                    self.assertEqual(status, 2)
+                    self.assertIn("不能逐句对应", stderr.getvalue())
+                    self.assertEqual(source.read_bytes(), before)
+                    self.assertEqual({path.name for path in root.iterdir()}, {"input.mosp", "script.txt"})
+
+    def test_bound_correction_keeps_standalone_timing_policies(self):
+        original = project()
+        get_main_track(original)["segments"][0]["items"] = [
+            {"text": "你", "start": 1200, "end": 1400},
+            {"text": "好", "start": 2000, "end": 2300},
+        ]
+        source = json.dumps(original, ensure_ascii=False)
+        with self.assertRaisesRegex(AlignmentError, "strict 模式"):
+            generate_matched_mosp(source, "你们好", "strict")
+        for policy, inserted_end in (("fuzzy", 2000), ("nearest", 1401)):
+            with self.subTest(policy=policy):
+                _, report, serialized = generate_matched_mosp(source, "你们好", policy)
+                result = json.loads(serialized)
+                main = get_main_track(result)["segments"][0]
+                self.assertEqual(main["items"][1], {"text": "们", "start": 1400, "end": inserted_end})
+                self.assertEqual(main["id"], "cue-main")
+                self.assertEqual(result["bindings"], original["bindings"])
+                self.assertNotIn("cue_source_counts", report)
+
+    def test_unbound_same_count_resegment_remains_available(self):
+        original = three_cue_project()
+        original["bindings"] = []
+        del get_main_track(original)["segments"][1]["color_group_id"]
+        _, _, serialized = generate_matched_mosp(json.dumps(original), "甲乙\n丙丁\n戊己庚辛")
+        main = get_main_track(json.loads(serialized))["segments"]
+        self.assertEqual([(cue["text"], cue["start"], cue["end"]) for cue in main], [
+            ("甲乙", 0, 500), ("丙丁", 500, 1000), ("戊己庚辛", 1200, 5000),
+        ])
+
+    def test_cli_keeps_scoped_cleanup_and_rejects_unmappable_replacement(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw, script = root / "input.mosp", root / "script.txt"
+            raw.write_text(json.dumps({"segments": [{
+                "id": "greeting", "text": "Hello Hello world", "start": 0, "end": 600,
+                "items": [{"text": word, "start": i * 200, "end": (i + 1) * 200}
+                          for i, word in enumerate((" Hello", " Hello", " world "))],
+            }]}), encoding="utf-8")
+            cleaned = run_ai_cleanup(
+                AiCleanupRequest(raw, None, None, OutputMode.BOTH, review_enabled=False),
+                complete=lambda _prompt, _rows: {"timeline": "[c001] ~~Hello~~ Hello world"},
+            )
+            source = cleaned.project_path
+            before = source.read_bytes()
+            self.assertEqual(cleaned.srt_path.read_text(encoding="utf-8-sig").splitlines()[2], "Hello world")
+            script.write_text("Hello Hello world", encoding="utf-8")
+            srt, mosp = root / "matched.srt", root / "matched.mosp"
+            args = ["-m", str(source), "-t", str(script), "--os", str(srt), "--om", str(mosp)]
+            cli = Path(__file__).resolve().parents[1] / "scripts" / "mosp_match_text.py"
+            run = subprocess.run(
+                [sys.executable, "-X", "utf8", str(cli), *args],
+                capture_output=True, encoding="utf-8", timeout=15,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(srt.read_text(encoding="utf-8").splitlines()[2], "Hello world")
+            project_before = read_project(source)
+            matched = read_project(mosp)
+            self.assertEqual(get_main_track(matched)["segments"][0]["text"], "Hello Hello world")
+            self.assertEqual(matched["gap_remove"]["gaps"], project_before["gap_remove"]["gaps"])
+
+            script.write_text("Goodbye Hello world", encoding="utf-8")
+            files_before = {path.name for path in root.iterdir()}
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+                self.assertEqual(match_main(["-m", str(source), "-t", str(script)]), 2)
+            self.assertIn("局部删减", stderr.getvalue())
+            self.assertEqual({path.name for path in root.iterdir()}, files_before)
+            self.assertEqual(source.read_bytes(), before)
+
+            entries = project_before["gap_remove"]["provenance"]["sources"]["ai_cleanup"]
+            entries[0]["cleanup_scope"]["text"] = "stale"
+            _, stale_report, stale_json = generate_matched_mosp(json.dumps(project_before), "Hello Hello world")
+            del project_before["gap_remove"]
+            _, plain_report, plain_json = generate_matched_mosp(json.dumps(project_before), "Hello Hello world")
+            stale, plain = json.loads(stale_json), json.loads(plain_json)
+            self.assertEqual(get_main_track(stale), get_main_track(plain))
+            self.assertEqual(stale_report, plain_report)
+            self.assertEqual(render_srt(stale), render_srt(plain))
+
     def test_equal_count_keeps_cue_identity_group_and_binding(self):
         original = project()
         original["tracks"][0]["segments"][0]["extra"] = {"value": 1}

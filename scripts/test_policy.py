@@ -5,9 +5,20 @@ import os
 
 PYTHON_PACKS = ("common", "media", "long-media", "tools", "manual")
 WINDOWS_FFMPEG_TESTS = (
+    "tests.test_alignment_ffmpeg_worker.AlignmentFfmpegWorkerTests.test_worker_does_not_treat_scripts_as_executables",
     "tests.test_ffmpeg.FfmpegResolverTests.test_windows_python_module_does_not_shadow_path_executables",
     "tests.test_ffmpeg.FfmpegResolverTests.test_windows_scripts_are_not_accepted_as_ffmpeg_executables",
 )
+WINDOWS_RUNTIME_SKIP_REASONS = {
+    "test_runtime_pathwin.Win32RealApiSmokeTests.test_existing_temp_dir_converts_and_points_to_same_dir":
+        "真实 Windows API 冒烟",
+    **dict.fromkeys((
+        "test_runtime_winsecurity.WindowsSecurityIntegrationTests.test_atomic_private_creation_and_reuse",
+        "test_runtime_winsecurity.WindowsSecurityIntegrationTests.test_existing_world_writable_root_is_not_adopted_or_repaired",
+        "test_runtime_winsecurity.WindowsSecurityIntegrationTests.test_inherit_only_write_grants_cannot_make_child_executables_public",
+        "test_runtime_winsecurity.WindowsSecurityIntegrationTests.test_token_identity_is_independent_of_environment",
+    ), "Actual Windows token and ACL APIs"),
+}
 MEDIA_MODULES = {"test_ffprobe_failure_integration", "test_gap_removed_audio_export", "test_gap_removed_video_compatibility",
                  "test_media_cache", "test_quapeaks_generation",
                  "test_thumbnail_jobs_integration", "test_thumbnail_server"}
@@ -72,7 +83,8 @@ def allowed_platform_skip(test_id: str, reason: str) -> bool:
                 or identity in {"test_process_tree_posix.RealPosixGroupTests.test_exited_root_live_child_is_reclaimed",
                                 "test_process_tree_posix.RealPosixGroupTests.test_exited_root_sigterm_ignoring_child_is_reclaimed"}
                 and reason == "POSIX process groups require a POSIX host")
-    return (identity in {name.removeprefix("tests.") for name in WINDOWS_FFMPEG_TESTS} and reason == "Windows PATHEXT resolution"
+    return ((identity, reason) in WINDOWS_RUNTIME_SKIP_REASONS.items()
+            or identity in {name.removeprefix("tests.") for name in WINDOWS_FFMPEG_TESTS} and reason == "Windows PATHEXT resolution"
             or identity == "test_gui_web.GuiWebBridgeTests.test_open_output_folder_uses_startfile_on_windows"
             and reason == "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath"
             or identity == "test_local_log.DefaultLogDirectoryTests.test_uses_localappdata_namespace"

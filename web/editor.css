@@ -1095,6 +1095,9 @@
   .waveform-toolbar-controls > * { flex: 0 0 auto; }
   .waveform-toolbar-controls button { white-space: nowrap; }
   .waveform-settings { gap: 8px; }
+  .ass-emoji-warning { display: inline-flex; align-items: center; padding: 4px; color: var(--amber); cursor: help; border-radius: 4px; }
+  .ass-emoji-warning[hidden] { display: none; }
+  .ass-emoji-warning:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .toolbar.waveform-toolbar > .waveform-edit-tools { flex: 0 0 auto; }
   .waveform-edit-tools > button { white-space: nowrap; }
   .toolbar .waveform-settings > #ass-mode-quick-toggle { font-size: 12px; line-height: 1.4; }
@@ -2019,9 +2022,15 @@
     width: 42px; height: 26px; min-width: 42px; padding: 2px;
     background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer;
   }
-  /* 次色只服务 \k 卡拉 OK 标签，当前不支持，字段默认隐藏。 */
+  /* 次色只服务 \k 逐字换色（卡拉 OK），字段默认隐藏。 */
   .ass-style-color-field[hidden] { display: none; }
   .ass-style-color-field input[type="color"]:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  /* 次色独占一行：颜色块与提示并排；方案未开启逐字换色时禁用输入并降透明度。 */
+  .ass-style-karaoke-row { display: flex; align-items: center; gap: 10px; }
+  .ass-style-karaoke-row .ass-style-color-field { flex: 0 0 auto; }
+  .ass-style-karaoke-row .editor-settings-hint { flex: 1 1 auto; min-width: 0; }
+  .ass-style-karaoke-row.is-disabled .ass-style-color-field { opacity: 0.55; }
+  .ass-style-karaoke-row.is-disabled .ass-style-color-field input[type="color"] { cursor: not-allowed; }
   .ass-style-toggle-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .ass-style-check { display: flex; align-items: center; gap: 7px; min-height: var(--control-h); color: var(--text-secondary); font-size: 12px; }
   .ass-style-check input { flex: 0 0 auto; }
@@ -4303,11 +4312,36 @@
   /* === 可配置位置的提示卡片（flashHint），默认顶部居中 ===
      最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动。
      置于非模态浮层栈（430+）之上，但保留给拖拽遮罩和加载层（500/510）。 */
-  #hint-stack {
+  #hint-stack, #hint-stack-bottom-right {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 490;
     display: flex; flex-direction: column; gap: 8px;
     width: max-content; max-width: min(380px, calc(100vw - 32px));
     max-height: calc(100vh - 32px); overflow-y: auto;
+  }
+  #hint-stack-bottom-right {
+    top: auto; bottom: 16px; left: auto; right: 16px; transform: none;
+    max-height: calc((100vh - 48px) / 2);
+  }
+  html:has(#hint-stack-bottom-right .hint-card) #hint-stack {
+    max-height: calc((100vh - 48px) / 2);
+  }
+  html[data-toast-position="bottom-right"]:has(#hint-stack-bottom-right .hint-card) #hint-stack {
+    top: 16px; bottom: auto;
+  }
+  body:has(#hint-stack-bottom-right .hint-card) .gap-video-job {
+    right: auto; left: 16px; max-width: calc(50vw - 24px);
+    max-height: calc((100vh - 48px) / 2);
+  }
+  body:has(.gap-video-job) #hint-stack-bottom-right {
+    max-width: min(380px, calc(50vw - 24px));
+  }
+  @media (max-width: 700px) {
+    body:has(#hint-stack-bottom-right .hint-card) .gap-video-job {
+      top: 16px; bottom: auto; left: 16px; right: auto; max-width: calc(50vw - 24px);
+    }
+    html:has(#hint-stack-bottom-right .hint-card):has(.gap-video-job) #hint-stack {
+      left: auto; right: 16px; transform: none; width: min(380px, calc(50vw - 24px));
+    }
   }
   html[data-toast-position="top-right"] #hint-stack {
     left: auto; right: 16px; transform: none;
@@ -4324,6 +4358,13 @@
     box-shadow: var(--shadow-3);
     animation: hint-fade-in .18s ease-out;
   }
+  .hint-dismissible { position: relative; padding-right: 48px; }
+  .hint-dismissible > .hint-close { position: absolute; right: 10px; top: 9px; }
+  .hint-burn-detail { margin-top: 8px; color: var(--text-muted); }
+  .hint-burn-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .hint-burn-actions button { color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 5px 9px; cursor: pointer; }
+  .hint-burn-actions button:hover { background: var(--hover-bg); }
+  .hint-burn-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
   .hint-card.hide { animation: hint-fade-out .2s ease-in forwards; }
   /* 类型化提示卡片：3px 语义左条 + 淡色底 + 匹配色边框。默认卡片维持中性。 */
   .hint-card.hint-success {

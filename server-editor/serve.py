@@ -70,6 +70,11 @@ from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
     MediaJobManager, MediaJobUnavailable,
 )
+from maw.native_burn_api import (  # noqa: E402
+    SESSION_HEADER, NativeBurnJobs, check_native_origin, handle_native_burn,
+    native_host_proof, require_native_job_session,
+)
+from maw.native_burn_host import BURN_JOBS, BurnHostClient, BurnSessions  # noqa: E402
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.media_export_video import (  # noqa: E402
     VideoNoOutput, VideoTimelineError, packet_filter, prepare_video_copy, verify_video_packets,
@@ -114,8 +119,11 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 MAX_RECENT_PROJECTS = 10
 MAX_ASS_STYLE_LIBRARY_BYTES = 512 * 1024
-# 单帧预览请求携带整份 ASS 文本；超长内容更可能是误用而不是真实工程。
-MAX_ASS_FRAME_TEXT_BYTES = 8 * 1024 * 1024
+# 单帧预览和烧录携带整份 ASS。说话人底框可能将一条事件拆成两条并增加透明度标签。
+MAX_ASS_TEXT_BYTES = 24 * 1024 * 1024
+MAX_ASS_REQUEST_BYTES = 2 * MAX_ASS_TEXT_BYTES
+MAX_SRT_BURN_TEXT_BYTES = 8 * 1024 * 1024
+MAX_UNVERIFIED_ASS_REQUEST_BYTES = 16 * 1024 * 1024
 # 间隔列表由浏览器传入，仅含毫秒边界；限制数量避免不必要的 JSON/FFmpeg 清单负载。
 MAX_GAP_REMOVED_INTERVALS = 100_000
 # 烧录叠加的表情包输入数上限：每张唯一图片一个 FFmpeg 输入，防止误操作
@@ -1622,6 +1630,7 @@ def build_server_page(
     *,
     defer_reapeaks: bool = True,
     project_binding: dict[str, object] | None = None,
+    native_burn: bool = False,
 ) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift.
 
@@ -1719,7 +1728,8 @@ def build_server_page(
         ),
         "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
         "canGapRemovedMediaExport": can_gap_media_export,
-        "burnVideoJobsUrl": "/api/exports/burned-video/jobs",
+        "burnVideoJobsUrl": BURN_JOBS,
+        "nativeBurnAvailable": native_burn,
         "fcp7PngJobsUrl": "/api/exports/fcp7-png/jobs",
         "canBurnVideoExport": bool(
             project.json_path is not None
@@ -1863,6 +1873,7 @@ class EditorServer(ThreadingHTTPServer):
         self.ass_frame_lock = threading.Lock()
         self.gap_removed_video_lock = threading.Lock()
         self.media_jobs = MediaJobManager(self.gap_removed_video_lock)
+        self.native_burn: NativeBurnJobs | None = None
         self.thumbnail_jobs = ThumbnailJobManager()
         self.loudness_analyzer = LoudnessAnalyzer()
         self.thumbnail_jobs.bind(project.source_media_path or project.media_path,
@@ -1909,6 +1920,8 @@ class EditorServer(ThreadingHTTPServer):
         with self.media_jobs.lock:
             if self.media_jobs.active:
                 self.media_jobs.cancel(self.media_jobs.active.id)
+        if self.native_burn is not None:
+            self.native_burn.targets.clear()
         self.project = project
         self.binding_generation += 1
         self.source_media_id = secrets.token_urlsafe(24)
@@ -3080,7 +3093,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/audio/loudness":
             self.measure_audio_loudness()
         elif path == "/api/prproj":
-            self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
+            # Consume a small, complete request before refusing it. Leaving a
+            # POST body unread can corrupt the next keep-alive request or reset
+            # the response when a Windows client closes the connection.
+            consumed = self.discard_unsupported_request_body()
+            self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY,
+                           close_connection=not consumed)
         elif path == "/api/stickers/root":
             self.set_sticker_root()
         elif path == "/api/exports/sticker-otio":
@@ -3097,12 +3115,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.cancel_gap_removed_video_admission()
         elif path.startswith("/api/exports/gap-removed-video/jobs/"):
             self.gap_removed_video_job_request(path, cancel=True)
-        elif path == "/api/exports/burned-video/jobs":
+        elif path == BURN_JOBS:
             self.start_burn_video_job()
-        elif path == "/api/exports/burned-video/jobs/cancel-admission":
+        elif path == BURN_JOBS + "/cancel-admission":
             self.cancel_burn_video_admission()
-        elif path.startswith("/api/exports/burned-video/jobs/"):
-            self.burn_video_job_request(path, cancel=True)
+        elif path.startswith(BURN_JOBS + "/"):
+            if path.rsplit("/", 1)[-1] in {"native-session", "native-target", "native-save", "native-open"}:
+                try:
+                    handle_native_burn(self, path)
+                except ProjectBindingChangedError as error:
+                    self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            else:
+                self.burn_video_job_request(path, cancel=True)
         elif path == "/api/exports/fcp7-png/jobs" or path.startswith("/api/exports/fcp7-png/jobs/"):
             handle_fcp7_png(self, path, mutate=True, tools_factory=editor_ffmpeg_tools)
         elif path == "/api/exports/lottie":
@@ -3174,8 +3198,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def shutdown_server(self) -> None:
         """Stop this loopback-only server from the MAW CLI."""
-        self.send_json(HTTPStatus.OK, {"ok": True, "service": "maw-editor"})
-        threading.Thread(target=self.editor_server.shutdown, daemon=True).start()
+        port = self.editor_server.server_address[1]
+        if (self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}")
+                or self.headers.get("Origin") is not None or self.headers.get("Sec-Fetch-Site") is not None):
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False}, close_connection=True)
+            return
+        try:
+            self.send_json(HTTPStatus.OK, {"ok": True, "service": "maw-editor"}, close_connection=True)
+        finally:
+            threading.Thread(target=self.editor_server.shutdown, daemon=True).start()
 
     def save_project(self) -> None:
         try:
@@ -3212,7 +3243,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def _check_request_token(self, request: dict) -> None:
         token = request.get("requestToken")
-        if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
+        if not isinstance(token, str) or not token.isascii() or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
 
     def refresh_ass_font_aliases(self) -> None:
@@ -3537,13 +3568,20 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self._cancel_media_job_admission()
 
     def cancel_burn_video_admission(self) -> None:
-        self._cancel_media_job_admission()
+        self._cancel_media_job_admission(burn=True)
 
-    def _cancel_media_job_admission(self) -> None:
+    def _cancel_media_job_admission(self, *, burn: bool = False) -> None:
         try:
             request = self.read_json_request()
             self._check_request_token(request)
-            snapshot = self.editor_server.media_jobs.cancel_admission(request.get("admissionToken"))
+            def authorize(job: MediaJob) -> None:
+                if job.native_burn is not None:
+                    if not burn:
+                        raise PermissionError("烧录任务取消请求无效")
+                    check_native_origin(self)
+                    require_native_job_session(self.editor_server, job, request.get("nativeSession"))
+
+            snapshot = self.editor_server.media_jobs.cancel_admission(request.get("admissionToken"), authorize=authorize)
             self.send_json(HTTPStatus.OK, snapshot)
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
@@ -3556,8 +3594,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         """Burn the current project's ASS subtitles into a private MP4 export."""
         job = None
         try:
-            request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
+            request = self.read_ass_render_request()
             self._check_request_token(request)
+            native_request = "nativeTarget" in request or "nativeSession" in request
+            if native_request:
+                check_native_origin(self)
+                if self.editor_server.native_burn is None:
+                    raise PermissionError("启动器编辑器会话无效，请从启动器重新打开")
             audio_gain_db = validate_gain_db(request.get("audioGainDb", 0))
             admission_token = request.get("admissionToken")
             if "admissionToken" in request:
@@ -3572,8 +3615,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             ass_text = request.get(subtitle_format)
             if not isinstance(ass_text, str) or not ass_text.strip():
                 raise ValueError("缺少字幕内容")
-            if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
-                raise ValueError(f"{subtitle_format.upper()} 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            limit = MAX_SRT_BURN_TEXT_BYTES if subtitle_format == "srt" else MAX_ASS_TEXT_BYTES
+            if len(ass_text.encode("utf-8")) > limit:
+                raise ValueError(f"{subtitle_format.upper()} 字幕内容超过 {limit // (1024 * 1024)} MB")
             stickers = _parse_burn_sticker_inputs(
                 request.get("stickers"), self.editor_server.project.sticker_root)
             raw_intervals = request.get("intervals")
@@ -3622,11 +3666,17 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     raise MediaJobCancelled("视频烧录已停止")
                 if binding != (self.editor_server.binding_generation, self.editor_server.source_media_id):
                     raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
-                job = self.editor_server.media_jobs.start(source, binding, intervals, burn,
-                    output_extension=".mp4", admission_token=admission_token)
+                native = self.editor_server.native_burn if native_request else None
+                target = native.require_target(request, binding, source) if native else None
+                with self.editor_server.media_jobs.lock:
+                    job = self.editor_server.media_jobs.start(source, binding, intervals, burn,
+                        output_extension=".mp4", admission_token=admission_token)
+                    job.native_burn = target
+                if target is not None:
+                    del native.targets[request["nativeTarget"]]
             self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)}, close_connection=True)
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
         except MediaJobCancelled as error:
@@ -3644,7 +3694,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             download_name=lambda job: f"{job.source.stem}_gap-removed{job.output.suffix.lower()}")
 
     def burn_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
-        self._media_job_request(path, prefix="/api/exports/burned-video/jobs",
+        self._media_job_request(path, prefix=BURN_JOBS,
             cancel=cancel, include_body=include_body,
             download_name=lambda job: f"{job.source.stem}_subtitled{job.output.suffix.lower()}")
 
@@ -3660,16 +3710,24 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self._check_request_token(request)
             manager = self.editor_server.media_jobs
             job = manager.get(parts[0])
+            if job.native_burn is not None:
+                if prefix != BURN_JOBS or (len(parts) == 2 and not cancel):
+                    raise PermissionError("任务需要使用启动器保存")
+                if cancel:
+                    check_native_origin(self)
+                require_native_job_session(self.editor_server, job, request.get("nativeSession") if cancel
+                                           else self.headers.get(SESSION_HEADER))
             if cancel:
                 self.send_json(HTTPStatus.OK, manager.cancel(job.id))
                 return
-            try:
-                self.editor_server.gap_removed_media_source_snapshot({
-                    "bindingGeneration": job.binding[0], "sourceMediaId": job.binding[1],
-                })
-            except ProjectBindingChangedError:
-                manager.cancel(job.id)
-                raise
+            if job.native_burn_output is None:
+                try:
+                    self.editor_server.gap_removed_media_source_snapshot({
+                        "bindingGeneration": job.binding[0], "sourceMediaId": job.binding[1],
+                    })
+                except ProjectBindingChangedError:
+                    manager.cancel(job.id)
+                    raise
             if len(parts) == 1:
                 self.send_json(HTTPStatus.OK, gap_removed_job_snapshot(job))
                 return
@@ -3835,6 +3893,40 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(ograf_bytes)
 
+    def discard_unsupported_request_body(self) -> bool:
+        """Drain only a bounded body, without interpreting paths or writing data."""
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get("Transfer-Encoding") is not None or len(lengths) > 1:
+            return False
+        try:
+            length = int(lengths[0]) if lengths else 0
+        except ValueError:
+            return False
+        if not 0 <= length <= 65536:
+            return False
+        if not length:
+            return True
+        previous_timeout = self.connection.gettimeout()
+        deadline = time.monotonic() + 2.0
+        remaining = length
+        try:
+            while remaining:
+                budget = deadline - time.monotonic()
+                if budget <= 0:
+                    return False
+                self.connection.settimeout(budget if previous_timeout is None else min(previous_timeout, budget))
+                # read1 makes at most one underlying read, so a slow drip cannot
+                # repeatedly reset a per-recv timeout inside BufferedReader.read.
+                chunk = self.rfile.read1(min(remaining, 8192))
+                if not chunk:
+                    return False
+                remaining -= len(chunk)
+            return time.monotonic() <= deadline
+        except OSError:
+            return False
+        finally:
+            self.connection.settimeout(previous_timeout)
+
     def read_json_request(self, *, max_bytes: int = 64 * 1024 * 1024) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > max_bytes:
@@ -3847,6 +3939,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(request, dict):
             raise ValueError("请求内容必须是对象")
         return request
+
+    def read_ass_render_request(self) -> dict:
+        # Existing clients can put the token in the JSON body. Verify the
+        # header first before accepting a body beyond the old size limit.
+        if int(self.headers.get("Content-Length", "0")) > MAX_UNVERIFIED_ASS_REQUEST_BYTES:
+            self._check_request_token({"requestToken": self.headers.get("X-MAW-Request-Token")})
+        return self.read_json_request(max_bytes=MAX_ASS_REQUEST_BYTES)
 
     def open_recent_project(self) -> None:
         try:
@@ -3964,13 +4063,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         （base64）。只渲染服务器当前绑定的媒体；页面令牌与其它状态接口一致。
         """
         try:
-            request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
+            request = self.read_ass_render_request()
             self._check_request_token(request)
             ass_text = request.get("ass")
             if not isinstance(ass_text, str) or not ass_text.strip():
                 raise ValueError("缺少 ASS 字幕内容")
-            if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
-                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            if len(ass_text.encode("utf-8")) > MAX_ASS_TEXT_BYTES:
+                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_TEXT_BYTES // (1024 * 1024)} MB")
             time_ms = request.get("timeMs")
             if (isinstance(time_ms, bool) or not isinstance(time_ms, int)
                     or not 0 <= time_ms <= 9_007_199_254_740_991):
@@ -3995,7 +4094,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 )
             png_bytes, warnings = render_ass_frame_png(media_path, ass_text, time_ms, ffmpeg)
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)}, close_connection=True)
             return
         except (UnicodeDecodeError, json.JSONDecodeError, AssFrameError, ValueError, OSError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error),
@@ -4107,7 +4206,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/exports/gap-removed-video/jobs/"):
             self.gap_removed_video_job_request(path, include_body=include_body)
             return
-        if path.startswith("/api/exports/burned-video/jobs/"):
+        if path == BURN_JOBS + "/host-proof":
+            native_host_proof(self, include_body=include_body)
+            return
+        if path.startswith(BURN_JOBS + "/"):
             self.burn_video_job_request(path, include_body=include_body)
             return
         if path == "/api/prproj-capability":
@@ -4158,6 +4260,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.startup_status_payload(),
                 defer_reapeaks=self.editor_server.defer_reapeaks,
                 project_binding=project_binding,
+                native_burn=self.editor_server.native_burn is not None,
             )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -4201,12 +4304,17 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_localized_error(HTTPStatus.NOT_FOUND, "未知资源")
 
-    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True) -> None:
+    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True,
+                  close_connection: bool = False) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if close_connection:
+            self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         if include_body:
             self.wfile.write(body)
@@ -4422,6 +4530,7 @@ def open_editor_server(
 
 def main() -> int:
     configure_utf8_stdio()
+    native_host = BurnHostClient.from_environment(os.environ)
     parser = argparse.ArgumentParser(
         description="启动 MAWE localhost 编辑器（与自包含 HTML 共用 web/ 源码，支持媒体 Range seek）",
     )
@@ -4513,6 +4622,8 @@ def main() -> int:
     if port_advanced:
         print(f"[serve] 端口 {DEFAULT_EDITOR_PORT} 已被占用，已改用 {server.server_address[1]}")
     with server:
+        if native_host is not None:
+            server.native_burn = NativeBurnJobs(BurnSessions(native_host))
         host, port = server.server_address[:2]
         url = f"http://{host}:{port}/"
         print("MAWE 已启动（仅本机可访问）")

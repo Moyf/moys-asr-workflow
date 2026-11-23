@@ -30,6 +30,7 @@ import threading
 import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
 from typing import Final, TextIO
@@ -44,6 +45,7 @@ from maw.gui_platform import (
     restore_host_library_path,
     terminate_process_tree,
 )
+from maw.local_log import redact_sensitive_text
 from maw.runtime_manifest import (
     STATUS_BROKEN,
     STATUS_INSTALLING,
@@ -51,7 +53,7 @@ from maw.runtime_manifest import (
     read_runtime_manifest,
     write_runtime_manifest,
 )
-from maw.runtime_mirror_picker import probe_index_reachable, ranked_mirrors
+from maw.runtime_mirror_picker import FALLBACK_SOURCE, configured_sources, probe_index_reachable, ranked_mirrors
 from maw.runtimes import freezer, pathwin
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
@@ -619,10 +621,11 @@ class ManagedRuntime:
             # pip/uv 只会在无关包上报模糊的版本解析错误，甚至重试数小时后才
             # 整体失败（#127 的 msgpack 案例）。先做轻量探测，失败立刻给出
             # 可操作提示，把两小时的盲等换成一目了然的失败原因。
-            emit(f"正在检查 PyTorch 依赖源可达性：{extra_index}", 25, "dependencies")
+            extra_label = _index_label(extra_index)
+            emit(f"正在检查 PyTorch 依赖源可达性：{extra_label}", 25, "dependencies")
             if not probe_index_reachable(extra_index):
                 raise self._error(
-                    f"PyTorch 依赖源当前不可达：{extra_index}。"
+                    f"PyTorch 依赖源当前不可达：{extra_label}。"
                     "GPU 版 Torch 只能从该源安装，pip 解析其他依赖时也会访问它，"
                     "继续执行只会以无关包的版本解析错误失败。请检查网络或代理后"
                     "重试；若该源在你的网络环境长期不可达，可设置环境变量 "
@@ -631,7 +634,14 @@ class ManagedRuntime:
         # 镜像测速给出排序候选；网络类失败（限频/超时/连接中断）时逐个换源
         # 重试，把「镜像抽风」从装失败降级成慢一点但能装上。测速明确失败的
         # 源不会出现在候选里；MAW_PIP_INDEX 只配一个源时自然只尝试一次。
-        mirror_attempts = ranked_mirrors()[:MIRROR_RETRY_ATTEMPTS]
+        configured = configured_sources()
+        official = next((url for url in configured if _is_official_index(url)), None) if configured else FALLBACK_SOURCE
+        ranked = ranked_mirrors()
+        # 显式配置可能列了多个官方 URL 变体；只保留测速排名最靠前的那个。
+        ranked_official = next((url for url in ranked if _is_official_index(url)), None)
+        mirror_attempts = list(dict.fromkeys(
+            url for url in ranked if not _is_official_index(url) or url == ranked_official
+        ))[:MIRROR_RETRY_ATTEMPTS]
 
         def build_install_command(index_url: str) -> list[str]:
             """用当前 index_url 重建安装命令，三分支与 CPU fallback 共用。"""
@@ -660,8 +670,12 @@ class ManagedRuntime:
             )
 
         mirror_failures: list[tuple[str, str]] = []
+        official_tried = False
+        official_network_failed = False
         for attempt_number, index_url in enumerate(mirror_attempts, start=1):
             _may_cancel(cancel, spec)
+            is_official = _is_official_index(index_url)
+            official_tried |= is_official
             if mirror_failures:
                 failed_url, failed_summary = mirror_failures[-1]
                 emit(
@@ -671,26 +685,112 @@ class ManagedRuntime:
                     25,
                     "dependencies",
                 )
+            mtime = datetime.fromtimestamp(requirements_arg.stat().st_mtime, tz=timezone.utc).isoformat()
+            extra_display = f"；额外源：{_index_label(extra_index)}" if extra_index else ""
+            emit(
+                f"依赖清单：{requirements_arg}（mtime={mtime}）；主源：{_index_label(index_url)}{extra_display}",
+                25,
+                "dependencies",
+            )
+            report = _dependency_line(emit, requirements_arg)
+            content_failure = None
+            in_hard_error = False
+            streamed_extra_failure = False
+            pip_lookup = _PipIndexLookup(index_url) if frozen else None
+            pip_extra_lookup = _PipIndexLookup(extra_index) if frozen and extra_index else None
+
+            def on_install_line(line: str) -> None:
+                # 最终八行可能截掉 pip 哈希标题或 uv 的错误链。仅从最后一个
+                # 明确的错误及其续行保留信号，不把先前的重试警告当成归因。
+                nonlocal content_failure, in_hard_error, streamed_extra_failure
+                if _INSTALL_HARD_ERROR_PATTERN.match(line):
+                    in_hard_error = True
+                    content_failure = None
+                    streamed_extra_failure = False
+                elif line.strip() and not _INSTALL_ERROR_CONTINUATION_PATTERN.match(line):
+                    in_hard_error = False
+                if in_hard_error and not _INSTALL_WARNING_PATTERN.search(line):
+                    content_failure = _dependency_content_failure(line) or content_failure
+                    streamed_extra_failure |= _failure_blames_extra_index(line, extra_index)
+                if pip_lookup is not None:
+                    pip_lookup.observe(line)
+                if pip_extra_lookup is not None:
+                    pip_extra_lookup.observe(line)
+                if pip_lookup is None or in_hard_error or _PIP_PROGRESS_PATTERN.match(line):
+                    report(_redact_install_output(line))
+
             try:
                 self.run(
                     build_install_command(index_url),
                     env=self.environment(root, model_cache_root),
                     cancel=cancel,
-                    on_line=_dependency_line(emit, requirements_arg),
+                    on_line=on_install_line,
                 )
             except spec.cancelled_class:
                 # 取消优先于换源：cancelled 是 error 的子类，必须先放行。
                 raise
             except spec.error_class as error:
-                deterministic = not _looks_like_network_failure(error)
-                blames_extra = _failure_blames_extra_index(error, extra_index)
-                if deterministic or blames_extra:
-                    # 确定性错误（版本解析/无候选版本）换源无效；extra index
-                    # 归因的失败换主源同样无效——两者都保持直报。
+                _may_cancel(cancel, spec)
+                terminal = str(error)
+                detail = _redact_install_output(terminal)
+                blames_primary = any(
+                    _NETWORK_FAILURE_PATTERN.search(line) and _failure_blames_extra_index(line, index_url)
+                    for line in terminal.splitlines()
+                )
+                # pip -vv 会列出索引和链接；这些 URL 不是 extra index 的终止错误。
+                extra_detail = terminal if pip_lookup is None else "\n".join(
+                    line for line in terminal.splitlines() if not _PIP_LOOKUP_TRACE_PATTERN.search(line)
+                )
+                content_failure = _dependency_content_failure(terminal) or (None if blames_primary else content_failure)
+                blames_extra = _failure_blames_extra_index(extra_detail, extra_index) or (
+                    streamed_extra_failure and not blames_primary
+                ) or (
+                    # pip 会把 CUDA wheel 索引的查询失败降级成「找不到版本」。
+                    # 普通包也会查询这个索引，但失败不代表主源无法提供它们。
+                    pip_extra_lookup is not None and pip_extra_lookup.cuda_pinned
+                    and pip_extra_lookup.network_summary is not None
+                    and content_failure is not None and content_failure != _HASH_MISMATCH_REASON
+                )
+                if blames_extra:
+                    raise self._error(
+                        f"{detail}\n请检查 PyTorch 源或代理；也可设置 MAW_PYTORCH_INDEX 指向可达的 PyTorch 镜像后重试。"
+                    ) from None
+                pip_network_summary = (
+                    pip_lookup.network_summary
+                    if pip_lookup is not None and content_failure and content_failure != _HASH_MISMATCH_REASON
+                    else None
+                )
+                if content_failure and not pip_network_summary:
+                    if official and not official_tried:
+                        # 将官方提到下一位（不在前三则插入一次）。官方若遇网络
+                        # 错误，继续原队列，不补入测速前三以外的普通镜像。
+                        remaining = mirror_attempts[attempt_number:]
+                        for offset, pending_url in enumerate(remaining):
+                            if _is_official_index(pending_url):
+                                official = remaining.pop(offset)
+                                break
+                        mirror_attempts[attempt_number:] = [official, *remaining]
+                        mirror_failures.append((index_url, content_failure))
+                        continue
+                    if official_network_failed:
+                        # 官方未能验证锁定内容，继续用原队列，不能再试官方或补入新镜像。
+                        if attempt_number < len(mirror_attempts):
+                            mirror_failures.append((index_url, content_failure))
+                            continue
+                        hint = "官方 PyPI 遇到网络错误，未能验证清单内容。请检查网络或代理后重试；若仍失败，请附上安装日志反馈。"
+                    elif official_tried:
+                        hint = "官方 PyPI 已尝试。请确认 MAW 为最新版本；若仍失败，请附上安装日志和清单路径反馈。"
+                    else:
+                        hint = f"可设置 MAW_PIP_INDEX={FALLBACK_SOURCE} 后重试；若仍失败，请附上安装日志反馈。"
+                    raise self._error(f"{detail}\n{content_failure}。{hint}") from None
+                if not pip_network_summary and not _looks_like_network_failure(error):
+                    if detail != terminal:
+                        raise self._error(detail) from None
                     raise
-                mirror_failures.append((index_url, _network_failure_summary(error)))
+                official_network_failed |= is_official
+                mirror_failures.append((index_url, pip_network_summary or _network_failure_summary(error)))
                 if attempt_number >= len(mirror_attempts):
-                    raise self._error(_mirror_retry_exhausted_message(mirror_failures)) from error
+                    raise self._error(_mirror_retry_exhausted_message(mirror_failures)) from None
                 continue
             break
         else:  # pragma: no cover - ranked_mirrors 恒非空，防御性保留
@@ -1052,7 +1152,7 @@ def _venv_pip_install_command(
 ) -> list[str]:
     """Build the pip install command inside a host venv（无 --target，直装 venv）。"""
     command = [
-        str(python_exe), "-m", "pip", "install", "--upgrade",
+        str(python_exe), "-m", "pip", "install", "--upgrade", "-vv",
         "--index-url", index_url,
     ]
     if extra_index_url:
@@ -1073,7 +1173,7 @@ def _pip_install_command(
 ) -> list[str]:
     """Build a pip install --target command for the managed runtime."""
     command = [
-        str(python_exe), "-m", "pip", "install", "--upgrade",
+        str(python_exe), "-m", "pip", "install", "--upgrade", "-vv",
         "--target", str(target_dir),
         "--index-url", index_url,
     ]
@@ -1134,8 +1234,7 @@ def _resolve_extra_index(extra_index: str | None) -> str | None:
 #: 措辞——uv 的 HTTP 与状态码之间隔着「status client error」，不能沿用 pip
 #: 的邻接写法；uv 的超时/断连措辞（operation timed out、connection refused、
 #: Failed to fetch）与 pip/urllib3（ReadTimeoutError、ConnectionError 等）
-#: 并列收录。命中才值得换源重试；「No matching distribution」等确定性错误
-#: 换源无效，不在此列。404（pip 与 uv 均有对应形态）有意排除。
+#: 并列收录。缺候选/哈希不匹配另行分类。404（pip 与 uv 均有对应形态）有意排除。
 _NETWORK_FAILURE_PATTERN = re.compile(
     r"HTTP(?:\s+Error)?\s*(?:403|429|5\d\d)"
     r"|HTTP\s+status(?:\s+client\s+error)?\s*\(?\s*(?:403|429|5\d\d)"
@@ -1145,8 +1244,101 @@ _NETWORK_FAILURE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-#: 换源重试的总尝试次数上限（最快源 + 2 个候补）。
+#: 网络换源尝试次数上限（最快源 + 2 个候补）；内容错误可额外尝试一次官方源。
 MIRROR_RETRY_ATTEMPTS = 3
+
+_HASH_MISMATCH_REASON = "下载文件与清单哈希不匹配"
+_HASH_MISMATCH_PATTERN = re.compile(
+    r"do not match the hashes from the requirements file|\bhash mismatch\b", re.IGNORECASE,
+)
+_MISSING_CANDIDATE_PATTERN = re.compile(
+    # pip 的两条错误；uv resolver 的具体原因（不是泛化的 No solution found）。
+    r"Could not find a version that satisfies the requirement|No matching distribution found for"
+    r"|(?:there (?:is|are) no (?:available )?versions? of|was not found in the package registry)\b"
+    r"|only (?:the following versions of .+ are available|\S+==\S+ is available)\b",
+    re.IGNORECASE,
+)
+_INSTALL_HARD_ERROR_PATTERN = re.compile(r"^\s*(?:error:|[×✗]\s)", re.IGNORECASE)
+_INSTALL_ERROR_CONTINUATION_PATTERN = re.compile(r"^(?:\s+|[│├╰]|Caused by:)", re.IGNORECASE)
+# runner 的退出码前缀可能紧贴第一行的 WARNING。
+_INSTALL_WARNING_PATTERN = re.compile(r"(?:^|）。)\s*warning:", re.IGNORECASE)
+# Apostrophes and parentheses are valid in URL credentials and query values.
+_HTTP_URL_PATTERN = re.compile(r"https?://[^\s\"<>`]+", re.IGNORECASE)
+
+_PIP_LOOKUP_PATTERN = re.compile(r"^(Could not fetch URL|Fetched page) (\S+?)(?=:\s|\s)(.*)$")
+_PIP_LOOKUP_TRACE_PATTERN = re.compile(
+    r"(?:^|）。)\s*(?:Could not fetch URL |Fetched page |Getting page |Fetching project page |"
+    r"Found index url |Found link |Skipping link:|\* https?://)",
+)
+_PIP_MISSING_PATTERN = re.compile(
+    r"^ERROR: (?:Could not find a version that satisfies the requirement|No matching distribution found for) "
+    r"([A-Za-z0-9_.-]+)(==[^\s(;]+)?(?=[<>=!~\[\s(;]|$)",
+)
+_PIP_CUDA_PIN_PATTERN = re.compile(r"==[0-9][A-Za-z0-9.!_-]*\+cu[0-9]+", re.IGNORECASE)
+_PIP_LOOKUP_HTTP_FAILURE_PATTERN = re.compile(r"^:\s*(?:403|429) Client Error:")
+_PIP_PROGRESS_PATTERN = re.compile(
+    r"^\s*(?:WARNING:|ERROR:|Looking in indexes:|Collecting |Downloading |Using cached |"
+    r"Processing |Requirement already satisfied:|Installing |Successfully )",
+)
+
+
+class _PipIndexLookup:
+    """Correlate pip -vv's final lookup outcome with the exact missing project."""
+
+    def __init__(self, index_url: str) -> None:
+        self.prefix = _index_label(index_url).rstrip("/") + "/"
+        self.failures: dict[str, str] = {}
+        self.fetched: set[str] = set()
+        self.missing: str | None = None
+        self.cuda_pinned = False
+
+    def observe(self, line: str) -> None:
+        if match := _PIP_MISSING_PATTERN.match(line):
+            self.missing = re.sub(r"[-_.]+", "-", match[1]).lower()
+            self.cuda_pinned = self.missing in {"torch", "torchaudio"} and bool(
+                _PIP_CUDA_PIN_PATTERN.fullmatch(match[2] or "")
+            )
+            # (from versions: ...) aggregates every index and cannot establish
+            # that this specific index answered for the project.
+            return
+        if _INSTALL_HARD_ERROR_PATTERN.match(line):
+            self.missing = None
+            self.cuda_pinned = False
+        if not (match := _PIP_LOOKUP_PATTERN.match(line)):
+            return
+        operation, url, detail = match.groups()
+        page = _index_label(url).rstrip("/")
+        if not page.startswith(self.prefix):
+            return
+        project = page[len(self.prefix):]
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", project):
+            return
+        project = re.sub(r"[-_.]+", "-", project).lower()
+        # Relative Retry warnings do not say if the last attempt succeeded,
+        # nor distinguish main/extra with identical paths. Use the full URL
+        # in pip's debug outcome instead. HTTP 404 is not a network error.
+        if operation == "Fetched page":
+            self.fetched.add(project)
+        elif detail.endswith(" - skipping") and (
+            _NETWORK_FAILURE_PATTERN.search(detail)
+            or _PIP_LOOKUP_HTTP_FAILURE_PATTERN.match(detail)
+            or "didn't respond within" in detail or "Read timed out" in detail
+        ):
+            self.failures[project] = _redact_install_output(line)[:160]
+
+    @property
+    def network_summary(self) -> str | None:
+        if self.missing is not None and self.missing not in self.fetched:
+            return self.failures.get(self.missing)
+        return None
+
+
+def _dependency_content_failure(text: str) -> str | None:
+    if _HASH_MISMATCH_PATTERN.search(text):
+        return _HASH_MISMATCH_REASON
+    if _MISSING_CANDIDATE_PATTERN.search(text):
+        return "当前源未提供符合锁定版本及当前平台的候选包"
+    return None
 
 
 def _looks_like_network_failure(error: BaseException) -> bool:
@@ -1154,7 +1346,7 @@ def _looks_like_network_failure(error: BaseException) -> bool:
     return bool(_NETWORK_FAILURE_PATTERN.search(str(error)))
 
 
-def _failure_blames_extra_index(error: BaseException, extra_index: str | None) -> bool:
+def _failure_blames_extra_index(error: BaseException | str, extra_index: str | None) -> bool:
     """判断失败是否归因于 PyTorch extra index 本身。
 
     主源换掉救不了 extra 不可达（GPU 轮子只有一个来源），此时换源重试只会
@@ -1166,34 +1358,54 @@ def _failure_blames_extra_index(error: BaseException, extra_index: str | None) -
     """
     if not extra_index:
         return False
-    prefix = extra_index.rstrip("/").lower()
-    for match in re.finditer(r"https?://[^\s\"'()\[\]]+", str(error)):
-        url = match.group(0).rstrip("/").lower()
-        if url == prefix or url.startswith(prefix + "/"):
-            return True
+    prefix = _index_label(extra_index).rstrip("/").lower()
+    for line in str(error).splitlines():
+        if "looking in indexes:" in line.lower() or _INSTALL_WARNING_PATTERN.search(line):
+            continue  # 源列表和可恢复的警告不是失败归因。
+        for match in _HTTP_URL_PATTERN.finditer(line):
+            url = _index_label(match.group(0)).rstrip("/:,").lower()
+            if url != "<无效源>" and (url == prefix or url.startswith(prefix + "/")):
+                return True
     return False
 
 
 def _network_failure_summary(error: BaseException) -> str:
     """从失败输出里压缩出一行可读摘要（优先取命中网络特征的那一行）。"""
-    text = str(error)
+    text = _redact_install_output(str(error))
     for line in text.splitlines():
         if _NETWORK_FAILURE_PATTERN.search(line):
             return line.strip()[:160] or "未知错误"
     return text.strip()[:160] or "未知错误"
 
 
+def _index_label(index_url: str) -> str:
+    """显示索引的地址，去掉 URL 的 userinfo、查询参数与 fragment。"""
+    try:
+        url = urlparse(index_url)
+        if url.scheme in {"http", "https"} and url.hostname:
+            return f"{url.scheme}://{url.netloc.rsplit('@', 1)[-1]}{url.path}"
+    except ValueError:
+        pass
+    return "<无效源>"
+
+
+def _is_official_index(index_url: str) -> bool:
+    return _index_label(index_url).lower().rstrip("/") in {FALLBACK_SOURCE, "https://pypi.org:443/simple"}
+
+
+def _redact_install_output(text: str) -> str:
+    return redact_sensitive_text(_HTTP_URL_PATTERN.sub(lambda match: _index_label(match.group(0)), text))
+
+
 def _mirror_label(index_url: str) -> str:
-    """镜像的用户可读短名（主机名；解析失败退回完整 URL）。"""
-    host = urlparse(index_url).netloc
-    return host or index_url
+    return urlparse(_index_label(index_url)).netloc or "<无效源>"
 
 
 def _mirror_retry_exhausted_message(failures: list[tuple[str, str]]) -> str:
     """全部候选源用尽后的错误正文：列出已尝试源与各自失败摘要 + 自救指引。"""
     lines = ["依赖安装失败：所有候选镜像源均不可用。已尝试："]
     for number, (index_url, summary) in enumerate(failures, start=1):
-        lines.append(f"{number}. {index_url} — {summary}")
+        lines.append(f"{number}. {_index_label(index_url)} — {summary}")
     lines.append("网络恢复后可直接重试；也可设置环境变量 MAW_PIP_INDEX 指定可用的镜像源（逗号分隔多个候选）后再试。")
     return "\n".join(lines)
 

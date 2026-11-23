@@ -49,6 +49,10 @@ test('ASS cache retains raw identity but invalidates equal-text selections with 
   const changed = context.revision([[second], [], []], identities);
   assert.equal(changed, initial + 1, 'equal cue text/timing still observes retained item selection');
   assert.equal(context.revision(identities, identities), changed + 1, 'restoration invalidates projected plan');
+  raw.items = [{ text: raw.text, start: 500, end: 2000 }];
+  const timed = context.revision(identities);
+  raw.items = [{ ...raw.items[0], start: 1500 }];
+  assert.equal(context.revision(identities), timed + 1, 'moving a raw word boundary invalidates the karaoke preview');
 });
 
 function runtime() {

@@ -8,6 +8,7 @@ from maw.speaker_identity import can_merge_speaker_segments
 import copy
 import json
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -74,11 +75,12 @@ def source_units(segment: JsonDict, source: int) -> list[Unit]:
     valid = spans is not None and all(
         type(i.get("start")) is int
         and type(i.get("end")) is int
-        and int(segment["start"]) <= i["start"] < i["end"] <= int(segment["end"])
+        and int(segment["start"]) <= i["start"] <= i["end"] <= int(segment["end"])
+        and (i["start"] < i["end"] or all(unicodedata.category(c).startswith("P") or c.isspace() for c in str(i.get("text") or "")))
         and (index == 0 or items[index - 1]["end"] <= i["start"])
         for index, i in enumerate(items)
     )
-    if not valid:
+    if not valid or items[0]["start"] >= items[-1]["end"]:
         return [
             Unit(cue_id, text, source, int(segment["start"]), int(segment["end"]), None)
         ]
@@ -97,6 +99,24 @@ def source_units(segment: JsonDict, source: int) -> list[Unit]:
         )
         for index, i in enumerate(items)
     ]
+
+
+def merged_source_items(
+    sources: Sequence[JsonDict], indexes: Sequence[int], text: str, start: int, end: int,
+) -> list[JsonDict] | None:
+    if list(indexes) != sorted(set(indexes)) or text != "".join(str(sources[i].get("text") or "") for i in indexes):
+        return None
+    items: list[JsonDict] = []
+    previous_end = start
+    for index in indexes:
+        for unit in source_units(sources[index], index):
+            if unit.item is None or not previous_end <= unit.start <= unit.end <= end:
+                return None
+            items.append(unit.item)
+            previous_end = unit.end
+    if item_text_spans(text, items) is None:
+        return None
+    return copy.deepcopy(items)
 
 
 def boundary_prompt(max_chars: int, notes: str = "") -> str:
@@ -196,6 +216,8 @@ def parse_boundaries(
                 ends.append(char_ends[cursor])
     if not ends or ends[-1] != len(units) or ends != sorted(set(ends)):
         raise ValueError("断点必须唯一、递增且包含最后一个单元；不能遗漏尾部。")
+    if any(units[start].start >= units[end - 1].end for start, end in zip([0, *ends[:-1]], ends)):
+        raise ValueError("断点不能生成零时长字幕。")
     invalid = []
     for end in ends[:-1]:
         # Existing source-cue boundaries are already legal recovery points.
@@ -272,12 +294,17 @@ def limit_groups(
     """Find legal cuts with a bounded dynamic program, avoiding tiny tails."""
     if not maximum or char_count("".join(u.text for u in group)) <= maximum:
         return [group], False
-    # Adjacent numeric fragments form one indivisible unit for local splitting.
+    # Adjacent numeric fragments and zero-duration punctuation must remain
+    # attached to a timed unit when finding local cuts.
     blocks: list[list[Unit]] = []
     for index, unit in enumerate(group):
-        if blocks and not safe_boundary(
-            "".join(u.text for u in blocks[-1]),
-            "".join(u.text for u in group[index : index + 3]),
+        if blocks and (
+            unit.start == unit.end
+            or blocks[-1][0].start >= blocks[-1][-1].end
+            or not safe_boundary(
+                "".join(u.text for u in blocks[-1]),
+                "".join(u.text for u in group[index : index + 3]),
+            )
         ):
             blocks[-1].append(unit)
         else:
@@ -288,6 +315,8 @@ def limit_groups(
         length = 0
         for start in range(end - 1, -1, -1):
             length += sum(char_count(u.text) for u in blocks[start])
+            if blocks[start][0].start >= blocks[end - 1][-1].end:
+                continue
             if length > maximum and start != end - 1:
                 break
             punctuation = blocks[end - 1][-1].text.rstrip()[-1:]

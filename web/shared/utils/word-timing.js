@@ -21,7 +21,7 @@ export function createWordTiming(dependencies) {
     };
   }
 
-  function getWordTimingEntries(segment, timing) {
+  function getWordTimingEntries(segment, timing, characterOwners = null) {
     const clock = wordClock(timing);
     const lower = clock.getStart(segment), upper = clock.getEnd(segment);
     const entries = [];
@@ -35,7 +35,8 @@ export function createWordTiming(dependencies) {
       entries.push({ index, item: cloneJsonValue(item), start, end, text: item.text });
       previousEnd = end;
     });
-    const texts = wordTextsFromSource(segment?.text, entries) || partialWordTextsFromSource(segment?.text, entries);
+    const texts = wordTextsFromSource(segment?.text, entries, characterOwners)
+      || partialWordTextsFromSource(segment?.text, entries, characterOwners);
     if (texts) entries.forEach((entry, index) => { entry.text = texts[index]; });
     return entries;
   }
@@ -106,7 +107,7 @@ export function createWordTiming(dependencies) {
 
   // Reattach neutral characters from the sentence without inventing time.
   // Require an exact audible sequence, including repeated words, before mapping.
-  function wordTextsFromSource(text, entries) {
+  function wordTextsFromSource(text, entries, characterOwners = null) {
     if (!entries.length) return null;
     const source = Array.from(String(text || ''));
     const counts = entries.map(entry => audible(entry.item.text).length);
@@ -130,6 +131,7 @@ export function createWordTiming(dependencies) {
         used = 0;
       }
       texts[owner] += ch;
+      characterOwners?.push(owner);
       if (!neutral(ch)) used += 1;
     }
     return texts;
@@ -137,7 +139,7 @@ export function createWordTiming(dependencies) {
 
   // Missing audible text stays on the sentence background. Project only when
   // earliest and latest ordered matches agree, so repeated text is unambiguous.
-  function partialWordTextsFromSource(text, entries) {
+  function partialWordTextsFromSource(text, entries, characterOwners = null) {
     if (!entries.length) return null;
     const source = Array.from(String(text || ''));
     const tokens = audible(text);
@@ -182,8 +184,10 @@ export function createWordTiming(dependencies) {
         const forced = forcedOwners.get(offset);
         if (forced !== undefined && forced > owner) owner = forced;
         texts[owner] += token;
+        characterOwners?.push(owner);
       } else {
         const matchedOwner = owners.get(audibleIndex++);
+        characterOwners?.push(matchedOwner ?? -1);
         if (matchedOwner === undefined) continue;
         owner = matchedOwner;
         texts[owner] += token;

@@ -39,7 +39,12 @@ function moveSettingsFocus(event) {
 }
 function openSettings(sectionId = "", focusId = "") {
   selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);
-  $("settingsModal").classList.remove("hidden");
+  const modal = $("settingsModal");
+  modal.classList.remove("hidden");
+  const notice = $("errorNotice");
+  const reportScroll = state.errorReport?.localRuntimeInstall && !notice.classList.contains("hidden")
+    ? placeErrorNoticeInSettings(notice) : null;
+  if (reportScroll) reportScroll.scrollTop = 0;
   refreshFfmpeg();
   void refreshOcrRuntime();
   renderStickerCurrent();
@@ -54,19 +59,43 @@ function openSettings(sectionId = "", focusId = "") {
   $("maxLen").value = state.config.maxLen || "";
   $("minWords").value = state.config.minWords || "";
   $("maxWords").value = state.config.maxWords || "";
-  if (sectionId) {
+  if (sectionId || reportScroll) {
     requestAnimationFrame(() => {
+      if (modal.classList.contains("hidden")) return;
+      const noticeScroll = notice.closest("#settingsModal .settings-scroll");
+      if (noticeScroll) {
+        // Keep the report at the top even for shortcuts to lower sections.
+        noticeScroll.scrollTop = 0;
+        const target = focusId ? $(focusId) : null;
+        // Focus the requested control only if visible; otherwise Tab from the active tab reaches the report first.
+        const targetBox = target?.getBoundingClientRect();
+        const viewport = noticeScroll.getBoundingClientRect();
+        if (targetBox?.height && targetBox.top >= viewport.top && targetBox.bottom <= viewport.bottom) {
+          target.focus({ preventScroll: true });
+          if (document.activeElement === target) return;
+        }
+        modal.querySelector('[data-settings-tab][aria-selected="true"]')?.focus({ preventScroll: true });
+        return;
+      }
       // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
       // .modal-card，把标题和标签页顶出视野，区块位于容器顶部时表现为下坠一小段。
       const section = $(sectionId);
       const scroll = section?.closest(".settings-scroll");
       if (section && scroll) scroll.scrollTo({ top: Math.max(0, section.offsetTop - scroll.offsetTop), behavior: "smooth" });
-      if (focusId) requestAnimationFrame(() => $(focusId)?.focus());
+      if (focusId) requestAnimationFrame(() => {
+        if (!modal.classList.contains("hidden") && !modal.contains(notice)) $(focusId)?.focus();
+      });
     });
   }
 }
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
+  const notice = document.querySelector("#settingsModal #errorNotice");
+  if (notice) {
+    restoreMainErrorNotice(notice);
+    $("settingsButton").focus({ preventScroll: true });
+    revealErrorNotice(notice);
+  }
   window.MAWLauncher?.onSettingsClosed?.();
 }
 async function openServerEditor() {
@@ -75,7 +104,7 @@ async function openServerEditor() {
   if (state.serverStarting) return;
   const projectPath = $("jsonPath").value.trim();
   const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
-  if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await bridge("open_url", { url: currentUrl }); return; }
+  if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await openEditorInBrowser(currentUrl); return; }
   const restartProjectPath = serverRestartProjectPath;
   serverStatusRequest += 1;
   state.serverStarting = true;
@@ -107,7 +136,7 @@ async function openServerEditor() {
         } else {
           setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
           startServerStatusMonitor();
-          await bridge("open_url", { url: result.url });
+          await openEditorInBrowser(result.url);
         }
       } else setStatus(t("ready"));
     } else {
@@ -117,6 +146,11 @@ async function openServerEditor() {
     state.serverStarting = false;
     renderServerButton();
   }
+}
+
+async function openEditorInBrowser(url) {
+  const result = await bridge("open_url", { url, editor: true });
+  if (!result.ok) applyErrorResult(result);
 }
 
 function refreshStartupState() {

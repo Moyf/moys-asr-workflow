@@ -85,6 +85,10 @@ function notifySingleFailure(event) {
 }
 
 function handleBackendEvent(event) {
+  if (event.type === "editorShutdownPending") {
+    setStatus(errText("server_stop_pending"));
+    return;
+  }
   if (event.type === "batch_started" || event.type === "batchStarted") {
     resetBatchNotification(event.total);
   }
@@ -163,6 +167,7 @@ function handleBackendEvent(event) {
     state.localRuntimeProgressMessage = "";
     renderLocalRuntime();
     if (wasInstalling) {
+      if (state.errorReport?.localRuntimeInstall) hideErrorNotice();
       void refreshLocalModels();
       if (!isLocalProvider()) void refreshLocalRuntime();
       void refreshAlignmentModels();
@@ -239,7 +244,13 @@ function handleBackendEvent(event) {
       void refreshLocalModels();
       if (!isLocalProvider()) void refreshLocalRuntime();
       renderLocalRuntime();
-      if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (event.code === "local_runtime_cancelled") {
+        setStatus(t("local_runtime_cancelled"));
+        appendLog(t("local_runtime_cancelled"));
+        if (event.detail) appendLog(`[detail] ${redactSensitive(event.detail)}`);
+        return;
+      }
+      if ($("settingsModal").classList.contains("hidden")) $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else {
       return;
     }
@@ -269,7 +280,9 @@ function handleBackendEvent(event) {
     setStatus(message);
     if (detail) appendLog(`[detail] ${detail}`);
     if (diagnostics) appendLog("[diagnostics] " + diagnostics);
-    showErrorNotice(message, event.code || "", detail, diagnostics, event.errorContext);
+    showErrorNotice(message, event.code || "", detail, diagnostics, event.errorContext, {
+      localRuntimeInstall: event.code === "local_runtime_install_failed",
+    });
     renderLocalModelStatus();
   }
   if (event.type === "done") {
@@ -397,7 +410,22 @@ for (const [buttonId, modelId] of [
 $("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));
 $("openLanguageSettings").addEventListener("click", () => openSettings("settingsLanguageSection"));
 $("saveDashscopeRegionSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (!result.ok) { applyErrorResult(result); return; } state.config.region = payload.region; state.config.workspaceId = payload.workspaceId; setStatus(t("saved")); });
-$("installLocalRuntime").addEventListener("click", async () => { const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: localRuntimeModelId(), repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+$("installLocalRuntime").addEventListener("click", async () => {
+  const runtime = state.config?.localRuntime || {};
+  if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; }
+  state.localRuntimeInstalling = true;
+  state.localRuntimeProgress = 0;
+  state.localRuntimeProgressMessage = t("local_runtime_installing");
+  renderLocalRuntime();
+  appendLog(t("local_runtime_installing"));
+  const result = await bridge("install_local_runtime", { modelId: localRuntimeModelId(), repair: Boolean(runtime.status && runtime.status !== "missing") });
+  if (!result.ok) {
+    state.localRuntimeInstalling = false;
+    state.localRuntimeProgressMessage = "";
+    applyErrorResult(result, true, { localRuntimeInstall: true });
+    renderLocalRuntime();
+  }
+});
  $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
  $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
 $("recognitionAlignmentModel").addEventListener("change", () => { state.alignmentModelSelection = $("recognitionAlignmentModel").value; setError("recognitionAlignmentModel", ""); renderLocalAlignmentModel(); });
