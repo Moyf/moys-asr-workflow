@@ -16,6 +16,17 @@ def project():
 
 
 class ScriptMatchGroupRetentionTests(unittest.TestCase):
+    def test_equal_count_after_anchor_filter_cannot_reassign_bound_identity(self):
+        original = project()
+        main = get_main_track(original)["segments"]
+        bound = main[0]
+        bound.update(text="戊己", items=[{"start": 1200, "end": 2300, "text": "戊己"}])
+        for index, start, end, text in [(0, 0, 1000, "甲乙丙丁"), (2, 4000, 5000, "庚辛")]:
+            main.insert(index, {"id": f"other-{index}", "start": start, "end": end, "text": text,
+                                "items": [{"start": start, "end": end, "text": text}]})
+        with self.assertRaisesRegex(AlignmentError, "绑定"):
+            generate_matched_mosp(json.dumps(original), "甲乙\n新\n丙丁\n戊己庚辛", require_cue_anchor=True)
+
     def test_equal_count_keeps_cue_identity_group_and_binding(self):
         original = project()
         original["tracks"][0]["segments"][0]["extra"] = {"value": 1}

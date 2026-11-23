@@ -307,6 +307,7 @@ def _match_project_with_character_timings(
             preserve_punctuation=preserved,
             is_cancelled=is_cancelled,
             reserved_cue_ids={cue["id"] for cue in iter_segments(project)},
+            require_cue_anchor=True,
         )
     except AlignmentError as error:
         raise SubtitleMatchError(str(error)) from error
@@ -321,7 +322,6 @@ def _match_project_with_character_timings(
     raw_matched: JsonValue = json.loads(matched_text)
     if not isinstance(raw_matched, dict):
         raise ValueError("character matcher returned an invalid project")
-    _preserve_equal_count_segment_metadata(matcher_project, raw_matched, is_cancelled=is_cancelled)
     preserved_extras = _merge_unmatched_source_segments(
         get_main_track(matcher_project)["segments"],
         raw_matched,
@@ -338,6 +338,10 @@ def _match_project_with_character_timings(
     warnings: list[str] = [
         f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
     ]
+    if unanchored := _report_integer(report, "unanchored_manuscript_cues"):
+        warnings.append(f"{unanchored} 个文稿段没有对应的原字幕字符，未生成字幕。")
+    if _report_integer(report, "unplaced_manuscript_characters"):
+        warnings.append("部分新增或改写文字没有可靠的独立时间码，已并入同段相邻字词，未拉长字幕时间。")
     if preserved_extras:
         warnings.append(f"已保留 {preserved_extras} 个文稿之外的 ASR 字幕段。")
     return matched, tuple(warnings)
@@ -424,31 +428,6 @@ def _merge_unmatched_source_segments(
     )
     replace_main_segments(matched, combined)
     return len(extras)
-
-
-def _preserve_equal_count_segment_metadata(
-    source: JsonDict,
-    matched: JsonDict,
-    *,
-    is_cancelled: Callable[[], bool] | None = None,
-) -> None:
-    check_match_cancelled(is_cancelled)
-    source_segments = get_main_track(source)["segments"]
-    matched_segments = get_main_track(matched)["segments"]
-    if not isinstance(source_segments, list) or not isinstance(matched_segments, list):
-        return
-    if len(source_segments) != len(matched_segments):
-        return
-    for source_segment, matched_segment in zip(source_segments, matched_segments, strict=True):
-        check_match_cancelled(is_cancelled)
-        if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
-            continue
-        for key in source_segment:
-            if key in {"start", "end", "text", "items", "start_frame", "end_frame"}:
-                continue
-            check_match_cancelled(is_cancelled)
-            if key in source_segment:
-                matched_segment[key] = copy.deepcopy(source_segment[key])
 
 
 def _match_project(
