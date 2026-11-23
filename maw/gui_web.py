@@ -70,6 +70,8 @@ from maw.gui_config import (
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
 from maw.gui_workflow import TEST_RUN_LENGTH_LIMIT, TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
+from maw.gui_workflow import TEST_RUN_KEYFRAME_LIMIT_SEC
+from maw.thumbnail_jobs import LauncherThumbnailQueue
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
 from maw.diagnostics import app_version, error_context
@@ -539,6 +541,7 @@ class LauncherApi:
         self.alignment_script_path: Path | None = None
         self.alignment_media_path: Path | None = None
         self.alignment_gap_remove: dict[str, int | float] | None = None
+        self.alignment_auto_mark_silence = True
         self._media_tool_lock = Lock()
         self.media_tool_process: subprocess.Popen[str] | None = None
         self.media_tool_cancel_event: Event | None = None
@@ -552,6 +555,7 @@ class LauncherApi:
         self._postprocess_operations_lock = Lock()
         self._postprocess_operations: dict[str, _PostprocessOperation] = {}
         self.pump = EventPump(window_getter=self.window_getter)
+        self.thumbnail_queue = LauncherThumbnailQueue(lambda message: self._emit({"type": "log", "message": message}))
         _sync_local_runtime_root(self.paths.env_path)
 
     def _begin_postprocess_operation(
@@ -1282,7 +1286,7 @@ class LauncherApi:
                     extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
-                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols") is True,
                 ),
                 is_cancelled=operation.cancel_event.is_set,
                 begin_commit=operation.begin_commit,
@@ -2030,7 +2034,7 @@ class LauncherApi:
                 match_mode=match_mode,
                 extra_split_punctuation=extra_split,
                 preserve_punctuation=preserve,
-                clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                clean_markdown_symbols=payload.get("cleanMarkdownSymbols") is True,
             )
         except PostprocessFileError as error:
             return _error_result("postprocessScriptPath", "script_invalid", str(error))
@@ -2099,7 +2103,7 @@ class LauncherApi:
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
             preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
-            clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
+            clean_markdown_symbols = payload.get("cleanMarkdownSymbols") is True
             request = ScriptMatchRequest(
                 project_path, srt_path, script_path, OutputMode.JSON,
                 media_path=_optional_path(payload.get("mediaPath")),
@@ -2297,7 +2301,8 @@ class LauncherApi:
         return {"ok": True, "url": launch_url}
 
     def start_alignment_server(self, payload: Mapping[str, object]) -> dict[str, object]:
-        gap_remove = normalize_gap_remove_settings(payload.get("gapRemove"))
+        auto_mark_silence = payload.get("autoMarkSilence") is not False
+        gap_remove = normalize_gap_remove_settings(payload.get("gapRemove")) if auto_mark_silence else None
         project_path = _optional_path(payload.get("projectPath"))
         if project_path is None:
             return _error_result(
@@ -2350,6 +2355,7 @@ class LauncherApi:
                 and self.alignment_script_path == script_path
                 and self.alignment_media_path == media_path
                 and self.alignment_gap_remove == gap_remove
+                and self.alignment_auto_mark_silence == auto_mark_silence
                 and self.alignment_server_port is not None
             )
             if same_inputs:
@@ -2380,6 +2386,7 @@ class LauncherApi:
             media_path,
             port,
             gap_remove=gap_remove,
+            auto_mark_silence=auto_mark_silence,
         )
         command.append("--no-open")
         self.alignment_log_file = tempfile.TemporaryFile(mode="w+b")
@@ -2398,6 +2405,7 @@ class LauncherApi:
             self.alignment_script_path = script_path
             self.alignment_media_path = media_path
             self.alignment_gap_remove = gap_remove
+            self.alignment_auto_mark_silence = auto_mark_silence
         except OSError as error:
             self._close_alignment_log()
             self.alignment_process = None
@@ -2649,23 +2657,32 @@ class LauncherApi:
             if not isinstance(config, Mapping):
                 raise ValueError("缺少所选 ASR 配置。")
             request = _request_from_payload({**dict(config), "testRun": False,
-                                            "autoPostprocess": None}, self.paths.env_path)
+                                             "autoPostprocess": None}, self.paths.env_path,
+                                            default_output_if_missing=True)
             ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
             if ffmpeg_error:
                 return ffmpeg_error
             job = RecordingPreparation(request, script)
-        except (OSError, ValueError, PreflightError) as error:
+        except PreflightError as error:
+            return error.as_result()
+        except (OSError, ValueError) as error:
             return {"ok": False, "error": str(error)}
         self._recording_preparation = job
         self.worker = job.thread
         job.thread.start()
         return {"ok": True, **job.snapshot()}
 
-    def recording_review_status(self) -> dict[str, object]:
+    def recording_review_status(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         job = self._recording_preparation
-        return {"ok": True, **job.snapshot()} if job else {"ok": True, "status": "idle"}
+        if job is None:
+            return {"ok": True, "status": "idle"}
+        snapshot = job.snapshot()
+        # Do not offer a retry until the worker has actually released the transcription slot.
+        if snapshot["status"] != "running" and job.thread.is_alive():
+            return {"ok": True, "status": "running"}
+        return {"ok": True, **snapshot}
 
-    def cancel_recording_review(self) -> dict[str, object]:
+    def cancel_recording_review(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         job = self._recording_preparation
         if job:
             job.cancel.set()
@@ -2848,6 +2865,7 @@ class LauncherApi:
                 manifest_path=manifest_path,
                 cancel_event=cancel_event,
                 on_event=self._emit,
+                transcribe=self._transcribe_with_background_thumbnails,
                 env_path=self.paths.env_path,
                 ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path),
                 ocr_runtime_root=self._ocr_runtime_status().path,
@@ -3340,6 +3358,7 @@ class LauncherApi:
         # closing runs on the GUI thread. Stop UI delivery before cancellation
         # wakes workers. Joining a worker here could block the GUI thread.
         self.pump.shutdown()
+        self.thumbnail_queue.close()
         self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
@@ -3361,6 +3380,23 @@ class LauncherApi:
                     stream.flush()
             self._log_sink.close()
 
+    def _transcribe_with_background_thumbnails(self, request: TranscriptionRequest, **kwargs) -> TranscriptionResult:
+        result = run_transcription(replace(request, generate_keyframes=False, generate_thumbnails=False), **kwargs)
+        if (request.generate_keyframes and os.environ.get("MAW_MEDIA_KEYFRAMES", "1") != "0"
+                and not (kwargs.get("cancel_event") and kwargs["cancel_event"].is_set())):
+            try:
+                ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
+                queued = self.thumbnail_queue.submit(
+                    request.media_path, ffmpeg_path=str(ffmpeg) if ffmpeg else None,
+                    exact=request.generate_thumbnails and os.environ.get("MAW_MEDIA_THUMBNAILS", "1") != "0",
+                    duration_limit_sec=TEST_RUN_KEYFRAME_LIMIT_SEC if request.test_run else None,
+                )
+                if not queued:
+                    self._emit({"type": "log", "message": "[thumbnails] 后台队列已满或已关闭；可在编辑器中按需补帧。"})
+            except Exception as error:  # noqa: BLE001 - optional cache must not hide saved subtitles
+                self._emit({"type": "log", "message": f"[thumbnails] 无法安排后台画面缓存：{error}"})
+        return result
+
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
         flow_t0 = time.perf_counter()
@@ -3370,7 +3406,7 @@ class LauncherApi:
             self._emit({"type": "log", "message": redact_asr_text(line, request.api_key)})
 
         try:
-            result = run_transcription(
+            result = self._transcribe_with_background_thumbnails(
                 request,
                 on_event=on_child_event,
                 cancel_event=cancel_event,
@@ -3993,10 +4029,11 @@ class LauncherApi:
             self._log_sink.append(event)
         self.pump.enqueue(event)
 
-    def handle_drop_paths(self, paths: Sequence[str]) -> None:
+    def handle_drop_paths(self, paths: Sequence[str], *, file_count: int | None = None, target_id: str = "") -> None:
         for path in paths:
             if path:
-                self._emit(_route_dropped_path(path))
+                self._emit({**_route_dropped_path(path), "targetId": target_id,
+                            "fileCount": file_count if file_count is not None else len(paths)})
                 self.pump.flush()
 
 
@@ -4144,7 +4181,10 @@ def bind_launcher_drop(window: object | None, api: LauncherApi) -> None:
         return
 
     def on_drop(event: Mapping[str, object]) -> None:
-        api.handle_drop_paths(_drop_paths_from_event(event))
+        files = _drop_files_from_event(event)
+        target = event.get("target")
+        target_id = str(target.get("id") or "") if isinstance(target, Mapping) else ""
+        api.handle_drop_paths(_drop_paths_from_event(event), file_count=len(files), target_id=target_id)
 
     window.dom.document.events.drop += DOMEventHandler(on_drop, True, True)
 
@@ -4215,7 +4255,9 @@ def _transcribe_extra_strong_punct(env_path: Path) -> str:
     return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
-def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> TranscriptionRequest:
+def _request_from_payload(
+    payload: Mapping[str, object], env_path: Path, *, default_output_if_missing: bool = False,
+) -> TranscriptionRequest:
     media_text = str(payload.get("mediaPath") or "").strip()
     srt_text = str(payload.get("srtPath") or "").strip()
     media = Path(media_text).expanduser()
@@ -4317,7 +4359,9 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     runtime_python = ""
     if not media_text or not media.exists():
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
-    if not srt_text or not srt.name:
+    if not srt_text and default_output_if_missing:
+        srt = default_srt_path(media, provider=provider.id, model=model.id, test_run=test_run)
+    elif not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
     raw_audio_track_count = payload.get("audioTrackCount")
     audio_track_count = (
@@ -4916,15 +4960,19 @@ def _route_dropped_path(path: str) -> dict[str, object]:
     return {"type": "dropReject", "path": path}
 
 
-def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
+def _drop_files_from_event(event: Mapping[str, object]) -> Sequence[object]:
     data_transfer = event.get("dataTransfer")
     if not isinstance(data_transfer, Mapping):
-        return []
+        return ()
     files = data_transfer.get("files")
     if not isinstance(files, Sequence) or isinstance(files, (str, bytes)):
-        return []
+        return ()
+    return files
+
+
+def _drop_paths_from_event(event: Mapping[str, object]) -> list[str]:
     paths: list[str] = []
-    for file_item in files:
+    for file_item in _drop_files_from_event(event):
         if not isinstance(file_item, Mapping):
             continue
         value = file_item.get("pywebviewFullPath")

@@ -2007,7 +2007,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(page.count('id="toolboxUtilityMediaDropZone"'), 1)
         self.assertGreater(page.index('id="toolboxAlignmentInputs"'), page.index('class="toolbox-content"'))
         self.assertGreater(page.index('id="toolboxAlignmentGapSettings"'), page.index('id="toolboxAlignmentInputs"'))
-        self.assertIn('data-i18n="toolbox_alignment_gap_heading">自动标记静音</h3>', page)
+        self.assertIn('id="toolboxAlignmentAutoSilence" type="checkbox" aria-controls="toolboxAlignmentGapParameters">', page)
+        self.assertIn('id="toolboxAlignmentGapParameters" class="hidden"', page)
         self.assertIn('id="toolboxAlignmentGapMinimum" type="number" min="100" max="60000" step="50" value="400"', page)
         self.assertIn('id="toolboxAlignmentGapThreshold" type="number" min="-96" max="0" step="1" value="-28"', page)
         self.assertIn('id="toolboxAlignmentGapLeadIn" type="number" min="0" max="2000" step="10" value="120"', page)
@@ -2037,7 +2038,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";', postprocess_script)
         self.assertIn("function initializeAlignmentGapRemove()", postprocess_script)
         self.assertIn("saveAlignmentGapRemove(alignmentGapRemove);", postprocess_script)
-        self.assertIn("const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });", postprocess_script)
+        self.assertIn("const gapRemove = autoMarkSilence ? alignmentGapRemoveFromControls({ normalizeFields: true }) : null;", postprocess_script)
         self.assertIn('.toolbox-alignment-inputs {\n  display: grid;\n  gap: 10px;\n}', styles)
         self.assertIn('.toolbox-panel .toolbox-alignment-gap-settings {\n  margin-top: 12px;\n}', styles)
         self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
@@ -2229,8 +2230,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         script = self.root / "inline-preview.md"
         script.write_text("**粗体**\n==高亮==\n", encoding="utf-8")
 
-        cleaned = self.api.read_script_preview({"path": str(script)})
-        preserved = self.api.read_script_preview({"path": str(script), "cleanMarkdownSymbols": False})
+        cleaned = self.api.read_script_preview({"path": str(script), "cleanMarkdownSymbols": True})
+        preserved = self.api.read_script_preview({"path": str(script)})
 
         self.assertEqual(cleaned["preview"].rstrip("\n"), "粗体\n高亮")
         self.assertEqual(preserved["preview"].rstrip("\n"), "**粗体**\n==高亮==")
@@ -2258,7 +2259,6 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "projectPath": str(project),
             "scriptPath": str(script),
             "outputMode": "project",
-            "cleanMarkdownSymbols": False,
         })
 
         self.assertTrue(preserved["ok"])
@@ -2273,19 +2273,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         result = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["preview"], "1. 甲\n2. 乙")
+        self.assertEqual(result["preview"], "1. **甲**\n2. ==乙==")
         self.assertEqual(result["matchRate"], 100)
         self.assertEqual(result["originalSegmentCount"], 1)
         self.assertEqual(result["matchedSegmentCount"], 2)
 
-        preserved = self.api.preview_script_match({
+        cleaned = self.api.preview_script_match({
             "projectPath": str(project),
             "scriptPath": str(script),
-            "cleanMarkdownSymbols": False,
+            "cleanMarkdownSymbols": True,
         })
 
-        self.assertTrue(preserved["ok"])
-        self.assertEqual(preserved["preview"], "1. **甲**\n2. ==乙==")
+        self.assertTrue(cleaned["ok"])
+        self.assertEqual(cleaned["preview"], "1. 甲\n2. 乙")
 
     def test_match_preview_distinguishes_invalid_subtitle_from_low_match(self) -> None:
         malformed = self.root / "malformed.srt"
@@ -3288,6 +3288,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["gapRemove"]["threshold_db"], -28)
         self.assertEqual(result["gapRemove"]["lead_in_ms"], 120)
         self.assertEqual(wait_for_server.call_args, mock.call("http://127.0.0.1:9877/", timeout=SERVER_START_TIMEOUT))
+        self.assertTrue(self.api.stop_alignment_server()["stopped"])
+
+        with mock.patch("maw.gui_web.subprocess.Popen", return_value=FakeProcess()) as popen:
+            with mock.patch("maw.gui_web._free_local_port", return_value=9877):
+                with mock.patch("maw.gui_web._wait_for_server", return_value=True):
+                    disabled = self.api.start_alignment_server({
+                        "projectPath": str(project), "scriptPath": str(script), "autoMarkSilence": False,
+                        "gapRemove": {"minimum_ms": 400},
+                    })
+        self.assertTrue(disabled["ok"], disabled)
+        self.assertIsNone(disabled["gapRemove"])
+        self.assertIn("--no-auto-mark-silence", popen.call_args.args[0])
+        self.assertNotIn("--gap-minimum-ms", popen.call_args.args[0])
         self.assertTrue(self.api.stop_alignment_server()["stopped"])
 
     def test_packaged_alignment_child_resets_pyinstaller_environment(self) -> None:
@@ -4759,6 +4772,101 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "srtPath")
         self.assertEqual(result["code"], "output_missing")
 
+    def test_recording_review_defaults_to_recording_output_and_avoids_collision(self) -> None:
+        media = self.root / "recording.wav"
+        media.write_bytes(b"media")
+        script = self.root / "script.txt"
+        script.write_text("你好世界", encoding="utf-8")
+        config = SimpleNamespace(output_subfolder=True, per_video_subfolder=False, attach_model_name=True)
+        output_dir = self.root / "_maw"
+        output_dir.mkdir(exist_ok=True)
+        existing = output_dir / "recording.qwen-audio.srt"
+        existing.write_text("existing", encoding="utf-8")
+        expected = output_dir / "recording.qwen-audio-1.srt"
+        result = TranscriptionResult(srt_path=expected, json_path=expected.with_suffix(".mosp"), html_path=None)
+
+        with mock.patch("maw.gui_workflow.effective_config", return_value=config), mock.patch(
+            "maw.recording_preparation.run_transcription", return_value=result
+        ) as run:
+            started = self.api.start_recording_review({"scriptPath": str(script), "transcription": {
+                "mediaPath": str(media), "srtPath": " ", "providerId": "qwen",
+                "modelId": "qwen-audio-3.0-asr-flash-filetrans", "apiKey": "sk-test", "testRun": True,
+            }})
+            self.assertTrue(started["ok"], started)
+            self.api.worker.join(timeout=5)
+            request = run.call_args.args[0]
+            self.assertEqual(_canonical_test_path(request.srt_path), _canonical_test_path(expected))
+
+        self.assertEqual(_canonical_test_path(self.api.recording_review_status()["srtPath"]), _canonical_test_path(expected))
+        self.assertEqual(existing.read_text(encoding="utf-8"), "existing")
+
+    def test_recording_review_bridge_can_poll_cancel_and_retry(self) -> None:
+        media = self.root / "recording.wav"
+        media.write_bytes(b"media")
+        script = self.root / "script.txt"
+        script.write_text("你好世界", encoding="utf-8")
+        output = self.root / "recording.srt"
+        payload = {"scriptPath": str(script), "transcription": {
+            "mediaPath": str(media), "srtPath": str(output), "apiKey": "sk-test",
+        }}
+
+        def wait_for_cancel(_request, *, on_event, cancel_event):
+            if not cancel_event.wait(timeout=5):
+                raise RuntimeError("test did not receive cancellation")
+            raise RuntimeError("cancelled")
+
+        with mock.patch("maw.recording_preparation.run_transcription", side_effect=wait_for_cancel):
+            started = self.api.start_recording_review(payload)
+            self.assertTrue(started["ok"], started)
+            try:
+                # Launcher bridge always calls Python with a positional payload, even for empty requests.
+                self.assertEqual(self.api.recording_review_status({})["status"], "running")
+                self.assertTrue(self.api.cancel_recording_review({})["ok"])
+            finally:
+                self.api.cancel_recording_review()
+                self.api.worker.join(timeout=5)
+            self.assertEqual(self.api.recording_review_status({})["status"], "cancelled")
+
+        with mock.patch("maw.recording_preparation.run_transcription", side_effect=RuntimeError("ASR model failed")):
+            retried = self.api.start_recording_review(payload)
+            self.assertTrue(retried["ok"], retried)
+            self.api.worker.join(timeout=5)
+        failed = self.api.recording_review_status({})
+        self.assertEqual(failed["status"], "error")
+        self.assertEqual(failed["message"], "ASR model failed")
+    def test_launcher_returns_transcription_without_waiting_for_thumbnail_builder(self) -> None:
+        from maw.thumbnail_jobs import ThumbnailCoordinator
+
+        video = self.root / "video.mp4"
+        video.write_bytes(b"fixture")
+        result = TranscriptionResult(srt_path=self.root / "video.srt", json_path=self.root / "video.mosp", html_path=None)
+        result.srt_path.write_text("subtitle", encoding="utf-8")
+        result.json_path.write_text("{}", encoding="utf-8")
+        request = TranscriptionRequest(media_path=video, srt_path=result.srt_path, generate_keyframes=True, generate_thumbnails=True)
+        self.api.thumbnail_queue.coordinator = ThumbnailCoordinator(self.root / "jobs.sqlite3")
+        started = threading.Event()
+
+        def build(_path, *, cancel, **kwargs):
+            started.set()
+            cancel.wait(5)
+
+        with mock.patch("maw.thumbnail_jobs.cleanup_base_cache"), mock.patch(
+            "maw.gui_web.run_transcription", return_value=result
+        ) as transcribe, mock.patch(
+            "maw.thumbnail_jobs.build_base", side_effect=build
+        ):
+            try:
+                self.assertEqual(self.api._transcribe_with_background_thumbnails(request), result)
+                self.assertTrue(started.wait(3))
+                self.assertTrue(self.api.thumbnail_queue.thread.is_alive())
+                self.assertFalse(transcribe.call_args.args[0].generate_keyframes)
+                self.assertFalse(transcribe.call_args.args[0].generate_thumbnails)
+            finally:
+                thread = self.api.thumbnail_queue.thread
+                self.api.thumbnail_queue.close()
+                if thread:
+                    thread.join(5)
+
     def test_default_output_avoids_existing_srt_and_reports_rename(self) -> None:
         media = self.root / "clip.mp4"
         media.write_bytes(b"media")
@@ -6112,7 +6220,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
@@ -6138,7 +6246,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        self.assertIn('<input id="postprocessCleanMarkdownSymbols" type="checkbox" checked>', page)
+        self.assertIn('<input id="postprocessCleanMarkdownSymbols" type="checkbox">', page)
         self.assertIn("cleanMarkdownSymbols: $(\"postprocessCleanMarkdownSymbols\").checked", script)
         self.assertIn("cleanMarkdownSymbols: Boolean($(\"postprocessCleanMarkdownSymbols\")?.checked)", script)
         self.assertIn('$("postprocessCleanMarkdownSymbols").addEventListener("input"', script)

@@ -4285,6 +4285,8 @@
   .hint-dismissible { position: relative; padding-right: 48px; }
   .hint-dismissible > .hint-close { position: absolute; right: 10px; top: 9px; }
   .hint-burn-detail { margin-top: 8px; color: var(--text-muted); }
+  .hint-burn-detail summary { cursor: pointer; }
+  .hint-burn-report { margin: 8px 0 0; max-height: 35vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
   .hint-burn-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .hint-burn-actions button { color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 5px 9px; cursor: pointer; }
   .hint-burn-actions button:hover { background: var(--hover-bg); }

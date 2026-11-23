@@ -397,5 +397,5 @@ test('ASS downloads and burns retain picker activation and font readiness', () =
   // module in test_ass_frame_font_wait.mjs, not a first-statement source regex.
   const burn = read('io/editor-wiring-burn-video.js');
   assert.ok(burn.indexOf('await MaweHost.files.pickSaveFile') < burn.indexOf('await fontsReady'), 'picker retains user activation while coverage loads');
-  assert.match(burn, /if \(deferRequest\) {\s*await fontsReady/);
+  assert.match(burn, /if \(deferRequest\) {\s*(?:try {\s*)?await fontsReady/);
 });

@@ -98,7 +98,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "providerId": "deepseek",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
                 "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
-                "cleanMarkdownSymbols": True,
+                "cleanMarkdownSymbols": False,
             },
             {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True, "reviewEnabled": False},
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
@@ -1082,7 +1082,7 @@ def _run_step(
             match_mode=str(step.get("matchMode") or "script"),
             extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
             preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
-            clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
+            clean_markdown_symbols=step.get("cleanMarkdownSymbols") is True,
         ))
     if step_id == "replace":
         replacements = tuple(

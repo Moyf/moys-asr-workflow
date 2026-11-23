@@ -45,13 +45,13 @@ document.addEventListener("drop", (event) => {
   const files = Array.from(event.dataTransfer?.files || []);
   const file = files[0];
   if (state.dropTarget) {
-    handleRoutedDrop(file?.path || file?.name || "");
+    handleRoutedDrop(file?.path || file?.name || "", files.length, event.target.id);
     return;
   }
   let handled = false;
   if (window.MAWLauncher?.onBatchDrop) files.forEach((item) => { handled = window.MAWLauncher.onBatchDrop(item.path || item.name || "") || handled; });
   if (handled) return;
-  handleRoutedDrop(file?.path || file?.name || "");
+  handleRoutedDrop(file?.path || file?.name || "", files.length, event.target.id);
 });
 setupScrollbarFlash();
 syncFixedFooterClearance();
