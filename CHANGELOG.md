@@ -2,7 +2,7 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
-## [Unreleased]
+## [未发布]
 
 ### 🐛 修复
 
