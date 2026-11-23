@@ -124,8 +124,9 @@ function burnVideoSafeError(error, fallback) {
 
 function burnProgressText(state) {
   const { encoder, attempts } = state.burnDiagnostic || {};
-  if (state.stage === 'burning' && encoder && attempts?.some(attempt => attempt.encoder !== encoder)) {
-    return `${burnVideoText('上一次编码失败，正在换编码器重新烧录…')} (${encoder.toUpperCase()})`;
+  const previous = attempts?.at(-1);
+  if (state.stage === 'burning' && encoder && previous && previous.encoder !== encoder) {
+    return `${burnVideoText('上一次编码失败，正在换编码器从头烧录…')} (${previous.encoder.toUpperCase()} → ${encoder.toUpperCase()})`;
   }
   return burnVideoText(BURN_VIDEO_STAGES[state.stage] || '正在准备导出…');
 }
@@ -139,23 +140,34 @@ function showBurnVideoFailure(error, { stage, mode, jobId, diagnostic, received,
   const tr = burnVideoText;
   const failure = diagnostic?.failure;
   if (failure) stage = failure.stage;
-  const kind = failure?.kind || error?.code;
+  const browserFileError = error?.name === 'QuotaExceededError' ? 'disk-full'
+    : ['NotAllowedError', 'SecurityError'].includes(error?.name) ? 'permission' : null;
+  const kind = failure?.kind || browserFileError || error?.code;
   const showKnownSubtitleError = stage === 'subtitles' && BURN_ASS_LAYOUT_ERRORS.has(kind);
-  const summary = kind === 'disk-full' || error?.name === 'QuotaExceededError'
-    ? tr('磁盘空间或配额不足，请释放空间或换一个保存位置')
-    : kind === 'permission' || ['NotAllowedError', 'SecurityError'].includes(error?.name)
-      ? tr('没有访问权限，请检查文件或保存位置的权限')
-      : kind === 'native-write-unconfirmed'
-        ? tr('与本地服务的连接中断，无法确认保存结果，请先检查目标文件')
-        : kind === 'local-connection' || (stage === 'download' && error?.name === 'TypeError')
-          ? tr(stage === 'download' ? '视频传输中断，请重试' : '与本地服务的连接中断，请重试')
-          : error?.burnMessage || showKnownSubtitleError
-            ? burnVideoSafeError(error, '没有可显示的错误摘要')
-            : tr({
-              write: '无法写入所选文件，请检查保存位置后重试',
-              picker: '无法打开视频保存位置选择器',
-              subtitles: '无法准备字幕内容',
-            }[stage] || '没有可显示的错误摘要');
+  const saving = stage === 'write' || stage === 'picker' || error?.name === 'QuotaExceededError';
+  const diskFull = saving
+    ? '保存位置空间或配额不足，请释放空间或换一个保存位置'
+    : '烧录临时目录空间或配额不足，请释放临时盘空间后重试';
+  const permission = saving
+    ? '无法写入保存位置，请检查权限或更换目录'
+    : '没有访问权限，请检查烧录文件和临时目录的权限';
+  const knownSummary = {
+    'disk-full': diskFull,
+    permission,
+    'media-decode': '无法解码源媒体，请检查源文件能否正常播放',
+    'native-write-unconfirmed': '与本地服务的连接中断，无法确认保存结果，请先检查目标文件',
+  };
+  const summary = Object.hasOwn(knownSummary, kind)
+    ? tr(knownSummary[kind])
+    : kind === 'local-connection' || (stage === 'download' && error?.name === 'TypeError')
+      ? tr(stage === 'download' ? '视频传输中断，请重试' : '与本地服务的连接中断，请重试')
+      : error?.burnMessage || showKnownSubtitleError
+        ? burnVideoSafeError(error, '没有可显示的错误摘要')
+        : tr({
+          write: '无法写入所选文件，请检查保存位置后重试',
+          picker: '无法打开视频保存位置选择器',
+          subtitles: '无法准备字幕内容',
+        }[stage] || '没有可显示的错误摘要');
   const stageTitle = `${tr('烧录视频导出失败')} · ${tr(BURN_FAILURE_STAGES[stage] || '准备导出')}`;
   const headline = `${stageTitle}：${summary}`;
   // Only include structured fields, never arbitrary JS exceptions, request
@@ -166,7 +178,7 @@ function showBurnVideoFailure(error, { stage, mode, jobId, diagnostic, received,
     ffmpegVersion: cleanCode(diagnostic?.ffmpegVersion),
     mode: diagnostic?.mode || mode, stage, jobId: cleanCode(jobId),
     errorType: cleanCode(failure?.type || error?.name),
-    errorCode: cleanCode(failure?.kind || error?.code),
+    errorCode: cleanCode(kind),
     httpStatus: Number.isInteger(error?.status) ? error.status : null,
     occurredAt: new Date().toISOString(),
   };

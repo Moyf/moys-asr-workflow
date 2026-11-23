@@ -332,7 +332,7 @@ class MediaJobManager:
                         job.error = None if job.cancelled.is_set() else str(error)[-4000:]
                         job.error_details = None if job.cancelled.is_set() else getattr(error, "details", None)
                         if job.burn_diagnostic is not None and job.error:
-                            kind = burn_error_kind(error) or burn_error_kind(error.__cause__)
+                            kind = getattr(error, "kind", None) or burn_error_kind(error) or burn_error_kind(error.__cause__)
                             job.burn_diagnostic["failure"] = {
                                 "type": type(error).__name__, "kind": kind, "stage": job.stage,
                             }

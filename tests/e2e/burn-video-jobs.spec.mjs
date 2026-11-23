@@ -84,7 +84,11 @@ async function fixture(mode, run) {
       res.end('test'); job.state = 'completed';
       return;
     }
-    if (!['prepare', 'burn', 'admission-body'].includes(mode) && job.state === 'running') {
+    if (mode === 'temp-disk-full' && job.state === 'running') {
+      job.state = 'failed'; job.cleanupComplete = true;
+      job.error = 'FFmpeg 编码异常退出';
+      job.burnDiagnostic = { failure: { kind: 'disk-full', stage: 'burning' } };
+    } else if (!['prepare', 'burn', 'admission-body'].includes(mode) && job.state === 'running') {
       job.state = 'ready'; job.stage = 'ready'; job.progress = 1;
     }
     res.end(JSON.stringify(job));
@@ -220,6 +224,28 @@ test('burn diagnostics card expands, copies, and leaves room between controls', 
     })).toBeGreaterThanOrEqual(8);
     await card.screenshot({ path: testInfo.outputPath('burn-diagnostic.png') });
   });
+});
+
+test('burn failure points to the temporary disk or save destination as appropriate', async ({ page }) => {
+  for (const [mode, message] of [
+    ['temp-disk-full', '烧录临时目录空间或配额不足'],
+    ['ready', '保存位置空间或配额不足'],
+  ]) {
+    await fixture(mode, async (origin, state) => {
+      await install(page, origin, mode);
+      if (mode === 'ready') {
+        await page.evaluate(() => {
+          MaweHost.files.pickSaveFile = async () => ({
+            name: 'result.mp4',
+            createWritable: async () => { throw new DOMException('full', 'QuotaExceededError'); },
+          });
+        });
+      }
+      await startBurn(page);
+      await expect.poll(() => page.evaluate(text => window.hints.some(hint => hint.includes(text)), message)).toBe(true);
+      expect(state.payloads).toHaveLength(1);
+    });
+  }
 });
 
 for (const [buttonId, label, expected] of [

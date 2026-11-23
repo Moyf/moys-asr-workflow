@@ -3764,6 +3764,45 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("cqp", command)
         self.assertEqual(result.video_encoder, "amf")
 
+    def test_burn_subtitles_does_not_retry_file_failures(self) -> None:
+        subtitle = self.root / "clip.ass"
+        subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        for stderr, message in (
+            ("[out#0/mp4] Error muxing a packet: No space left on device", "输出目录空间"),
+            ("Error opening output file demo.mp4: Permission denied", "输出目录权限"),
+            ("[mov] moov atom not found", "无法解码源媒体"),
+        ):
+            with self.subTest(stderr=stderr):
+                def failed_process(command, **kwargs):
+                    process = self._fake_process(command, **kwargs)
+                    process.stderr = StringIO(stderr)
+                    process.wait = lambda: 1
+                    return process
+
+                with mock.patch("maw.postprocess_ffmpeg._video_encoder_attempts", return_value=("nvenc", "cpu")), \
+                     mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=failed_process) as popen:
+                    with self.assertRaisesRegex(MediaToolError, message):
+                        run_burn_subtitles(
+                            BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle),
+                            ffmpeg_path=Path("ffmpeg"),
+                        )
+                self.assertEqual(popen.call_count, 1)
+                self.assertFalse(list(self.root.glob("*.part.mp4")))
+
+    def test_srt_preparation_reports_disk_full_without_a_private_path(self) -> None:
+        import errno
+
+        with mock.patch(
+            "maw.postprocess_ffmpeg.tempfile.mkstemp",
+            side_effect=OSError(errno.ENOSPC, "No space left on device", "private-source.srt"),
+        ):
+            with self.assertRaisesRegex(MediaToolError, "输出目录空间") as context:
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+        self.assertNotIn("private-source", str(context.exception))
+
     def test_auto_burn_prefers_an_available_hardware_encoder(self) -> None:
         encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
         with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(

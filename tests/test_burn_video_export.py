@@ -1139,6 +1139,46 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
 
 
 class BurnVideoDiagnosticTests(unittest.TestCase):
+    def test_disk_full_during_hardware_encode_stops_before_cpu(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "clip.mp4"
+            source.write_bytes(b"source")
+            manager = server_editor.MediaJobManager(temp_root=root)
+            unlink = Path.unlink
+
+            def refuse_direct_removal(path, *args, **kwargs):
+                # A failed per-attempt cleanup used to replace the disk error.
+                if path.name == "restructured.mp4" and path.exists():
+                    raise PermissionError(errno.EACCES, "locked")
+                return unlink(path, *args, **kwargs)
+
+            def burn(job):
+                def run(command, **kwargs):
+                    if command[-1] == "-version":
+                        return subprocess.CompletedProcess(command, 0, "ffmpeg version 8.1.2\n", "")
+                    job.output.write_bytes(b"partial")
+                    return subprocess.CompletedProcess(command, 1, "", "[out#0/mp4] Error muxing a packet: No space left on device\n")
+
+                job.run_command = run
+                server_editor.burn_ass_video(source, [], ASS_TEXT, job.output,
+                    ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"), job=job)
+
+            try:
+                with mock.patch.object(server_editor, "video_encoder_attempts", return_value=("nvenc", "cpu")), \
+                     mock.patch.object(server_editor, "_probe_media_duration_ms", return_value=1000), \
+                     mock.patch.object(Path, "unlink", refuse_direct_removal), \
+                     mock.patch("maw.media_jobs._diagnostic_sink"):
+                    job = manager.start(source, (1, "bound"), [], burn, output_extension=".mp4")
+                    job.thread.join(10)
+                state = job.snapshot()
+                self.assertEqual(state["state"], "failed")
+                self.assertEqual([item["encoder"] for item in state["burnDiagnostic"]["attempts"]], ["nvenc"])
+                self.assertEqual(state["burnDiagnostic"]["failure"]["kind"], "disk-full")
+                self.assertFalse(job.output.exists())
+            finally:
+                manager.close()
+
     def test_disk_diagnostic_uses_error_context_not_input_names_or_subtitles(self):
         diagnostic = server_editor.ffmpeg_diagnostic
         self.assertEqual(diagnostic(
@@ -1167,6 +1207,7 @@ class BurnVideoDiagnosticTests(unittest.TestCase):
                         if command[command.index('-c:v') + 1] == 'h264_nvenc':
                             job.update('burning', .99)
                             return subprocess.CompletedProcess(command, 7, '',
+                                '[vist#0:0/h264] Error while decoding stream: Invalid data found when processing input\n'
                                 f'Cannot load nvcuda.dll from "{source}"\nDialogue: sensitive caption')
                         if cpu_exit_code == 0:
                             job.output.write_bytes(b'video')
@@ -1191,7 +1232,9 @@ class BurnVideoDiagnosticTests(unittest.TestCase):
                     self.assertEqual(job.state, 'failed' if cpu_exit_code else 'ready')
                     self.assertEqual(report['ffmpegVersion'], '8.0-full')
                     self.assertEqual([item['exitCode'] for item in report['attempts']], [7, cpu_exit_code])
-                    self.assertEqual(report['attempts'][0]['reasons'], ['cannot load nvcuda.dll'])
+                    self.assertEqual(report['attempts'][0]['reasons'], [
+                        'error while decoding', 'invalid data found when processing input', 'cannot load nvcuda.dll',
+                    ])
                     self.assertFalse(report['attempts'][1]['stderrPresent'])
                     self.assertNotIn(str(source), log)
                     self.assertNotIn('sensitive caption', log)

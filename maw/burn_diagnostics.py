@@ -24,6 +24,17 @@ _FFMPEG_REASON = re.compile(
     re.IGNORECASE,
 )
 _FFMPEG_DISK_FULL = re.compile(r"(?:^|:\s+)(no space left on device|disk quota exceeded)\s*$", re.IGNORECASE)
+_FFMPEG_FILE_PERMISSION = re.compile(
+    r"^(?:\[[^\]]+\]\s*)?error (?:opening (?:input|output)(?! stream)|"
+    r"writing (?:header|trailer)|muxing a packet)\b.*:\s*"
+    r"(?:permission denied|access is denied|read-only file system)\s*$",
+    re.IGNORECASE,
+)
+_FFMPEG_INVALID_MEDIA = re.compile(
+    r"^(?:\[[^\]]+\]\s*)?(?:moov atom not found|"
+    r"error opening input(?: file(?:s)?)?\b.*:\s*invalid data found when processing input)\s*$",
+    re.IGNORECASE,
+)
 _SUBTITLE_LINE = re.compile(r"^\s*(?:Dialogue:|Comment:|Event:|\[(?:Parsed_ass|Parsed_subtitles|libass)(?:_|\b))", re.IGNORECASE)
 _FFMPEG_VERSION = re.compile(r"^ffmpeg version ([0-9A-Za-z][0-9A-Za-z.+_~-]{0,95})(?=\s|$)")
 
@@ -46,7 +57,21 @@ def ffmpeg_diagnostic(stderr: str) -> dict:
     return {"stderrPresent": bool(stderr.strip()), "reasons": reasons[:8]}
 
 
-def burn_error_kind(error: Exception) -> str | None:
+def ffmpeg_failure_kind(stderr: str) -> str | None:
+    """Classify failures with an explicit cause that changing encoders cannot fix."""
+    lines = [line.strip() for line in stderr.splitlines() if not _SUBTITLE_LINE.match(line)]
+    if any(_FFMPEG_DISK_FULL.search(line) for line in lines):
+        return "disk-full"
+    if any(_FFMPEG_FILE_PERMISSION.match(line) for line in lines):
+        return "permission"
+    # An isolated decode warning can be recoverable. Require an input-open
+    # failure or an invalid container before ruling out a different encoder.
+    if any(_FFMPEG_INVALID_MEDIA.match(line) for line in lines):
+        return "media-decode"
+    return None
+
+
+def burn_error_kind(error: BaseException | None) -> str | None:
     if isinstance(error, OSError):
         if error.errno in (errno.ENOSPC, getattr(errno, "EDQUOT", -1)) or getattr(error, "winerror", None) in (39, 112):
             return "disk-full"
