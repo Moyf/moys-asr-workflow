@@ -16,6 +16,7 @@ MAW 不托管转写服务。云端方式把音频直接交给所选服务商，�
 | 阿里云 Qwen / Fun-ASR | `DASHSCOPE_API_KEY` | 默认 Qwen-Audio 3.0；可选 3.1、Qwen3-ASR、Fun-ASR。模型间的热词、上下文与说话人能力不同。 |
 | Soniox | `SONIOX_API_KEY` | 多语言、说话人和结构化 context。 |
 | 豆包（火山引擎） | `VOLC_API_KEY` | 单 Key；支持热词、说话人，使用压缩音频 Base64 提交。 |
+| MOSS（模思智能） | `MOSS_API_KEY` | 说话人分离转写（Pro）；Keyterms 热词、自动识别语言，异步任务 ≤60 分钟。 |
 | 腾讯云录音文件识别 | `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY` | 默认 `16k_zh_en_2.0`；大文件使用公网 / COS URL。 |
 | OpenAI 兼容 ASR | `MAW_OPENAI_ASR_API_KEY`、`MAW_OPENAI_ASR_BASE_URL`、`MAW_OPENAI_ASR_MODEL` | multipart 转写接口，必须返回字幕时间戳；默认地址 `https://api.openai.com/v1`，默认模型 `whisper-1`。 |
 | 必剪 | 无需 Key | 实验性非公开接口，仅用于中文体验，可能限流或失效。 |
@@ -30,7 +31,7 @@ MAW 不托管转写服务。云端方式把音频直接交给所选服务商，�
 - 用户数据目录：Windows `%LOCALAPPDATA%/MAW`；macOS `~/Library/Application Support/MAW`；Linux `$XDG_DATA_HOME/MAW`（未设置时 `~/.local/share/MAW`）。
 - 环境变量优先于 `.env`。修改文件却不生效时，检查是否有同名环境变量覆盖。
 
-获取密钥：[阿里云百炼](https://platform.qianwenai.com/home/)、[Soniox Console](https://console.soniox.com)、[火山引擎 API Key](https://console.volcengine.com/speech/new/setting/apikeys)、[腾讯云密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)、[OpenAI Platform](https://platform.openai.com/api-keys)、[OpenRouter](https://openrouter.ai/keys)。
+获取密钥：[阿里云百炼](https://platform.qianwenai.com/home/)、[Soniox Console](https://console.soniox.com)、[火山引擎 API Key](https://console.volcengine.com/speech/new/setting/apikeys)、[腾讯云密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)、[OpenAI Platform](https://platform.openai.com/api-keys)、[OpenRouter](https://openrouter.ai/keys)、[MOSS 开放平台](https://platform.moss.cn/app/api-keys)。
 
 ## 阿里云：地域、模型与提示
 
@@ -59,6 +60,16 @@ Qwen 与 Fun-ASR 共用 Key。北京默认 `DASHSCOPE_REGION=beijing`，Workspac
 
 模型通过 `VOLC_ASR_RESOURCE_ID` 或 CLI `--model` 指定，默认 `volc.seedasr.auc`。MAW 提取 Ogg / Opus 单声道压缩音频后提交；当前通道按 25 MB / 120 分钟限制处理，未接入 Files API 大文件通道。使用 `--hotword` 添加术语；该入口不接受 Qwen 的地域、词表 ID 或 file-url 参数。
 
+### MOSS（模思智能）
+
+模型固定为 `moss-transcribe-diarize-pro`（`MOSS_MODEL` 或 CLI `--model` 可覆盖），说话人分离是模型固有输出，`speaker` 标签直接写入工程。标准转写模型 `moss-transcribe-1.0` 只返回纯文本、没有时间码，未接入。
+
+MAW 提取 Ogg / Opus 单声道压缩音频后经异步任务提交（`async=true` + 轮询），单次任务需 ≤60 分钟；模型自动识别语言，不支持指定语言。热词用 Keyterms（Launcher「热词（Keyterms）」每行一个，CLI `--keyterm`，公开 CLI `--hotword` 等价）：最多 20 个、每个 ≤30 字符。该入口不接受 Qwen 的地域、词表 ID 或 file-url 参数。
+
+模型只返回段级时间码：超长句段会按断句设置（标点 / 最大字数）自动二次拆分，段内切点为文本占比插值并吸附语音能量谷，可在编辑器微调；MAW 不伪造字词级 `items`，需要精确字词时间码时在 Launcher 用对齐模型补齐。
+
+API Key 在 [MOSS 控制台](https://platform.moss.cn/app/api-keys) 获取；新用户可在 [MOSS Create](https://create.moss.cn/) 领取免费积分（Launcher 的 Key 输入框下方有直达链接）。
+
 ### 腾讯云
 
 本地直传通道按 5 MB 限制处理，较大输入需先提供公网 / COS URL，并使用 `--file-url`。字词时间码映射为工程 `items`；支持的引擎可以通过 `--speaker` 请求匿名说话人标签。
@@ -75,6 +86,6 @@ Prompt、Keywords 和 diarized JSON 按模型能力使用。Launcher 与底层 `
 
 价格、免费额度、计费单位和数据保留会变化。Launcher 的参考价与日志估算用于初步判断，不代表实际账单；本文不重复保存固定价格表。
 
-请查当前官方说明：[阿里云定价](https://help.aliyun.com/zh/model-studio/model-pricing)、[Soniox 定价](https://soniox.com/pricing)、[火山引擎控制台](https://console.volcengine.com/speech/new/experience/asr)、[腾讯云计费](https://cloud.tencent.com/document/product/1093/35686)、[OpenAI 定价](https://openai.com/api/pricing/)、[OpenRouter 模型目录](https://openrouter.ai/models)。本地推理不产生云端转写费，但需要下载、存储与计算资源。
+请查当前官方说明：[阿里云定价](https://help.aliyun.com/zh/model-studio/model-pricing)、[Soniox 定价](https://soniox.com/pricing)、[火山引擎控制台](https://console.volcengine.com/speech/new/experience/asr)、[腾讯云计费](https://cloud.tencent.com/document/product/1093/35686)、[OpenAI 定价](https://openai.com/api/pricing/)、[OpenRouter 模型目录](https://openrouter.ai/models)、[MOSS 开放平台定价](https://platform.moss.cn/app/pricing)。本地推理不产生云端转写费，但需要下载、存储与计算资源。
 
 编辑和保存默认在本机。LLM 后处理发送临时 cue ID 与字幕文字，AI 整理另发送文稿文字，不发送媒体、时间码或路径；协议见 [LLM_POSTPROCESS_PROTOCOL](../llm-postprocess/)。使用云端服务前应确认该服务的数据保留和训练使用政策。

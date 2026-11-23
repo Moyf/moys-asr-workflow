@@ -46,15 +46,12 @@ from maw.asr.segmentation import (
 from maw.console import configure_utf8_stdio
 from maw.energy_valley import snap_cue_boundaries
 from maw.ffmpeg import resolve_ffmpeg_tool
-from maw.language import split_mode_for_text
+from maw.language import resolve_language, split_mode_for_text
 from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
 from maw.moss import (
     AUDIO_BITRATE,
-    AUDIO_CODEC,
-    AUDIO_FORMAT,
     AUDIO_SAMPLE_RATE,
-    DEFAULT_MODEL,
     MAX_AUDIO_SECONDS,
     load_config,
     transcribe,
@@ -63,10 +60,6 @@ from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
 from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 from maw.speaker import apply_speaker_colors
-from maw.language import (
-    resolve_language,
-    split_mode_for_text,
-)
 
 
 def _run_media_tool(cmd: list[str], **kwargs):
