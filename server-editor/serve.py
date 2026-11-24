@@ -67,7 +67,7 @@ from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_sty
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.github_star import check_maw_starred, star_maw  # noqa: E402
-from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic, ffmpeg_version  # noqa: E402
+from maw.burn_diagnostics import burn_error_kind, ffmpeg_diagnostic, ffmpeg_failure_kind, ffmpeg_version  # noqa: E402
 from maw.diagnostics import app_version  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
@@ -447,9 +447,10 @@ class GapRemovedVideoExportInProgressError(RuntimeError):
 class BurnVideoExportError(ValueError):
     """ASS burn-in request or its FFmpeg output is invalid."""
 
-    def __init__(self, message: str, *, details: object = None) -> None:
+    def __init__(self, message: str, *, details: object = None, kind: str | None = None) -> None:
         super().__init__(message)
         self.details = str(details).strip()[-4000:] if details else None
+        self.kind = kind
 
 
 class ProjectBindingChangedError(RuntimeError):
@@ -1341,13 +1342,18 @@ def burn_ass_video(
                 f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
                 "请在字幕样式中更换可用字体。", details=stderr)
         if completed.returncode != 0:
-            reasons = ffmpeg_diagnostic(stderr)["reasons"]
-            message = ("烧录临时目录空间不足，请释放空间后重试"
-                       if {"no space left on device", "disk quota exceeded"}.intersection(reasons)
-                       else "FFmpeg 编码异常退出")
-            last_error = BurnVideoExportError(message, details=stderr)
-            if requested_encoder != "auto" or encoder == "cpu":
-                output_path.unlink(missing_ok=True)
+            kind = ffmpeg_failure_kind(stderr)
+            message = {
+                "disk-full": "源媒体所在盘空间不足，请释放空间后重试",
+                "permission": "无法访问烧录文件，请检查文件权限",
+                "media-decode": "无法解码源媒体，请检查源文件能否正常播放",
+            }.get(kind, "FFmpeg 编码异常退出")
+            last_error = BurnVideoExportError(message, details=stderr, kind=kind)
+            if kind or requested_encoder != "auto" or encoder == "cpu":
+                # The job manager cleans partial output and reports cleanup
+                # failures separately from the original FFmpeg error.
+                if not job:
+                    output_path.unlink(missing_ok=True)
                 raise last_error
             continue
         break
@@ -3814,7 +3820,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 target = native.require_target(request, binding, source) if native else None
                 with self.editor_server.media_jobs.lock:
                     job = self.editor_server.media_jobs.start(source, binding, intervals, burn,
-                        output_extension=".mp4", admission_token=admission_token)
+                        output_extension=".mp4", admission_token=admission_token, temp_root=source.parent.resolve())
                     job.native_burn = target
                 if target is not None:
                     del native.targets[request["nativeTarget"]]
@@ -3825,7 +3831,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                                close_connection=True)
             else:
                 self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "ok": False, "code": "permission", "error": "无法访问烧录文件，请检查文件权限",
+                    "ok": False, "code": "permission", "error": "无法创建烧录任务，请检查源媒体目录的写入权限",
                 })
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
@@ -3838,9 +3844,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.editor_server.media_jobs.cancel(job.id)
             kind = burn_error_kind(error)
             message = {
-                "disk-full": "烧录临时目录空间不足，请释放空间后重试",
-                "permission": "无法访问烧录文件，请检查文件权限",
-            }.get(kind, "无法创建烧录任务，请检查临时目录")
+                "disk-full": "源媒体所在盘空间不足，请释放空间后重试",
+                "permission": "无法创建烧录任务，请检查源媒体目录的写入权限",
+            }.get(kind, "无法创建烧录任务，请检查源媒体目录")
             self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
                 "ok": False, "code": kind or "burn-admission-unavailable", "error": message,
             })
@@ -3912,7 +3918,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         success = False
         try:
-            success = self.send_video_attachment(job.output, download_name(job), job=job)
+            with job.hold_directory():
+                success = self.send_video_attachment(job.output, download_name(job), job=job)
+        except (OSError, ValueError, MediaJobUnavailable):
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": "无法读取媒体导出文件，请重新导出"})
         finally:
             manager.finish_download(job, success=success)
 
