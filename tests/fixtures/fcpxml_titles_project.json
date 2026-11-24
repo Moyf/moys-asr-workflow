@@ -1,0 +1,28 @@
+{
+  "duration_ms": 12000,
+  "media_metadata": {"video_fps": 25, "video_width": 1920, "video_height": 1080},
+  "segments": [
+    {"id": "opening", "start": 1001, "end": 2040, "start_frame": 25, "end_frame": 51, "text": "你好 & <世界>\nHello, world!"},
+    {"id": "next", "start": 2040, "end": 2150, "text": "再见"},
+    {"id": "short", "start": 2900, "end": 2901, "text": "一"},
+    {"id": "removed", "start": 4100, "end": 4800, "text": "这句在剪口内"},
+    {"id": "cross", "start": 3900, "end": 5100, "text": "跨过剪口"},
+    {"id": "disabled", "start": 8500, "end": 9000, "text": "禁用", "disabled": true},
+    {"id": "blank", "start": 9000, "end": 9500, "text": " \n "},
+    {"id": "tail", "start": 11980, "end": 12050, "text": "结束"}
+  ],
+  "multi_subtitle": {
+    "enabled": true,
+    "tracks": [
+      {"id": "en", "segments": [{"start": 1100, "end": 2200, "text": "Welcome"}]},
+      {"id": "alt", "segments": [{"start": 1000, "end": 2200, "text": "Alternate translation"}]}
+    ]
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [{"start": 1300, "end": 2300, "text": "地点 / Location"}]
+  },
+  "gap_remove": {
+    "gaps": [{"start": 4000, "end": 5000}, {"start": 7000, "end": 7500, "removed": false}]
+  }
+}

@@ -208,6 +208,93 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  function readExportGaps(rawGaps) {
+    if (rawGaps != null && !Array.isArray(rawGaps)) throw new Error('invalid export gaps');
+    const malformedGap = (gap) => {
+      const start = gap?.start;
+      const end = gap?.end;
+      return !Number.isInteger(start) || start < 0
+        || !Number.isInteger(end) || end < 0 || end <= start;
+    };
+    if (Array.isArray(rawGaps) && rawGaps.some(malformedGap)) {
+      throw new Error('invalid export gap interval');
+    }
+    return Array.isArray(rawGaps)
+      ? rawGaps.map((gap) => ({
+        start: Math.max(0, Math.round(Number(gap.start))),
+        end: Math.max(0, Math.round(Number(gap.end))),
+        removed: gap.removed !== false,
+      }))
+      : [];
+  }
+
+
+  // Without a timeline policy, return effective source cues before any clipping
+  // or Gap mapping. The legacy policy keeps its field and warning contracts.
+  function projectExportCues(project, options, warnings, timeline = null, extensionTrackId = undefined) {
+    const projectSegments = gapRemoveCore.projectCleanupRetainedSegments(
+      Array.isArray(project.segments) ? project.segments : [], project.gap_remove,
+    );
+    // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
+    const projectOverlaySegments = project.overlay_track?.enabled === true
+      && Array.isArray(project.overlay_track.segments)
+      ? project.overlay_track.segments : [];
+    const schemaTracks = Array.isArray(project.multi_subtitle?.tracks) ? project.multi_subtitle.tracks : [];
+    const selectedTracks = extensionTrackId === undefined ? schemaTracks
+      : extensionTrackId === null ? schemaTracks.slice(0, 1)
+        : schemaTracks.filter((track) => track?.id === extensionTrackId).slice(0, 1);
+    const schemaExtension = selectedTracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : []);
+    const extensionColorContexts = new Map();
+    selectedTracks.forEach((track) => {
+      (Array.isArray(track?.segments) ? track.segments : []).forEach((segment) => extensionColorContexts.set(segment, track.segments));
+    });
+    const projectExtension = project.multi_subtitle?.enabled === true
+      ? schemaExtension
+      : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
+        ? project.extensionSegments : []);
+    const projectCues = (segments, track) => segments.map((segment, index) => {
+      if (!segment || segment.disabled) return null;
+      if (!Number.isInteger(segment?.start) || segment.start < 0
+        || !Number.isInteger(segment?.end) || segment.end < 0 || segment.end <= segment.start) {
+        warnings.push({ code: 'invalid_cue', track, index });
+        return null;
+      }
+      const { start: rawStart, end: rawEnd } = segment;
+      let start = rawStart, end = rawEnd;
+      let mapped = {};
+      if (timeline) {
+        start = Math.min(timeline.durationMs, rawStart);
+        end = Math.min(timeline.durationMs, rawEnd);
+        const mappedStart = timeline.mapSourceToOutput(start);
+        const mappedEnd = timeline.mapSourceToOutput(end);
+        if (mappedEnd <= mappedStart) {
+          warnings.push({ code: 'fully_removed_cue', track, index });
+          return null;
+        }
+        if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
+        mapped = { startMs: mappedStart, endMs: mappedEnd };
+      }
+      // FCP7 文本对象与 plan 内嵌 SRT 同属纯文本出口：剥离句级 fade/shake
+      // 与成对 MASS 符号（与 SRT/TXT 同链路），rule 由调用方按设置传入。
+      const exportText = srtSentenceText(String(segment.text || ''), options.assSpecialSymbolRule);
+      return {
+        id: String(segment.id || `${track}-${index}`), track, index,
+        text: options.speakerLabelsEnabled === true
+          ? formatSpeakerLabelledText(exportText, segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
+          : exportText,
+        sourceStartMs: start, sourceEndMs: end,
+        ...mapped,
+      };
+    }).filter(Boolean);
+    const cues = {
+      main: projectCues(projectSegments, 'main'),
+      extension: projectCues(projectExtension, 'extension'),
+      overlay: projectCues(projectOverlaySegments, 'overlay'),
+    };
+    return { cues, projectSegments, projectOverlaySegments };
+  }
+
+
   function buildProjectExportPlan(project, options = {}) {
     if (!project || typeof project !== 'object') throw new Error('invalid export project');
     const media = project.media && typeof project.media === 'object' ? project.media : null;
@@ -226,24 +313,7 @@ export function createUtilsModule(dependencies) {
     if (options.dropFrame !== undefined && typeof options.dropFrame !== 'boolean') {
       throw new Error('drop-frame option must be boolean');
     }
-    const rawGaps = project.gaps !== undefined ? project.gaps : project.gap_remove?.gaps;
-    if (rawGaps != null && !Array.isArray(rawGaps)) throw new Error('invalid export gaps');
-    const malformedGap = (gap) => {
-      const start = gap?.start;
-      const end = gap?.end;
-      return !Number.isInteger(start) || start < 0
-        || !Number.isInteger(end) || end < 0 || end <= start;
-    };
-    if (Array.isArray(rawGaps) && rawGaps.some(malformedGap)) {
-      throw new Error('invalid export gap interval');
-    }
-    const gaps = Array.isArray(rawGaps)
-      ? rawGaps.map((gap) => ({
-        start: Math.max(0, Math.round(Number(gap.start))),
-        end: Math.max(0, Math.round(Number(gap.end))),
-        removed: gap.removed !== false,
-      }))
-      : [];
+    const gaps = readExportGaps(project.gaps !== undefined ? project.gaps : project.gap_remove?.gaps);
     const keptIntervals = mode === 'source'
       ? [{ start: 0, end: durationMs }]
       : buildGapRemovedIntervals(durationMs, gaps);
@@ -255,59 +325,9 @@ export function createUtilsModule(dependencies) {
       : mapGapRemovedTime(sourceMs, gaps);
     const warnings = [];
     if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
-    const projectSegments = gapRemoveCore.projectCleanupRetainedSegments(
-      Array.isArray(project.segments) ? project.segments : [], project.gap_remove,
+    const { cues, projectSegments, projectOverlaySegments } = projectExportCues(
+      project, options, warnings, { durationMs, mapSourceToOutput },
     );
-    // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
-    const projectOverlaySegments = project.overlay_track?.enabled === true
-      && Array.isArray(project.overlay_track.segments)
-      ? project.overlay_track.segments : [];
-    const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
-      ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
-      : [];
-    const extensionColorContexts = new Map();
-    (Array.isArray(project.multi_subtitle?.tracks) ? project.multi_subtitle.tracks : []).forEach((track) => {
-      (Array.isArray(track?.segments) ? track.segments : []).forEach((segment) => extensionColorContexts.set(segment, track.segments));
-    });
-    const projectExtension = project.multi_subtitle?.enabled === true
-      ? schemaExtension
-      : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
-        ? project.extensionSegments : []);
-    const projectCues = (segments, track) => segments.map((segment, index) => {
-      if (!segment || segment.disabled) return null;
-      const rawStart = Math.round(Number(segment.start));
-      const rawEnd = Math.round(Number(segment.end));
-      const start = Math.min(durationMs, Math.max(0, rawStart));
-      const end = Math.min(durationMs, Math.max(start, rawEnd));
-      if (!Number.isInteger(segment?.start) || segment.start < 0
-        || !Number.isInteger(segment?.end) || segment.end < 0 || segment.end <= segment.start) {
-        warnings.push({ code: 'invalid_cue', track, index });
-        return null;
-      }
-      const mappedStart = mapSourceToOutput(start);
-      const mappedEnd = mapSourceToOutput(end);
-      if (mappedEnd <= mappedStart) {
-        warnings.push({ code: 'fully_removed_cue', track, index });
-        return null;
-      }
-      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
-      // FCP7 文本对象与 plan 内嵌 SRT 同属纯文本出口：剥离句级 fade/shake
-      // 与成对 MASS 符号（与 SRT/TXT 同链路），rule 由调用方按设置传入。
-      const exportText = srtSentenceText(String(segment.text || ''), options.assSpecialSymbolRule);
-      return {
-        id: String(segment.id || `${track}-${index}`), track, index,
-        text: options.speakerLabelsEnabled === true
-          ? formatSpeakerLabelledText(exportText, segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
-          : exportText,
-        sourceStartMs: start, sourceEndMs: end,
-        startMs: mappedStart, endMs: mappedEnd,
-      };
-    }).filter(Boolean);
-    const cues = {
-      main: projectCues(projectSegments, 'main'),
-      extension: projectCues(projectExtension, 'extension'),
-      overlay: projectCues(projectOverlaySegments, 'overlay'),
-    };
     const stickers = [];
     const stickerHeads = new Set();
     const stickerRoot = String(project.sticker_root || project.stickerRoot || '').trim().replace(/[\\/]$/, '');
@@ -481,5 +501,5 @@ export function createUtilsModule(dependencies) {
     })[key] || key || assDefaultFontFamily();
   }
 
-  return Object.freeze({ EXPORT_FRAME_PROFILES, EXPORT_SUBTITLE_TRACKS, assertExportPlan, buildExportNames, buildProjectExportPlan, escapeExportXml, exportMsToFrames, exportPathToFileUrl, exportPlanFrame, exportPolicyMsToFrames, exportVideoSize, freezeExportValue, mapExportTime, normalizeExportOptions, resolveExportFrameProfile, sanitizeExportName, selectedSubtitleTracks, serializeMappedSrt });
+  return Object.freeze({ EXPORT_FRAME_PROFILES, EXPORT_SUBTITLE_TRACKS, assertExportPlan, buildExportNames, buildProjectExportPlan, escapeExportXml, exportMsToFrames, exportPathToFileUrl, exportPlanFrame, exportPolicyMsToFrames, exportVideoSize, freezeExportValue, mapExportTime, normalizeExportOptions, projectExportCues, readExportGaps, resolveExportFrameProfile, sanitizeExportName, selectedSubtitleTracks, serializeMappedSrt });
 }
