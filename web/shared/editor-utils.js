@@ -32,6 +32,7 @@ import { createUtilsModule as createAssExportModule } from './utils/ass-export.j
 import { createUtilsModule as createExportPlanModule } from './utils/export-plan.js';
 import { createUtilsModule as createExportWorkflowModule } from './utils/export-workflow.js';
 import { createUtilsModule as createFcp7Module } from './utils/fcp7.js';
+import { createUtilsModule as createFcpxmlModule } from './utils/fcpxml.js';
 import { createUtilsModule as createPlatformModule } from './utils/platform.js';
 import { createUtilsModule as createPreviewGeometryModule } from './utils/preview-geometry.js';
 import { createUtilsModule as createLottieModule } from './utils/lottie.js';
@@ -79,6 +80,7 @@ Object.assign(helpers, createAssExportModule({
 }));
 Object.assign(helpers, createExportPlanModule(helpers));
 Object.assign(helpers, createFcp7Module(helpers));
+Object.assign(helpers, createFcpxmlModule(helpers));
 Object.assign(helpers, createExportWorkflowModule(helpers));
 Object.assign(helpers, createPlatformModule(helpers));
 Object.assign(helpers, createPreviewGeometryModule(helpers));
@@ -198,6 +200,7 @@ const {
   buildAssPayload,
   buildExportNames,
   buildFcp7ExportArtifacts,
+  buildFcpxmlTitlePlan,
   buildFfconcat,
   buildGapRemovedDynamicSegments,
   buildAiCleanupSegments,
@@ -713,6 +716,7 @@ filterFontFamilyOptions,
   exportPathToFileUrl,
   buildProjectExportPlan,
   exportVideoSize,
+  buildFcpxmlTitlePlan,
   serializeMappedSrt,
   serializeFcp7Xml,
   serializeFcp7PngXml,

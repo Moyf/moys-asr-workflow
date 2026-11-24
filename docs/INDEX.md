@@ -180,6 +180,11 @@
 [无损 WebP 与通用入口验证](logs/release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md)
 [PNG/WebP 格式反馈与移除 Pillow](logs/release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md)
 
+<a name="plan-fcpxml-export"></a>
+### 现代 Final Cut Pro 工程（FCPXML）导出
+
+[格式、产品范围、时序契约与 Mac 实机验收计划](plans/FCPXML_EXPORT.md)；独立于 FCP 7 XML，已有仅标题原型，待实机验证。
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 
