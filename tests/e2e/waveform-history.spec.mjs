@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import {
   cleanupTempDir,
   addBwfTimeReference,
@@ -19,7 +18,7 @@ let server;
 
 test.beforeAll(async () => {
   // Match the server's resolved path, including Windows filesystem casing.
-  tempDir = realpathSync.native(makeTempDir('history'));
+  tempDir = realpathSync.native(makeTempDir('history 中文 # %20'));
   const mediaPath = join(tempDir, 'synthetic.wav');
   const projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
@@ -2322,7 +2321,7 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   }
 });
 
-test('server media loads from the resolved project path and OTIO keeps its absolute source URL', async ({ page }) => {
+test('server media loads from the resolved project path and OTIO keeps its literal absolute source path', async ({ page }) => {
   await page.goto(server.url);
   const state = await page.evaluate(() => ({
     media: MaweBoot.DATA.media,
@@ -2336,6 +2335,7 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   expect(state.currentSrc).toBe(`${server.url}media`);
 
   await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt = true;
     MaweBoot.DATA.media_metadata = {
       audio_tracks: [
         { audio_index: 0, stream_index: 1, channels: 2, sample_rate: 48000 },
@@ -2365,12 +2365,14 @@ test('server media loads from the resolved project path and OTIO keeps its absol
     MaweCuePanel.renderAll();
     window.showSaveFilePicker = undefined;
   });
-  const downloadPromise = page.waitForEvent('download');
+  const timelineDownload = page.waitForEvent('download', (download) => download.suggestedFilename().endsWith('.otio'));
+  const subtitleDownload = page.waitForEvent('download', (download) => download.suggestedFilename().endsWith('.srt'));
   await page.locator('#gap-removed-export-btn').click();
   await page.locator('#gap-removed-export-menu > .dropdown-submenu').first()
     .locator(':scope > .dropdown-submenu-toggle').click();
   await page.locator('#download-gap-removed-otio').click();
-  const download = await downloadPromise;
+  const [download, subtitle] = await Promise.all([timelineDownload, subtitleDownload]);
+  expect(subtitle.suggestedFilename()).toBe(download.suggestedFilename().replace(/\.otio$/, '.srt'));
   const payload = await download.createReadStream().then(async (stream) => {
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);
@@ -2378,8 +2380,7 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   });
   const targetUrl = payload.tracks.children[0].children[0]
     .media_references.DEFAULT_MEDIA.target_url;
-  expect(targetUrl).toMatch(/^file:\/\/\//);
-  expect(targetUrl).toBe(pathToFileURL(state.sourcePath).href);
+  expect(targetUrl).toBe(state.sourcePath.replaceAll('\\', '/'));
 
   const clips = payload.tracks.children[0].children.filter((child) => child.OTIO_SCHEMA === 'Clip.2');
   const mediaStart = 1234 / 8000 * 60;
