@@ -2,10 +2,8 @@ import {expect, test} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
-import {readSources} from '../../scripts/build-editor.mjs';
 
 let directory, server;
-const sources = readSources();
 const identity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
 test.beforeAll(async () => {
   directory = makeTempDir('editor-bundle');
@@ -13,14 +11,23 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 
-test('HTTP executes every source and preserves project/export/undo behavior', async ({page}) => {
+test('HTTP starts the editor once per page and preserves project/export/undo behavior', async ({page}) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await disableOnboarding(page);
+  await page.addInitScript(() => {
+    const add = window.addEventListener;
+    window.mawStartupUnloadListeners = 0;
+    window.addEventListener = function (type, ...args) {
+      if (type === 'beforeunload') window.mawStartupUnloadListeners++;
+      return Reflect.apply(add, this, [type, ...args]);
+    };
+  });
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
   expect(await page.content()).toContain(identity);
-  expect(await page.evaluate(() => window.__mawEsmInitializationTrace)).toEqual(sources);
+  // Startup guards unsaved edits and ASS storage guards its own pending writes.
+  expect(await page.evaluate(() => window.mawStartupUnloadListeners)).toBe(2);
   const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
     server:MaweBoot.SERVER_CONFIG, sfx:MaweBoot.NINJA_SFX_BASE_URL}));
   expect(boot.stickers).toEqual([]);
@@ -46,5 +53,15 @@ test('HTTP executes every source and preserves project/export/undo behavior', as
   expect(result.srt).toContain('00:00:00,000 --> 00:00:01,000');
   expect(result.srt).toContain('Second');
   expect(result.merged && result.restored && result.integerTiming).toBe(true);
+  const other = await page.context().newPage();
+  try {
+    await disableOnboarding(other);
+    await other.goto(server.url);
+    await other.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
+    expect(await other.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)).toEqual([]);
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)).toHaveLength(2);
+  } finally {
+    await other.close();
+  }
   expect(errors).toEqual([]);
 });

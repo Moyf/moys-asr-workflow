@@ -31,7 +31,7 @@
 
 ## 前端构建与编辑入口
 
-- 修改 `web/` 的 JS、装配清单或构建配置后，先构建并检查受影响的 Editor / Launcher，再预览或测试。bundle 和 `.meta.json` 属于生成物，禁止提交。新增模块按清单初始化，依赖沿既有门面注入。见[源码地图与构建命令](docs/engineering/DEVELOPMENT.md#编辑器源码地图)。
+- 修改 `web/` 的 JS、装配清单或构建配置后，先构建并检查受影响的 Editor / Launcher，再预览或测试。bundle 和 `.meta.json` 属于生成物，禁止提交。新增 Editor 模块经静态 import 接入所属领域或生产入口，Launcher 按清单初始化。依赖沿已有接口注入。见[源码地图与构建命令](docs/engineering/DEVELOPMENT.md#编辑器源码地图)。
 - 2.0 及以后（含预发布版）维护本地应用编辑入口，不生成、维护或分发独立编辑 HTML，也不发布 Pages `/editor/`。保留历史附件和用户副本；涉及旧文件或 1.x 发布时查[独立入口的版本边界](docs/engineering/DEVELOPMENT.md#独立编辑入口的版本边界)。
 
 ## 开发与验证

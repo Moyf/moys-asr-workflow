@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { buildEditor, isBundleArtifact, shouldRebuildBundle, writeArtifact } from '../scripts/build-editor.mjs';
+import { buildEditor, ENTRY, isBundleArtifact, shouldRebuildBundle, writeArtifact } from '../scripts/build-editor.mjs';
 import { buildLauncher } from '../scripts/build-launcher.mjs';
 
 const bundle = 'editor/boot/editor-bundle.js';
@@ -28,10 +28,15 @@ const seamFixture = (t, kind, specifier = './helper.js', imports = {}) => {
     `import { value } from ${JSON.stringify(specifier)};\nexport function runSeam() { window.result = value; }\n`);
   fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'inside';\n");
   fs.writeFileSync(path.join(root,'outside-helper.js'),"export const value = 'outside';\n");
-  for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+  for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','scripts/build-shared.mjs','pnpm-lock.yaml']) {
     fs.writeFileSync(path.join(root,name),'fixture input\n');
   }
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({imports})+'\n');
+  if (kind === 'editor') {
+    const entry = path.join(root, 'web', ENTRY);
+    fs.mkdirSync(path.dirname(entry), {recursive:true});
+    fs.writeFileSync(entry, "import { runSeam } from '../../seam.js';\nrunSeam();\n");
+  }
   return root;
 };
 
@@ -64,6 +69,7 @@ test('two real watchers rebuild edited sources and then stay idle together', {ti
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'maw-dual-watch-'));
   fs.mkdirSync(path.join(root, 'web'), {recursive:true});
   fs.mkdirSync(path.join(root, 'scripts'), {recursive:true});
+  fs.writeFileSync(path.join(root, 'scripts/build-shared.mjs'), '// shared builder fixture\n');
   fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
   fs.writeFileSync(path.join(root, 'package.json'), '{}\n');
   fs.writeFileSync(path.join(root, 'pnpm-lock.yaml'), 'fixture\n');
@@ -74,6 +80,7 @@ test('two real watchers rebuild edited sources and then stay idle together', {ti
     fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
     fs.writeFileSync(path.join(root, `scripts/build-${kind}.mjs`), '// fixture build input\n');
   }
+  fs.writeFileSync(path.join(root, 'web', ENTRY), "import '../../source.js';\n");
   const states = [];
   t.after(async () => {
     await Promise.all(states.map(({child}) => new Promise(resolve => {
@@ -188,19 +195,7 @@ for (let i = 0; i < 100; i++) {
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
   test(`${kind} records and hashes an imported module outside its source list`, async t => {
-    const root = fixture(t);
-    fs.mkdirSync(path.join(root,'web'),{recursive:true});
-    fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
-    fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
-    fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
-      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
-    fs.writeFileSync(path.join(root,'web/seam.js'),
-      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
-    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'first';\n");
-    for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
-      fs.writeFileSync(path.join(root,name),'fixture input\n');
-    }
-    fs.writeFileSync(path.join(root,'package.json'),'{}\n');
+    const root = seamFixture(t, kind);
 
     const first = await build(root);
     assert.ok(first.metafile.inputs['web/helper.js']);
@@ -236,26 +231,46 @@ for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher
     assert.ok(inside.metadata.inputs['helper.js']);
     fs.writeFileSync(path.join(root,'web/seam.js'),
       `import { value } from '#outside';\nexport function runSeam() { window.result = value; }\n`);
-    await assert.rejects(build(root), /Static import escapes web/);
+    await assert.rejects(build(root), /import escapes web/);
   });
 }
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
-  for (const changed of [`web/${kind}-modules.json`, 'scripts/build-editor.mjs', 'pnpm-lock.yaml', 'web/source.js']) {
+  const changedFiles = ['scripts/build-shared.mjs', 'pnpm-lock.yaml'];
+  if (kind === 'launcher') changedFiles.push('web/launcher-modules.json', 'web/seam.js');
+  for (const changed of changedFiles) {
     test(`${kind} rejects ${changed} changing while compilation yields`, async t => {
-      const root = fixture(t);
-      fs.mkdirSync(path.join(root, 'web'), {recursive:true});
-      fs.mkdirSync(path.join(root, 'scripts'), {recursive:true});
-      fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
-      fs.writeFileSync(path.join(root, `web/${kind}-scripts.txt`), 'source.js\n');
-      fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
-      for (const name of ['scripts/build-editor.mjs', 'scripts/build-launcher.mjs', 'package.json', 'pnpm-lock.yaml']) {
-        fs.writeFileSync(path.join(root, name), '{}\n');
-      }
-      // build() has consumed its synchronous inputs when it yields to esbuild.
+      const root = seamFixture(t, kind);
       const pending = build(root);
       fs.appendFileSync(path.join(root, changed), '\n');
       await assert.rejects(pending, /Build input changed during compilation/);
     });
   }
 }
+
+
+test('Editor detects a new higher-priority resolution candidate and records its actual bytes', async t => {
+  const root = seamFixture(t, 'editor', './helper');
+  const first = await buildEditor(root);
+  const candidate = path.join(root, 'web/helper.ts');
+  fs.writeFileSync(candidate, "export const value = 'preferred';\n");
+  const second = await buildEditor(root);
+  assert.ok(first.metadata.inputs['helper.js']);
+  assert.ok(!first.metadata.discovery.files.includes('helper.ts'));
+  assert.ok(second.metadata.inputs['helper.ts']);
+  assert.ok(second.metadata.discovery.files.includes('helper.ts'));
+  assert.match(second.code, /preferred/);
+  assert.doesNotMatch(second.code, /inside/);
+});
+
+test('Editor refuses to publish if discovery changes after resolution', async t => {
+  const root = seamFixture(t, 'editor', './helper');
+  let added = false;
+  await assert.rejects(buildEditor(root, {transform(file, contents) {
+    if (file === 'helper.js' && !added) {
+      added = true;
+      fs.writeFileSync(path.join(root, 'web/helper.ts'), "export const value = 'preferred';\n");
+    }
+    return contents;
+  }}), /Editor source discovery changed during compilation/);
+});

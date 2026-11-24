@@ -158,6 +158,7 @@ export function initMaweHint() {
       : type === 'invalid' ? 'hint-invalid'
       : type === 'warning' ? 'hint-warning' : '';
     card.className = typeClass ? `hint-card ${typeClass}` : 'hint-card';
+    if (options.passive) card.classList.add('hint-passive');
     if (typeof options.contentBuilder === 'function') options.contentBuilder(card);
     else card.textContent = msg;
     const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : HINT_DURATION_MS;

@@ -1,3 +1,4 @@
+export function initMaweProjectFontCheck() {
 // 检查工程明确保存的字体；自动建立的默认轨道样式不要求用户安装字体。
 (function initProjectFontCheck(global) {
   'use strict';
@@ -191,3 +192,4 @@
   MaweState.observeProjectLoad(() => { serial += 1; close(); });
   global.MaweProjectFontCheck = Object.freeze({ schedule });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

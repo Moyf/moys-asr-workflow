@@ -1,3 +1,4 @@
+import { initModuleSource } from '../helpers/init-module-source.mjs';
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -7,7 +8,7 @@ const first = source.indexOf("document.getElementById('download-gap-removed-vide
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
 const handler = source.slice(first, last);
 const css = fs.readFileSync(new URL('../../web/editor.css', import.meta.url), 'utf8');
-const i18n = fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8');
+const i18n = initModuleSource('shared/editor-i18n.js');
 
 async function fixture(timeline, run, { noOutput = false, cleanupComplete = true } = {}) {
   const control = { ready: noOutput, cleanupComplete, requests: [], diagnosticsSentAt: 0, generation: 0 };

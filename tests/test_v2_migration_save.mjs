@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 function deferred() {
@@ -31,7 +30,7 @@ function fixture() {
   };
   context.window = context;
   vm.createContext(context);
-  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/boot/editor-runtime.js'), context);
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   context.MaweState.beginProjectSession();

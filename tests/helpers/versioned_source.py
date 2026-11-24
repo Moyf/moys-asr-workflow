@@ -24,7 +24,7 @@ def create_versioned_source(output: Path, *, synchronize: bool = True) -> Path:
     spec = Path("scripts/packaging/MAW.spec")
     (output / spec).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / spec, output / spec)
-    for name in ("package.json", "pnpm-lock.yaml", "scripts/build-editor.mjs", "scripts/build-launcher.mjs"):
+    for name in ("package.json", "pnpm-lock.yaml", "scripts/build-editor.mjs", "scripts/build-launcher.mjs", "scripts/build-shared.mjs"):
         shutil.copy2(ROOT / name, output / name)
     # Maintained browser probes use the same owned-process lifecycle helpers.
     for name in ("helpers.mjs", "server-process.mjs", "output-tail.mjs", "windows-server-job.ps1"):

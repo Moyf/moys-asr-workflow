@@ -1,15 +1,11 @@
 """web 前端 bundle 的新鲜度预检与自动重建。
 
-editor / launcher 的 esbuild bundle 是构建产物，不进 Git。三个运行时入口
-（``server-editor/serve.py``、``maw/gui_web.py``、``edit.py --blank``）在
-读取产物前调用 :func:`ensure_bundle`：产物缺失或与源码不一致时自动调用本
-仓库的 esbuild 构建重建；环境里没有 Node.js / 依赖未安装时，抛出带修复指
-引的 :class:`BundlePreflightError`。
+editor / launcher 的 esbuild bundle 是构建产物，不进 Git。运行时入口调用
+:func:`ensure_bundle`；旧产物或缺失产物会用仓库自己的构建脚本重建。
 
-新鲜度判定复刻 ``scripts/build-editor.mjs`` 写入 ``.meta.json`` 的哈希方案：
-清单文件列表（sourceFiles）、每个源文件的 sha256（inputs）、模块配置文本
-哈希（configHash）、构建器脚本哈希（builderHash）与依赖声明哈希
-（dependencyHash）。bundleHash 同时验证产物完整性。
+Editor 元数据记录 ESM 实际输入和可能参与解析的文件集合。Launcher 元数据记录
+classic 清单及其实际输入。两者都核对构建器、依赖声明和产物哈希。
+打包后的运行时只检查产物是否存在。
 
 本模块只依赖标准库：打包配置（MAW.spec）与所有 Python 入口都能安全引用。
 """
@@ -123,7 +119,7 @@ _SPECS: Final[dict[str, _BundleSpec]] = {
         meta=Path("web/editor/boot/editor-bundle.meta.json"),
         config=Path("web/editor-modules.json"),
         manifest=Path("web/editor-scripts.txt"),
-        builders=(Path("scripts/build-editor.mjs"),),
+        builders=(Path("scripts/build-editor.mjs"), Path("scripts/build-shared.mjs")),
         build_script="scripts/build-editor.mjs",
         pnpm_script="build:editor",
     ),
@@ -133,7 +129,7 @@ _SPECS: Final[dict[str, _BundleSpec]] = {
         meta=Path("web/launcher/boot/launcher-bundle.meta.json"),
         config=Path("web/launcher-modules.json"),
         manifest=Path("web/launcher-scripts.txt"),
-        builders=(Path("scripts/build-launcher.mjs"), Path("scripts/build-editor.mjs")),
+        builders=(Path("scripts/build-launcher.mjs"), Path("scripts/build-shared.mjs")),
         build_script="scripts/build-launcher.mjs",
         pnpm_script="build:launcher",
     ),
@@ -165,6 +161,76 @@ def _read_or_none(path: Path) -> str | None:
         return None
 
 
+_EDITOR_ENTRY: Final = "editor/boot/editor-entry.mjs"
+
+
+def _editor_discovery(web_root: Path) -> dict:
+    files: list[str] = []
+    links: list[str] = []
+    packages: dict[str, str] = {}
+    artifacts = {
+        name.relative_to("web").as_posix()
+        for spec in _SPECS.values()
+        for name in (spec.bundle, spec.meta)
+    }
+
+    def walk(directory: Path) -> None:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                name = path.relative_to(web_root).as_posix()
+                if name in artifacts or re.fullmatch(r"\.maw-bundle-[^/]+\.tmp", entry.name):
+                    continue
+                if entry.is_symlink():
+                    if entry.name == "package.json":
+                        raise OSError("symlinked Editor package configuration")
+                    links.append(name)
+                elif entry.is_dir(follow_symlinks=False):
+                    walk(path)
+                else:
+                    files.append(name)
+                    if entry.name == "package.json" and entry.is_file(follow_symlinks=False):
+                        text = _read_or_none(path)
+                        if text is None:
+                            raise OSError("unreadable Editor package configuration")
+                        packages[name] = _sha256_text(text)
+
+    walk(web_root)
+    return {"files": _editor_sort(files), "links": _editor_sort(links), "packages": packages}
+
+
+def _editor_sort(files) -> list[str]:
+    # JavaScript's Array.sort compares UTF-16 code units.
+    return sorted(files, key=lambda path: path.encode("utf-16-be", errors="surrogatepass"))
+
+
+def _valid_input_path(relative: str) -> bool:
+    return bool(
+        relative
+        and not re.search(r"[\\:\x00]", relative)
+        and all(part not in ("", ".", "..") for part in relative.split("/"))
+    )
+
+
+def _editor_metadata_error(root: Path, meta: dict, inputs: dict, source_files: list) -> str | None:
+    if meta.get("entry") != _EDITOR_ENTRY or _EDITOR_ENTRY not in inputs or source_files != _editor_sort(inputs):
+        return "构建信息未完整覆盖 Editor 入口和实际依赖"
+    metafile = meta.get("metafile")
+    graph = metafile.get("inputs") if isinstance(metafile, dict) else None
+    if not isinstance(graph, dict) or set(graph) != {f"web/{name}" for name in inputs}:
+        return "构建信息与 esbuild 源码输入不一致"
+    try:
+        discovery = _editor_discovery(root / "web")
+    except OSError:
+        return "无法核对 Editor 依赖解析范围"
+    if meta.get("discovery") != discovery:
+        return "Editor 依赖候选或解析配置已变更"
+    if not set(inputs) <= set(discovery["files"]):
+        return "Editor 输入不在依赖解析范围内"
+    return None
+
+
+
 def bundle_status(root: Path, kind: str) -> tuple[str, str]:
     """返回 ``(状态, 说明)``，状态为 ``fresh`` / ``missing`` / ``stale``。"""
     spec = _SPECS[kind]
@@ -177,36 +243,45 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
         meta = json.loads(meta_text)
     except ValueError:
         return "stale", f"{spec.meta.as_posix()} 不是有效的 JSON"
-    if not isinstance(meta, dict) or type(meta.get("format")) is not int or meta["format"] != 1:
+    expected_format = 2 if kind == "editor" else 1
+    if (not isinstance(meta, dict) or type(meta.get("format")) is not int
+            or meta["format"] != expected_format):
         return "stale", f"{spec.meta.as_posix()} 的 format 版本未知"
     inputs = meta.get("inputs")
     source_files = meta.get("sourceFiles")
     if not isinstance(inputs, dict) or not isinstance(source_files, list):
         return "stale", f"{spec.meta.as_posix()} 缺少 inputs/sourceFiles"
 
-    manifest_text = _read_or_none(root / spec.manifest)
-    if manifest_text is None:
-        return "stale", f"无法读取清单 {spec.manifest.as_posix()}"
-    files = _manifest_files(manifest_text)
-    if not files or len(files) != len(set(files)) or any(
-        not file.endswith(".js") or re.search(r"[\\:]", file)
-        or any(part in ("", ".", "..") for part in file.split("/"))
-        or file in (item.bundle.relative_to("web").as_posix() for item in _SPECS.values())
-        for file in files
-    ):
-        return "stale", f"清单 {spec.manifest.as_posix()} 含无效源文件路径"
-    if files != source_files:
-        return "stale", f"清单 {spec.manifest.as_posix()} 与构建时不一致"
-    if not set(files) <= set(inputs) or any(
+    if any(not _valid_input_path(name) for name in inputs) or any(
         not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
         for value in inputs.values()
     ):
-        return "stale", "构建信息未完整覆盖清单中的源码哈希"
-    # G00 接缝允许静态 import 图把清单之外的传递依赖拉进构建；
-    # 多出的 inputs 条目同样按源码哈希核对，缺失或漂移都判过期。
-    for relative in set(inputs) - set(files):
-        if not (root / "web" / relative).is_file():
-            return "stale", f"传递依赖账本包含清单外源码: {relative}"
+        return "stale", "构建信息含无效的源码路径或哈希"
+    if kind == "editor":
+        error = _editor_metadata_error(root, meta, inputs, source_files)
+        if error:
+            return "stale", error
+    else:
+        manifest_text = _read_or_none(root / spec.manifest)
+        if manifest_text is None:
+            return "stale", f"无法读取清单 {spec.manifest.as_posix()}"
+        files = _manifest_files(manifest_text)
+        if not files or len(files) != len(set(files)) or any(
+            not file.endswith(".js") or re.search(r"[\\:]", file)
+            or any(part in ("", ".", "..") for part in file.split("/"))
+            or file in (item.bundle.relative_to("web").as_posix() for item in _SPECS.values())
+            for file in files
+        ):
+            return "stale", f"清单 {spec.manifest.as_posix()} 含无效源文件路径"
+        if files != source_files:
+            return "stale", f"清单 {spec.manifest.as_posix()} 与构建时不一致"
+        if not set(files) <= set(inputs):
+            return "stale", "构建信息未完整覆盖清单中的源码哈希"
+        # G00 接缝允许静态 import 图把清单之外的传递依赖拉进构建；
+        # 多出的 inputs 条目同样按源码哈希核对，缺失或漂移都判过期。
+        for relative in set(inputs) - set(files):
+            if not (root / "web" / relative).is_file():
+                return "stale", f"传递依赖账本包含清单外源码: {relative}"
 
     web_root = (root / "web").resolve()
     for relative, expected in inputs.items():
@@ -219,9 +294,10 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
         if _sha256_text(text) != expected:
             return "stale", f"源码已变更: web/{relative}"
 
-    config_text = _read_or_none(root / spec.config)
-    if config_text is None or _sha256_text(config_text) != meta.get("configHash"):
-        return "stale", f"模块配置 {spec.config.as_posix()} 已变更"
+    if kind == "launcher":
+        config_text = _read_or_none(root / spec.config)
+        if config_text is None or _sha256_text(config_text) != meta.get("configHash"):
+            return "stale", f"模块配置 {spec.config.as_posix()} 已变更"
 
     builder_texts = [_read_or_none(root / builder) for builder in spec.builders]
     if any(text is None for text in builder_texts):

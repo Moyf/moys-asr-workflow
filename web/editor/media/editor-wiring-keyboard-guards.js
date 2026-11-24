@@ -1,3 +1,4 @@
+export function bindMaweKeyboardGuards() {
 
 
 // === 全局键盘 ===
@@ -87,3 +88,4 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
 });
+}

@@ -1,4 +1,5 @@
 import { cueStyleWriter } from '../../shared/utils/cue-styles.js';
+import { scheduleOnboarding } from '../boot/editor-onboarding.js';
 import { buildOverlayCueEl } from './editor-overlay-cue-rows.js';
 import { applyCharCount, buildBoundExtensionIds, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort, speakerName } from './editor-cue-elements.js';
 import { captureCueListRenderAnchor, invalidateCueListVisualAnchorRestore, restoreCueListRenderAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
@@ -114,7 +115,7 @@ export function initMaweCuePanel() {
   MaweExportSrt.updateSubtitleExportUi();
   refreshTimedTextEditButton();
   MaweGapRemoveUi.updateGapRemoveDisableHint();
-  window.MAWE_ONBOARDING?.afterRender();
+  scheduleOnboarding();
   restoreCueListRenderAnchor(cueListAnchor);
 }
 

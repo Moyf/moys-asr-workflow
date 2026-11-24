@@ -32,15 +32,16 @@ test('upstream projection freezes the reviewed batch and rejects incomplete sele
   assert.throws(() => planMigration(folder, [reviewed]), /non-factory/i);
 });
 
-test('production editor uses an explicit partial ESM batch and one fresh classic artifact', async () => {
-  const { buildEditor, readSources } = await import(builder);
+test('production editor bundles the real entry and covers the transitional manifest', async () => {
+  const { buildEditor, readSources, ENTRY } = await import(builder);
   const result = await buildEditor(root);
   assert.equal(result.code, fs.readFileSync(artifact, 'utf8'));
   new vm.Script(result.code);
-  assert.equal(result.sourceFiles.length, readSources(root).length);
-  assert.ok(result.modules.length > 5 && result.modules.length < result.sourceFiles.length);
-  for (const module of result.modules) {
-    assert.ok(Object.keys(result.metafile.inputs).includes(`web/${module.file}`), module.file);
+  assert.equal(result.metadata.entry, ENTRY);
+  assert.deepEqual(result.sourceFiles, Object.keys(result.metafile.inputs)
+    .map(file => file.slice('web/'.length)).sort());
+  for (const file of readSources(root)) {
+    assert.ok(result.metadata.inputs[file], file);
   }
 });
 
@@ -94,7 +95,7 @@ test('source-only changes invalidate the artifact and module evaluation has no e
 });
 
 test('assembly rejects invalid exports, effects, duplicate/unsafe paths and omitted modules', async () => {
-  const { compileSources, validateSources, buildEditor } = await import(builder);
+  const { compileSources, validateSources } = await import(builder);
   for (const files of [[], ['same.js','same.js'], ['../outside.js'], ['.env'], ['C:/file.js']]) {
     assert.throws(() => validateSources(files), /manifest|path/i);
   }
@@ -105,9 +106,7 @@ test('assembly rejects invalid exports, effects, duplicate/unsafe paths and omit
   await assert.rejects(compileSources(root,['other.js'],[{file:'factory.js',name:'example',exportName:'createExample'}],
     () => ''), /manifest/i);
   await assert.rejects(compileSources(root,['constant.js'],[],() => 'const fixed=3; fixed++;'), /constant/i);
-  await assert.rejects(buildEditor(root,{transform(file, source) {
-    return file === 'editor/boot/editor-runtime.js' ? source+'\nexport const accidental=1;' : source;
-  }}), /classic|export/i);
+
 });
 
 test('init module replaces its manifest slot in place with unchanged order', async () => {
@@ -214,18 +213,15 @@ test('init constants reject eager side effects in nested expressions', async t =
 });
 
 test('transitive imports invalidate the artifact like manifest sources', async () => {
-  const { buildEditor } = await import(builder);
-  const project = fs.mkdtempSync(path.join(os.tmpdir(),'maw-esm-dependency-'));
+  const { buildEditor, ENTRY } = await import(builder);
+  const project = fs.mkdtempSync(path.join(os.tmpdir(),'maw-import-freshness-'));
   try {
-    fs.mkdirSync(path.join(project,'web'),{recursive:true});
+    fs.mkdirSync(path.dirname(path.join(project, 'web', ENTRY)), {recursive:true});
     fs.mkdirSync(path.join(project,'scripts'),{recursive:true});
-    fs.writeFileSync(path.join(project,'web/editor-scripts.txt'),'seam.js\n');
-    fs.writeFileSync(path.join(project,'web/editor-modules.json'),JSON.stringify({format:1,
-      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
-    fs.writeFileSync(path.join(project,'web/seam.js'),
-      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
+    fs.writeFileSync(path.join(project,'web',ENTRY),"import { value } from '../../helper.js';\nwindow.result = value;\n");
     fs.writeFileSync(path.join(project,'web/helper.js'),"export const value = 'v1';\n");
     fs.writeFileSync(path.join(project,'scripts/build-editor.mjs'),fs.readFileSync(fileURLToPath(builder),'utf8'));
+    fs.copyFileSync(new URL('../scripts/build-shared.mjs', import.meta.url), path.join(project, 'scripts/build-shared.mjs'));
     fs.writeFileSync(path.join(project,'package.json'),'{}\n');
     fs.writeFileSync(path.join(project,'pnpm-lock.yaml'),'lockfileVersion: 9\n');
 

@@ -1,3 +1,4 @@
+export function initEditorGapPlayback() {
 // Gap preview playback owns its boundary timer and an independent audio gate.
 // The audio clock closes the gate even while the page is busy; the timer seeks
 // only after the actual boundary, so retained media is never trimmed early.
@@ -189,3 +190,4 @@
   global.MaweGapPlayback = Object.freeze({ needsAudioGate, beforePlay, bindPlayer, update, refresh, reset, cancelPendingPlayback, retargetPendingSeek,
     get pendingPlayback() { return skipping?.resumePending === true; } });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

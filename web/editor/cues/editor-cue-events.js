@@ -1,3 +1,4 @@
+import { beginRealSplit } from '../boot/editor-onboarding.js';
 import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { selectCueByClick } from './editor-binding-align.js';
 import { restoreCueListVisualAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
@@ -155,7 +156,7 @@ export function initMaweCueEvents() {
     // 普通双击的第一次 pointerdown 已选中该 cue；只有从特殊子控件触发、且尚未选中时
     // 才补一次选择，避免双击再次提交当前面板并重绘波形布局。
     if (!MaweSelection.selectedIdxs.has(idx)) selectOnly(idx);
-    window.MAWE_ONBOARDING?.beginRealSplit(idx);
+    beginRealSplit(idx);
     startEdit(el, idx, e.clientX, e.clientY, { deferCaret: true });
   });
   el.addEventListener('contextmenu', (e) => {

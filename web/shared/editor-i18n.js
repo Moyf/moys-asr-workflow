@@ -1,3 +1,4 @@
+export function initEditorI18n() {
 (function initMaweI18n(global) {
   'use strict';
 
@@ -2423,3 +2424,4 @@
     start();
   }
 })(window);
+}

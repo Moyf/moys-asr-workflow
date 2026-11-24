@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
@@ -12,7 +11,7 @@ import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.j
 import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
 import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
-const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
+const source = initModuleSource('editor/media/editor-audio-processing.js');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const clone = value => JSON.parse(JSON.stringify(value));
 const result = (extra = {}) => ({ ok: true, status: 'measured', integratedLufs: -30, truePeakDbtp: -3,
@@ -64,7 +63,7 @@ function fixture(transport = async () => response(result())) {
     MaweHost: { server: { fetch(url, options) { const body = JSON.parse(options.body); calls.push({ url, body, signal: options.signal }); return transport(body); } } },
   });
   context.window = context;
-  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/boot/editor-runtime.js'), context);
   context.AsrEditorUtils = editorUtils;
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweWordTiming = { clearSelection() {} };

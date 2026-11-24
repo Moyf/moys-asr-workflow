@@ -2,6 +2,12 @@
   "format": 1,
   "modules": [
     {
+      "file": "editor/boot/editor-boot.js",
+      "kind": "init",
+      "name": "editor-boot-init",
+      "exportName": "initMaweBoot"
+    },
+    {
       "file": "editor/state/editor-state.js",
       "kind": "init",
       "name": "state-init",
@@ -594,6 +600,12 @@
       "exportName": "initMaweSpeakerManager"
     },
     {
+      "file": "editor/boot/editor.js",
+      "kind": "init",
+      "name": "editor-init",
+      "exportName": "initMaweBootDiagnostics"
+    },
+    {
       "file": "editor/cues/editor-wiring-overlay-transfer.js",
       "kind": "init",
       "name": "overlay-transfer-wiring-init",
@@ -840,10 +852,76 @@
       "exportName": "initMaweFileDropWiring"
     },
     {
+      "file": "editor/boot/editor-startup.js",
+      "kind": "init",
+      "name": "editor-startup-init",
+      "exportName": "initMaweStartup"
+    },
+    {
       "file": "editor/ui/editor-command-palette.js",
       "kind": "init",
       "name": "command-palette-init",
       "exportName": "initMaweCommandPalette"
+    },
+    {
+      "file": "editor/boot/editor-onboarding.js",
+      "kind": "init",
+      "name": "editor-onboarding-init",
+      "exportName": "initMaweOnboarding"
+    },
+    {
+      "file": "editor/boot/editor-runtime.js",
+      "kind": "init",
+      "name": "editor-runtime-init",
+      "exportName": "initEditorRuntime"
+    },
+    {
+      "file": "shared/utils/project-validation.js",
+      "kind": "init",
+      "name": "project-validation-init",
+      "exportName": "initProjectValidation"
+    },
+    {
+      "file": "shared/editor-i18n.js",
+      "kind": "init",
+      "name": "editor-i18n-init",
+      "exportName": "initEditorI18n"
+    },
+    {
+      "file": "editor/media/editor-audio-processing.js",
+      "kind": "init",
+      "name": "editor-audio-processing-init",
+      "exportName": "initEditorAudioProcessing"
+    },
+    {
+      "file": "editor/media/editor-gap-playback.js",
+      "kind": "init",
+      "name": "editor-gap-playback-init",
+      "exportName": "initEditorGapPlayback"
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-font-aliases.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-font-aliases-init",
+      "exportName": "initMaweAssFontAliases"
+    },
+    {
+      "file": "editor/styles/editor-project-font-check.js",
+      "kind": "init",
+      "name": "editor-project-font-check-init",
+      "exportName": "initMaweProjectFontCheck"
+    },
+    {
+      "file": "editor/media/editor-wiring-keyboard-guards.js",
+      "kind": "init",
+      "name": "editor-wiring-keyboard-guards-init",
+      "exportName": "bindMaweKeyboardGuards"
+    },
+    {
+      "file": "editor/io/editor-sticker-burn-plan.js",
+      "kind": "init",
+      "name": "editor-sticker-burn-plan-init",
+      "exportName": "initMaweStickerBurnPlan"
     }
   ],
   "externalBridges": []

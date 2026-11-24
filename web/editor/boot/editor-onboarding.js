@@ -1,4 +1,16 @@
-(() => {
+import { getOnboardingEditor } from './editor-boot.js';
+
+const hooks = { current: null };
+
+export function scheduleOnboarding() {
+  hooks.current?.scheduleStart();
+}
+
+export function beginRealSplit(index) {
+  hooks.current?.beginRealSplit(index);
+}
+
+export function initMaweOnboarding() {
 const helpOnboardingButton = document.getElementById('help-onboarding');
 const onboardingLayer = document.getElementById('onboarding-layer');
 const onboardingSpotlight = document.getElementById('onboarding-spotlight');
@@ -26,7 +38,7 @@ function serverOnboardingPersistenceEnabled() {
       && Object.prototype.hasOwnProperty.call(MaweBoot.SERVER_CONFIG, 'onboardingStatus'),
     );
 }
-  const editor = window.MAWE_EDITOR_BRIDGE;
+  const editor = getOnboardingEditor();
   const {
     data: DATA,
     selectedIdxs,
@@ -649,11 +661,12 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-  window.MAWE_ONBOARDING = Object.freeze({
+  hooks.current = Object.freeze({
     afterRender: scheduleOnboardingAfterRender,
     scheduleStart: scheduleOnboardingAfterRender,
     beginRealSplit: beginOnboardingRealSplit,
   });
+  window.MAWE_ONBOARDING = hooks.current;
   window.MAWE?.register('onboarding', () => window.MAWE_ONBOARDING);
   scheduleOnboardingAfterRender();
-})();
+}

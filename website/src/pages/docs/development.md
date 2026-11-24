@@ -70,11 +70,11 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 定义源码执行顺序，`web/editor-modules.json` 登记 ESM 模块。其余接线保留 classic 共享作用域，目录位置不决定执行顺序。实际模块和源码数量读 `pnpm run build:editor` 输出。Server 和 Electron 使用装配后的 `web/editor/boot/editor-bundle.js`，1.x 便携入口也使用该产物。发布包自带 bundle，运行无需 Node。
+`web/editor/boot/editor-entry.mjs` 是生产入口。它用静态 import 连接源码，按运行时、领域服务、事件接线和最终启动的顺序调用初始化。新增功能沿所属域接入。迁移夹具和历史演练继续使用 `web/editor-scripts.txt` 与 `web/editor-modules.json`，编译器不从清单生成生产入口。Server 和 Electron 注入同一个 `web/editor/boot/editor-bundle.js`。发布包自带 bundle，运行无需 Node。
 
 Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的 `pnpm run build:editor` 或 `pnpm run build:launcher`，再运行同端的 `check:editor` 或 `check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。Launcher 按 `web/launcher-scripts.txt` 装配，`batch.js` 与 `postprocess.js` 经 `window.MAWLauncher` 访问主脚本。开发命令见[开发入口与 bundle](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
-字幕域同域函数通过静态 import 接通；现阶段具名函数仍在调用时转发既有浏览器单例门面，不代表这些模块已能独立实例化。初始化只在清单原位执行一次，import 求值不注册。可变状态、常量与 DOM 句柄继续由既有门面按值访问，不应包装成可调用的函数导出。
+字幕域同域函数通过静态 import 接通；现阶段具名函数仍在调用时转发既有浏览器单例门面，不代表这些模块已能独立实例化。Editor 入口调用初始化一次，模块定义经 import 加载。可变状态、常量与 DOM 句柄继续由既有门面按值访问，不应包装成可调用的函数导出。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -91,7 +91,7 @@ Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的
 | `web/editor/ui/` | DOM、浮窗、帮助、菜单、工作区布局、提示与设置面板 |
 | `web/launcher/`、`web/sfx/` | 独立 Launcher 与原位静态音效 |
 
-领域模块主要发布已有命名空间。已登记的 `editor-wiring-*.js` 由装配器在原位置调用 init，事件监听和会话状态在此时创建。其余接线仍共享 classic 作用域。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块。
+领域模块主要发布已有命名空间。入口调用 `editor-wiring-*.js` 的 init 时创建事件监听和会话状态。旧浏览器门面继续服务尚未迁移的调用方。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块。
 
 `shared/editor-utils.js` 与 `media/waveform.js` 只初始化领域工厂并重建原有 `AsrEditorUtils` / `AsrWaveform` 出口。跨领域依赖由装配门面显式传入，工厂内部不去查其他领域的命名空间。工厂的可变状态只属于该次实例，应用只装配一次；拆分符号与调色板的后续更新通过同一实例的函数共享。
 

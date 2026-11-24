@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const deferred = () => {
   let resolve;
@@ -31,7 +30,7 @@ function fixture(transport) {
     window: { AsrEditorUtils: projectModel, location: { reload() { reloads++; } } },
   });
   context.window.MaweBoot = context.MaweBoot;
-  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/boot/editor-runtime.js'), context);
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweState = context.window.MaweState;
   vm.runInContext(invokedInitModuleSource('editor/io/editor-server-save.js', 'initMaweServerSave'), context);
