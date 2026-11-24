@@ -280,7 +280,9 @@ class ScriptTimestampTests(unittest.TestCase):
             def worker(*, script_path, output_directory, **_kwargs):
                 read_snapshot(script_path)
                 self.assertEqual(script_path.name, "recording.txt")
-                self.assertEqual(output_directory, root)
+                # Windows TEMP may use a short (8.3) alias; the worker sees
+                # the absolute canonical path resolved by the Launcher.
+                self.assertEqual(output_directory, root.resolve())
                 return {"artifact": {"projectPath": "out.mosp"}, "report": report.to_payload()}
 
             with mock.patch("maw.script_timestamp_alignment.check_script_alignment", side_effect=check):
