@@ -178,6 +178,7 @@ button:hover { border-color: var(--accent); }
 .card {
   background: var(--card);
   border: 1px solid var(--card-border);
+  border-left-width: 3px;
   border-radius: var(--radius);
   padding: 10px 12px;
   cursor: grab;
@@ -188,8 +189,9 @@ button:hover { border-color: var(--accent); }
 
 .card:active { cursor: grabbing; }
 .card.dragging { opacity: 0.5; }
-.card.no-milestone { border-left: 3px solid var(--warn); }
-.card.is-pass { border-left: 3px solid var(--ok); }
+.card.merge-error { border-left-color: var(--bad); }
+.card.merge-warning { border-left-color: var(--warn); }
+.card.merge-ready { border-left-color: var(--ok); }
 .card.is-ignored { opacity: .55; }
 .card.is-ignored .card-title { text-decoration: line-through; }
 
@@ -203,6 +205,7 @@ button:hover { border-color: var(--accent); }
   overflow-wrap: anywhere;
 }
 .card-title:hover { color: var(--accent); }
+.merge-mark { display: none; margin-inline-end: 4px; }
 
 .card-badges {
   display: flex;
@@ -224,6 +227,10 @@ button:hover { border-color: var(--accent); }
 .pill.draft { color: var(--hold); background: color-mix(in srgb, var(--hold) 15%, transparent); }
 .pill.due-soon { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
 .pill.due-over { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.pill.merge-badge { color: var(--text); }
+.pill.merge-error { background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.pill.merge-warning { background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.pill.merge-ready { background: color-mix(in srgb, var(--ok) 15%, transparent); }
 .pill.ignored { color: var(--muted); border-style: dashed; }
 
 #toggle-ignored.active { color: #fff; background: var(--accent); border-color: var(--accent); }
@@ -373,8 +380,10 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 .cl-passed { background:var(--green-soft); }
 .tool-compact .card { padding:8px 10px; contain-intrinsic-size:auto 80px; }
 .tool-compact .card-badges, .tool-compact .card-meta, .tool-compact .card-check { display:none; }
+.tool-compact .merge-mark { display:inline; }
 .tool-compact .card-actions { margin-top:8px; }
 @media print {
+  .tool-compact .merge-mark { display:none; }
   .tool-compact .card-badges, .tool-compact .card-check { display:flex; }
   .tool-compact .card-meta { display:block; }
 }

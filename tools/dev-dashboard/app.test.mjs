@@ -41,9 +41,10 @@ function deferred() {
 }
 
 async function openDashboard(t, {
-  prs = [makePr(42)], statusMap = {}, viewport, pending = {}, failures = {}, waitForLoad = true, clock = false, missingParser = false,
+  prs = [makePr(42)], statusMap = {}, viewport, colorScheme, pending = {}, failures = {},
+  waitForLoad = true, clock = false, missingParser = false,
 } = {}) {
-  const page = await browser.newPage({ viewport: viewport ?? { width: 1280, height: 800 } });
+  const page = await browser.newPage({ viewport: viewport ?? { width: 1280, height: 800 }, colorScheme });
   t.after(() => page.close());
   if (clock) {
     const time = new Date('2026-11-10T00:00:00Z');
@@ -81,6 +82,105 @@ async function openDashboard(t, {
   }
   return { page, apiCalls, data };
 }
+
+test('合并状态决定边框；刷新、精简与主题切换不受里程碑或 Pass 归类影响', async (t) => {
+  const ready = {
+    mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: [{ conclusion: 'SUCCESS' }],
+  };
+  const cases = [
+    [{ milestone: null }, 'ready', '可合并'],
+    [{ statusCheckRollup: [{ status: 'IN_PROGRESS' }, { conclusion: 'FAILURE' }] }, 'error', 'CI 失败'],
+    [{ mergeable: 'CONFLICTING', mergeStateStatus: 'UNKNOWN' }, 'warning', '合并冲突'],
+    [{ mergeStateStatus: 'BLOCKED', statusCheckRollup: [] }, 'error', '合并受阻'],
+    [{ mergeStateStatus: 'BEHIND' }, 'error', '分支落后'],
+    [{ mergeStateStatus: 'BLOCKED', statusCheckRollup: [{ state: 'expected' }] }, 'pending', '等待 CI'],
+    [{ mergeStateStatus: undefined }, 'pending', '合并状态待确认'],
+    [{ isDraft: true }, 'pending', '草稿'],
+    [{ statusCheckRollup: [] }, 'ready', '可合并'],
+    [{ statusCheckRollup: undefined }, 'pending', '合并状态待确认'],
+    [{ mergeStateStatus: 'HAS_HOOKS' }, 'ready', '可合并'],
+    [{ mergeStateStatus: 'UNSTABLE' }, 'error', '检查未通过'],
+    [{ mergeStateStatus: 'DIRTY' }, 'warning', '合并冲突'],
+    [{ mergeStateStatus: 'DIRTY', statusCheckRollup: [] }, 'error', '合并冲突'],
+    [{ mergeStateStatus: 'DIRTY', statusCheckRollup: [{ conclusion: 'FAILURE' }] }, 'error', 'CI 失败'],
+  ];
+  const prs = cases.map(([fields], i) => ({ ...makePr(i + 1), ...ready, ...fields }));
+  const { page, data } = await openDashboard(t, { prs, statusMap: { 2: 'pass', 6: 'pass' }, colorScheme: 'dark' });
+  page.setDefaultTimeout(5000);
+  for (const [i, [, tone, label]] of cases.entries()) {
+    const card = page.locator(`.card[data-pr="${i + 1}"]`);
+    await expect(card).toHaveClass(new RegExp(`\\bmerge-${tone}\\b`));
+    await expect(card.locator('.merge-badge')).toHaveText(label);
+  }
+  await page.locator('#milestone-filter').selectOption('none');
+  await expect(page.locator('.card')).toHaveCount(1);
+  await expect(page.locator('.card')).toHaveClass(/\bmerge-ready\b/);
+  await page.locator('#milestone-filter').selectOption('all');
+  const compact = page.getByRole('switch', { name: '精简显示' });
+  await compact.press('Space');
+  await expect(compact).toBeChecked();
+  const first = page.locator('.card[data-pr="1"]');
+  await expect(first.locator('.merge-badge')).toBeHidden();
+  await expect(first).toHaveAttribute('aria-label', '合并状态：可合并');
+  const verifyAccent = async (card, token, mark) => {
+    await expect(card.locator('.merge-mark')).toBeVisible();
+    await expect(card.locator('.merge-mark')).toHaveText(mark);
+    const expected = await card.evaluate((el, colorToken) => {
+      el.style.outlineColor = `var(${colorToken})`;
+      const result = getComputedStyle(el).outlineColor;
+      el.style.removeProperty('outline-color');
+      return result;
+    }, token);
+    await expect(card).toHaveCSS('border-left-style', 'solid');
+    await expect(card).toHaveCSS('border-left-color', expected);
+  };
+  const warning = page.locator('.card[data-pr="3"]');
+  const error = page.locator('.card[data-pr="4"]');
+  const verifyPalette = async () => {
+    await verifyAccent(first, '--ok', '✓');
+    await verifyAccent(warning, '--warn', '!');
+    await verifyAccent(error, '--bad', '✕');
+  };
+  await verifyPalette();
+  const verifyCompactLayout = async () => {
+    const { gap, pageWidth, viewportWidth, boardScrollable } = await first.evaluate((el) => ({
+      gap: el.querySelector('.card-actions').getBoundingClientRect().top
+        - el.querySelector('.card-title').getBoundingClientRect().bottom,
+      pageWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      boardScrollable: document.getElementById('board').scrollWidth > document.getElementById('board').clientWidth,
+    }));
+    assert.ok(gap >= 8, `标题与操作间距：${gap}px`);
+    assert.ok(pageWidth <= viewportWidth, `${viewportWidth}px：页面不应横向溢出`);
+    if (viewportWidth < 768) assert.ok(boardScrollable, '窄屏看板应可在自身容器内滚动');
+    console.log(`Compact merge card at ${viewportWidth}px: ${gap}px title/action gap`);
+  };
+  const screenshot = async (name) => {
+    if (!process.env.MAW_DASHBOARD_SCREENSHOTS) return;
+    await mkdir('.artifacts/dev-dashboard-preview', { recursive: true });
+    await page.screenshot({ path: `.artifacts/dev-dashboard-preview/merge-${name}.png` });
+  };
+  await verifyCompactLayout();
+  await screenshot('dark');
+  await page.getByRole('button', { name: '切换为浅色主题' }).click();
+  await verifyPalette();
+  for (const width of [320, 375, 414, 768]) {
+    await page.setViewportSize({ width, height: 700 });
+    await verifyCompactLayout();
+    if (width === 375) await screenshot('light-narrow');
+  }
+  data.prs[0] = { ...prs[0], statusCheckRollup: [{ conclusion: 'FAILURE' }] };
+  await page.locator('#refresh-btn').click();
+  await expect(first).toHaveAttribute('aria-label', '合并状态：CI 失败');
+  await verifyAccent(first, '--bad', '✕');
+  await compact.press('Space');
+  await expect(compact).not.toBeChecked();
+  await expect(first.locator('.merge-badge')).toBeVisible();
+  await expect(first.locator('.merge-mark')).toBeHidden();
+  assert.equal(await first.locator('.merge-badge').evaluate((el) => getComputedStyle(el).color),
+    await first.evaluate((el) => getComputedStyle(el).color));
+  await screenshot('light-details');
+});
 
 test('悬停卡片显示安全的正文，浮层可停留滚动且不额外请求', async (t) => {
   const { page, apiCalls } = await openDashboard(t);
@@ -165,6 +265,7 @@ test('危险协议、原始 HTML 和远程图片不能执行或触发网络', as
   page.on('request', (req) => requests.push(req.url()));
   await page.locator('.card-title').focus();
   const preview = page.locator('#pr-preview-body');
+  await expect(preview).toBeVisible();
   const links = await preview.locator('a').evaluateAll((nodes) => nodes.map((node) => ({ href: node.href, target: node.target, rel: node.rel })));
   assert.ok(links.some((link) => link.href === 'https://example.com/x'));
   assert.ok(links.every((link) => /^https?:\/\//.test(link.href) && link.target === '_blank' && link.rel === 'noopener noreferrer'));
