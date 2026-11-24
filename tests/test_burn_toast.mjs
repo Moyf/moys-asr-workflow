@@ -73,7 +73,9 @@ test('burn failure exposes attempts including an empty stderr, and copies only t
   ];
   const diagnostic = {mode: 'full', ffmpegVersion: '8.0', encoder: 'cpu', attempts,
     failure: {stage: 'burning', type: 'BurnVideoExportError'}};
-  assert.match(f.context.burnProgressText({stage: 'burning', burnDiagnostic: diagnostic}), /换编码器.*CPU/);
+  assert.match(f.context.burnProgressText({
+    stage: 'burning', burnDiagnostic: {...diagnostic, attempts: attempts.slice(0, 1)},
+  }), /从头烧录.*NVENC → CPU/);
   const card = f.context.showBurnVideoFailure(new Error('token=not-for-copy'), {stage: 'status', jobId: 'job123', diagnostic});
   assert.match(card.children[0].textContent, /烧录编码/);
   assert.equal(card.children[2].children[0].textContent, '查看诊断详情');
@@ -132,7 +134,7 @@ for (const phase of ['download', 'write']) {
       MaweHost: {
         files: {hasSavePicker: () => true, pickSaveFile: async () => ({
           name: 'result.mp4', createWritable: async () => ({write: async () => {},
-            close: async () => { throw Object.assign(new Error('private-save-location'), {name: 'QuotaExceededError'}); },
+            close: async () => { throw new DOMException('private-save-location', 'QuotaExceededError'); },
             abort: async () => {}}),
         })},
         server: {fetch: async (url) => {
@@ -151,7 +153,7 @@ for (const phase of ['download', 'write']) {
     await f.context.runBurnVideoJob({button: f.document.createElement('button'), label: 'burn',
       suggestedName: 'result.mp4', startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})});
     const card = f.body.children.find(c => c.id === 'hint-stack').children.find(c => c.className.includes('hint-warning'));
-    assert.match(card.children[0].textContent, phase === 'download' ? /下载视频.*传输中断/ : /写入文件.*磁盘空间/);
+    assert.match(card.children[0].textContent, phase === 'download' ? /下载视频.*传输中断/ : /写入文件.*保存位置空间/);
     assert.doesNotMatch(card.children[2].children[1].textContent, /private-save-location/);
   });
 }

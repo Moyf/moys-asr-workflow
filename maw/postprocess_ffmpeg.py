@@ -14,10 +14,11 @@ from contextlib import suppress
 from dataclasses import dataclass
 from threading import Event, Thread
 from pathlib import Path
-from typing import Callable, Final, Mapping
+from typing import Callable, Final, Literal, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
 from maw.ass_fonts import normalize_ass_text_fontnames
+from maw.burn_diagnostics import burn_error_kind, ffmpeg_failure_kind
 from maw.output_naming import media_suffix
 from maw.ass_styles import DEFAULT_SRT_STYLE, ass_style_force_style, ass_style_line, find_ass_style, load_ass_style_library
 from maw.ffmpeg import resolve_ffmpeg_tool
@@ -94,6 +95,17 @@ class MediaToolCancelled(MediaToolError):
 
 class SubtitleFontGlyphMissingError(MediaToolError):
     """libass could not find a glyph required by the subtitle text."""
+
+
+class BurnFileError(MediaToolError):
+    """A burn failure that requires addressing the input or output files."""
+
+    def __init__(self, kind: str) -> None:
+        super().__init__({
+            "disk-full": "烧录输出目录空间或配额不足，请检查源视频或字幕所在盘",
+            "permission": "无法访问烧录文件，请检查输入文件及输出目录权限",
+            "media-decode": "无法解码源媒体，请检查源文件能否正常播放",
+        }[kind])
 
 
 _ASS_MISSING_GLYPH_RE: Final = re.compile(
@@ -617,13 +629,13 @@ def run_burn_subtitles(
                     cancel_event=cancel_event,
                     on_process=on_process,
                     on_progress=on_progress,
-                    check_ass_glyphs=True,
+                    subtitle_operation="burn",
                 )
-            except MediaToolCancelled:
-                raise
-            except SubtitleFontGlyphMissingError:
+            except (MediaToolCancelled, SubtitleFontGlyphMissingError, BurnFileError):
                 raise
             except MediaToolError as error:
+                if burn_error_kind(error.__cause__):
+                    raise
                 last_error = error
                 if requested_encoder != "auto" or encoder == "cpu":
                     raise
@@ -639,8 +651,11 @@ def run_burn_subtitles(
         if last_error is not None:
             raise last_error
         raise MediaToolError("没有可用的视频编码器。")
-    except (MediaToolError, OSError):
-        temporary.unlink(missing_ok=True)
+    except (MediaToolError, OSError) as error:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        if (kind := burn_error_kind(error) or burn_error_kind(error.__cause__)):
+            raise BurnFileError(kind) from error
         raise
     finally:
         if converted_subtitle is not None:
@@ -913,7 +928,7 @@ def convert_srt_to_ass(
         if run_command is None:
             _run_ffmpeg_process(
                 command, cwd=subtitle.parent, cancel_event=cancel_event,
-                on_process=on_process, on_progress=on_progress,
+                on_process=on_process, on_progress=on_progress, subtitle_operation="convert",
             )
         else:
             completed = run_command(command, cwd=subtitle.parent)
@@ -1000,7 +1015,7 @@ def _run_ffmpeg_process(
     cancel_event: Event | None,
     on_process: Callable[[subprocess.Popen[str]], None] | None,
     on_progress: Callable[[Mapping[str, str]], None] | None,
-    check_ass_glyphs: bool = False,
+    subtitle_operation: Literal["burn", "convert"] | None = None,
 ) -> None:
     try:
         process = subprocess.Popen(
@@ -1059,13 +1074,16 @@ def _run_ffmpeg_process(
     stderr = "".join(stderr_chunks)
     if cancel_event is not None and cancel_event.is_set():
         raise MediaToolCancelled("ffmpeg operation cancelled")
-    if check_ass_glyphs:
+    if subtitle_operation == "burn":
         for glyph, family in libass_missing_glyphs(stderr):
             raise SubtitleFontGlyphMissingError(
                 f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框。"
                 "请安装或更换为包含该字符的字体后重试。"
             )
     if returncode != 0:
+        if subtitle_operation and (kind := ffmpeg_failure_kind(stderr)):
+            if subtitle_operation == "burn" or kind != "media-decode":
+                raise BurnFileError(kind)
         detail = (stderr or "ffmpeg operation failed").strip()
         raise MediaToolError(detail[-4000:])
 

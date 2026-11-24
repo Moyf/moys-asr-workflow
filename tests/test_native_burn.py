@@ -977,7 +977,7 @@ def _editor_process(root: Path) -> None:
             log.write(f"{name}\n")
 
     with ExitStack() as stack:
-        stack.enter_context(mock.patch("maw.media_jobs.shutil.rmtree"))
+        stack.enter_context(mock.patch("maw.media_jobs.MediaJob.remove_directory"))
         stack.enter_context(mock.patch("pathlib.Path.unlink", side_effect=lambda **_options: None))
         stack.enter_context(mock.patch("os.unlink", side_effect=retain_stage_unlink))
         stack.enter_context(mock.patch.object(os, "replace", side_effect=retain_before_replace))

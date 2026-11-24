@@ -22,6 +22,58 @@ UNSAFE = "请选择普通的 MP4 保存目标，且不能覆盖工程或源媒�
 UNCONFIRMED = "已写入视频，但无法确认保存目标的身份"
 
 
+def _mac_directory_acl_can_change_entries(path: Path) -> bool:
+    libc = ctypes.CDLL(None, use_errno=True)
+    pointer = ctypes.c_void_p
+    libc.acl_get_link_np.argtypes = (ctypes.c_char_p, ctypes.c_int)
+    libc.acl_get_link_np.restype = pointer
+    libc.acl_free.argtypes = (pointer,)
+    libc.acl_get_entry.argtypes = (pointer, ctypes.c_int, ctypes.POINTER(pointer))
+    libc.acl_get_tag_type.argtypes = (pointer, ctypes.POINTER(ctypes.c_int))
+    libc.acl_get_permset_mask_np.argtypes = (pointer, ctypes.POINTER(ctypes.c_uint64))
+    acl = libc.acl_get_link_np(os.fsencode(path), 0x100)  # ACL_TYPE_EXTENDED
+    if not acl:
+        code = ctypes.get_errno()
+        if code in {errno.ENOENT, errno.ENOTSUP, getattr(errno, "ENOATTR", -1)}:
+            return False
+        raise OSError(code, os.strerror(code))
+    try:
+        entry = pointer()
+        entry_id = 0  # ACL_FIRST_ENTRY
+        # Darwin sys/acl.h: add file, delete, add subdirectory, delete child,
+        # change permissions and take ownership.
+        mutation_mask = (1 << 2) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 12) | (1 << 13)
+        while libc.acl_get_entry(acl, entry_id, ctypes.byref(entry)) == 0:
+            tag = ctypes.c_int()
+            permissions = ctypes.c_uint64()
+            if (libc.acl_get_tag_type(entry, ctypes.byref(tag)) != 0
+                    or libc.acl_get_permset_mask_np(entry, ctypes.byref(permissions)) != 0):
+                raise PermissionError(errno.EACCES, "无法确认源媒体目录的 ACL")
+            if tag.value == 1 and permissions.value & mutation_mask:  # ACL_EXTENDED_ALLOW
+                return True
+            entry_id = -1  # ACL_NEXT_ENTRY
+        return False
+    finally:
+        libc.acl_free(acl)
+
+
+def validate_burn_workspace_parent(root: Path) -> None:
+    if os.name != "posix":
+        return
+    trusted_owners = {0, os.geteuid()}
+    for parent in (*reversed(root.parents), root):
+        info = parent.lstat()
+        shared = info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in trusted_owners
+                or (shared and not info.st_mode & stat.S_ISVTX)):
+            raise PermissionError(errno.EACCES, "源媒体目录或上级目录允许其他用户移动任务文件夹")
+        unsafe_acl = (_mac_directory_acl_can_change_entries(parent) if sys.platform == "darwin" else
+                      sys.platform == "linux" and bool(
+                          {"system.nfs4_acl", "system.richacl"}.intersection(os.listxattr(parent, follow_symlinks=False))))
+        if unsafe_acl:
+            raise PermissionError(errno.EACCES, "源媒体目录或上级目录允许其他用户移动任务文件夹")
+
+
 def _reparse(info: os.stat_result) -> bool:
     return bool(getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 

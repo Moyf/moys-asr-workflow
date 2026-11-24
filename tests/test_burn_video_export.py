@@ -6,6 +6,7 @@ from tests.compact_assertions import CompactContainerAssertions
 import importlib.util
 import errno
 import json
+import os
 import shutil
 import struct
 import subprocess
@@ -453,6 +454,57 @@ class BurnVideoJobHttpTests(unittest.TestCase):
     def tools(self):
         return mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
 
+    def test_burn_job_uses_source_folder_instead_of_system_temp(self):
+        system_temp = self.root / "system-temp"
+        system_temp.mkdir()
+        self.server.media_jobs.temp_root = system_temp
+
+        def burn(source, intervals, ass, output, **kwargs):
+            output.write_bytes(b"burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            status, started = self.request(self.base, self.payload())
+            self.assertEqual(status, 202, started)
+            self.wait(started["jobId"], "ready")
+
+        job = self.server.media_jobs.get(started["jobId"])
+        self.assertEqual(job.output.parent.parent.resolve(), self.source.parent.resolve())
+        self.assertEqual(list(system_temp.iterdir()), [])
+        status, output = self.request(f"{self.base}/{job.id}/download")
+        self.assertEqual((status, output), (200, b"burned"))
+        self.assertTrue(self.wait(job.id, "completed")["cleanupComplete"])
+        self.assertFalse(job.directory.exists())
+        self.assertEqual(self.source.read_bytes(), b"unchanged source")
+
+    def test_burn_job_does_not_clean_a_replacement_directory(self):
+        def burn(source, intervals, ass, output, **kwargs):
+            output.write_bytes(b"burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            status, started = self.request(self.base, self.payload())
+            self.assertEqual(status, 202, started)
+            self.wait(started["jobId"], "ready")
+
+        job = self.server.media_jobs.get(started["jobId"])
+        retained = job.directory.with_name("retained")
+        job.directory.rename(retained)
+        job.directory.mkdir()
+        unrelated = job.directory / "unrelated.mp4"
+        unrelated.write_bytes(b"unrelated")
+        try:
+            status, _ = self.request(f"{self.base}/{job.id}/download")
+            self.assertEqual(status, 409)
+            self.request(f"{self.base}/{job.id}/cancel", self.payload())
+            self.assertEqual(unrelated.read_bytes(), b"unrelated")
+        finally:
+            if job.directory.exists():
+                job.directory.rename(self.root / "replacement")
+            retained.rename(job.directory)
+
     def test_http_gain_validation_and_job_snapshot(self):
         for gain in (True, '6', None, -61, 25, float('nan'), float('inf'), 10**400):
             with self.subTest(gain=gain):
@@ -598,8 +650,34 @@ class BurnVideoJobHttpTests(unittest.TestCase):
                             side_effect=OSError(number, "fixture failure", str(self.root / "private-dir"))):
                 status, body = self.request(self.base, self.payload())
                 self.assertEqual((status, body["code"]), (503, code))
+                self.assertIn("源媒体", body["error"])
                 self.assertNotIn("private-dir", json.dumps(body))
                 self.assertIsNone(self.server.media_jobs.active)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX source directory permissions")
+    def test_burn_job_rejects_an_unprotected_shared_source_folder(self):
+        self.root.chmod(0o777)
+        try:
+            with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+                 mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True):
+                status, body = self.request(self.base, self.payload())
+                self.assertEqual((status, body["code"]), (503, "permission"))
+                self.assertIsNone(self.server.media_jobs.active)
+        finally:
+            self.root.chmod(0o700)
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS directory ACLs")
+    def test_burn_job_rejects_an_acl_that_allows_replacing_work_directories(self):
+        subprocess.run(["chmod", "+a", "nobody allow search,add_subdirectory,delete_child", str(self.root)], check=True)
+        try:
+            self.assertEqual(self.root.stat().st_mode & 0o777, 0o700)
+            with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+                 mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True):
+                status, body = self.request(self.base, self.payload())
+                self.assertEqual((status, body["code"]), (503, "permission"))
+                self.assertIsNone(self.server.media_jobs.active)
+        finally:
+            subprocess.run(["chmod", "-N", str(self.root)], check=True)
 
     def test_http_admission_preserves_authorization_guidance(self):
         native = self.server_editor.NativeBurnJobs(self.server_editor.BurnSessions(mock.Mock()))
@@ -1139,6 +1217,46 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
 
 
 class BurnVideoDiagnosticTests(unittest.TestCase):
+    def test_disk_full_during_hardware_encode_stops_before_cpu(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "clip.mp4"
+            source.write_bytes(b"source")
+            manager = server_editor.MediaJobManager(temp_root=root)
+            unlink = Path.unlink
+
+            def refuse_direct_removal(path, *args, **kwargs):
+                # A failed per-attempt cleanup used to replace the disk error.
+                if path.name == "restructured.mp4" and path.exists():
+                    raise PermissionError(errno.EACCES, "locked")
+                return unlink(path, *args, **kwargs)
+
+            def burn(job):
+                def run(command, **kwargs):
+                    if command[-1] == "-version":
+                        return subprocess.CompletedProcess(command, 0, "ffmpeg version 8.1.2\n", "")
+                    job.output.write_bytes(b"partial")
+                    return subprocess.CompletedProcess(command, 1, "", "[out#0/mp4] Error muxing a packet: No space left on device\n")
+
+                job.run_command = run
+                server_editor.burn_ass_video(source, [], ASS_TEXT, job.output,
+                    ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"), job=job)
+
+            try:
+                with mock.patch.object(server_editor, "video_encoder_attempts", return_value=("nvenc", "cpu")), \
+                     mock.patch.object(server_editor, "_probe_media_duration_ms", return_value=1000), \
+                     mock.patch.object(Path, "unlink", refuse_direct_removal), \
+                     mock.patch("maw.media_jobs._diagnostic_sink"):
+                    job = manager.start(source, (1, "bound"), [], burn, output_extension=".mp4")
+                    job.thread.join(10)
+                state = job.snapshot()
+                self.assertEqual(state["state"], "failed")
+                self.assertEqual([item["encoder"] for item in state["burnDiagnostic"]["attempts"]], ["nvenc"])
+                self.assertEqual(state["burnDiagnostic"]["failure"]["kind"], "disk-full")
+                self.assertFalse(job.output.exists())
+            finally:
+                manager.close()
+
     def test_disk_diagnostic_uses_error_context_not_input_names_or_subtitles(self):
         diagnostic = server_editor.ffmpeg_diagnostic
         self.assertEqual(diagnostic(
@@ -1167,6 +1285,7 @@ class BurnVideoDiagnosticTests(unittest.TestCase):
                         if command[command.index('-c:v') + 1] == 'h264_nvenc':
                             job.update('burning', .99)
                             return subprocess.CompletedProcess(command, 7, '',
+                                '[vist#0:0/h264] Error while decoding stream: Invalid data found when processing input\n'
                                 f'Cannot load nvcuda.dll from "{source}"\nDialogue: sensitive caption')
                         if cpu_exit_code == 0:
                             job.output.write_bytes(b'video')
@@ -1191,7 +1310,9 @@ class BurnVideoDiagnosticTests(unittest.TestCase):
                     self.assertEqual(job.state, 'failed' if cpu_exit_code else 'ready')
                     self.assertEqual(report['ffmpegVersion'], '8.0-full')
                     self.assertEqual([item['exitCode'] for item in report['attempts']], [7, cpu_exit_code])
-                    self.assertEqual(report['attempts'][0]['reasons'], ['cannot load nvcuda.dll'])
+                    self.assertEqual(report['attempts'][0]['reasons'], [
+                        'error while decoding', 'invalid data found when processing input', 'cannot load nvcuda.dll',
+                    ])
                     self.assertFalse(report['attempts'][1]['stderrPresent'])
                     self.assertNotIn(str(source), log)
                     self.assertNotIn('sensitive caption', log)

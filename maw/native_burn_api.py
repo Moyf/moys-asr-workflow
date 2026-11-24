@@ -139,7 +139,7 @@ def _save_output(server, job, request: dict) -> dict:
             job.native_burn_save_done = save_done
     committed = False
     try:
-        with job.native_burn.destination.stage(job.output, job.check_cancelled) as staged:
+        with job.hold_directory(), job.native_burn.destination.stage(job.output, job.check_cancelled) as staged:
             # Cancel and rebind serialize with publication. The copy holds
             # neither lock, so a stop during a large copy can still take effect.
             with server.settings_lock, manager.lock:
