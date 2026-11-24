@@ -601,6 +601,12 @@
       "exportName": "initMaweDomPanelsWiring"
     },
     {
+      "file": "editor/styles/editor-wiring-ass-cue-sync.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-cue-sync-init",
+      "exportName": "initAssCueStyleSyncWiring"
+    },
+    {
       "file": "editor/styles/editor-wiring-ass-manager.js",
       "kind": "init",
       "name": "editor-wiring-ass-manager-init",

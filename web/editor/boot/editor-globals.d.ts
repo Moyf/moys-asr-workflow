@@ -213,6 +213,8 @@ interface Window {
 interface Window {
   AsrEditorUtils: any;
   MAWE_I18N: any;
+  // 单句 ASS 样式跟随样式库（editor-wiring-ass-cue-sync.js 注入）。
+  MaweAssCueStyleSync?: any;
   MaweMarkersPanel?: {
     createAiCleanupReviewMuteButton?: (markerId: string) => HTMLButtonElement;
     updateAiCleanupReviewMuteButton?: (button: HTMLElement, markerId: string) => void;
