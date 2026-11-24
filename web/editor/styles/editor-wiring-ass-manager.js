@@ -50,6 +50,7 @@ const {
   assStylePreviewModeHint,
   assStylePreviewSample,
   assStyleProjectHint,
+  assStyleProjectUpdateButton,
   assStyleResetButton,
   assStyleSaveButton,
   assStyleSettingsLink,
@@ -88,14 +89,12 @@ function setAssStyleLibraryStatus(text, state = 'idle') {
 
 function updateAssStyleProjectHint() {
   if (!assStyleProjectHint) return;
-  /** @type {any} */
-  const project = MaweBoot.DATA;
-  const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
-  const styleKeys = new Map(getAssStyleLibrary().styles.map(style => [style.id, snapshotKey(style)]));
-  const cueGroups = [project.segments, project.overlay_track?.segments,
-    ...(project.multi_subtitle?.tracks || []).map(track => track.segments)];
-  assStyleProjectHint.hidden = !cueGroups.some(segments => segments?.some(({ assStyle }) =>
-    assStyle && snapshotKey(assStyle) !== styleKeys.get(assStyle.id)));
+  // 只统计「样式 id 还在库里且内容不同」的句子；库里已删除的样式不计入。
+  // textContent 写中文原文，翻译由 i18n 的文本节点观察器统一处理。
+  const count = window.MaweAssCueStyleSync?.outdatedCueCount?.() || 0;
+  assStyleProjectHint.textContent = `工程内 ${count} 句的样式与样式库不一致`;
+  assStyleProjectHint.hidden = count === 0;
+  if (assStyleProjectUpdateButton) assStyleProjectUpdateButton.hidden = count === 0;
 }
 
 function updateAssStyleLibraryStatus() {
@@ -231,11 +230,15 @@ function assStyleFormValue(field) {
 
 function updateAssStyleManagerLibrary(mutator, { persist = true } = {}) {
   if (!canEditAssStyleLibrary()) return;
+  const previous = assStyleManagerClone(getAssStyleLibrary());
   const next = assStyleManagerClone(getAssStyleLibrary());
   if (!next) return;
   mutator(next);
   incrementAssStyleLibraryRevision();
   setAssStyleLibrary(next, { persistLocal: true });
+  // 本窗口编辑样式库后，工程里与库一致的句子立即跟随；放在 syncAssStyleManager
+  // 之前，底部提示统计的是跟随后剩下的旧句子。
+  window.MaweAssCueStyleSync?.afterLibraryEdit?.(previous);
   if (persist) scheduleAssStyleLibrarySave();
   syncAssStyleManager();
   MawePlaybackLoop.refreshSubtitlePreview?.();
@@ -595,6 +598,14 @@ assStyleSaveButton?.addEventListener('click', () => {
     'pending',
   );
   void persistAssStyleLibrary();
+});
+// 底部「用样式库更新」：打开工程时已是旧版本的句子一次全部更新，进撤销历史。
+assStyleProjectUpdateButton?.addEventListener('click', () => {
+  const updated = window.MaweAssCueStyleSync?.updateAll?.() || 0;
+  if (!updated) return;
+  MaweCuePanel?.renderCurrentCuePanel?.();
+  updateAssStyleLibraryStatus();
+  MaweHint.flashHint(`已更新 ${updated} 句的样式`, 'success');
 });
 assSrtDefaultStyleSelect?.addEventListener('change', () => updateAssStyleAssignment('srtBurnStyleId', assSrtDefaultStyleSelect.value));
 assDefaultProfileSelect?.addEventListener('change', () => updateAssStyleAssignment('assExportProfileId', assDefaultProfileSelect.value));

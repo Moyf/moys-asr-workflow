@@ -112,6 +112,7 @@ editor/styles/editor-wiring-ass-storage.js
 editor/boot/editor-wiring-initial-config.js
 editor/ui/editor-dom-panels.js
 editor/ui/editor-wiring-dom-panels.js
+editor/styles/editor-wiring-ass-cue-sync.js
 editor/styles/editor-wiring-ass-manager.js
 editor/styles/editor-wiring-ass-transfer.js
 editor/ui/editor-wiring-settings-init.js

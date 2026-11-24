@@ -35,6 +35,8 @@ test('ASS style choices follow language while custom names remain literal', asyn
   await select.selectOption('ass');
   await expect(select.locator('option:checked')).toHaveText('ASS default style');
 
+  // 库数组被原地修改，不经过编辑流程的 updateAssStyleManagerLibrary：相当于
+  // 「在别处改的库」，句子照旧保留快照、显示「（工程内保存）」，这是预期行为。
   const savedSize = await page.evaluate(() => {
     const savedSize = MaweBoot.DATA.segments[0].assStyle.fontSize;
     MaweAssStorageWiring.styles().find(style => style.id === 'ass').fontSize = savedSize + 1;
@@ -52,7 +54,7 @@ test('ASS style choices follow language while custom names remain literal', asyn
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize)).toBe(savedSize + 1);
 });
 
-test('style library footer distinguishes project copies from user sync', async ({ page }, info) => {
+test('style library edits follow project cues; stale copies get a one-click refresh', async ({ page }, info) => {
   await expect(page.locator('#ass-style-library-status')).toHaveAttribute('data-state', 'success');
   await page.evaluate(() => MaweCuePanel.setCuePanelTarget('main', 0));
   await page.locator('#cue-ass-style').selectOption('ass');
@@ -63,34 +65,51 @@ test('style library footer distinguishes project copies from user sync', async (
   const userStatus = library.locator('#ass-style-library-status');
   const storage = library.locator('#ass-style-library-path-hint');
   const warning = library.locator('#ass-style-project-hint');
-  const english = 'Project styles differ and are not synced to user settings';
+  const updateButton = library.locator('#ass-style-project-update');
+  const fontSize = library.locator('#ass-style-font-size');
+  const cueFontSize = () => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize);
   await expect(userStatus).toHaveAttribute('data-state', 'success');
   await expect(warning).toBeHidden();
-  const fontSize = library.locator('#ass-style-font-size');
+  await expect(updateButton).toBeHidden();
   const originalSize = await fontSize.inputValue();
+  // 在样式库表单里改字号：工程里与库一致的句子立即跟随，不出现提示。
   await fontSize.fill(String(Number(originalSize) + 1));
-  await expect(warning).toHaveText(english);
+  await expect.poll(cueFontSize).toBe(Number(originalSize) + 1);
   await expect(userStatus).toHaveText('Synced with user-level config');
   await expect(storage).toContainText('Saved to local user-level config');
+  await expect(warning).toBeHidden();
+  await expect(updateButton).toBeHidden();
+
+  // 直接往工程写回旧快照（模拟打开时就是旧版本的工程）：出现提示与按钮。
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].assStyle.fontSize -= 1;
+    MaweState.markProjectDirty();
+  });
+  await expect(warning).toBeVisible();
+  await expect(warning).toHaveText('1 cues in the project differ from the style library');
+  await expect(updateButton).toBeVisible();
 
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-  await expect(warning).toHaveText('工程内修改，未同步到用户级配置');
+  await expect(warning).toHaveText('工程内 1 句的样式与样式库不一致');
   const layout = await library.locator('footer').evaluate((footer) => {
     const hint = footer.querySelector('#ass-style-project-hint').getBoundingClientRect();
+    const button = footer.querySelector('#ass-style-project-update').getBoundingClientRect();
     const location = footer.querySelector('#ass-style-library-path-hint').getBoundingClientRect();
-    return { gap: hint.top - location.bottom, left: hint.left - location.left };
+    return { gap: hint.top - location.bottom, buttonGap: button.top - hint.bottom, left: hint.left - location.left };
   });
   expect(layout.gap).toBeGreaterThanOrEqual(8);
+  expect(layout.buttonGap).toBeGreaterThanOrEqual(8);
   expect(layout.left).toBe(0);
   await library.locator('footer').screenshot({ path: info.outputPath('ass-style-project-hint-zh.png') });
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(warning).toHaveText(english);
+  await expect(warning).toHaveText('1 cues in the project differ from the style library');
   await library.locator('footer').screenshot({ path: info.outputPath('ass-style-project-hint-en.png') });
 
-  await fontSize.fill(originalSize);
+  // 点击按钮：旧句子一次更新到库的当前版本，提示与按钮隐藏。
+  await updateButton.click();
+  await expect.poll(cueFontSize).toBe(Number(originalSize) + 1);
   await expect(warning).toBeHidden();
-  await fontSize.fill(String(Number(originalSize) + 1));
-  await expect(warning).toBeVisible();
+  await expect(updateButton).toBeHidden();
 
   const opened = await page.evaluate(() => {
     const project = { segments: [{ id: 'other', start: 0, end: 2000, text: 'Other cue' }] };

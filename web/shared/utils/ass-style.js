@@ -354,6 +354,103 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // 单句样式「跟随样式库」用内容键：与快照键相同，但去掉 name，
+  // 只改名字不算内容变化，不会让句子分叉成「工程内保存」。
+  function assStyleContentKey(style) {
+    const { name, ...rest } = normalizeAssStyle(style);
+    return JSON.stringify(rest);
+  }
+
+
+  // 三条轨的句子集合：主轨、叠加轨、多副字幕各轨。
+  function assStyleCueGroups(project) {
+    return [project.segments, project.overlay_track?.segments,
+      ...(project.multi_subtitle?.tracks || []).map((track) => track.segments)];
+  }
+
+
+  // 样式库在本窗口被编辑后，找出应当跟随的句子。
+  // previous/next 是编辑前后的样式库；seen 记录本次会话里每个样式
+  // 出现过的内容键（撤销恢复的旧快照也能命中）。返回更新列表和
+  // changed（调用方据此把改前键、改后键写入 seen）。
+  // 原始 JSON 相等是内容键相等的充分条件，用它做快速路径跳过逐句
+  // normalize：大工程（数千句全用同一样式）下每次输入只做逐句 stringify。
+  function planAssStyleCueSync(cueGroups, previousLibrary, nextLibrary, seen) {
+    const previousById = new Map((previousLibrary?.styles || []).map((style) => [style.id, style]));
+    const changed = new Map();
+    for (const style of nextLibrary?.styles || []) {
+      const before = previousById.get(style.id);
+      if (!before) continue;                    // 新建的样式，没有句子引用它
+      const beforeKey = assStyleContentKey(before);
+      const afterKey = assStyleContentKey(style);
+      if (beforeKey !== afterKey) {
+        changed.set(style.id, { style, beforeKey, afterKey, beforeRaw: JSON.stringify(before), afterRaw: JSON.stringify(style) });
+      }
+    }
+    const updates = [];
+    for (const segments of cueGroups) {
+      for (const segment of segments || []) {
+        const saved = segment?.assStyle;
+        const entry = saved && changed.get(saved.id);
+        if (!entry) continue;
+        const raw = JSON.stringify(saved);
+        if (raw === entry.afterRaw) continue;   // 已是目标内容，无需改写
+        if (raw !== entry.beforeRaw) {
+          // raw 不等不等于内容不同（只改过名、或旧快照缺新增字段）：
+          // 回退到内容键比较，键等于改动前版本或 seen 命中才跟随。
+          const key = assStyleContentKey(saved);
+          if (key !== entry.beforeKey && !seen.get(saved.id)?.has(key)) continue;
+        }
+        updates.push({ segment, style: entry.style });
+      }
+    }
+    return { updates, changed };
+  }
+
+
+  // 历史恢复后：已跟随过的句子重新对齐到库的当前版本，撤销别的操作
+  // 不会把句子退回旧样子。不在 seen 里的句子（打开时就是旧版本）不动。
+  function planAssStyleCueFollow(cueGroups, library, seen) {
+    const currentById = new Map((library?.styles || []).map((style) => [style.id, style]));
+    const currentRawById = new Map((library?.styles || []).map((style) => [style.id, JSON.stringify(style)]));
+    const updates = [];
+    for (const segments of cueGroups) {
+      for (const segment of segments || []) {
+        const saved = segment?.assStyle;
+        const current = saved && currentById.get(saved.id);
+        if (!current || JSON.stringify(saved) === currentRawById.get(saved.id)) continue;
+        const key = assStyleContentKey(saved);
+        if (key !== assStyleContentKey(current) && seen.get(saved.id)?.has(key)) {
+          updates.push({ segment, style: current });
+        }
+      }
+    }
+    return updates;
+  }
+
+
+  // 底部按钮与提示计数：样式 id 还在库里、内容不同的句子。
+  // 库里已删除的样式不计入，句子保留自己的快照继续用。
+  function planAssStyleCueRefresh(cueGroups, library) {
+    const currentById = new Map((library?.styles || []).map((style) => [style.id, style]));
+    // 原始 JSON 相等 ⟹ 内容键相等：先比字符串，仅对不一致的少数句子算键。
+    // 只改名时原始 JSON 不同但内容键相同，仍须逐句比较内容键，避免误报分叉。
+    const currentRawById = new Map((library?.styles || []).map((style) => [style.id, JSON.stringify(style)]));
+    const updates = [];
+    for (const segments of cueGroups) {
+      for (const segment of segments || []) {
+        const saved = segment?.assStyle;
+        const current = saved && currentById.get(saved.id);
+        if (!current || JSON.stringify(saved) === currentRawById.get(saved.id)) continue;
+        if (assStyleContentKey(saved) !== assStyleContentKey(current)) {
+          updates.push({ segment, style: current });
+        }
+      }
+    }
+    return updates;
+  }
+
+
   function normalizeAssAnimations(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
@@ -816,5 +913,5 @@ export function createUtilsModule(dependencies) {
 
   // assMarkedRanges 同时供 text-processing 的 MASS 成对检测复用（strip /
   // 拆分补齐 / 合并折叠 / 字词块归位同一套配对语义），故从这里导出。
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assStyleSnapshotKey, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleContentKey, assStyleCueGroups, assStyleForId, assStyleLine, assStyleSnapshotKey, planAssStyleCueFollow, planAssStyleCueRefresh, planAssStyleCueSync, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 }
