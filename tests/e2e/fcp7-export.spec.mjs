@@ -114,7 +114,7 @@ test('opens the export modal defaulting to native XML and all available tracks',
     '透明 WebP 图片字幕（目标软件需支持 WebP）', '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）']);
   await expect(page.locator('#fcp7-export-png-options')).toBeHidden();
   await expect(page.locator('#fcp7-export-native-text')).toBeVisible();
-  await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
+  await expect(page.locator('#fcp7-export-modal')).not.toContainText(/原始时间线|去空隙时间线/);
   await expect(page.locator('#fcp7-export-fps')).toHaveValue('30');
 
   const fpsValues = await page.locator('#fcp7-export-fps option').evaluateAll(
@@ -148,13 +148,15 @@ test('opens the export modal defaulting to native XML and all available tracks',
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
 });
 
-test('opens the single FCP 7 XML entry with the gap-removed timeline by default', async ({ page }) => {
+test('FCP 7 XML inherits the checked toolbar timeline without another time-axis control', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect(page.locator('#extra-export-dropdown')).toBeVisible();
+  await page.locator('#gap-export-checkbox').check();
 
   await openFcp7Modal(page);
-  await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
+  await expect(page.locator('#fcp7-export-modal')).not.toContainText(/原始时间线|去空隙时间线/);
+  await expect(page.locator('#fcp7-export-modal input[name$="timeline-mode"]')).toHaveCount(0);
 
   await page.locator('#fcp7-export-cancel').click();
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
@@ -168,6 +170,7 @@ test('commits the active panel edit, then saves XML without exporting SRT', asyn
   // 打开弹窗前仍在编辑面板文本：导出必须先提交这条编辑再构建计划。
   await page.locator('.cue[data-idx="3"]').click();
   await page.locator('#cue-panel-text').fill('Crossing edited');
+  await page.locator('#gap-export-checkbox').check();
   await openFcp7Modal(page);
   await page.locator('#fcp7-export-format').selectOption('native');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();

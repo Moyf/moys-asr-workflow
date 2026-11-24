@@ -220,10 +220,7 @@ export function initMaweGapRemoveUi() {
     if (MaweDom.gapRemoveClearAllButton) MaweDom.gapRemoveClearAllButton.disabled = !gaps.length;
     if (MaweDom.gapRemoveDisableButton) MaweDom.gapRemoveDisableButton.disabled = !gaps.some((gap) => gap.removed);
     updateGapRemoveDisableHint();
-    if (MaweDom.gapRemovedExportDropdown) {
-      MaweDom.gapRemovedExportDropdown.hidden = !gaps.some((gap) => gap.removed);
-      if (MaweDom.gapRemovedExportDropdown.hidden) MaweDom.gapRemovedExportDropdown.classList.remove('open');
-    }
+    syncGapExportOption(gaps.some((gap) => gap.removed));
     renderGapRemoveList();
     MaweCoreState.waveformEditor?.refreshGapOverlay();
     global.MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.();
@@ -778,7 +775,70 @@ export function initMaweGapRemoveUi() {
     return true;
   }
 
+  function usesGapExport() {
+    const checkbox = document.getElementById('gap-export-checkbox');
+    return checkbox?.checked === true && !checkbox.disabled;
+  }
+
+  function updateGapExportTooltip() {
+    const checkbox = document.getElementById('gap-export-checkbox');
+    if (!checkbox) return;
+    const label = checkbox.closest('label');
+    let summary = '';
+    if (!label.hidden) {
+      const gaps = MaweGapRemoveData.getGapRemoveGaps();
+      const removed = gaps.filter(gap => gap.removed);
+      const tr = text => window.MAWE_I18N?.translateText?.(text) || text;
+      const describe = (key, ranges) => {
+        // The display projection contains disjoint ranges, including restored gaps.
+        const totalMs = ranges.reduce((sum, { start, end }) => sum + end - start, 0);
+        return tr(key).replace('{count}', String(ranges.length)).replace('{duration}', tr(formatGapRemoveTotal(totalMs)));
+      };
+      summary = describe('当前工程共 {count} 个空隙，总时长 {duration}', gaps);
+      if (removed.length < gaps.length) {
+        summary += `\n${describe('其中 {count} 个会在导出时移除，共 {duration}', removed)}`;
+      }
+    }
+    if ((label.getAttribute('title') ?? label.getAttribute('data-title') ?? '') !== summary) label.title = summary;
+    if (summary) checkbox.setAttribute('aria-description', summary);
+    else checkbox.removeAttribute('aria-description');
+  }
+
+  function syncGapExportOption(available) {
+    const checkbox = document.getElementById('gap-export-checkbox');
+    if (!checkbox) return;
+    if (available !== undefined) {
+      checkbox.disabled = !available;
+      checkbox.closest('label').hidden = !available;
+      if (!available) checkbox.checked = false;
+    }
+    updateGapExportTooltip();
+    const enabled = usesGapExport();
+    document.querySelectorAll('[data-gap-export-only]').forEach(item => { item.hidden = !enabled; });
+    const resolve = document.getElementById('download-resolve-json');
+    resolve?.classList.toggle('disabled', enabled);
+    resolve?.setAttribute('aria-disabled', String(enabled));
+    if (resolve) {
+      const title = enabled ? 'Resolve JSON 仅支持原始时间线' : '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入';
+      const text = enabled ? 'Resolve JSON（仅原始时间线）' : 'Resolve JSON';
+      resolve.textContent = window.MAWE_I18N?.translateText?.(text) || text;
+      resolve.title = window.MAWE_I18N?.translateText?.(title) || title;
+    }
+  }
+
+  document.getElementById('gap-export-checkbox')?.addEventListener('change', () => syncGapExportOption());
+  document.addEventListener('mawe:languagechange', () => syncGapExportOption());
+  document.addEventListener('durationchange', event => {
+    if (event.target === MaweCoreState.player) updateGapExportTooltip();
+  }, true);
+
   global.MaweGapRemoveUi = Object.freeze({
+    usesGapExport,
+    resetGapExport() {
+      const checkbox = document.getElementById('gap-export-checkbox');
+      if (checkbox) checkbox.checked = false;
+      syncGapExportOption();
+    },
     fillGapRangeAtWaveformTime,
     setGapRemoveData,
     commitManualGapRemoveChange,

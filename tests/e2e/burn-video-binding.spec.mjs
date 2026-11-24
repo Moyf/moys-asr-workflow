@@ -32,7 +32,6 @@ for (const kind of ['audio', 'video']) {
         blob: MaweCoreState.player.currentSrc.startsWith('blob:') }))).toEqual({ capable: false, source: null, jobs: null, blob: true });
       await expect(page.locator('#burn-video-export-btn')).toBeHidden();
       await page.evaluate(() => { MAWE_I18N.applyLanguage('en'); MaweGapRemovedMediaExport.updateButton(); });
-      expect(await page.locator('#download-gap-removed-burn-video').evaluate(el => el.hidden)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath('replaced-source.png') });
       await page.reload();
       await page.waitForFunction(() => window.MaweMediaLoad && window.MaweCoreState.player.currentSrc.includes('/media'));

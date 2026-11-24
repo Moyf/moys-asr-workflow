@@ -15,6 +15,7 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.12.0 之后 | 2026-11-24 | [ASS 逐字换色底框独立审查](release1.12.0/261124_ASS逐字换色底框/REVIEW_FINDINGS.md) | 半透明底框分层、libass 像素对照与首次实际帧提示 |
+| 1.12.0 之后 | 2026-11-24 | [统一去空隙导出独立审查](release1.12.0/261124_统一去空隙导出/REVIEW_FINDINGS.md) | 工具栏统一时间轴，涵盖双语字幕与带可选音轨的绿幕导出 |
 | 1.12.0 之后 | 2026-11-24 | [Launcher 文稿输入独立审查](release1.12.0/261124_Launcher文稿输入/REVIEW_FINDINGS.md) | 三处文稿入口共用来源切换，含预览、分块检查、口播和旧版对照 |
 | 1.11.4 之后 | 2026-11-23 | [编辑器原生选址核对清单](release1.11.4/261123_EditorNativePickers/editor-native-pickers.checklist.md) / [独立审查](release1.11.4/261123_EditorNativePickers/REVIEW_FINDINGS.md) | 媒体重定位与表情包文件夹选择；Draft 待定是否合入 main |
 | 1.12.0 之后 | 2026-11-24 | [烧录失败提示审查](release1.12.0/261124_烧录失败提示/REVIEW_FINDINGS.md) | 区分临时盘和保存盘，保留首次失败原因，防止磁盘满后继续换编码器 |

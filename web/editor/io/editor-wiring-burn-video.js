@@ -3,7 +3,7 @@
 // 取消与临时文件确认），但只支持 jobs API：烧录总是重新编码并输出 MP4。
 // 三个入口共享本模块的 runBurnVideoJob：
 // - 工具栏「烧录视频」：完整源视频 + 原时间轴 ASS；
-// - 「去空隙导出 → 重组后烧录视频」：ffconcat 保留区间 + 收缩时间轴 ASS（帧级精确切点）。
+// - 工具栏勾选去空隙时：保留区间 + 收缩时间轴字幕（帧级精确切点）。
 // - 「更多导出 → 生成绿幕视频」：音视频工程的字幕 + 可选源音轨。
 
 const BURN_VIDEO_MIME = 'video/mp4';
@@ -834,26 +834,18 @@ function buildBurnVideoSubtitles(gapRemoved = false) {
 }
 
 document.getElementById('burn-video-export-btn')?.addEventListener('click', () => {
+  const gapRemoved = window.MaweGapRemoveUi.usesGapExport();
+  const gapTag = gapRemoved ? `${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}_` : '';
   openBurnEncodingDialog({
     button: document.getElementById('burn-video-export-btn'),
-    label: '烧录视频',
-    startHint: 'FFmpeg 将重新编码源视频并烧录当前字幕；长视频可能需要较长时间。',
-    successText: '烧录视频已保存',
-    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
-    buildRequest: () => buildBurnVideoSubtitles(),
-  });
-});
-
-// 入口二：「去空隙导出 → 重组后烧录视频」。保留区间 + 收缩时间轴 ASS；重新编码使切点帧级精确。
-document.getElementById('download-gap-removed-burn-video')?.addEventListener('click', () => {
-  openBurnEncodingDialog({
-    button: document.getElementById('download-gap-removed-burn-video'),
-    label: '重组后烧录视频',
-    gapRemoved: true,
-    startHint: '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。',
-    successText: '重组后烧录视频已保存',
-    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
+    label: gapRemoved ? '重组后烧录视频' : '烧录视频',
+    gapRemoved,
+    startHint: gapRemoved ? '按保留区域重新编码并烧录当前字幕；切点帧级精确。'
+      : 'FFmpeg 将重新编码源视频并烧录当前字幕；长视频可能需要较长时间。',
+    successText: gapRemoved ? '重组后烧录视频已保存' : '烧录视频已保存',
+    suggestedName: `${MaweBoot.FILENAME_BASE}_${gapTag}${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
     buildRequest: () => {
+      if (!gapRemoved) return buildBurnVideoSubtitles();
       const context = MaweExportSrt.gapRemovedExportContext();
       if (!context) return null;
       const subtitles = buildBurnVideoSubtitles(true);
@@ -871,15 +863,23 @@ if (greenScreenAudioToggle) {
   });
 }
 document.getElementById('download-green-screen-video')?.addEventListener('click', () => {
+  const gapRemoved = window.MaweGapRemoveUi.usesGapExport();
+  const gapTag = gapRemoved ? `${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}_` : '';
   void runBurnVideoJob({
     button: document.getElementById('download-green-screen-video'),
-    greenScreen: true,
+    greenScreen: true, gapRemoved,
     label: '生成绿幕视频',
     startHint: '正在生成绿幕字幕视频…（绿幕导出不含表情包）',
     successText: '绿幕视频已保存',
-    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
-    buildRequest: () => ({ ass: MaweExportSrt.buildAss(), greenScreen: true,
-      includeAudio: MaweSettings.EDITOR_SETTINGS.greenScreenIncludeAudio === true }),
+    suggestedName: `${MaweBoot.FILENAME_BASE}_${gapTag}${window.MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
+    buildRequest: () => {
+      const request = { greenScreen: true, includeAudio: MaweSettings.EDITOR_SETTINGS.greenScreenIncludeAudio === true };
+      if (!gapRemoved) return { ...request, ass: MaweExportSrt.buildAss() };
+      const context = MaweExportSrt.gapRemovedExportContext();
+      if (!context) return null;
+      const ass = MaweExportSrt.buildGapRemovedAss({ alignFirstStart: false });
+      return ass ? { ...request, ass, intervals: context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end })) } : null;
+    },
   });
 });
 
@@ -891,8 +891,6 @@ function updateBurnVideoButton() {
   const visible = burnVideoMediaCurrent(config);
   const button = document.getElementById('burn-video-export-btn');
   if (button) button.hidden = !visible;
-  const gapButton = document.getElementById('download-gap-removed-burn-video');
-  if (gapButton) gapButton.hidden = !visible;
   const greenVisible = burnVideoMediaCurrent(config, true);
   const greenButton = document.getElementById('download-green-screen-video');
   if (greenButton) {

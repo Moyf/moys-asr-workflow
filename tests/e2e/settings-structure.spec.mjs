@@ -570,7 +570,7 @@ test('bilingual settings are grouped and the index never enables the mode implic
   await expect(page.locator('#project-settings-toggle')).not.toBeFocused();
 });
 
-test('both OTIO menus route to one persistent configuration and never export on navigation', async ({ page }, testInfo) => {
+test('OTIO in either export mode routes to the same settings without exporting', async ({ page }, testInfo) => {
   const downloads = [];
   page.on('download', item => downloads.push(item.suggestedFilename()));
   await page.locator('#extra-export-btn').click();
@@ -588,9 +588,10 @@ test('both OTIO menus route to one persistent configuration and never export on 
     MaweBoot.DATA.gap_remove = { schema: 'moy.asr.gap_remove.v1', skip_playback: true, gaps: [{ start: 2000, end: 2300, removed: true }] };
     MaweGapRemoveUi.updateGapRemoveUi();
   });
-  await page.locator('#gap-removed-export-btn').click();
-  await page.locator('[aria-controls="gap-removed-otio-menu"]').hover();
-  await page.locator('#gap-removed-otio-menu [data-settings-page="export-more"]').click();
+  await page.locator('#gap-export-checkbox').check();
+  await page.locator('#extra-export-btn').click();
+  await page.locator('[aria-controls="extra-otio-menu"]').hover();
+  await page.locator('#extra-otio-menu [data-settings-page="export-more"]').click();
   await expect(page.locator('[data-otio-export-option="srt"]')).not.toBeChecked();
   await page.reload();
   await settings(page, 'export-more');

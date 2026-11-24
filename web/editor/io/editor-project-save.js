@@ -81,14 +81,20 @@ MaweCoreState.container.querySelectorAll('.dirty').forEach(element => element.cl
 MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
 MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
 const jsonEl = document.getElementById('json-name');
-if (jsonEl) {
-jsonEl.textContent = filename;
-jsonEl.title = `点击复制工程文件名：${filename}`;
-jsonEl.classList.remove('empty');
+ if (jsonEl) {
+ jsonEl.textContent = filename;
+ jsonEl.classList.remove('empty');
 }
 updateProjectDirtyIndicator();
-if (!silent) MaweHint.flashHint('保存成功！', 'success');
-}
+ if (!silent) MaweHint.flashHint('保存成功！', 'success');
+ }
+
+ function boundProjectPath() {
+   const config = MaweBoot.SERVER_CONFIG;
+   // Browser file handles supersede the server binding, but expose no path.
+   return config?.canSave && !MaweServerSave.projectFileHandle && typeof config.projectFilePath === 'string'
+     ? config.projectFilePath : '';
+ }
 
 // 工程「未保存」指示：右上角文件名前加琥珀色圆点（CSS ::before，不进 textContent，
 // 不影响点击复制），title 提示有未保存的修改。#json-name 在 i18n 的属性跳过名单里，
@@ -99,9 +105,9 @@ const jsonEl = document.getElementById('json-name');
 if (!jsonEl || jsonEl.classList.contains('empty')) return;
 const dirty = Boolean(MaweServerSave?.hasUnsavedProjectChanges?.());
 jsonEl.classList.toggle('dirty', dirty);
-const filename = String(jsonEl.textContent || '').trim();
-if (!filename) return;
-const text = dirty ? `有未保存的修改；点击复制工程文件名：${filename}` : `点击复制工程文件名：${filename}`;
+ if (!jsonEl.textContent.trim()) return;
+  const action = boundProjectPath() ? '点击复制工程完整路径' : '点击复制工程文件名';
+ const text = dirty ? `有未保存的修改；${action}` : action;
 jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 }
 
@@ -263,10 +269,45 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
 
 
   const mediaNameEl = document.getElementById('media-name');
+  function mediaCopyTarget() {
+    const reference = String(MaweBoot.DATA.media || '');
+    const filename = mediaNameEl?.classList.contains('empty')
+      ? reference.split(/[\\/]/).at(-1) || ''
+      : mediaNameEl?.textContent || '';
+    if (!filename.trim()) return null;
+    // A browser-local replacement cannot reuse the old server media path.
+    if (window.MaweProjectMediaInputs?.currentMediaBlobUrl) return { filename, path: '' };
+    const path = MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath
+      || (/^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(reference) ? reference : '');
+    return { filename, path };
+  }
+
+  function updateMediaCopyHint() {
+    if (!mediaNameEl) return;
+    const target = mediaCopyTarget();
+    mediaNameEl.title = target
+      ? translatedEditorText(target.path ? '点击复制媒体完整路径' : '点击复制媒体文件名')
+      : '';
+  }
+
+  mediaNameEl?.addEventListener('click', () => {
+    const target = mediaCopyTarget();
+    if (!target) return;
+    MaweExportTimeline.copyText(target.path || target.filename,
+      translatedEditorText(target.path ? '已复制媒体完整路径' : '已复制媒体文件名'));
+  });
 
 
 
   const jsonNameEl = document.getElementById('json-name');
+  jsonNameEl?.addEventListener('click', () => {
+    if (jsonNameEl.classList.contains('empty')) return;
+    const filename = jsonNameEl.textContent;
+    if (!filename.trim()) return;
+    const path = boundProjectPath();
+    MaweExportTimeline.copyText(path || filename,
+      translatedEditorText(path ? '已复制工程完整路径' : '已复制工程文件名'));
+  });
 
 
 
@@ -294,6 +335,7 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
       updateProjectDirtyIndicator();
     }, 1000);
     document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
+    document.addEventListener('mawe:languagechange', updateMediaCopyHint);
   }
 
 global.MaweProjectSave = Object.freeze({
@@ -303,7 +345,8 @@ saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
 inlineEditHasUncommittedText,
-updateProjectDirtyIndicator,
+ updateProjectDirtyIndicator,
+ updateMediaCopyHint,
 mediaNameEl,
 jsonNameEl,
 translatedEditorText

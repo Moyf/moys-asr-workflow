@@ -1098,6 +1098,32 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="media-name" title="">未导入媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
+    def test_editor_home_exposes_bound_project_path_only_to_loopback_host(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            thread.start()
+            port = server.server_address[1]
+            connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+            try:
+                for method in ("GET", "HEAD"):
+                    connection.request(method, "/", headers={"Host": f"untrusted.invalid:{port}"})
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 403)
+                    self.assertNotIn(b"projectFilePath", response.read())
+                for host in ("127.0.0.1", "localhost"):
+                    connection.request("GET", "/", headers={"Host": f"{host}:{port}"})
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 200)
+                    encoded_path = json.dumps(str(project.json_path), ensure_ascii=False)
+                    self.assertIn(f'"projectFilePath": {encoded_path}', response.read().decode("utf-8"))
+            finally:
+                connection.close()
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
         project = server_editor.ServerProject(
             data={"segments": []},

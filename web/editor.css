@@ -939,8 +939,6 @@
   .toolbar .dropdown.button-split { display: inline-flex; }
   .toolbar .button-split > button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
   .toolbar .button-split > .split-caret { min-width: 28px; padding: 4px 7px; border-left: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-  .toolbar button.dirty { background: var(--amber-tint); border-color: var(--amber); color: var(--amber-hover); }
-  .toolbar button.dirty:hover { background: var(--amber-soft); border-color: var(--amber-hover); }
   .toolbar button.danger { background: var(--red-soft); border-color: var(--red); color: var(--red-hover); }
   .toolbar button.danger:hover { background: color-mix(in srgb, var(--red) 22%, transparent); border-color: var(--red-hover); color: var(--danger-hover-fg); }
   .toolbar button.active { background: var(--accent-tint-strong); border-color: var(--accent); color: var(--accent-hover); }
@@ -955,7 +953,17 @@
     cursor: pointer; user-select: none; color: var(--text-secondary);
     min-height: var(--control-h);
   }
-  .toolbar .right-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .toolbar .right-group { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
+  .toolbar label#gap-export-option {
+    padding: 4px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); white-space: nowrap;
+  }
+  .toolbar label#gap-export-option[hidden] { display: none; }
+  .toolbar button.dirty,
+  .toolbar label#gap-export-option:has(:checked) { background: var(--amber-tint); border-color: var(--amber); color: var(--amber-hover); }
+  .toolbar button.dirty:hover,
+  .toolbar label#gap-export-option:has(:checked):hover { background: var(--amber-soft); border-color: var(--amber-hover); }
+  #gap-export-checkbox { accent-color: var(--amber-line); margin: 0; }
   .toolbar-utility-group { display: inline-flex; align-items: center; gap: 4px; }
 
   /* 面板内嵌工具栏（字幕列表 / 波形顶部 / 字幕编辑区）：复用 .toolbar 控件样式，
@@ -3976,13 +3984,11 @@
   }
 
   /* 移除静音空隙 —— 琥珀 CTA 家族保留可识别性 */
-  .toolbar #gap-remove-manage,
-  .toolbar #gap-removed-export-btn {
+  .toolbar #gap-remove-manage {
     color: var(--gap-accent-fg); background: linear-gradient(180deg, var(--gap-accent-bg-1), var(--gap-accent-bg-2));
     border-color: var(--gap-accent-border); box-shadow: 0 1px 0 var(--gap-accent-inset) inset;
   }
-  .toolbar #gap-remove-manage:hover,
-  .toolbar #gap-removed-export-btn:hover {
+  .toolbar #gap-remove-manage:hover {
     color: var(--gap-accent-hover-fg); background: linear-gradient(180deg, var(--gap-accent-hover-1), var(--gap-accent-hover-2)); border-color: var(--gap-accent-hover-border);
   }
   .toolbar #gap-remove-manage.active {
@@ -3990,9 +3996,7 @@
     border-color: var(--accent); box-shadow: none;
   }
   .toolbar #gap-remove-manage.active:hover { background: var(--accent-soft); border-color: var(--accent); }
-  .toolbar #gap-remove-manage:focus-visible,
-  .toolbar #gap-removed-export-btn:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
-  .toolbar .gap-removed-export-dropdown .dropdown-menu { border-color: var(--gap-accent-menu-border); }
+  .toolbar #gap-remove-manage:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
   .gap-skip-toggle { white-space: nowrap; }
 
   /* 拼接/合并字幕 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 */

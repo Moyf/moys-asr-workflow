@@ -9,7 +9,7 @@ test('export capability changes preserve stored tooltips after title migration',
   const browser = await chromium.launch({ executablePath: process.env.MAW_E2E_CHROMIUM_PATH || undefined });
   try {
     const page = await browser.newPage();
-    const ids = ['download-otioz', 'download-gap-removed-otioz', 'download-sticker-otioz', 'download-gap-removed-sticker-otioz', 'download-lottie', 'download-ograf'];
+    const ids = ['download-otioz', 'download-sticker-otioz', 'download-lottie', 'download-ograf'];
     await page.setContent(ids.map(id => `<button id="${id}" title="${id} help">Export</button>`).join('')
       + '<select id="fcp7-export-format"><option value="native">Native text</option></select>'
       + '<select id="fcp7-export-resolution"></select><input id="fcp7-export-custom-width"><input id="fcp7-export-custom-height">');

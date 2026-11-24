@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createHmac, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { cleanupTempDir, findFreePort, generateWav, makeTempDir, startBlankServer, testSegments } from './helpers.mjs';
@@ -61,6 +61,12 @@ function pausePicker(operation) {
 }
 
 test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the selected path', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__copiedProjectValues = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async text => { window.__copiedProjectValues.push(text); } },
+    });
+  });
   const root = makeTempDir('native-open');
   let server, selected, selectedMedia, paused;
   try {
@@ -116,7 +122,11 @@ test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the
 
     await pick(first, { reload: true });
     await expect(projectName).toHaveText('first.mosp');
+    await expect(projectName).toHaveAttribute('data-title', '点击复制工程完整路径');
+    await projectName.click();
+    await expect.poll(() => page.evaluate(() => window.__copiedProjectValues)).toEqual([realpathSync(first)]);
     await edit('Keep this unsaved edit');
+    await expect(projectName).toHaveAttribute('data-title', '有未保存的修改；点击复制工程完整路径');
     await pick(null, { pause: 'choose-project' });
     await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Keep this unsaved edit');
     expect(dialogs).toEqual([]);
@@ -135,7 +145,15 @@ test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the
     acceptDiscard = true;
     await pick(second, { reload: true });
     await expect(projectName).toHaveText('second.mosp');
-    await expect(page.locator('#media-name')).toHaveText('source.wav');
+    await expect(projectName).toHaveAttribute('data-title', '点击复制工程完整路径');
+    await projectName.click();
+    await expect.poll(() => page.evaluate(() => window.__copiedProjectValues)).toEqual([realpathSync(second)]);
+    const mediaName = page.locator('#media-name');
+    await expect(mediaName).toHaveText('source.wav');
+    await expect(mediaName).toHaveAttribute('data-title', '点击复制媒体完整路径');
+    await mediaName.click();
+    await expect.poll(() => page.evaluate(() => window.__copiedProjectValues))
+      .toEqual([realpathSync(second), realpathSync(join(root, 'source.wav'))]);
     await expect(page.locator('#save-project')).toBeEnabled();
     expect(dialogs).toEqual(['confirm', 'confirm']);
     await edit('Save to the selected project');

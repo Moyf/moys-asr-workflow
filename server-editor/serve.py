@@ -529,7 +529,9 @@ def normalize_gap_removed_intervals(value: object) -> list[tuple[int, int]]:
     return intervals
 
 
-def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | None = None) -> GapRemovedVideoProbe:
+def _probe_gap_removed_video(
+    path: Path, ffprobe_path: Path, *, job: MediaJob | None = None, require_video: bool = True,
+) -> GapRemovedVideoProbe:
     command = [
         str(ffprobe_path), "-v", "error", "-show_entries",
         "stream=codec_type,codec_name,profile,codec_tag_string,width,height,channels,sample_rate,channel_layout,nal_length_size"
@@ -576,7 +578,7 @@ def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | 
             metadata.get("title") or metadata.get("name"),
             metadata.get("handler_name"),
         ))
-    if not any(item.codec_signature[0] == "video" for item in signature):
+    if require_video and not any(item.codec_signature[0] == "video" for item in signature):
         raise GapRemovedVideoExportError("当前媒体没有视频流")
     format_info = payload.get("format", {})
     if not isinstance(format_info, dict):
@@ -1038,6 +1040,28 @@ def _burn_sticker_input_args(stickers: list[dict]) -> list[str]:
     return args
 
 
+def _burn_audio_interval_lines(
+    intervals: list[tuple[int, int]], input_index: int, audio: int, audio_gain_db: float,
+) -> list[str]:
+    inputs = [f'cut_audio_{audio}_{index}' for index in range(len(intervals))]
+    base = f'base_audio_{audio}'
+    # Fill leading delay and pad each branch even if it has no source samples.
+    graph = [f'[{input_index}:a:{audio}]aresample=async=1:first_pts=0,apad[{base}]']
+    if len(intervals) > 1:
+        graph.append(f'[{base}]asplit={len(intervals)}' + ''.join(f'[{name}]' for name in inputs))
+    else:
+        inputs = [base]
+    outputs = []
+    for index, ((start, end), name) in enumerate(zip(intervals, inputs)):
+        output = f'kept_audio_{audio}_{index}'
+        outputs.append(f'[{output}]')
+        graph.append(f'[{name}]atrim=start={_burn_seconds(start)}:end={_burn_seconds(end)},'
+                     f'asetpts=PTS-{_burn_seconds(start)}/TB[{output}]')
+    gain = f',{volume_filter(audio_gain_db)}' if audio_gain_db else ''
+    graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1{gain}[burn_audio_{audio}]')
+    return graph
+
+
 def _burn_interval_filter(
     intervals: list[tuple[int, int]],
     audio_count: int,
@@ -1062,24 +1086,7 @@ def _burn_interval_filter(
     else:
         graph = [head + ",ass=filename='burn.ass'[burn_video]"]
     for audio in range(audio_count):
-        inputs = [f'cut_audio_{audio}_{index}' for index in range(len(intervals))]
-        base = f'base_audio_{audio}'
-        # Fill leading stream delay before splitting, including intervals that
-        # contain no source samples at all; per-cut padding cannot fill an
-        # empty branch. Infinite trailing padding is bounded by each atrim.
-        graph.append(f'[0:a:{audio}]aresample=async=1:first_pts=0,apad[{base}]')
-        if len(intervals) > 1:
-            graph.append(f'[{base}]asplit={len(intervals)}' + ''.join(f'[{name}]' for name in inputs))
-        else:
-            inputs = [base]
-        outputs = []
-        for index, ((start, end), name) in enumerate(zip(intervals, inputs)):
-            output = f'kept_audio_{audio}_{index}'
-            outputs.append(f'[{output}]')
-            graph.append(f'[{name}]atrim=start={_burn_seconds(start)}:end={_burn_seconds(end)},'
-                         f'asetpts=PTS-{_burn_seconds(start)}/TB[{output}]')
-        gain = f',{volume_filter(audio_gain_db)}' if audio_gain_db else ''
-        graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1{gain}[burn_audio_{audio}]')
+        graph.extend(_burn_audio_interval_lines(intervals, 0, audio, audio_gain_db))
     return ';\n'.join(graph) + '\n'
 
 
@@ -1140,12 +1147,14 @@ def burn_ass_video(
     if intervals and any(end <= start for start, end in intervals):
         raise BurnVideoExportError("去空隙保留区间无效")
     stickers = list(stickers or [])
-    if green_screen and intervals:
-        raise BurnVideoExportError("绿幕视频暂不支持去空隙区间")
+    if intervals:
+        intervals = normalize_gap_removed_intervals([
+            {"startMs": start, "endMs": end} for start, end in intervals
+        ])
     if green_screen and stickers:
         # 绿幕画布是固定尺寸档位，而表情包 placements 按源视频分辨率换算，
         # 直接烧会整体错位；正确支持需要前端按绿幕档位重新生成几何，先明确拒绝
-        # （与「绿幕 + 去空隙」同一策略）。若未来放开：表情包 overlay 仍应在 ass
+        # 若未来放开：表情包 overlay 仍应在 ass
         # 之前，保持字幕显示在表情包之上、与编辑器预览 z-order 一致。
         raise BurnVideoExportError("绿幕视频暂不支持表情包烧录")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1186,10 +1195,33 @@ def burn_ass_video(
     ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
     sticker_input_args = _burn_sticker_input_args(stickers)
     input_args = ["-i", str(source), *sticker_input_args]
-    if green_screen:
-        # 绿幕：lavfi 绿色画布生成纯字幕视频，源媒体仅在 include_audio 时提供
-        # 音轨。互斥检查已拒绝表情包与去空隙组合，因此这里保持主线简单的
-        # -vf 形状；表情包若未来放开，再以 filter_complex 形式挂在 ass 之前。
+    if green_screen and intervals:
+        # Subtitles already use the kept clock. Generate the canvas on that
+        # clock directly; only the optional source audio needs to be cut.
+        duration_ms = sum(end - start for start, end in intervals)
+        duration = _burn_seconds(duration_ms)
+        width, height = _green_screen_size_resolution("1080p")
+        input_args = ["-f", "lavfi", "-i", f"color=c=0x00ff00:s={width}x{height}:r=30:d={duration}"]
+        filter_args = ["-map", "0:v:0", "-vf", "ass=filename='burn.ass'", "-t", duration]
+        if include_audio:
+            if job:
+                job.update("preparing")
+            probe = probe or _probe_gap_removed_video(source, ffprobe_path, job=job, require_video=False)
+            audio_count = sum(stream.codec_signature[0] == "audio" for stream in probe.streams)
+        else:
+            audio_count = 0
+        if 0 <= audio_track < audio_count:
+            seek_start, seek_end = intervals[0][0], intervals[-1][1]
+            input_args.extend(("-ss", _burn_seconds(seek_start), "-t", _burn_seconds(seek_end - seek_start),
+                               "-i", str(source)))
+            relative_intervals = [(start - seek_start, end - seek_start) for start, end in intervals]
+            graph_path = output_path.with_suffix(".filters")
+            graph_path.write_text(';\n'.join(_burn_audio_interval_lines(
+                relative_intervals, 1, audio_track, audio_gain_db)) + '\n', encoding="utf-8", newline="\n")
+            filter_args.extend(("-/filter_complex", str(graph_path), "-map", f"[burn_audio_{audio_track}]"))
+        else:
+            filter_args.append("-an")
+    elif green_screen:
         input_args, _ = _green_screen_input(ass_path, _green_screen_size_resolution("1080p"))
         duration = input_args[-1].rsplit("d=", 1)[1]
         duration_ms = round(float(duration) * 1000)
@@ -1200,9 +1232,6 @@ def burn_ass_video(
         else:
             filter_args.append("-an")
     elif intervals:
-        intervals = normalize_gap_removed_intervals([
-            {"startMs": start, "endMs": end} for start, end in intervals
-        ])
         if probe is None:
             if job:
                 job.update("preparing")
@@ -1727,7 +1756,7 @@ def build_server_page(
         filename_base = project.json_path.stem if project.json_path else source_media.stem
         json_display = project.json_path.name if project.json_path else "未加载工程"
         media_display = source_media.name
-        media_title = f"点击复制媒体名：{source_media.name}"
+        media_title = "点击复制媒体完整路径"
         json_class = "" if project.json_path else "empty"
         media_class = ""
     else:
@@ -1831,6 +1860,7 @@ def build_server_page(
             "startupProgress": startup_status.get("progress", 100),
             "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
+            "projectFilePath": str(project.json_path) if project.json_path is not None else None,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "canOtozTimelineExport": project.json_path is not None,
@@ -3781,8 +3811,6 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             include_audio = request.get("includeAudio", False)
             if type(green_screen) is not bool or type(include_audio) is not bool:
                 raise ValueError("绿幕视频和附带音轨选项必须是布尔值")
-            if green_screen and intervals:
-                raise ValueError("绿幕视频暂不支持去空隙区间")
             if green_screen and stickers:
                 raise ValueError("绿幕视频暂不支持表情包烧录")
             if source_snapshot.kind != "video" and not green_screen:
@@ -4461,6 +4489,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, font_alias_payload())
             return
         if path == "/":
+            # The bootstrap HTML includes local paths and the request token.
+            port = self.editor_server.server_address[1]
+            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if port == 80:
+                hosts.update(("127.0.0.1", "localhost"))
+            host = self.headers.get_all("Host", [])
+            if len(host) != 1 or host[0].lower() not in hosts:
+                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "invalid editor host"}, include_body=include_body)
+                return
             with self.editor_server.settings_lock:
                 project = self.editor_server.project
                 settings = self.editor_server.settings
