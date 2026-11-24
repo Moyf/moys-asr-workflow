@@ -1,4 +1,4 @@
-"""Launcher-owned save dialog and per-launch editor session authentication."""
+"""Launcher-owned file dialogs and per-launch editor session authentication."""
 from __future__ import annotations
 
 import hashlib
@@ -53,7 +53,10 @@ def validate_suggested_name(name: object) -> str:
 class BurnHost:
     """Listen only during the lifetime of the Launcher-owned editor process."""
 
-    def __init__(self, pick: Callable[[str, Path, str], BurnDestination | None]):
+    def __init__(self, pick: Callable[[str, Path, str], BurnDestination | None], *,
+                 pick_project: Callable[[], Path | None] | None = None,
+                 pick_media: Callable[[str], Path | None] | None = None,
+                 pick_sticker_root: Callable[[], Path | None] | None = None):
         self._key = secrets.token_hex(32)
         key = self._key
         dialog = threading.Lock()
@@ -67,7 +70,9 @@ class BurnHost:
                 pass
 
             def do_POST(self):
-                if (self.path != "/choose" or self.headers.get("Origin") is not None
+                operation = self.path.removeprefix("/")
+                if (operation not in {"choose", "choose-project", "choose-media", "choose-sticker-root"}
+                        or self.path != "/" + operation or self.headers.get("Origin") is not None
                         or self.headers.get("Host") != f"127.0.0.1:{self.server.server_port}"):
                     self.send_error(403)
                     return
@@ -77,7 +82,7 @@ class BurnHost:
                         self.send_error(400)
                         return
                     body = self.rfile.read(length)
-                    if not _valid_signature(key, "choose", body, self.headers.get("X-MAW-Host-Proof")):
+                    if not _valid_signature(key, operation, body, self.headers.get("X-MAW-Host-Proof")):
                         self.send_error(403)
                         return
                     data = json.loads(body)
@@ -85,14 +90,17 @@ class BurnHost:
                     if abs(now - data["at"]) > 15:
                         self.send_error(403)
                         return
-                    name = validate_suggested_name(data["name"])
-                    language = data["language"]
-                    if language not in ("zh", "en"):
-                        raise ValueError("Invalid language")
-                    source = Path(data["source"])
-                    if not source.is_absolute():
-                        self.send_error(400)
-                        return
+                    if operation in {"choose", "choose-media"}:
+                        language = data["language"]
+                        if language not in ("zh", "en"):
+                            raise ValueError("Invalid language")
+                    if operation == "choose":
+                        name = validate_suggested_name(data["name"])
+                        source = Path(data["source"])
+                        if not source.is_absolute():
+                            raise ValueError("Invalid source")
+                    elif data.keys() != ({"at", "nonce", "language"} if operation == "choose-media" else {"at", "nonce"}):
+                        raise ValueError("Picker does not accept a path")
                     nonce = data["nonce"]
                     with nonce_lock:
                         for used, expiry in list(seen.items()):
@@ -109,13 +117,22 @@ class BurnHost:
                     reply = {"error": "busy"}
                 else:
                     try:
-                        target = pick(name, source, language)
-                        if target is None:
-                            reply = {"cancelled": True}
+                        if operation == "choose":
+                            target = pick(name, source, language)
+                            if target is None:
+                                reply = {"cancelled": True}
+                            else:
+                                reply = {"path": str(target.path), "directory": target.directory,
+                                         "original": target.original, "mode": target.mode,
+                                         "sourceIdentity": target.source_identity}
                         else:
-                            reply = {"path": str(target.path), "directory": target.directory,
-                                     "original": target.original, "mode": target.mode,
-                                     "sourceIdentity": target.source_identity}
+                            picker = {"choose-project": pick_project, "choose-media": pick_media,
+                                      "choose-sticker-root": pick_sticker_root}[operation]
+                            if picker is None:
+                                reply = {"error": "dialog"}
+                            else:
+                                path = picker(language) if operation == "choose-media" else picker()
+                                reply = {"cancelled": True} if path is None else {"path": str(path)}
                     except BurnDialogBusy:
                         reply = {"error": "busy"}
                     except ValueError as error:
@@ -233,37 +250,55 @@ class BurnHostClient:
                 return int(expiry)
         raise PermissionError("启动器编辑器会话无效，请从启动器重新打开")
 
-    def choose(self, name: str, source: Path, language: str = "zh") -> BurnDestination | None:
-        body = _json({"name": validate_suggested_name(name), "source": str(source),
-                      "language": language, "at": time.time(), "nonce": secrets.token_hex(16)})
+    def _choose(self, operation: str, fields: dict, *, dialog: str) -> dict:
+        unavailable = f"无法打开启动器{dialog}对话框"
+        body = _json({**fields, "at": time.time(), "nonce": secrets.token_hex(16)})
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=300)
         try:
-            connection.request("POST", "/choose", body, {"X-MAW-Host-Proof": _sign(self._key, "choose", body)})
+            connection.request("POST", "/" + operation, body, {"X-MAW-Host-Proof": _sign(self._key, operation, body)})
             response = connection.getresponse()
             raw = response.read(MAX_MESSAGE + 1)
             if (response.status != 200 or len(raw) > MAX_MESSAGE
                     or not _valid_signature(self._key, "chosen", body + b"\0" + raw,
                                             response.headers.get("X-MAW-Host-Proof"))):
-                raise BurnDialogUnavailable("无法打开启动器保存对话框")
+                raise BurnDialogUnavailable(unavailable)
             result = json.loads(raw)
             if result.get("error") == "busy":
-                raise BurnDialogBusy("启动器已有保存对话框，请先完成或关闭")
+                busy_dialog = "保存" if operation == "choose" else "文件"
+                raise BurnDialogBusy(f"启动器已有{busy_dialog}对话框，请先完成或关闭")
             if result.get("error") == "file":
                 raise OSError("Launcher could not inspect the selected file")
             if result.get("error"):
-                raise BurnDialogUnavailable("无法打开启动器保存对话框")
+                raise BurnDialogUnavailable(unavailable)
             if result.get("invalid"):
                 raise ValueError(result["invalid"])
-            if result.get("cancelled"):
-                return None
-            original = result["original"]
-            return BurnDestination(Path(result["path"]), tuple(result["directory"]),
-                                   tuple(original) if original is not None else None, result["mode"],
-                                   source, tuple(result["sourceIdentity"]), ())
+            return result
         except (ConnectionError, TimeoutError, http.client.HTTPException) as error:
-            raise BurnDialogUnavailable("无法打开启动器保存对话框") from error
+            raise BurnDialogUnavailable(unavailable) from error
         finally:
             connection.close()
+
+    def choose(self, name: str, source: Path, language: str = "zh") -> BurnDestination | None:
+        result = self._choose("choose", {"name": validate_suggested_name(name), "source": str(source),
+                                        "language": language}, dialog="保存")
+        if result.get("cancelled"):
+            return None
+        original = result["original"]
+        return BurnDestination(Path(result["path"]), tuple(result["directory"]),
+                               tuple(original) if original is not None else None, result["mode"],
+                               source, tuple(result["sourceIdentity"]), ())
+
+    def choose_project(self) -> Path | None:
+        result = self._choose("choose-project", {}, dialog="工程选择")
+        return None if result.get("cancelled") else Path(result["path"])
+
+    def choose_media(self, language: str) -> Path | None:
+        result = self._choose("choose-media", {"language": language}, dialog="媒体选择")
+        return None if result.get("cancelled") else Path(result["path"])
+
+    def choose_sticker_root(self) -> Path | None:
+        result = self._choose("choose-sticker-root", {}, dialog="文件夹选择")
+        return None if result.get("cancelled") else Path(result["path"])
 
 
 class BurnSessions:

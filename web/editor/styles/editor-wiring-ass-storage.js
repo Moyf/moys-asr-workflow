@@ -250,6 +250,12 @@ async function persistAssStyleLibrary({ keepalive = false } = {}) {
   return assStyleSavePromise;
 }
 
+async function flushBeforeProjectSwitch() {
+  if (assStyleSavePromise) await assStyleSavePromise;
+  if (assStyleLibraryDirty && !assStyleLibraryConflict) await persistAssStyleLibrary();
+  return !assStyleLibraryDirty;
+}
+
 async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
   if (assStyleImportInFlight) return ASS_STYLE_LIBRARY;
   if (assStyleLibraryLoadPromise) return assStyleLibraryLoadPromise;
@@ -413,6 +419,7 @@ window.MaweAssStorageWiring = window.MaweAssStorageWiring || Object.freeze({
   DEFAULT_ASS_COLOR_STYLE,
   updateAssStyleLibrarySummary,
   loadAssStyleLibrary,
+  flushBeforeProjectSwitch,
   styles: () => ASS_STYLE_LIBRARY.styles || [],
 });
 }

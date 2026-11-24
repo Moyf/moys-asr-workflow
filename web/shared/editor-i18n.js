@@ -183,6 +183,9 @@
     '无法保存默认参数': 'Could not save defaults',
     '选择保存位置…': 'Choose save location…',
     '请稍等片刻，在 Launcher 的文件选择器中选择保存路径。': 'Please wait a moment, then choose where to save in the Launcher file picker.',
+    '请在 Launcher 的文件选择器中选择工程。如果提示重新定位媒体，请选择原始音视频。': 'Choose the project in the Launcher file picker. If prompted to locate media, select the original audio or video.',
+    '请在 Launcher 的文件夹选择器中选择表情包目录。': 'Choose the sticker folder in the Launcher folder picker.',
+    '当前工程已有表情包。更换目录可能导致部分表情包无法显示或导出；原有引用不会删除。确定更换吗？': 'This project already uses stickers. Changing the folder may make some stickers unavailable for preview or export. Existing references will remain. Change the folder?',
     '重置定位': 'Reset position', '重置大小': 'Reset size', '倍率': 'Scale',
     'ASS 字幕缩放倍率': 'ASS subtitle scale multiplier',
     'ASS 锚点 X': 'ASS anchor X', 'ASS 锚点 Y': 'ASS anchor Y',
@@ -876,6 +879,22 @@
     '无法完成烧录文件操作，请检查保存位置权限或可用空间后重试': 'Could not finish the video file operation. Check the save location permissions and available space',
     '无法打开启动器保存对话框': 'Could not open the Launcher save dialog',
     '启动器已有保存对话框，请先完成或关闭': 'A Launcher save dialog is already open. Complete or close it first',
+    '启动器已有文件对话框，请先完成或关闭': 'A Launcher file dialog is already open. Complete or close it first',
+    '无法打开启动器工程选择对话框': 'Could not open the Launcher project picker',
+    '无法打开启动器媒体选择对话框': 'Could not open the Launcher media picker',
+    '无法打开启动器文件夹选择对话框': 'Could not open the Launcher folder picker',
+    '选择文件夹': 'Choose folder',
+    '所选表情包目录不存在或无法访问': 'The selected sticker folder is missing or inaccessible.',
+    '请选择工程对应的原始音视频文件。': 'Choose the original audio or video for this project.',
+    '当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。': 'Open another project and discard your unsaved changes?',
+    '请选择一个 .mosp 或 .json 工程文件。': 'Choose a .mosp or .json project file.',
+    '工程选择已失效，请重新选择': 'The project selection has expired. Select it again.',
+    '所选工程在打开期间已变更，请重新选择': 'The selected project changed while opening. Select it again.',
+    '所选文件已移动或不存在': 'The selected file was moved or no longer exists.',
+    '无法访问所选位置，请检查文件权限': 'Could not access the selection. Check its permissions.',
+    '无法读取所选位置': 'Could not read the selected location.',
+    '关联媒体在打开期间已移动或不存在，请重新选择工程': 'The linked media moved or no longer exists. Select the project again.',
+    'ASS 样式库尚未保存，请先处理样式库保存错误': 'The ASS style library is not saved. Resolve the save error first.',
     '与本地服务的连接中断，请重试': 'The connection to the local server was interrupted. Please try again',
     'FFmpeg 将重新编码源视频并烧录当前 ASS 字幕；长视频可能需要较长时间。': 'FFmpeg re-encodes the source video and burns the current ASS subtitles; long videos may take a while.',
     '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。': 'Re-encodes kept intervals and burns the current ASS subtitles; cuts are frame-accurate.',
@@ -1723,7 +1742,7 @@
     '🦊 表情包': '🦊 Stickers',
     '另存为到当前工程目录（Ctrl(Cmd)+Shift+S）': 'Save as in the current project folder (Ctrl(Cmd)+Shift+S)',
     '选择本地媒体文件并加载到播放器': 'Choose a local media file and load it in the player',
-    '单独打开工程；浏览器无法自动读取关联媒体时会提示选择': 'Open a project by itself; the browser will prompt when it cannot read related media automatically',
+    '打开 .mosp 或 .json 工程': 'Open a .mosp or .json project',
     '设置表情包根目录': 'Set sticker root folder',
     '过滤字幕': 'Filter subtitles', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
@@ -2036,6 +2055,8 @@
     }
     let directory = /^目录已应用，读取 (\d+) 张图片。$/.exec(text);
     if (directory) return `Directory applied; loaded ${directory[1]} images.`;
+    directory = /^选择表情包目录失败：(.+)$/.exec(text);
+    if (directory) return `Could not choose a sticker folder: ${translateText(directory[1], EN)}`;
     let mediaLoaded = /^已加载媒体：(.+)$/.exec(text);
     if (mediaLoaded) return `Loaded media: ${mediaLoaded[1]}`;
     directory = /^读取失败：(.+)。当前有效目录和表情包保持不变。$/.exec(text);

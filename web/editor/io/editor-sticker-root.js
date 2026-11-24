@@ -5,39 +5,86 @@ export function initStickerRootModule() {
   const DEFAULT_ROOT_KEY = 'moy.asr.editor.sticker-root.v1';
   const defaultInput = document.getElementById('sticker-root-input');
   const defaultButton = document.getElementById('sticker-root-read');
+  const defaultBrowse = document.getElementById('sticker-root-browse');
   const defaultStatus = document.getElementById('sticker-root-status');
   const projectInput = document.getElementById('project-sticker-root-input');
   const projectButton = document.getElementById('project-sticker-root-read');
+  const projectBrowse = document.getElementById('project-sticker-root-browse');
   const projectStatus = document.getElementById('project-sticker-root-status');
   const overrideToggle = document.getElementById('project-sticker-root-override');
   const serverEnabled = Boolean(MaweBoot.SERVER_CONFIG?.stickerRootUrl);
   let epoch = 0, busy = false, pending = Promise.resolve();
+  let picking = false;
+  const nativePaths = new WeakMap();
   function normalizeRoot(value) {
     const root = String(value || '').trim().replace(/\\/g, '/');
     return root === '/' || /^[A-Za-z]:\/$/.test(root) ? root : root.replace(/\/+$/, '');
   }
   function getDefaultRoot() {
-    try { return normalizeRoot(MaweHost.storage.getItem(DEFAULT_ROOT_KEY)); } catch (_) { return ''; }
+    try { return MaweHost.storage.getItem(DEFAULT_ROOT_KEY) || ''; } catch (_) { return ''; }
   }
-  function projectRoot() { return normalizeRoot(MaweBoot.DATA.sticker_root); }
-  function syncControls() {
-    if (!busy) {
+  function projectRoot() { return MaweBoot.DATA.sticker_root || ''; }
+  function syncBrowseControls() {
+    defaultBrowse.disabled = busy || picking;
+    projectBrowse.disabled = busy || picking || !overrideToggle.checked;
+  }
+  function syncControls(refreshValues = true) {
+    if (!busy && refreshValues) {
       defaultInput.value = getDefaultRoot(); projectInput.value = projectRoot();
       overrideToggle.checked = Boolean(projectRoot());
     }
     projectInput.disabled = busy || !overrideToggle.checked;
     projectButton.disabled = busy || !overrideToggle.checked;
     defaultInput.disabled = busy; defaultButton.disabled = busy; overrideToggle.disabled = busy;
+    syncBrowseControls();
     if (!serverEnabled) {
       defaultStatus.textContent = '便携编辑器保存目录配置；读取本地图片需要 Server 编辑器。';
       projectStatus.textContent = defaultStatus.textContent;
     }
   }
+  function connectNativePicker(nativeSession) {
+    if (!serverEnabled || !nativeSession) return;
+    defaultBrowse.hidden = projectBrowse.hidden = false;
+    for (const [button, input] of [[defaultBrowse, defaultInput], [projectBrowse, projectInput]]) {
+      button.addEventListener('click', async () => {
+        if (picking || busy || input.disabled) return;
+        const generation = MaweState.projectLoadGeneration, initialValue = input.value, rootEpoch = epoch;
+        const current = () => generation === MaweState.projectLoadGeneration && rootEpoch === epoch
+          && !input.disabled && input.value === initialValue;
+        picking = true;
+        syncBrowseControls();
+        try {
+          const { response, result } = await MaweHint.withLauncherPickerHint(
+            '请在 Launcher 的文件夹选择器中选择表情包目录。',
+            async () => {
+              const response = await MaweHost.server.fetch('/api/stickers/native-pick-root', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, nativeSession }),
+              });
+              return { response, result: await response.json() };
+            },
+          );
+          if (!current()) return;
+          if (!response.ok || !result.ok) throw new Error(result.error || String(response.status));
+          if (!result.cancelled && typeof result.root === 'string') {
+            input.value = result.root;
+            nativePaths.set(input, input.value);
+          }
+        } catch (error) {
+          if (current()) MaweHint.flashHint(`选择表情包目录失败：${error.message || error}`, 'warning', { error });
+        } finally {
+          picking = false;
+          syncBrowseControls();
+        }
+      });
+    }
+  }
   async function requestRoot(root, activate) {
     if (!serverEnabled) return null;
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
+    const { stickerRootUrl, requestToken } = MaweBoot.SERVER_CONFIG;
+    const response = await MaweHost.server.fetch(stickerRootUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path: root, activate }),
+      body: JSON.stringify({ requestToken, path: root, activate, ...MaweServerSave.currentServerBinding }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || String(response.status));
@@ -54,15 +101,35 @@ export function initStickerRootModule() {
     MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }
-  async function applyRoot(scope, value) {
-    const root = normalizeRoot(value), generation = ++epoch;
+  function applyInputRoot(scope) {
+    const input = scope === 'default' ? defaultInput : projectInput;
+    const saved = scope === 'default' ? getDefaultRoot() : projectRoot();
+    return applyRoot(scope, input.value, { exact: nativePaths.get(input) === input.value || saved === input.value });
+  }
+  function hasStickerReferences() {
+    const project = MaweBoot.DATA;
+    const tracks = [project, project.overlay_track, ...(project.multi_subtitle?.tracks || [])];
+    return tracks.some(track => track?.segments?.some(segment => segment.sticker || segment.sticker_ref));
+  }
+  async function applyRoot(scope, value, { exact = false } = {}) {
+    const root = exact ? value : normalizeRoot(value), generation = ++epoch;
     const status = scope === 'default' ? defaultStatus : projectStatus;
-    busy = true; syncControls(); status.textContent = '正在读取并验证表情包目录…';
+    let declined = false;
+    busy = true; syncControls();
     try {
       await enqueue(async () => {
         if (generation !== epoch) return;
         const active = scope === 'project' || !projectRoot();
         const effective = scope === 'project' ? root || getDefaultRoot() : root;
+        if (active && effective !== (MaweBoot.STICKER_ROOT || '') && hasStickerReferences()) {
+          const message = '当前工程已有表情包。更换目录可能导致部分表情包无法显示或导出；原有引用不会删除。确定更换吗？';
+          if (!global.confirm(global.MAWE_I18N?.translateText?.(message) || message)) {
+            declined = true;
+            if (scope === 'project' && !root) overrideToggle.checked = Boolean(projectRoot());
+            return;
+          }
+        }
+        status.textContent = '正在读取并验证表情包目录…';
         const result = await requestRoot(effective, active);
         if (generation !== epoch) return;
         const checked = result?.root || effective;
@@ -75,7 +142,7 @@ export function initStickerRootModule() {
       });
     } catch (error) {
       if (generation === epoch) status.textContent = '读取失败：' + (error.message || error) + '。当前有效目录和表情包保持不变。';
-    } finally { if (generation === epoch) { busy = false; syncControls(); } }
+    } finally { if (generation === epoch) { busy = false; syncControls(!declined); } }
   }
   function activateProjectRoot() {
     const generation = ++epoch, root = projectRoot() || getDefaultRoot();
@@ -92,7 +159,8 @@ export function initStickerRootModule() {
   }
   if (typeof MaweBoot.DATA.sticker_root !== 'string') MaweBoot.DATA.sticker_root = '';
   global.MaweStickerRoot = Object.freeze({
-    getDefaultRoot, projectRoot, syncControls, applyRoot, activateProjectRoot,
+    getDefaultRoot, projectRoot, syncControls, applyRoot, applyInputRoot, activateProjectRoot, connectNativePicker,
+    waitForPending: () => pending.catch(() => {}),
     defaultInput, defaultButton, projectInput, projectButton, overrideToggle,
   });
 })(window);

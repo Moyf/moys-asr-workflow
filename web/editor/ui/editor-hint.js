@@ -207,6 +207,15 @@ export function initMaweHint() {
     return card;
   }
 
+  async function withLauncherPickerHint(message, pick) {
+    const text = global.MAWE_I18N?.translateText?.(message) || message;
+    const card = flashHint(text, 'info', { durationMs: 0 });
+    try {
+      return await pick();
+    } finally {
+      dismissHintCard(card);
+    }
+  }
 
 
   // 振幅到达上下限时由波形模块派发的事件：rAF 节流后仍可能每帧触发，冷却避免提示闪烁
@@ -222,6 +231,7 @@ export function initMaweHint() {
     dismissHintCard,
     applyHintPosition,
     flashHint,
+    withLauncherPickerHint,
     revealInlineWarning,
     get lastScaleLimitMsg() { return lastScaleLimitMsg; },
     set lastScaleLimitMsg(v) { lastScaleLimitMsg = v; },

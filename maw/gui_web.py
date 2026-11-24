@@ -99,7 +99,7 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
-from maw.media import probe_audio_tracks, resolve_project_media
+from maw.media import MEDIA_EXTENSIONS, probe_audio_tracks, resolve_project_media
 from maw.native_burn_host import BurnDialogBusy, BurnHost
 from maw.native_burn_output import BurnDestination
 from maw.notify import send_system_notification
@@ -530,6 +530,9 @@ class LauncherApi:
         self._stop_server_lock = Lock()
         self.server_log_file: BinaryIO | None = None
         self._native_burn_picker: Callable[[str, Path, str], BurnDestination | None] | None = None
+        self._native_project_picker: Callable[[], Path | None] | None = None
+        self._native_media_picker: Callable[[str], Path | None] | None = None
+        self._native_sticker_picker: Callable[[], Path | None] | None = None
         self._github_star_source: Callable[[], bool] | None = None
         self._native_burn_host: BurnHost | None = None
         self._native_burn_port: int | None = None
@@ -2258,7 +2261,10 @@ class LauncherApi:
             environment = _independent_app_child_environment()
             picker = self._native_burn_picker
             if picker is not None:
-                self._native_burn_host = BurnHost(picker)
+                self._native_burn_host = BurnHost(
+                    picker, pick_project=self._native_project_picker, pick_media=self._native_media_picker,
+                    pick_sticker_root=self._native_sticker_picker,
+                )
                 self._native_burn_port = port
                 environment.update(self._native_burn_host.environment())
             self.server_process = popen_process_tree(
@@ -4085,6 +4091,34 @@ def _open_script_match_review(root: Path, review: ScriptMatchReview) -> None:
         raise RuntimeError("Could not open the script match review window.")
 
 
+def _pick_editor_path(window: Window, dialog: int, *, file_types: tuple[str, ...] = (),
+                      confirmation: tuple[str, str] | None = None) -> Path | None:
+    if not _FILE_DIALOG_LOCK.acquire(blocking=False):
+        raise BurnDialogBusy
+    try:
+        window.show()
+        if confirmation is not None and window.create_confirmation_dialog(*confirmation) is not True:
+            return None
+        selected = window.create_file_dialog(dialog, allow_multiple=False, file_types=file_types)
+        return Path(selected[0]) if selected else None
+    finally:
+        _FILE_DIALOG_LOCK.release()
+
+
+def _pick_editor_project(window: Window) -> Path | None:
+    return _pick_editor_path(window, OPEN_DIALOG, file_types=("MAW Project (*.mosp;*.json)",))
+
+
+def _pick_editor_media(window: Window, lang: str) -> Path | None:
+    confirmation = (
+        ("Locate linked media?", "MAW could not locate the linked source. Select the original audio or video to continue?")
+        if lang == "en" else ("重新定位关联媒体？", "无法自动定位工程的关联媒体。是否选择原始音视频后继续打开工程？")
+    )
+    patterns = ";".join(f"*{suffix}" for suffix in sorted(MEDIA_EXTENSIONS))
+    return _pick_editor_path(window, OPEN_DIALOG, file_types=(f"Audio / Video ({patterns})",),
+                             confirmation=confirmation)
+
+
 def _pick_cocoa_burn_path(window: Window, name: str, directory: Path, lang: str) -> str | None:
     import AppKit
     from Foundation import NSURL
@@ -4202,6 +4236,9 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     )
     if window is not None:
         api._native_burn_picker = partial(_pick_burn_target, window)
+        api._native_project_picker = partial(_pick_editor_project, window)
+        api._native_media_picker = partial(_pick_editor_media, window)
+        api._native_sticker_picker = partial(_pick_editor_path, window, FOLDER_DIALOG)
         window.events.closing += lambda: api.shutdown()
         # 在窗口首次显示时就同步标题栏颜色，避免内容尚未绘制时露出白色原生标题栏。
         window.events.shown += lambda: apply_dark_title_bar(WINDOW_TITLE)

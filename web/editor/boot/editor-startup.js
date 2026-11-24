@@ -106,5 +106,8 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
 
 // 离开提示
 window.addEventListener('beforeunload', (e) => {
-  if (MaweServerSave.hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
+  if (!MaweServerSave.nativeProjectReload && MaweServerSave.hasUnsavedProjectChanges()) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
 });

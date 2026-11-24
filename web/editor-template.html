@@ -50,7 +50,7 @@ __WAVEFORM_CSS__
 </div>
 <div class="toolbar row-actions">
   <button type="button" id="new-project" title="创建并保存一个空白工程">新建工程</button>
-  <button id="open-project" title="单独打开工程；浏览器无法自动读取关联媒体时会提示选择">打开工程</button>
+  <button id="open-project" title="打开 .mosp 或 .json 工程">打开工程</button>
   <span class="dropdown" id="import-dropdown">
     <button type="button" id="import-btn" title="导入媒体 / 字幕 / 歌词" aria-expanded="false" aria-controls="import-menu" aria-haspopup="menu">导入 ▾</button>
     <div class="dropdown-menu" id="import-menu" role="menu">
@@ -1347,7 +1347,7 @@ __WAVEFORM_CSS__
       在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。
     </small>
     </div></div><div class="editor-settings-page" id="editor-settings-page-project-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-project-sticker" hidden><span class="editor-settings-group-heading" id="project-sticker-root-title">表情包目录</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-sticker-root-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item"><input type="checkbox" id="project-sticker-root-override"> 覆盖默认文件夹</label><label class="editor-settings-item" for="project-sticker-root-input">工程目录</label><div class="sticker-root-controls"><input type="text" id="project-sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="project-sticker-root-status"><button type="button" id="project-sticker-root-read">应用</button></div><p class="editor-settings-hint" id="project-sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">关闭覆盖时使用<button type="button" class="editor-settings-inline-action" data-settings-page="sticker" title="打开全局设置的表情包页">全局默认目录</button>，不把默认路径写入工程。</small></div></div>
+<div class="editor-settings-group" role="group" aria-labelledby="project-sticker-root-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item"><input type="checkbox" id="project-sticker-root-override"> 覆盖默认文件夹</label><label class="editor-settings-item" for="project-sticker-root-input">工程目录</label><div class="sticker-root-controls"><input type="text" id="project-sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="project-sticker-root-status"><button type="button" id="project-sticker-root-browse" hidden>选择文件夹</button><button type="button" id="project-sticker-root-read">应用</button></div><p class="editor-settings-hint" id="project-sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">关闭覆盖时使用<button type="button" class="editor-settings-inline-action" data-settings-page="sticker" title="打开全局设置的表情包页">全局默认目录</button>，不把默认路径写入工程。</small></div></div>
 </div>
 </div></div></section>
 <section class="editor-settings-panel editor-settings-window" id="editor-settings-panel" role="dialog" aria-modal="false" aria-label="全局设置" aria-hidden="true">
@@ -1800,7 +1800,7 @@ __WAVEFORM_CSS__
 <div class="sticker-background-controls" id="sticker-background-controls" hidden><label class="editor-settings-item" for="sticker-background-color">背景颜色</label><input type="color" id="sticker-background-color" class="editor-settings-item" value="#000000" title="底衬颜色"><label class="editor-settings-item" for="sticker-background-opacity">不透明度</label><input type="number" id="sticker-background-opacity" class="editor-settings-item" min="0" max="100" step="1" value="35" title="0–100%"><span class="editor-settings-item">%</span></div>
 <small class="editor-settings-hint">底衬垫在表情包图片的 contain 显示矩形上，贴纸透明区域透出底衬颜色，预览与烧录一致；开启后舞台小窗的默认阴影与圆角一并取消。</small></div></div>
 <span class="editor-settings-group-heading" id="default-sticker-root-title">默认文件夹</span>
-<div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
+<div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-browse" hidden>选择文件夹</button><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
 </div>
   <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
 
