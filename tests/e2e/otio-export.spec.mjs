@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -34,7 +34,76 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('exports source OTIO when media metadata is missing', async ({ page }) => {
+async function exportSourceOtio(page, format = 'otio') {
+  await page.locator('#extra-export-btn').click();
+  await page.locator('[aria-controls="extra-otio-menu"]').hover();
+  await page.locator(`#download-${format}`).click();
+}
+
+test('canceling the OTIO picker does not offer the companion SRT', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => {
+    window.pickerNames = [];
+    window.showSaveFilePicker = async ({ suggestedName }) => {
+      window.pickerNames.push(suggestedName);
+      throw new DOMException('Canceled', 'AbortError');
+    };
+  });
+  await page.goto(server.url);
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ otioExportIncludeSrt: true }));
+  await exportSourceOtio(page);
+  await expect.poll(() => page.evaluate(() => window.pickerNames)).toEqual(['project.otio']);
+});
+
+test('downloads the OTIO timeline alone when there is no save picker', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+  await page.goto(server.url);
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ otioExportIncludeSrt: false }));
+  const pending = page.waitForEvent('download', { timeout: 5000 });
+  await exportSourceOtio(page);
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe('project.otio');
+  expect(JSON.parse(readFileSync(await download.path(), 'utf8')).OTIO_SCHEMA).toBe('Timeline.1');
+});
+
+for (const [format, gapRemoved] of [['otio', false], ['otio', true], ['otioz', false], ['otioz', true]]) {
+  test(`downloads the ${gapRemoved ? 'gap-removed' : 'source'} ${format.toUpperCase()} and companion SRT without a save picker`, async ({ page }) => {
+    await disableOnboarding(page);
+    await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+    await page.goto(`${server.url}?lang=zh`);
+    await page.evaluate(() => MaweSettings.updateEditorSettings({ otioExportIncludeSrt: true }));
+    const downloads = new Map();
+    page.on('download', download => downloads.set(download.suggestedFilename(), download));
+    if (gapRemoved) {
+      await page.evaluate(() => {
+        MaweBoot.DATA.gap_remove = {
+          schema: 'moy.asr.gap_remove.v1',
+          gaps: [{ start: 1200, end: 1600, removed: true }],
+        };
+        MaweGapRemoveUi.updateGapRemoveUi();
+      });
+      await page.locator('#gap-removed-export-btn').click();
+      await page.locator('[aria-controls="gap-removed-otio-menu"]').hover();
+      await page.locator(`#download-gap-removed-${format}`).click();
+    } else {
+      await exportSourceOtio(page, format);
+    }
+    const basename = gapRemoved ? 'project_去空隙' : 'project';
+    const names = [`${basename}.${format}`, `${basename}.srt`];
+    await expect.poll(() => [...downloads.keys()].sort()).toEqual(names);
+    const timeline = readFileSync(await downloads.get(names[0]).path());
+    if (format === 'otioz') {
+      expect(timeline.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+      expect(timeline.includes('content.otio')).toBe(true);
+    } else {
+      expect(JSON.parse(timeline.toString('utf8')).OTIO_SCHEMA).toBe('Timeline.1');
+    }
+    expect(readFileSync(await downloads.get(names[1]).path(), 'utf8')).toContain('Alpha');
+  });
+}
+
+test('exports source OTIO without media metadata and keeps its companion SRT in sync', async ({ page }) => {
   await disableOnboarding(page);
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -48,6 +117,9 @@ test('exports source OTIO when media metadata is missing', async ({ page }) => {
               suggestedName: options.suggestedName,
               content: await blob.text(),
             });
+            if (options.suggestedName.endsWith('.otio')) {
+              await new Promise(resolve => { window.__finishOtioWrite = resolve; });
+            }
           },
           async close() {},
         };
@@ -55,20 +127,24 @@ test('exports source OTIO when media metadata is missing', async ({ page }) => {
     });
   });
   await page.goto(server.url);
-await page.evaluate(() => {
-  MaweBoot.DATA.media_metadata = null;
-  // OTIO 导出默认附带完整 SRT（otioExportIncludeSrt）；本用例只关心 OTIO 内容。
-  MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt = false;
-});
+  await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = null;
+    MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt = true;
+  });
 
-  await page.locator('#extra-export-btn').click();
-  await page.locator('[aria-controls="extra-otio-menu"]').hover();
-  await page.locator('#download-otio').click();
+  await exportSourceOtio(page);
 
-  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
-  const saved = await page.evaluate(() => window.__exportSaves[0]);
+  await expect.poll(() => page.evaluate(() => typeof window.__finishOtioWrite)).toBe('function');
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = 'Changed while the OTIO was being saved';
+    window.__finishOtioWrite();
+  });
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.map(save => save.suggestedName)))
+    .toEqual(['project.otio', 'project.srt']);
+  const [saved, srt] = await page.evaluate(() => window.__exportSaves);
   const timeline = JSON.parse(saved.content);
   expect(saved.suggestedName).toBe('project.otio');
+  expect(srt.content).toContain('Alpha');
   expect(timeline.tracks.children.map((track) => ({
     kind: track.kind,
     name: track.name,

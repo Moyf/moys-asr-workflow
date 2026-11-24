@@ -4658,17 +4658,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         print(f"[http] {self.address_string()} - {message}")
 
 
-def _port_is_free(host: str, port: int) -> bool:
-    """True only when nothing else accepts connections on ``host:port``.
-
-    不带 SO_REUSEADDR、并按平台设置排他绑定来探测；EditorServer 自身的
-    allow_reuse_address 在 Windows 上会对正在监听的端口静默二次绑定成功，
-    不能用作占用的判据。
-    """
+def _windows_port_is_free(host: str, port: int) -> bool:
+    """Probe with an exclusive bind because Windows permits duplicate SO_REUSEADDR binds."""
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        if os.name == "nt":
-            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         probe.bind((host, port))
         return True
     except OSError:
@@ -4692,7 +4686,7 @@ def open_editor_server(
 ) -> tuple[EditorServer, bool]:
     """Bind the editor server and report whether the port had to be advanced.
 
-    省略 --port 时从 DEFAULT_EDITOR_PORT 起，用 _port_is_free 逐个跳过被占用端口，
+    省略 --port 时从 DEFAULT_EDITOR_PORT 起，逐个跳过被占用端口，
     直到找到空闲端口或耗尽 EDITOR_PORT_ATTEMPTS。显式 --port 保持“必须监听该端口”：
     探测发现被占用立即抛 OSError，--port 0 仍由系统任选。
     """
@@ -4702,7 +4696,9 @@ def open_editor_server(
     last_error: OSError | None = None
     for offset in range(attempts):
         port = base_port + offset
-        if port != 0 and not _port_is_free(host, port):
+        # POSIX lets the server bind with SO_REUSEADDR after the old listener
+        # closes, even while accepted connections remain in TIME_WAIT.
+        if os.name == "nt" and port != 0 and not _windows_port_is_free(host, port):
             last_error = OSError(f"端口 {host}:{port} 已被其他程序占用")
             if not scan:
                 break

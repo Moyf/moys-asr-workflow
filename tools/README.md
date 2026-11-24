@@ -16,7 +16,7 @@
 | [人工核对清单](verification-checklist/README.md) | Markdown / JSON 生成 | 分区进度、整行打勾、备注、结果导出；保留稳定 ID 与原存储键 |
 | [文案重写／文案评审](copy-review/README.md) | 已过期，不再维护 | 保留历史页面与数据用于追溯，不再作为当前文案工作入口 |
 | [开发看板](dev-dashboard/README.md) | 受限 localhost 服务 | 保留任务列、拖拽与状态选择；共用资源走精确路由，CSP 不放宽 |
-| [CHANGELOG 编辑器](changelog-editor/README.md) | 本地 / 看板入口 | 保留编辑预览与文件授权；窄屏上下分屏，不改变写盘与冲突流程 |
+| [CHANGELOG 编辑器](changelog-editor/README.md) | 本地 / 看板入口 | 保留编辑预览与文件授权；窄屏上下分屏，不改变写盘与冲突流程；「未发布」带图完成时弹版本号就地升格 |
 | [波形实验台](waveform-compare/README.md) | 暂停维护 | 保留现有实验实现，不继续更新或列为本轮人工验收目标 |
 | [OCR 确认页](term-extract/README.md) | 视频术语候选审阅 | 本次视觉/交互参考；尚未接入 Launcher 工具箱 |
 

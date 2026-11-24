@@ -392,8 +392,15 @@ async function runBurnVideoJob({
   }
   const nativeSession = launcherSessionConnection ? await launcherSessionConnection : null;
   if (window.__maweBurnVideoTask || nativeBurnPicking) return;
+  const mode = greenScreen ? 'green-screen' : gapRemoved ? 'gap-removed' : 'full';
+  const failBeforeAdmission = (stage, error) => showBurnVideoFailure(error, { stage, mode });
   if (!nativeSession && !MaweHost.files.hasSavePicker()) {
-    MaweHint.flashHint(tr('当前浏览器或环境不支持烧录视频保存'), 'warning');
+    const reason = config.nativeBurnAvailable === true
+      ? '当前页面没有有效的启动器保存会话，浏览器也未提供文件保存选择器。请回到 MAW 启动器，点击「打开编辑器」后重试。'
+      : window.isSecureContext === false
+        ? '当前页面不是安全上下文，浏览器无法在这里打开文件保存选择器。请从 MAW 启动器点击「打开编辑器」，使用它打开的本机地址。'
+        : '当前浏览器未提供文件保存选择器。请从 MAW 启动器点击「打开编辑器」，或用桌面版 Chrome 打开本机编辑器。';
+    failBeforeAdmission('picker', burnResponseError(reason, undefined, 'burn-save-unavailable'));
     return;
   }
   const requestToken = config.requestToken;
@@ -417,8 +424,6 @@ async function runBurnVideoJob({
   const fontsReady = needsAssFonts ? window.MaweAssFontAliases?.ensureCoverage?.() : null;
   const deferRequest = needsAssFonts && window.MaweAssFontAliases?.pending?.();
   const audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
-  const mode = greenScreen ? 'green-screen' : gapRemoved ? 'gap-removed' : 'full';
-  const failBeforeAdmission = (stage, error) => showBurnVideoFailure(error, { stage, mode });
   let request;
   const prepareRequest = () => {
     request = buildRequest();

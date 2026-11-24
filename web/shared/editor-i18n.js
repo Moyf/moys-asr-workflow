@@ -808,7 +808,9 @@
     '绿幕视频暂不支持去空隙区间': 'Green screen video does not support gap removal intervals',
     '重组后烧录视频': 'Burn reconstructed video',
     '请从启动器打开关联源媒体的工程，再烧录视频': 'Open a project with bound source media from the launcher before burning video',
-    '当前浏览器或环境不支持烧录视频保存': 'This browser or environment does not support saving a burned video',
+    '当前页面没有有效的启动器保存会话，浏览器也未提供文件保存选择器。请回到 MAW 启动器，点击「打开编辑器」后重试。': 'This page has no valid launcher save session, and the browser provides no file save picker. Return to the MAW launcher, click “Open editor,” and try again.',
+    '当前页面不是安全上下文，浏览器无法在这里打开文件保存选择器。请从 MAW 启动器点击「打开编辑器」，使用它打开的本机地址。': 'The browser requires a secure context to open a file save picker. Click “Open editor” in the MAW launcher and use the local page it opens.',
+    '当前浏览器未提供文件保存选择器。请从 MAW 启动器点击「打开编辑器」，或用桌面版 Chrome 打开本机编辑器。': 'This browser provides no file save picker. Click “Open editor” in the MAW launcher or open the local editor in desktop Chrome.',
     '无法准备 ASS 字幕内容': 'Could not prepare ASS subtitle content',
     '请检查字幕样式后重试': 'Check the subtitle styles and retry',
     '工程或媒体绑定已变更，请重新发起视频烧录': 'The project or media binding changed; start the burn again',
@@ -1547,7 +1549,8 @@
     '添加规则': 'Add rule', '启用': 'Enabled', '正则': 'Regex', '上移': 'Move up', '下移': 'Move down',
     '单句 ASS 样式': 'Cue ASS style', '继承默认样式': 'Inherit default style',
     '（工程内保存）': ' (saved in project)',
-    '工程内修改，未同步到用户级配置': 'Project styles differ and are not synced to user settings',
+    '工程内句子的样式与样式库不一致': 'Cue styles in the project differ from the style library',
+    '用样式库更新': 'Update from style library',
     '正在加载预设库…': 'Loading preset library…', '正在保存用户级预设库…': 'Saving the user-level preset library…',
     '请先选择要处理的字幕': 'Select subtitles to process first', '正在生成预览…': 'Preparing preview…',
     '预设名称': 'Preset name', '删除这个预设？': 'Delete this preset?',
@@ -2103,6 +2106,10 @@
     if (match) return `${match[1]} changed (${match[2]} unchanged)`;
     match = /^(\d+)\s*个样式\s*·\s*(\d+)\s*个 ASS 方案$/.exec(text);
     if (match) return `${match[1]} styles · ${match[2]} ASS profiles`;
+    match = /^工程内\s*(\d+)\s*句的样式与样式库不一致$/.exec(text);
+    if (match) return `${match[1]} cues in the project differ from the style library`;
+    match = /^已更新\s*(\d+)\s*句的样式$/.exec(text);
+    if (match) return `Updated styles for ${match[1]} cues`;
     match = /^(.+?)\s+·\s*无逐句动画$/.exec(text);
     if (match) return `${match[1]} · No per-cue animations`;
     match = /^第\s*(\d+)\s*条\s*字幕文本$/.exec(text);

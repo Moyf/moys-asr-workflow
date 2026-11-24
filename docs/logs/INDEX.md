@@ -1,8 +1,8 @@
 # 日志索引
 
-<!-- log-release-baseline: 1.11.4 -->
+<!-- log-release-baseline: 1.12.0 -->
 
-新共享日志放在 `docs/logs/release1.11.4/<YYMMDD_<主题>/`，表示 **1.11.4 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
+新共享日志放在 `docs/logs/release1.12.0/<YYMMDD_<主题>/`，表示 **1.12.0 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
 
 此表是可选的查阅入口，漏登记只提示；关键指南、方案和工程文档仍必须登记[主索引](../INDEX.md)。当前仍有参考价值或未决事项的记录可精选进 [CURRENT](CURRENT.md)。
 
@@ -15,6 +15,9 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.11.4 之后 | 2026-11-23 | [编辑器原生选址核对清单](release1.11.4/261123_EditorNativePickers/editor-native-pickers.checklist.md) / [独立审查](release1.11.4/261123_EditorNativePickers/REVIEW_FINDINGS.md) | 媒体重定位与表情包文件夹选择；Draft 待定是否合入 main |
+| 1.11.4 之后 | 2026-11-23 | [单句样式跟随样式库](release1.11.4/261123_单句样式跟随样式库/REVIEW_FINDINGS.md) / [人工清单](release1.11.4/261123_单句样式跟随样式库/单句样式跟随样式库.checklist.md) | 单句 ASS 样式改为快照 + 跟随：改库即跟、改名不分叉、旧句按钮一键更新；含 5000 句性能实测与独立审查（0 blocker/major，6 nit），人工核验待维护者 |
+| 1.12.0 之后 | 2026-11-24 | [烧录保存与 OTIO 导出独立审查](release1.12.0/261124_烧录保存与OTIO导出/REVIEW_FINDINGS.md) | macOS 原生选址、POSIX 重启、烧录失败提示与 WebKit 配套下载。 |
+| 1.11.4 之后 | 2026-11-23 | [1.12.0 发布记录](release1.11.4/261123_1.12.0发布/发布记录.md) | minor 版本发布：CL 编辑器升格流程与两个小修复随版；macOS 编辑器子进程冷启动竞态修复后移动 tag 重发布，双层核验通过 |
 | 1.11.4 之后 | 2026-11-23 | [GitHub Star 审查](release1.11.4/261123_GitHubStar/REVIEW_FINDINGS.md) / [人工核对](release1.11.4/261123_GitHubStar/GitHubStar.checklist.md) | Launcher 和本地编辑器星标入口，覆盖点击写入、回退及仓库导航；不调用真实 Star API |
 | 1.11.4 之后 | 2026-11-22 | [口播与文稿匹配核验](release1.11.4/261122_口播与文稿匹配核验/口播与文稿匹配.checklist.md) / [独立审查与处置](release1.11.4/261122_口播与文稿匹配核验/REVIEW_FINDINGS.md) | 口播准备、运行环境升级交互、逐字差异和多字符断句保留字词码 |
 | 1.11.4 之后 | 2026-11-22 | [缩略图后台化](release1.11.4/261122_缩略图后台化/缩略图后台化.checklist.md) / [独立审查](release1.11.4/261122_缩略图后台化/REVIEW_FINDINGS.md) | 编辑不等待缩略图，含抽帧测速与人工核验 |

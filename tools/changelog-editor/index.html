@@ -1225,7 +1225,11 @@
     if (!section) return;
     const value = $('#vh-date').value;
     section.date = value || null;
-    section.heading = value ? `## [${section.name}] - ${value}` : `## [${section.name}]`;
+    const heading = value ? `## [${section.name}] - ${value}` : `## [${section.name}]`;
+    // 同步重写 S.clText 的标题行：serializeCurrentDoc 从 S.clText 重建小节结构，
+    // 只改 section.heading 会在写盘时把旧日期原样写回。
+    syncSectionHeadingLine(section.name, heading);
+    section.heading = heading;
     markDirty();
     renderSidebar();
   });
@@ -1612,6 +1616,14 @@
     if (finishInProgress) return;
     const dirty = dirtyVersions();
     if (!dirty.length) { toast('没有需要完成的修改', true); return; }
+    // 「未发布」带新图片：不再拦截，先升格为正式版本（改名 + 日期），
+    // 图片与归档随新版本名写入 docs/assets/<版本>/ 与 docs/releases/<版本>.md。
+    const unreleased = dirty.find((s) => s.name === '未发布' && newImagesOf('未发布').length);
+    if (unreleased) {
+      const answer = await promptPromoteVersion();
+      if (!answer) return;
+      promoteUnreleased(answer.version, answer.date);
+    }
     const allErrors = [];
     for (const section of dirty) {
       allErrors.push(...collectErrors(section.name).map((e) => `[${section.name}] ${e}`));
@@ -1657,6 +1669,73 @@
       closeModal();
       applyFinish(versions, archives);
     };
+  }
+
+  /** 「未发布」带新图片时的升格弹窗：输入版本号 + 日期，返回 null 表示取消。 */
+  function promptPromoteVersion() {
+    return new Promise((resolve) => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      modal(`<h3>「未发布」包含配图，转为正式版本</h3>
+        <p class="hint" style="margin:8px 0 12px">本节将改名为 <code>## [版本] - 日期</code>；图片写入 <code>docs/assets/版本/</code>，并可选择生成归档。</p>
+        <div class="step" style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+          <label class="hint">版本 <input type="text" id="pv-version" placeholder="1.12.0" style="width:110px"></label>
+          <label class="hint">日期 <input type="date" id="pv-date" value="${today}"></label>
+        </div>
+        <div style="margin-top:16px; text-align:right">
+          <button id="pv-cancel">取消</button>
+          <button id="pv-ok" class="primary">确定</button>
+        </div>`, () => resolve(null));
+      const submit = () => {
+        const version = $('#pv-version').value.trim().replace(/^v/, '');
+        const date = $('#pv-date').value;
+        if (!L.parseTag(version)) { toast('版本号不合法（示例：1.12.0 或 1.12.0-beta.1）', true); return; }
+        if (S.sections.some((s) => s.name === version)) { toast(`版本 ${version} 在 CHANGELOG 中已存在`, true); return; }
+        if (!date) { toast('请填写发布日期', true); return; }
+        closeModal();
+        resolve({ version, date });
+      };
+      for (const id of ['pv-version', 'pv-date']) {
+        $('#' + id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+      }
+      $('#pv-cancel').onclick = () => closeModal(true);
+      $('#pv-ok').onclick = submit;
+    });
+  }
+
+  /** 就地把「未发布」升格为正式版本：改名、重挂 parsed、修正图片引用键，不触碰磁盘。 */
+  function promoteUnreleased(version, date) {
+    const section = S.sections.find((s) => s.name === '未发布');
+    if (!section) return null;
+    const parsed = S.parsed.get('未发布');
+    const heading = `## [${version}] - ${date}`;
+    // S.clText 是序列化的结构真源：serializeCurrentDoc 会重新切分它重建小节标题行。
+    // 只改 S.sections 的内存对象会把「未发布」标题原样写回，必须就地重写这一行。
+    syncSectionHeadingLine('未发布', heading);
+    section.name = version;
+    section.date = date;
+    section.heading = heading;
+    S.parsed.delete('未发布');
+    S.parsed.set(version, parsed);
+    const prefix = '未发布#';
+    for (const img of S.images.values()) {
+      if (img.cardKey && img.cardKey.startsWith(prefix)) img.cardKey = `${version}#${img.cardKey.slice(prefix.length)}`;
+    }
+    S.archiveStatus.set(version, 'missing');
+    markDirty();
+    renderSidebar();
+    // 选中升格后的版本：侧栏徽章、日期输入与归档勾选随新状态呈现
+    selectSection(version);
+    return version;
+  }
+
+  /** 重写 S.clText 中的小节标题行（按小节名定位第一处），并同步给 S.sections 中对应对象。 */
+  function syncSectionHeadingLine(name, heading) {
+    const lines = S.clText.split('\n');
+    const idx = lines.findIndex((l) => l.startsWith(`## [${name}]`));
+    if (idx < 0) return;
+    lines[idx] = heading;
+    S.clText = lines.join('\n');
   }
 
   async function blobSha256(blob) {

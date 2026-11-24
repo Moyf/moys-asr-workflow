@@ -3845,6 +3845,22 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["pid"], 4321)
         self.assertEqual(result["url"], "http://127.0.0.1:9876/")
 
+    def test_server_status_recognizes_the_owned_editor_without_windows_process_lookup(self) -> None:
+        self.api.server_process = mock.Mock(pid=4321)
+        self.api.server_process.poll.return_value = None
+        self.api._native_burn_port = 9876
+        host = self.api._native_burn_host = mock.Mock()
+        host.owns_editor.return_value = True
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web._maw_server_process_id", return_value=None), \
+                mock.patch("maw.gui_web._server_startup_status", return_value="ready"):
+            result = self.api.get_server_status({"port": "9876"})
+            self.assertTrue(result["running"])
+            self.assertEqual(result["pid"], 4321)
+            self.assertFalse(self.api.get_server_status({"port": "9877"})["running"])
+            host.owns_editor.return_value = False
+            self.assertFalse(self.api.get_server_status({"port": "9876"})["running"])
+
     def test_stop_server_can_stop_a_verified_external_maw_process(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True):
             with mock.patch("maw.gui_web._stop_external_maw_server", return_value=True) as stop_external:

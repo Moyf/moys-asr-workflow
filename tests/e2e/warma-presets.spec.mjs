@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
+import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep, removeTextProcessPrefill, openSettingsPage } from './helpers.mjs';
 
 let server, dir;
 test.beforeAll(async () => { dir = makeTempDir('warma'); server = await startBlankServer(await findFreePort(), dir); });
@@ -119,6 +119,50 @@ test('styles on all three tracks survive a project roundtrip', async ({ page }) 
   });
   expect(result.opened).toBe(true);
   expect(result.styles.map(style => style?.id)).toEqual(['ass', 'ass', 'ass']);
+});
+
+test('library edits follow cues on all three tracks', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both', main_split_mode: 'word',
+      tracks: [{ id: 'ext', role: 'extension', name: '副字幕', split_mode: 'word', segments: [{ id: 'ext-1', start: 0, end: 2000, text: 'Secondary' }] }], bindings: [] };
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ id: 'overlay-1', start: 0, end: 2000, text: 'Overlay' }] };
+    MaweCuePanel.renderAll();
+  });
+  for (const [kind, track] of [['main', null], ['extension', 'ext'], ['overlay', null]]) {
+    await page.evaluate(([kind, track]) => MaweCuePanel.setCuePanelTarget(kind, 0, track), [kind, track]);
+    await page.locator('#cue-ass-style').selectOption('ass');
+  }
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  const fontSize = page.locator('#ass-style-font-size');
+  const originalSize = await fontSize.inputValue();
+  await fontSize.fill(String(Number(originalSize) + 2));
+  const followedSizes = () => page.evaluate(() => JSON.stringify([
+    MaweBoot.DATA.segments[0].assStyle.fontSize,
+    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].assStyle.fontSize,
+    MaweBoot.DATA.overlay_track.segments[0].assStyle.fontSize,
+  ]));
+  await expect.poll(followedSizes).toBe(JSON.stringify([Number(originalSize) + 2, Number(originalSize) + 2, Number(originalSize) + 2]));
+  await expect(page.locator('#cue-ass-style')).toHaveValue('ass');
+});
+
+test('undoing an earlier edit keeps followed cue styles at the library version', async ({ page }) => {
+  await page.evaluate(() => MaweCuePanel.setCuePanelTarget('main', 0));
+  await page.locator('#cue-ass-style').selectOption('ass');
+  // 更早的一次文本编辑进历史；随后的样式库跟随不进历史。
+  await page.evaluate(() => MaweCommands.run('改动文本', () => { MaweBoot.DATA.segments[0].text = '已改'; }));
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  const fontSize = page.locator('#ass-style-font-size');
+  const originalSize = Number(await fontSize.inputValue());
+  await fontSize.fill(String(originalSize + 3));
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize)).toBe(originalSize + 3);
+  // 样式库窗口打开时全局撤销被屏蔽，先关闭再撤销文本编辑。
+  await page.locator('#ass-style-window-close-footer').click();
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('嗯 123');
+  // 撤销把句子恢复成旧快照后，跟随记录把它重新对齐到库的当前版本。
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize)).toBe(originalSize + 3);
 });
 
 test('ordered rules preview and apply literal replacement text', async ({ page }) => {

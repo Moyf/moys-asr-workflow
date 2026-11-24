@@ -289,10 +289,13 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
         const loaded = raw ? JSON.parse(raw) : window.AsrEditorUtils.defaultAssStyleLibrary();
         if (startedAtRevision === assStyleLibraryRevision && (!assStyleLibraryDirty || discard)) {
           assStyleStorageRevision = raw;
+          const previous = ASS_STYLE_LIBRARY;
           setAssStyleLibrary(loaded);
           assStyleLibraryRevision += 1;
           assStyleLibraryDirty = false;
           assStyleLibraryConflict = false;
+          // 换库后清掉内容已变的样式的跟随记录；撤销不再对齐到被替换的版本。
+          window.MaweAssCueStyleSync?.noteLibraryReplaced?.(previous, loaded);
         }
       }
       catch (_) {
@@ -318,11 +321,14 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
       if (startedAtRevision === assStyleLibraryRevision && (!assStyleLibraryDirty || discard)) {
         assStyleStorageRevision = payload._revision;
         assStyleLibraryConflict = false;
+        const previous = ASS_STYLE_LIBRARY;
         setAssStyleLibrary(payload, { persistLocal: true });
         assStyleLibraryRevision += 1;
         assStyleLibraryDirty = false;
         ASS_STYLE_LIBRARY_READY = true;
         setAssStyleLibraryStatus('', 'success');
+        // 换库后清掉内容已变的样式的跟随记录；撤销不再对齐到被替换的版本。
+        window.MaweAssCueStyleSync?.noteLibraryReplaced?.(previous, payload);
       } else {
         // A form edit happened while GET was in flight.  The local edit is
         // authoritative until its own POST succeeds.
@@ -370,10 +376,13 @@ storageService.importLibrary = async (library, expectedRevision) => {
       throw new Error('导入期间样式库发生更改，请检查当前内容');
     }
     assStyleLibraryRevision += 1;
+    const previous = ASS_STYLE_LIBRARY;
     setAssStyleLibrary(saved, { persistLocal: true });
     assStyleLibraryDirty = false;
     ASS_STYLE_LIBRARY_READY = true;
     setAssStyleLibraryStatus('样式库已导入；已保留导入前副本', 'success');
+    // 换库后清掉内容已变的样式的跟随记录；撤销不再对齐到被替换的版本。
+    window.MaweAssCueStyleSync?.noteLibraryReplaced?.(previous, saved);
     syncAssStyleManager({ force: true });
     MawePlaybackLoop.refreshSubtitlePreview?.();
     return saved;

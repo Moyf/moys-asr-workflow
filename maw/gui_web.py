@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import Future
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
@@ -2473,7 +2474,12 @@ class LauncherApi:
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
         ):
             return {"ok": True, "running": False, "url": url}
-        pid = _maw_server_process_id(port)
+        process, host = self.server_process, self._native_burn_host
+        if (process is not None and host is not None and port == self._native_burn_port
+                and host.owns_editor(port) and process.poll() is None):
+            pid = process.pid
+        else:
+            pid = _maw_server_process_id(port)
         return {
             "ok": True, "running": pid is not None, "url": url, "pid": pid,
             "startupStatus": _server_startup_status(url) if pid is not None else "",
@@ -4113,16 +4119,58 @@ def _pick_editor_media(window: Window, lang: str) -> Path | None:
                              confirmation=confirmation)
 
 
+def _pick_cocoa_burn_path(window: Window, name: str, directory: Path, lang: str) -> str | None:
+    import AppKit
+    from Foundation import NSURL
+    from PyObjCTools import AppHelper
+
+    result: Future[str | None] = Future()
+
+    def present() -> None:
+        try:
+            parent = window.native
+            if parent.attachedSheet() is not None:
+                raise BurnDialogBusy
+            if parent.isMiniaturized():
+                parent.deminiaturize_(None)
+                parent.makeKeyAndOrderFront_(None)
+            panel = AppKit.NSSavePanel.savePanel()
+            panel.setTitle_("Save Burned Video" if lang == "en" else "保存烧录视频")
+            panel.setDirectoryURL_(NSURL.fileURLWithPath_(str(directory)))
+            panel.setNameFieldStringValue_(name)
+
+            def complete(response: int) -> None:
+                try:
+                    path = str(panel.URL().path()) if response == AppKit.NSModalResponseOK else None
+                    panel.orderOut_(None)
+                except Exception as error:
+                    result.set_exception(error)
+                else:
+                    result.set_result(path)
+
+            panel.beginSheetModalForWindow_completionHandler_(parent, complete)
+        except Exception as error:
+            result.set_exception(error)
+
+    # Only the BurnHost request thread waits. Cocoa keeps its normal event loop.
+    AppHelper.callAfter(present)
+    return result.result()
+
+
 def _pick_burn_target(window: Window, name: str, source: Path, lang: str) -> BurnDestination | None:
     if not _FILE_DIALOG_LOCK.acquire(blocking=False):
         raise BurnDialogBusy
     try:
         window.show()
-        selected = window.create_file_dialog(SAVE_DIALOG, directory=str(source.parent),
-                                             save_filename=name, file_types=("MP4 (*.mp4)",))
-        if not selected:
+        if getattr(window.gui, "__name__", "") == "webview.platforms.cocoa":
+            path = _pick_cocoa_burn_path(window, name, source.parent, lang)
+        else:
+            selected = window.create_file_dialog(SAVE_DIALOG, directory=str(source.parent),
+                                                 save_filename=name, file_types=("MP4 (*.mp4)",))
+            path = selected[0] if selected else None
+        if not path:
             return None
-        target = BurnDestination.capture(Path(selected[0]), source)
+        target = BurnDestination.capture(Path(path), source)
         if target.original is not None:
             # The picker reports a path, with no identity or overwrite decision.
             # Confirm the captured file explicitly, including on GTK backends.
