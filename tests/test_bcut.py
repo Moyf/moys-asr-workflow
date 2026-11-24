@@ -164,6 +164,20 @@ class ParseResultTests(unittest.TestCase):
         ])
         self.assertEqual(result["segments"][0]["items"], result["items"])
 
+    def test_zero_width_word_and_untimed_space_preserve_word_items(self) -> None:
+        utterance = {
+            "transcript": "hello dear world",
+            "start_time": 0,
+            "end_time": 800,
+            "words": [_word("hello", 0, 400), _word(" ", -1, -1),
+                      _word("dear", 400, 400), _word(" world", 500, 800)],
+        }
+        result = bcut.parse_result_payload(_result_json([utterance]))
+
+        self.assertEqual(result["timestamp_granularity"], "word")
+        self.assertEqual(result["items"][1], {"text": " dear", "start": 400, "end": 400})
+        self.assertEqual(bcut.utterances_to_items([utterance]), result["items"])
+
     def test_parse_result_payload_falls_back_for_invalid_word_timestamps(self) -> None:
         result = bcut.parse_result_payload(_result_json([{
             "transcript": "整句回退",

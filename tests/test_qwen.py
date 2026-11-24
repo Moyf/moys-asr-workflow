@@ -71,6 +71,16 @@ class QwenMediaExtractionTests(unittest.TestCase):
 
 
 class QwenTimestampRepairTests(unittest.TestCase):
+    def test_zero_duration_sentence_without_words_keeps_text(self) -> None:
+        segments = build_segments_from_api_sentences(
+            [{"start": 100, "end": 100, "text": "嗯。", "speaker": "1"}],
+            max_len=18, min_len=5, gap_split_ms=500,
+        )
+
+        self.assertEqual(segments, [
+            {"start": 100, "end": 100, "text": "嗯。", "speaker": "1"},
+        ])
+
     def test_isolated_zero_duration_item_merges_into_next_segment(self) -> None:
         # 与 CLI 默认一致的强断句配置（模块级状态按测试显式设置）。
         configure_extra_strong_punct("，。？！；,.")

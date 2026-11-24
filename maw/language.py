@@ -173,14 +173,15 @@ def normalize_timestamp_range(
     end: object,
     *,
     scale: float = 1.0,
+    allow_zero: bool = False,
 ) -> tuple[int, int] | None:
     """Convert one provider timestamp pair to integer milliseconds.
 
     Providers use both milliseconds and seconds and occasionally return
     malformed values.  A range is usable only when both values are finite,
     non-negative, and the rounded end is strictly after the rounded start.
-    ``None`` is returned for anything else so adapters can discard the whole
-    sentence/token group instead of manufacturing a zero-width item.
+    With ``allow_zero``, an explicitly equal pair is also usable as a time point.
+    Rounding alone must never turn an inverted range into a time point.
     """
     if isinstance(start, bool) or isinstance(end, bool):
         return None
@@ -208,7 +209,7 @@ def normalize_timestamp_range(
         end_ms = int(round(end_scaled))
     except (OverflowError, ValueError):
         return None
-    if end_ms <= start_ms:
+    if end_ms <= start_ms and not (allow_zero and start_value == end_value):
         return None
     return start_ms, end_ms
 

@@ -498,6 +498,10 @@ def delete_transcription(base_url: str, api_key: str, transcription_id: str, *,
 
 # ===== tokens → MAW 工程映射 =====
 
+def _token_timestamp(token: Mapping) -> tuple[int, int] | None:
+    return normalize_timestamp_range(token.get("start_ms"), token.get("end_ms"), allow_zero=True)
+
+
 def merge_word_fragments(tokens: list[dict]) -> list[dict]:
     """把 Soniox 的 sub-word 片段合并成「英文按词」的 token 序列。
 
@@ -507,21 +511,26 @@ def merge_word_fragments(tokens: list[dict]) -> list[dict]:
     stt-async-v6（2026-11 新增，官方声明与 v5 完全兼容）沿用同一 token 契约，
     实现仍按 v5 的实测结果，尚未针对 v6 重新实测。
     规则：无前导空格且非 CJK 开头 → 并入前一个 token；CJK 开头
-    （中/日文逐字粒度）始终独立。合并后 start 取词首、end 取词尾，
-    speaker/language 取词首片段。
+    （中/日文逐字粒度）始终独立。独立空白作为下一个词的分隔符。
+    合并后 start 取词首、end 取片段的最晚结束点，speaker/language 取词首片段。
     """
     merged: list[dict] = []
+    pending_space = False
     for token in tokens:
         if not isinstance(token, Mapping):
             continue
         text = str(token.get("text") or "")
-        if not text.strip():
+        if not text:
             continue
-        timestamp = normalize_timestamp_range(
-            token.get("start_ms"), token.get("end_ms")
-        )
+        if text.isspace():
+            pending_space = True
+            continue
+        timestamp = _token_timestamp(token)
         if timestamp is None:
             continue
+        if pending_space and not text[0].isspace():
+            text = " " + text
+        pending_space = False
         stripped = text.lstrip()
         continuation = (
             bool(merged)
@@ -532,7 +541,7 @@ def merge_word_fragments(tokens: list[dict]) -> list[dict]:
         if continuation:
             prev = merged[-1]
             prev["text"] += text
-            prev["end_ms"] = timestamp[1]
+            prev["end_ms"] = max(prev["end_ms"], timestamp[1])
         else:
             normalized = dict(token)
             normalized["start_ms"], normalized["end_ms"] = timestamp
@@ -545,7 +554,7 @@ def tokens_to_items(tokens: list[dict]) -> list[dict]:
     """Soniox tokens → MAW items（整数毫秒）。一个 token 对应一个 item。
 
     官方保证每个识别 token 都有 start_ms/end_ms；防御性处理：缺时间戳、
-    负时间或时间倒挂的 token 直接跳过，不把未知范围伪造成零宽 item。
+    负时间或时间倒挂的 token 直接跳过，明确给出的零宽时间点则保留。
     """
     items: list[dict] = []
     for token in tokens:
@@ -554,9 +563,7 @@ def tokens_to_items(tokens: list[dict]) -> list[dict]:
         text = str(token.get("text") or "")
         if not text.strip():
             continue
-        timestamp = normalize_timestamp_range(
-            token.get("start_ms"), token.get("end_ms")
-        )
+        timestamp = _token_timestamp(token)
         if timestamp is None:
             continue
         item: dict = {
@@ -678,11 +685,12 @@ def transcribe(audio_path: str, config: dict, *,
         # Some transcript responses omit the redundant top-level text. Keep
         # token text even when one token has an unusable time range; otherwise
         # a malformed timestamp would make valid recognition text disappear.
-        text = "".join(
+        token_texts = (
             str(token.get("text") or "")
             for token in tokens
-            if isinstance(token, Mapping) and str(token.get("text") or "").strip()
-        ).strip()
+            if isinstance(token, Mapping)
+        )
+        text = "".join(" " if value.isspace() else value for value in token_texts).strip()
     valid_ranges: list[tuple[int, int]] = []
     has_invalid_token = False
     for token in tokens:
@@ -692,9 +700,7 @@ def transcribe(audio_path: str, config: dict, *,
         token_text = str(token.get("text") or "")
         if not token_text.strip():
             continue
-        timestamp = normalize_timestamp_range(
-            token.get("start_ms"), token.get("end_ms")
-        )
+        timestamp = _token_timestamp(token)
         if timestamp is None:
             has_invalid_token = True
         else:

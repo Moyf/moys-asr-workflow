@@ -306,8 +306,7 @@ def main():
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
-        # 兜底：缺时间戳/倒挂的 token 会形成 0 长 item，
-        # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
+        # 拉宽零时长词或字幕，确保拆分结果可见且可保存。
         print("[解析] 正在校验和修复时间码...")
         repaired_count = repair_segment_durations(segments)
         if repaired_count:

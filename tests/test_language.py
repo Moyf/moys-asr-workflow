@@ -50,6 +50,13 @@ class LanguageContractTests(unittest.TestCase):
             "segment",
         )
 
+    def test_zero_width_requires_an_explicit_equal_nonnegative_pair(self) -> None:
+        self.assertIsNone(normalize_timestamp_range(0.25, 0.25, scale=1000))
+        self.assertEqual(normalize_timestamp_range(0.25, 0.25, scale=1000, allow_zero=True), (250, 250))
+        for start, end in ((0.2501, 0.25), (0.25, 0.2501), (-1, -1), (True, True), (None, None)):
+            with self.subTest(start=start, end=end):
+                self.assertIsNone(normalize_timestamp_range(start, end, scale=1000, allow_zero=True))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import mimetypes
 import os
 import re as _re
@@ -108,36 +107,10 @@ def transcription_url(base_url: str) -> str:
     return f"{normalize_base_url(base_url)}/audio/transcriptions"
 
 
-def _number(value: object, *, default: float | None = None) -> float | None:
-    if value is None or value == "":
-        return default
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return default
-    return number if math.isfinite(number) else default
-
-
-def _milliseconds(value: object, *, default: int | None = None) -> int | None:
-    """Convert an OpenAI-compatible timestamp value expressed in seconds."""
-    number = _number(value)
-    if number is None:
-        return default
-    milliseconds = number * 1000
-    if not math.isfinite(milliseconds):
-        return default
-    try:
-        return int(round(milliseconds))
-    except (OverflowError, ValueError):
-        return default
-
-
 def _timestamp_milliseconds(
     raw: Mapping[str, Any],
     field: str,
-    *,
-    default: int | None = None,
-) -> int | None:
+) -> float | None:
     """Read one timestamp without guessing its unit from the magnitude.
 
     OpenAI's ``start``/``end`` fields are seconds.  A few compatible gateways
@@ -145,14 +118,19 @@ def _timestamp_milliseconds(
     only those names are interpreted as milliseconds.  A magnitude heuristic
     would misread valid timestamps from long recordings.
     """
-    for key in (f"{field}_ms", f"{field}_time_ms"):
-        if key in raw and raw[key] is not None:
-            number = _number(raw[key])
-            return int(round(number)) if number is not None else default
-    for key in (field, f"{field}_time"):
-        if key in raw and raw[key] is not None:
-            return _milliseconds(raw[key], default=default)
-    return default
+    for key, scale in (
+        (f"{field}_ms", 1), (f"{field}_time_ms", 1), (field, 1000), (f"{field}_time", 1000),
+    ):
+        value = raw.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return None
+        try:
+            return float(value) * scale
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return None
 
 
 def _text(value: object) -> str:
@@ -167,7 +145,7 @@ def _timestamp_item(raw: Mapping[str, Any]) -> dict[str, Any] | None:
     text = _text(raw.get("word") or raw.get("text") or raw.get("token")).strip()
     start = _timestamp_milliseconds(raw, "start")
     end = _timestamp_milliseconds(raw, "end")
-    timestamp = normalize_timestamp_range(start, end)
+    timestamp = normalize_timestamp_range(start, end, allow_zero=True)
     if not text or timestamp is None:
         return None
     start, end = timestamp
@@ -204,7 +182,7 @@ def _timestamp_segment(raw: Mapping[str, Any]) -> dict[str, Any] | None:
     text = _text(raw.get("text")).strip()
     start = _timestamp_milliseconds(raw, "start")
     end = _timestamp_milliseconds(raw, "end")
-    timestamp = normalize_timestamp_range(start, end)
+    timestamp = normalize_timestamp_range(start, end, allow_zero=True)
     if not text or timestamp is None:
         return None
     start, end = timestamp
@@ -340,18 +318,34 @@ def parse_timestamped_response(body: Mapping[str, Any]) -> dict[str, Any]:
     elif has_top_level_words and segments:
         mapped_count = 0
         for item in top_level_items:
-            candidates: list[tuple[int, int, int]] = []
+            is_point = item["start"] == item["end"]
+            candidates: list[tuple[int, int, int, int]] = []
             for index, segment in enumerate(segments):
                 overlap = min(item["end"], segment["end"]) - max(item["start"], segment["start"])
-                if overlap <= 0:
+                if overlap < 0 or (overlap == 0 and not is_point):
                     continue
                 contained = int(
                     item["start"] >= segment["start"]
                     and item["end"] <= segment["end"]
                 )
-                candidates.append((contained, overlap, -index))
+                point_match = 0
+                if is_point:
+                    assigned = segment.get("items", [])
+                    prefix = "".join(word["text"] for word in assigned) + item["text"]
+                    # Match the next part of the source sentence, including
+                    # punctuation, when both sentences contain the same point.
+                    if "".join(segment["text"].split()).casefold().startswith(
+                        "".join(prefix.split()).casefold()
+                    ) or (
+                        segment["text"].casefold().endswith(item["text"].casefold())
+                        and timestamp_items_cover_text(segment["text"], [*assigned, item])
+                    ):
+                        point_match = 2
+                    elif not timestamp_items_cover_text(segment["text"], assigned):
+                        point_match = 1
+                candidates.append((contained, overlap, point_match, -index))
             if candidates:
-                _, _, negative_index = max(candidates)
+                _, _, _, negative_index = max(candidates)
                 segment = segments[-negative_index]
                 segment.setdefault("items", []).append(item)
                 segment["start"] = min(segment["start"], item["start"])

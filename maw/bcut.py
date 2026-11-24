@@ -440,39 +440,50 @@ def poll_task(task_id: str, *, interval: int, timeout: int, on_status=print) -> 
 
 # ===== 结果 → MAW 工程映射 =====
 
+def _utterance_word_items(raw_words: object) -> tuple[list[dict], str, bool]:
+    words = raw_words if isinstance(raw_words, list) else []
+    items: list[dict] = []
+    text_parts: list[str] = []
+    invalid = False
+    pending_space = False
+    for word in words:
+        if not isinstance(word, dict):
+            invalid = True
+            continue
+        label = str(word.get("label") or "")
+        if not label:
+            continue
+        if label.isspace():
+            pending_space = True
+            continue
+        if pending_space and not label[0].isspace():
+            label = " " + label
+        pending_space = False
+        text_parts.append(label)
+        timestamp = normalize_timestamp_range(
+            word.get("start_time"), word.get("end_time"), allow_zero=True
+        )
+        if timestamp is None:
+            invalid = True
+            continue
+        items.append({"text": label, "start": timestamp[0], "end": timestamp[1]})
+    return items, "".join(text_parts), invalid
+
+
 def utterances_to_items(utterances: list) -> list[dict]:
     """必剪 utterances → MAW items（整数毫秒）。
 
     优先使用逐字 words[]（label/start_time/end_time）；某句缺 words 时
     回退为句级单 item（该句内拆分精度会下降，但时间仍正确）。
     防御性兜底：某句只要有一个非空字词缺时间戳或时间倒挂，就放弃该句
-    的逐字项并回退为有效的句级 item；句级范围也无效时直接跳过，绝不
-    生成零宽或负时长 item。
+    的逐字项并回退为有效的句级 item；句级范围也无效时直接跳过。
+    有明确时间点的零宽字词交给下游时长修复。
     """
     items: list[dict] = []
     for utterance in utterances:
         if not isinstance(utterance, dict):
             continue
-        words = utterance.get("words") or []
-        word_items: list[dict] = []
-        invalid_word_timestamp = False
-        for word in words:
-            if not isinstance(word, dict):
-                invalid_word_timestamp = True
-                continue
-            label = str(word.get("label") or "")
-            if not label:
-                continue
-            start, end = word.get("start_time"), word.get("end_time")
-            timestamp = normalize_timestamp_range(start, end)
-            if timestamp is None:
-                invalid_word_timestamp = True
-                continue
-            word_items.append({
-                "text": label,
-                "start": timestamp[0],
-                "end": timestamp[1],
-            })
+        word_items, _, invalid_word_timestamp = _utterance_word_items(utterance.get("words"))
         if word_items and not invalid_word_timestamp:
             items.extend(word_items)
             continue
@@ -481,7 +492,7 @@ def utterances_to_items(utterances: list) -> list[dict]:
         if not transcript:
             continue
         timestamp = normalize_timestamp_range(
-            utterance.get("start_time"), utterance.get("end_time")
+            utterance.get("start_time"), utterance.get("end_time"), allow_zero=True
         )
         if timestamp is not None:
             items.append({
@@ -513,36 +524,14 @@ def parse_result_payload(raw: str) -> dict:
     for utterance in utterances:
         if not isinstance(utterance, dict):
             continue
-        word_items: list[dict] = []
-        word_text: list[str] = []
-        has_word_items = True
-        invalid_word_timestamp = False
-        raw_words = utterance.get("words")
-        words = raw_words if isinstance(raw_words, list) else []
-        for word in words:
-            if not isinstance(word, dict):
-                invalid_word_timestamp = True
-                continue
-            label = str(word.get("label") or "")
-            if not label:
-                continue
-            word_text.append(label)
-            start, end = word.get("start_time"), word.get("end_time")
-            timestamp = normalize_timestamp_range(start, end)
-            if timestamp is None:
-                invalid_word_timestamp = True
-                continue
-            word_items.append({"text": label, "start": timestamp[0], "end": timestamp[1]})
-        if not word_text:
-            has_word_items = False
-        if invalid_word_timestamp:
-            has_word_items = False
+        word_items, word_text, invalid = _utterance_word_items(utterance.get("words"))
+        has_word_items = bool(word_items) and not invalid
         valid_word_range = (
             min(item["start"] for item in word_items),
             max(item["end"] for item in word_items),
         ) if word_items else None
         transcript = str(utterance.get("transcript") or "")
-        utterance_text = transcript or "".join(word_text)
+        utterance_text = transcript or word_text
         if has_word_items and not timestamp_items_cover_text(utterance_text, word_items):
             # Valid ranges are not enough: flattening a partial word list would
             # make the missing transcript text disappear from the output.
@@ -599,7 +588,7 @@ def parse_result_payload(raw: str) -> dict:
             if not utterance_text.strip():
                 continue
             sentence_range = normalize_timestamp_range(
-                utterance.get("start_time"), utterance.get("end_time")
+                utterance.get("start_time"), utterance.get("end_time"), allow_zero=True
             )
             if sentence_range is None and valid_word_range is not None:
                 # Some responses have valid word ranges but an inverted or

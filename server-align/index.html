@@ -611,7 +611,7 @@
     <h2>波形与 take 块</h2>
     <div id="media-host"><p class="muted">工程没有可播放媒体，仍可查看对齐结果。</p></div>
     <div class="timeline-help">
-      <span id="timeline-help-text">多行模式按每行时长排列 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl+单击块跳到下方卡片</span>
+      <span id="timeline-help-text">多行模式按每行时长排列 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl/Cmd+单击块跳到下方卡片</span>
       <div class="timeline-options">
         <div class="waveform-mode-control">
           <span class="waveform-mode-label">波形：</span>
@@ -695,6 +695,12 @@
 /* __GAP_REMOVE_CORE_JS__ */
 </script>
 <script>
+  // macOS 上 Alt 键名为 Option；帮助文案按平台显示。
+  // 判定与 web/shared/utils/platform.js 的 isMacPlatform 保持同一正则与回退；
+  // 本页不引共享模块，改判定时两侧同步。
+  const ALT_KEY_LABEL = /Mac|iPhone|iPad/.test(
+    String(navigator.platform || navigator.userAgentData?.platform || ''),
+  ) ? 'Option' : 'Alt';
   let state = null;
   let alignment = null;
   let selectedByLine = {};
@@ -1317,8 +1323,8 @@
     const help = $('#timeline-help-text');
     if (help) {
       help.textContent = multi
-        ? '多行模式按每行时长排列 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl+单击块跳到下方卡片'
-        : '基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 Alt+左键添加空隙 · 已有空隙 Alt+点击切换禁用 · Ctrl+单击块跳到下方卡片';
+        ? `多行模式按每行时长排列 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 ${ALT_KEY_LABEL}+左键添加空隙 · 已有空隙 ${ALT_KEY_LABEL}+点击切换禁用 · Ctrl/Cmd+单击块跳到下方卡片`
+        : `基础模式横向滚动查看整段 · 滚轮横向滚动 · 单击定位，单击空隙临时试听 · 双击/空格播放暂停 · 按住左键拖动播放头 · 空白处 ${ALT_KEY_LABEL}+左键添加空隙 · 已有空隙 ${ALT_KEY_LABEL}+点击切换禁用 · Ctrl/Cmd+单击块跳到下方卡片`;
     }
     const secondsSelect = $('#multi-row-seconds');
     const heightSelect = $('#multi-row-height');
@@ -1749,12 +1755,12 @@
 
   function bindTakeButton(take, callback) {
     // 波形容器本身负责定位/拖动播放头；点击块时处理 take 选择，
-    // 或切换 incomplete take 的手动启用状态。Ctrl+单击只跳到下方对应 card。
+    // 或切换 incomplete take 的手动启用状态。Ctrl/Cmd+单击只跳到下方对应 card。
     take.addEventListener('pointerdown', (event) => event.stopPropagation());
     take.addEventListener('dblclick', (event) => event.stopPropagation());
     take.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (event.ctrlKey) {
+      if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
         scrollToRecordingCard({
           candidateId: take.dataset.candidateId,
@@ -1940,7 +1946,7 @@
     node.append(label);
     node.title = preview
       ? (labelText || gapDisplayLabel(gap))
-      : `${gapDisplayLabel(gap)} · Alt+点击切换禁用`;
+      : `${gapDisplayLabel(gap)} · ${ALT_KEY_LABEL}+点击切换禁用`;
     node.setAttribute('aria-label', node.title);
     if (preview) {
       node.classList.add('gap-range-preview');

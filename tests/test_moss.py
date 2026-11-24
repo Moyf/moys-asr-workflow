@@ -284,6 +284,21 @@ class MossApiTests(unittest.TestCase):
 
 
 class MossParseTests(unittest.TestCase):
+    def test_parse_result_keeps_speaker_turns_when_one_has_zero_duration(self) -> None:
+        result = parse_result({
+            "text": "你好世界",
+            "segments": [
+                {"start": 0.1, "end": 0.5, "text": "你好", "speaker": "S01"},
+                {"start": 0.5, "end": 0.5, "text": "世界", "speaker": "S02"},
+            ],
+        })
+
+        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(result["segments"], [
+            {"start": 100, "end": 500, "text": "你好", "speaker": "S01"},
+            {"start": 500, "end": 600, "text": "世界", "speaker": "S02"},
+        ])
+
     def test_parse_result_maps_segments_with_speakers(self) -> None:
         result = parse_result({
             "task": "transcribe",

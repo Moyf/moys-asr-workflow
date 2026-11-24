@@ -288,7 +288,7 @@ class DoubaoParseTests(unittest.TestCase):
                         {"text": " ", "start_time": -1, "end_time": -1},
                         {"text": "is", "start_time": 1160, "end_time": 1360},
                         {"text": " ", "start_time": -1, "end_time": -1},
-                        {"text": "a", "start_time": 1360, "end_time": 1600},
+                        {"text": "a", "start_time": 1360, "end_time": 1360},
                         {"text": " ", "start_time": -1, "end_time": -1},
                         {"text": "smoke", "start_time": 1680, "end_time": 2000},
                         {"text": " ", "start_time": -1, "end_time": -1},
@@ -302,6 +302,7 @@ class DoubaoParseTests(unittest.TestCase):
             [item["text"] for item in result["items"]],
             ["Hello", " this", " is", " a", " smoke", " test"],
         )
+        self.assertEqual((result["items"][3]["start"], result["items"][3]["end"]), (1360, 1360))
         self.assertEqual(result["segments"], [])
         self.assertEqual(result["timestamp_granularity"], "word")
 

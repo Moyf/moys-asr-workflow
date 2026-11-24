@@ -359,14 +359,14 @@ def _utterance_items(utterance: dict) -> tuple[list[dict], bool]:
                 pending_space = True
             continue
         timestamp = normalize_timestamp_range(
-            word.get("start_time"), word.get("end_time")
+            word.get("start_time"), word.get("end_time"), allow_zero=True
         )
         if timestamp is None:
             invalid = True
             continue
-        if pending_space:
+        if pending_space and not text[0].isspace():
             text = " " + text
-            pending_space = False
+        pending_space = False
         item: dict = {
             "text": text,
             "start": timestamp[0],
@@ -398,7 +398,7 @@ def parse_result(body: dict) -> dict:
         text = str(utterance.get("text") or "")
         sentence_items, invalid = _utterance_items(utterance)
         sentence_range = normalize_timestamp_range(
-            utterance.get("start_time"), utterance.get("end_time")
+            utterance.get("start_time"), utterance.get("end_time"), allow_zero=True
         )
         if sentence_items and not invalid and not timestamp_items_cover_text(
             text, sentence_items
