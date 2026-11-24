@@ -209,6 +209,7 @@ def render_project_ass(
     except ValueError as error:
         raise ProjectSubtitleError(str(error)) from error
     tracks = {track["role"]: track for track in selected}
+    cue_styles = {entry["id"]: entry["style"] for entry in project.get("cue_styles", [])}
     track_snapshots = {role: resolve_track_style(project, track) for role, track in tracks.items()}
     main = tracks.get("main")
     main_segments = cleaned_srt_segments(
@@ -233,7 +234,7 @@ def render_project_ass(
     collision_stack = (
         main is not None and overlay is not None and secondary is None
         and (any(track_snapshots.values())
-             or any(item.get("disabled") is not True and item.get("assStyle") is not None
+             or any(item.get("disabled") is not True and item.get("cue_style_id") in cue_styles
                     for segments in (main_segments, overlay_segments) for item in segments))
     )
     main_starts = sorted({times[0] for item in main_segments
@@ -255,7 +256,7 @@ def render_project_ass(
             if (other.get("disabled") is True or not str(other.get("text") or "").strip()
                     or other.get("start", 0) >= segment["end"] or other.get("end", 0) <= segment["start"]):
                 continue
-            override = other.get("assStyle")
+            override = cue_styles.get(other.get("cue_style_id"))
             effective = _normalize_style(override, DEFAULT_ASS_STYLE, style_id="cue") if override else main_base
             if effective["alignment"] not in (1, 2, 3):
                 continue
@@ -283,7 +284,7 @@ def render_project_ass(
         for segment in segments:
             if segment.get("disabled") is True:
                 continue
-            cue_snapshot = segment.get("assStyle")
+            cue_snapshot = cue_styles.get(segment.get("cue_style_id"))
             if not (is_overlay and cue_snapshot is None) and not str(segment.get("text") or "").strip():
                 continue
             times = _cue_times(segment)

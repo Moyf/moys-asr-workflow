@@ -322,6 +322,7 @@ export function initMaweExportSrt() {
     assStyle,
     assExtensionStyle,
     assOverlayStyle,
+    cueStyles: MaweBoot.DATA.cue_styles,
     assEmphasisSyntax: MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax,
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     assUnderlineEnabled: MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,

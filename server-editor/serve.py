@@ -186,6 +186,11 @@ class ServerProject:
     import_changes: tuple[dict, ...] = ()
     source_schema: str = PROJECT_SCHEMA
     requires_identity_upgrade: bool = False
+    requires_cue_style_upgrade: bool = False
+
+    @property
+    def requires_migration_save_as(self) -> bool:
+        return self.source_schema != PROJECT_SCHEMA or self.requires_identity_upgrade or self.requires_cue_style_upgrade
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -1422,6 +1427,9 @@ def load_project(
     data = imported.validation.project
     source_schema = raw_data.get("schema", "moy.asr.project.v1")
     requires_identity_upgrade = not isinstance(raw_data.get("speakers"), list)
+    requires_cue_style_upgrade = source_schema == PROJECT_SCHEMA and any(
+        "assStyle" in cue for track in raw_data["tracks"] for cue in track["segments"]
+    )
     payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
         data.get("spectral"),
@@ -1463,7 +1471,7 @@ def load_project(
             default_audio_track=default_audio_track,
             import_changes=imported.changes,
             source_schema=source_schema,
-            requires_identity_upgrade=requires_identity_upgrade,
+            requires_identity_upgrade=requires_identity_upgrade, requires_cue_style_upgrade=requires_cue_style_upgrade,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -1590,7 +1598,7 @@ def load_project(
         default_audio_track=default_audio_track,
         import_changes=imported.changes,
         source_schema=source_schema,
-        requires_identity_upgrade=requires_identity_upgrade,
+        requires_identity_upgrade=requires_identity_upgrade, requires_cue_style_upgrade=requires_cue_style_upgrade,
     )
 
 
@@ -1760,7 +1768,7 @@ def build_server_page(
             "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
             "projectImportChanges": list(project.import_changes),
-            "requiresMigrationSaveAs": project.source_schema != PROJECT_SCHEMA or project.requires_identity_upgrade,
+            "requiresMigrationSaveAs": project.requires_migration_save_as,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "canOtozTimelineExport": project.json_path is not None,
@@ -1815,6 +1823,13 @@ def _attach_segments_match(server_project: dict, browser_project: dict) -> bool:
     browser_segments = copy.deepcopy(get_main_track(browser_project)["segments"])
     if not isinstance(server_segments, list) or not isinstance(browser_segments, list):
         return server_segments == browser_segments
+
+    def used_cue_styles(project, segments):
+        ids = {cue.get("cue_style_id") for cue in segments}
+        return {entry["id"]: entry for entry in project.get("cue_styles", []) if entry["id"] in ids}
+
+    if used_cue_styles(server_project, server_segments) != used_cue_styles(browser_project, browser_segments):
+        return False
 
     timebase = browser_project.get("timebase")
     frame_mode = isinstance(timebase, dict) and timebase.get("unit") == "frames"
@@ -1932,7 +1947,7 @@ class EditorServer(ThreadingHTTPServer):
         return {
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
-            "requiresMigrationSaveAs": self.project.source_schema != PROJECT_SCHEMA or self.project.requires_identity_upgrade,
+            "requiresMigrationSaveAs": self.project.requires_migration_save_as,
             "thumbnailBinding": f"{self.binding_generation}:{self.source_media_id}",
             # A valid persisted base cache means the Launcher stage ran with
             # thumbnails enabled; without one the editor keeps its display
@@ -2463,7 +2478,7 @@ class EditorServer(ThreadingHTTPServer):
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
-        requires_migration = self.project.source_schema != PROJECT_SCHEMA or self.project.requires_identity_upgrade
+        requires_migration = self.project.requires_migration_save_as
         if requires_migration:
             if filename is None or target.resolve() == self.project.json_path.resolve() or backup_only:
                 raise SaveProjectError("旧格式工程需要另存为新的 v2 工程文件，原文件不会被覆盖")
@@ -2485,7 +2500,8 @@ class EditorServer(ThreadingHTTPServer):
         # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
         _restore_runtime_inline_caches(self.project.data, normalized_project)
         saved_project = replace(self.project, data=normalized_project, json_path=target,
-                                import_changes=(), source_schema=PROJECT_SCHEMA, requires_identity_upgrade=False)
+                                import_changes=(), source_schema=PROJECT_SCHEMA, requires_identity_upgrade=False,
+                                requires_cue_style_upgrade=False)
         if target != self.project.json_path:
             self._bind_project_locked(saved_project)
         else:

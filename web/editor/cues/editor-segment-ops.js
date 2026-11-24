@@ -127,6 +127,7 @@ export function initMaweSegmentOps() {
       text: mainJoin.text,
       items: mainJoin.items,
       ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
+      ...(segs[0].cue_style_id ? { cue_style_id: segs[0].cue_style_id } : {}),
       ...(segs[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(segs[0].assStyle)) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
@@ -153,6 +154,7 @@ export function initMaweSegmentOps() {
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
         text: extensionJoin.text,
+        ...(extensionMergeSegments[0].cue_style_id ? { cue_style_id: extensionMergeSegments[0].cue_style_id } : {}),
         ...(extensionMergeSegments[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(extensionMergeSegments[0].assStyle)) } : {}),
         _dirty: true,
       };

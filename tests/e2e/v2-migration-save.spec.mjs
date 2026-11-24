@@ -58,6 +58,8 @@ for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5', 'moy.asr.pro
       expect(await page.evaluate(() => ({ schema: MaweBoot.DATA.schema, needsSaveAs: MaweServerSave.requiresMigrationSaveAs })))
         .toEqual({ schema: 'moy.asr.project.v2', needsSaveAs: true });
 
+      // Startup assigns the default track style after the local library loads.
+      await expect.poll(() => page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').status)).toBe('linked');
       const before = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
       const failed = await page.evaluate(async () => MaweMultiImport.openProjectFile(
         new File([JSON.stringify({ schema: 'moy.asr.project.v99', segments: [] })], 'invalid.mosp', { type: 'application/json' }),

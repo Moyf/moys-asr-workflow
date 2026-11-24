@@ -1,3 +1,4 @@
+import { cueStyleUpdates, cueStyleUsage } from '../../shared/utils/cue-styles.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getAssStyleLibrary, isAssStyleLibraryReady, hasAssStyleLibraryLoaded, canEditAssStyleLibrary, incrementAssStyleLibraryRevision,
   setAssStyleLibrary, updateAssStyleLibrarySummary, scheduleAssStyleLibrarySave,
@@ -92,13 +93,19 @@ function setAssStyleLibraryStatus(text, state = 'idle') {
 
 function updateAssStyleProjectHint() {
   if (!assStyleProjectHint) return;
-  /** @type {any} */
-  const project = MaweBoot.DATA;
-  const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
-  const styleKeys = new Map(getAssStyleLibrary().styles.map(style => [style.id, snapshotKey(style)]));
-  assStyleProjectHint.hidden = ![...window.AsrEditorUtils.iterSegments(project)].some(({ assStyle }) =>
-    assStyle && snapshotKey(assStyle) !== styleKeys.get(assStyle.id));
+  assStyleProjectHint.hidden = !cueStyleUpdates(MaweBoot.DATA, getAssStyleLibrary()).length;
 }
+
+assStyleProjectHint?.addEventListener('click', () => {
+  if (!canEditAssStyleLibrary()) return;
+  const updates = cueStyleUpdates(MaweBoot.DATA, getAssStyleLibrary());
+  if (!updates.length) return;
+  MaweCommands.run('更新工程内单句样式', command => {
+    for (const { entry, style } of updates) entry.style = assStyleManagerClone(style);
+    command.commit({ cueList: true, preview: 'update' });
+  });
+  syncAssStyleManager();
+});
 
 function updateAssStyleLibraryStatus() {
   if (!assStyleLibraryStatus) return;
@@ -197,6 +204,21 @@ function updateAssStylePreviewModeHints() {
   });
 }
 
+function refreshCueStyleCounts() {
+  if (!assStyleList) return;
+  const usage = cueStyleUsage(MaweBoot.DATA);
+  const counts = new Map();
+  for (const entry of MaweBoot.DATA.cue_styles || []) {
+    if (entry.library_id) counts.set(entry.library_id, (counts.get(entry.library_id) || 0) + (usage.get(entry.id) || 0));
+  }
+  const label = window.MAWE_I18N?.translateText?.('跟随句数') || '跟随句数';
+  for (const badge of assStyleList.querySelectorAll('[data-cue-usage]')) {
+    const count = counts.get(badge.dataset.cueUsage) || 0;
+    badge.hidden = !count;
+    if (count) badge.textContent = label + ' ' + count;
+  }
+}
+
 function renderAssStyleList(list, items, kind, selectedId) {
   if (!list) return;
   list.replaceChildren();
@@ -228,10 +250,17 @@ function renderAssStyleList(list, items, kind, selectedId) {
     };
     if (item.id === mainStyleId) appendBadge('主', 'ass-style-list-badge-primary');
     if (extensionActive && item.id === extensionStyleId) appendBadge('副', 'ass-style-list-badge-extension');
+    if (kind === 'style') {
+      const countBadge = document.createElement('span');
+      countBadge.className = 'ass-style-list-badge';
+      countBadge.dataset.cueUsage = item.id;
+      button.append(countBadge);
+    }
     if (item.builtin) appendBadge('内置');
     button.addEventListener('click', () => assStyleManagerSetSelection(kind, item.id));
     list.append(button);
   });
+  if (kind === 'style') refreshCueStyleCounts();
 }
 
 function assStyleFormValue(field) {
@@ -251,7 +280,9 @@ function updateAssStyleManagerLibrary(mutator, { persist = true, recordProjectHi
   incrementAssStyleLibraryRevision();
   setAssStyleLibrary(next, { persistLocal: true });
   const history = MaweHistory.captureSegmentsRecord('更新联动样式');
-  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, getAssStyleLibrary())) {
+  const cueUpdates = cueStyleUpdates(MaweBoot.DATA, getAssStyleLibrary(), previous);
+  for (const { entry, style } of cueUpdates) entry.style = assStyleManagerClone(style);
+  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, getAssStyleLibrary()) || cueUpdates.length) {
     if (recordProjectHistory) MaweHistory.commitRecord(history);
     MaweState.markProjectDirty();
   }
@@ -613,7 +644,10 @@ const assStyleFloatingPanel = window.MaweFloatingPanel.createFloatingPanel({
   },
 });
 MaweState.onProjectDirtyChange(() => {
-  if (assStyleFloatingPanel.isOpen()) updateAssStyleProjectHint();
+  if (assStyleFloatingPanel.isOpen()) {
+    updateAssStyleProjectHint();
+    refreshCueStyleCounts();
+  }
 });
 document.getElementById('ass-frame-style-edit')?.addEventListener('click', () => assStyleFloatingPanel.open());
 assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());

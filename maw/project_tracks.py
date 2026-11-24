@@ -7,6 +7,7 @@ Legacy containers are read only in this module; all returned projects use v2.
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass
 from typing import Any, Iterator
 
@@ -201,6 +202,28 @@ def _validate_bindings(project: dict[str, Any]) -> None:
 
 
 def _validate_styles(project: dict[str, Any], tracks: list[Any]) -> None:
+    cue_ids = set()
+    for i, value in enumerate(_array(project.get("cue_styles", []), "$.cue_styles")):
+        path = f"$.cue_styles[{i}]"
+        entry = _object(value, path)
+        identifier = _identifier(entry.get("id"), f"{path}.id")
+        if identifier in cue_ids:
+            _fail(f"{path}.id", "must be a unique style ID")
+        cue_ids.add(identifier)
+        _object(entry.get("style"), f"{path}.style")
+        if "library_id" in entry:
+            _identifier(entry["library_id"], f"{path}.library_id")
+    for i, track in enumerate(tracks):
+        if not isinstance(track, dict) or not isinstance(track.get("segments"), list):
+            continue
+        for j, cue in enumerate(track["segments"]):
+            if not isinstance(cue, dict) or "cue_style_id" not in cue:
+                continue
+            path = f"$.tracks[{i}].segments[{j}]"
+            if "assStyle" in cue:
+                _fail(f"{path}.assStyle", "cannot coexist with cue_style_id")
+            if not isinstance(cue["cue_style_id"], str) or cue["cue_style_id"] not in cue_ids:
+                _fail(f"{path}.cue_style_id", "must reference an existing cue style")
     style_ids: set[str] = set()
     if "styles" in project:
         for index, value in enumerate(_array(project["styles"], "$.styles")):
@@ -698,6 +721,39 @@ class ProjectTracksImport:
     changes: tuple[JsonDict, ...]
 
 
+def cue_style_writer(project: dict[str, Any]):
+    """Return a writer that interns definitions and preserves entry extension fields."""
+    entries = project.get("cue_styles", [])
+    used = {entry["id"] for entry in entries}
+    by_content = {json.dumps({k: v for k, v in entry.items() if k != "id"}, sort_keys=True): entry["id"]
+                  for entry in entries}
+    sequence = 1
+
+    def store(definition):
+        nonlocal sequence
+        key = json.dumps(definition, sort_keys=True)
+        if key not in by_content:
+            while f"cue-style-{sequence}" in used:
+                sequence += 1
+            identifier = f"cue-style-{sequence}"
+            used.add(identifier)
+            by_content[key] = identifier
+            entries.append({"id": identifier, **copy.deepcopy(definition)})
+            project["cue_styles"] = entries
+        return by_content[key]
+
+    return store
+
+
+def _migrate_cue_styles(project: dict[str, Any]) -> None:
+    store = None
+    for cue in iter_segments(project):
+        if "assStyle" in cue:
+            if store is None:
+                store = cue_style_writer(project)
+            cue["cue_style_id"] = store({"style": cue.pop("assStyle")})
+
+
 def import_project(raw: JsonValue) -> ProjectTracksImport:
     """Migrate once at an input boundary; never change the supplied object."""
     source = _object(raw, "$")
@@ -708,6 +764,7 @@ def import_project(raw: JsonValue) -> ProjectTracksImport:
     _validate_canonical(candidate, speaker_contract="speakers" in candidate)
     canonical_bindings = candidate["bindings"]
     candidate = _upgrade_speaker_contract(candidate)
+    _migrate_cue_styles(candidate)
     changes = _changes(source, candidate)
     # v1/v1.5 store bindings inside multi_subtitle. A raw structural diff only
     # says that container was removed and a new root bindings array was added;

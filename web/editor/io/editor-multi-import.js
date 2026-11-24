@@ -1,3 +1,4 @@
+import { cueStyleWriter } from '../../shared/utils/cue-styles.js';
 // 多重字幕导入：导入选择弹窗、预览渲染与主副轨交换。
 // ESM init 模块：initMaweMultiImport 在原清单位次执行原 IIFE 体（挂
 // window.MaweMultiImport 冻结门面——classic 侧出接口）；底部具名导出经门面
@@ -177,6 +178,13 @@ export function initMaweMultiImport() {
     segments: extensionSegments,
   };
   return MaweCommands.run(replacing ? '替换副字幕' : '导入双语字幕', (command) => {
+    if (pending.segments.cueStyles?.length) {
+      const store = cueStyleWriter(MaweBoot.DATA);
+      const used = new Set(extensionSegments.map(cue => cue.cue_style_id));
+      const ids = new Map(pending.segments.cueStyles.filter(entry => used.has(entry.id))
+        .map(({ id, ...definition }) => [id, store(definition)]));
+      for (const cue of extensionSegments) if (cue.cue_style_id) cue.cue_style_id = ids.get(cue.cue_style_id);
+    }
     MaweBoot.DATA.speakers = importedIdentities.speakers;
     if (replacing) {
       const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
@@ -307,7 +315,7 @@ export function initMaweMultiImport() {
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
-  requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(rawProject.speakers) });
+  requiresMigrationSaveAs: window.AsrEditorUtils.requiresProjectMigrationSaveAs(rawProject) });
       applied = true;
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();

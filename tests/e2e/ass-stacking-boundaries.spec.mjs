@@ -23,10 +23,15 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
-  { name: 'independent cue style snapshots match Canvas and libass',
-    mainSegments: [{ ...cue('main', 'Main'), assStyle: { fontName: 'Arial', fontSize: 112, primaryColor: '#ff0000', alignment: 2, marginV: 180, outline: 0, shadow: 0 } }],
-    extensionSegments: [{ ...cue('secondary', 'Secondary'), assStyle: { fontName: 'Arial', fontSize: 68, primaryColor: '#00ff00', alignment: 2, marginV: 60, outline: 0, shadow: 0 } }],
-    overlaySegments: [{ ...cue('overlay', 'Overlay'), assStyle: { fontName: 'Arial', fontSize: 80, primaryColor: '#0000ff', alignment: 2, marginV: 180, outline: 0, shadow: 0 } }],
+  { name: 'independent cue style references match Canvas and libass',
+    cueStyles: [
+      { id: 'red', style: { fontName: 'Arial', fontSize: 112, primaryColor: '#ff0000', alignment: 2, marginV: 180, outline: 0, shadow: 0 } },
+      { id: 'green', style: { fontName: 'Arial', fontSize: 68, primaryColor: '#00ff00', alignment: 2, marginV: 60, outline: 0, shadow: 0 } },
+      { id: 'blue', style: { fontName: 'Arial', fontSize: 80, primaryColor: '#0000ff', alignment: 2, marginV: 180, outline: 0, shadow: 0 } },
+    ],
+    mainSegments: [{ ...cue('main', 'Main'), cue_style_id: 'red' }],
+    extensionSegments: [{ ...cue('secondary', 'Secondary'), cue_style_id: 'green' }],
+    overlaySegments: [{ ...cue('overlay', 'Overlay'), cue_style_id: 'blue' }],
     times: [1000] },
   { name: 'large italic overhang keeps complete glyph ink visible',
     main: '//ffff//', extension: '//ffff//', fontSize: 240, extensionFontSize: 180,
@@ -138,6 +143,7 @@ async function configure(page, fixture) {
       MaweBoot.DATA.bilingual = fixture.bilingual;
       MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
+    if (f.cueStyles) MaweBoot.DATA.cue_styles = f.cueStyles;
     const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
     overlay.segments = f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }];
     // The renderer consumes project snapshots, not subsequent direct mutations
@@ -356,6 +362,9 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   const frames = [];
   for (const time of fixture.times) {
     const frame = await capture(page, time);
+    if (fixture.cueStyles) {
+      expect(frame.ass.match(/^Style: Cue_\d+,/gm) || []).toHaveLength(fixture.cueStyles.length);
+    }
     const metrics = await evidence(frame, testInfo, `t${time}`);
     const pixels = libass(frame.ass, time, testInfo, `t${time}`, fixture.times);
     if (originalClock) {

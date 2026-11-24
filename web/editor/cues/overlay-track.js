@@ -439,6 +439,7 @@ function mergeOverlaySegments(idxs, { detachPanel = false } = {}) {
   if (segments[0].assOverride) {
     merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
   }
+  if (segments[0].cue_style_id) merged.cue_style_id = segments[0].cue_style_id;
   if (segments[0].assStyle) merged.assStyle = JSON.parse(JSON.stringify(segments[0].assStyle));
   if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
   MaweSelection.clearSelection();

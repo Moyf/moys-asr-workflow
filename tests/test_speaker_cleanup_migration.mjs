@@ -26,7 +26,14 @@ test('speaker migration preserves exact cleanup, pauses, metadata and restoratio
     assert.deepEqual(core.gapRangesFromProvenance(after.gap_remove.provenance), core.gapRangesFromProvenance(before.gap_remove.provenance));
     assert.deepEqual(after.processing_overrides, before.processing_overrides);
     assert.deepEqual(after.styles, before.styles);
-    assert.ok(after.tracks[0].segments.every(c => c.assStyle.font === 'x' && c.vendor === 3));
+    assert.equal(after.cue_styles.length, 1);
+    assert.equal(after.tracks[0].segments.length, 2);
+    for (const cue of after.tracks[0].segments) {
+      assert.ok(cue.cue_style_id);
+      const entry = after.cue_styles.find(style => style.id === cue.cue_style_id);
+      assert.deepEqual(entry?.style, { font: 'x' });
+      assert.equal(cue.vendor, 3);
+    }
     assert.ok(after.gap_remove.provenance.sources.ai_cleanup.filter(x => x.cleanup_scope).every(x => x.cleanup_scope.vendor === 9));
     after.gap_remove.provenance.manual_overrides.push({ start: before.gap_remove.provenance.sources.ai_cleanup[0].start,
       end: before.gap_remove.provenance.sources.ai_cleanup[0].end, removed: false });

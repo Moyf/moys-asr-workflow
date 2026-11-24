@@ -9,6 +9,8 @@ source: "docs/INDEX.md"
 
 按任务找到正文。主题 ID 是通用引用入口；正文路径可以迁移，ID 保持稳定。分类与维护见[文档约定](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/README.md#doc-policy)。
 
+[2.0 单句 ASS 样式引用草案](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/CUE_STYLE_REFERENCES.md)
+
 ## 用户指南
 
 <a name="user-alignment-features"></a>

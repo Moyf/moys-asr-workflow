@@ -1,3 +1,4 @@
+import { cueStyleWriter } from '../../shared/utils/cue-styles.js';
 import { scheduleOnboarding } from '../boot/editor-onboarding.js';
 import { buildOverlayCueEl } from './editor-overlay-cue-rows.js';
 import { applyCharCount, buildBoundExtensionIds, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort, speakerName } from './editor-cue-elements.js';
@@ -387,19 +388,19 @@ export function initMaweCuePanel() {
       select.add(option);
     };
     const styles = window.MaweAssStorageWiring?.styles() || [];
-    const savedStyle = segment?.assStyle;
-    const libraryStyle = savedStyle && styles.find((style) => style.id === savedStyle.id);
-    const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
-    const matchesLibrary = libraryStyle && snapshotKey(savedStyle) === snapshotKey(libraryStyle);
-
+    const entry = MaweBoot.DATA.cue_styles?.find(item => item.id === segment?.cue_style_id);
+    const linked = entry && styles.find(style => style.id === entry.library_id);
+    const current = linked && window.AsrEditorUtils.assStyleSnapshotKey(linked) ===
+      window.AsrEditorUtils.assStyleSnapshotKey(entry.style);
     select.disabled = !segment;
     select.replaceChildren();
     addOption('', translate('继承轨道样式'));
-    if (savedStyle && !matchesLibrary) {
-      addOption('__snapshot', styleLabel(savedStyle) + translate('（工程内保存）'));
+    if (entry && !current) {
+      addOption(':saved', styleLabel(entry.style) + translate(entry.library_id ? '（跟随，使用工程副本）' : '（固定）'));
     }
-    styles.forEach((style) => addOption(style.id, styleLabel(style)));
-    select.value = savedStyle ? (matchesLibrary ? savedStyle.id : '__snapshot') : '';
+    styles.forEach(style => addOption(style.id, styleLabel(style) + translate('（跟随）')));
+    if (entry?.library_id) addOption(':pin', translate('固定此句当前样式'));
+    select.value = current ? linked.id : entry ? ':saved' : '';
   }
 
   document.addEventListener('mawe:languagechange', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
@@ -408,13 +409,16 @@ export function initMaweCuePanel() {
     const target = getCurrentCuePanelTarget();
     const segment = target?.segment;
     const value = event.target.value;
-    if (!segment || value === '__snapshot') return;
+    if (!segment || value === ':saved') return;
     const style = (window.MaweAssStorageWiring?.styles() || []).find((item) => item.id === value);
-    if (value && !style) return;
-    if (!value && !segment.assStyle) return;
+    const entry = MaweBoot.DATA.cue_styles?.find(item => item.id === segment.cue_style_id);
+    const pin = value === ':pin' && entry;
+    if (value && !style && !pin) return;
+    if (!value && !entry) return;
     MaweCommands.run('修改单句 ASS 样式', (command) => {
-      if (style) segment.assStyle = JSON.parse(JSON.stringify(window.AsrEditorUtils.normalizeAssStyle(style)));
-      else delete segment.assStyle;
+      if (pin) segment.cue_style_id = cueStyleWriter(MaweBoot.DATA)({ style: entry.style });
+      else if (style) segment.cue_style_id = cueStyleWriter(MaweBoot.DATA)({ style, library_id: style.id });
+      else delete segment.cue_style_id;
       segment._dirty = true;
       if (target.kind === 'overlay') target.track._dirty = true;
       if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();

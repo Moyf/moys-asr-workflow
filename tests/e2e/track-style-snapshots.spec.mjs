@@ -244,7 +244,7 @@ for (const role of ['main', 'secondary', 'overlay']) test(`cue style selector ov
     await MaweAssFontAliases.whenReady();
     MawePlaybackLoop.refreshSubtitlePreview(cue.start + 1, 0);
     const item = MaweAssPreview.stackPlan.slices.flatMap(slice => slice.items).find(item => item.segment.id === id);
-    return { style: cue.assStyle, pos: cue.assOverride, rendered: item?.style.fontSize,
+    return { style: MaweBoot.DATA.cue_styles?.find(entry => entry.id === cue.cue_style_id)?.style, pos: cue.assOverride, rendered: item?.style.fontSize,
       styles: MaweBoot.DATA.styles, ass: MaweExportSrt.buildAss(), undo: MaweHistory.editorHistory.undoLength() };
   }, setup.id);
   let current = await read();
@@ -272,6 +272,37 @@ for (const role of ['main', 'secondary', 'overlay']) test(`cue style selector ov
   expect(current.pos).toEqual({ pos: { x: 640, y: 360 }, scale: 1.2 });
   expect(current.ass).not.toContain('Style: Cue_0,');
   expect(current.rendered).toBe(await page.evaluate(role => MaweAssManagerWiring.projectStyleOptions(role).style.fontSize, role));
+});
+
+test('pinning one cue keeps its saved size while another follows a library edit', async ({ page }) => {
+  const select = page.locator('#cue-ass-style');
+  for (const role of ['main', 'overlay']) {
+    await page.evaluate(role => {
+      const track = MaweBoot.DATA.tracks.find(track => track.role === role);
+      track.enabled = true;
+      MaweCuePanel.setCuePanelTarget(role, 0, track.id);
+    }, role);
+    await select.selectOption('ass');
+  }
+  await select.selectOption(':pin');
+  const sizes = () => page.evaluate(() => {
+    const project = JSON.parse(MaweJsonRepair.buildJson());
+    const get = role => {
+      const cue = project.tracks.find(track => track.role === role).segments[0];
+      const entry = project.cue_styles.find(entry => entry.id === cue.cue_style_id);
+      return [entry.style.fontSize, entry.library_id || null];
+    };
+    return { main: get('main'), overlay: get('overlay') };
+  });
+  const initial = await sizes();
+  expect(initial.main).toEqual([initial.overlay[0], 'ass']);
+  expect(initial.overlay[1]).toBeNull();
+  await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style'));
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  const size = initial.main[0] + 1;
+  await page.locator('#ass-style-font-size').fill(String(size));
+  await expect.poll(sizes).toEqual({ main: [size, 'ass'], overlay: initial.overlay });
 });
 
 for (const action of ['new', 'duplicate']) test(`creating ${action} from track editor selects the new library style`, async ({ page }) => {

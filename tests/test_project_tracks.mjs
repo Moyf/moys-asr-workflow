@@ -65,7 +65,10 @@ test('processing overrides and cue styles retain extensions and reject malformed
   const project = canonical();
   project.processing_overrides = { text: [{ type: 'wrap', wraps: [{ id: 'custom', vendor: 1 }], vendor: 2 }], vendor: 3 };
   for (const track of project.tracks) for (const cue of track.segments) cue.assStyle = { vendor: 4 };
-  assert.deepEqual(model.importProject(project).project, project);
+  const migrated = model.importProject(project).project;
+  assert.deepEqual(migrated.processing_overrides, project.processing_overrides);
+  assert.deepEqual(migrated.cue_styles.map(entry => entry.style), [{ vendor: 4 }]);
+  assert.ok(migrated.tracks.flatMap(track => track.segments).every(cue => cue.cue_style_id === migrated.cue_styles[0].id));
   const bad = json(project); bad.processing_overrides.text[0].wraps[0].id = 'unknown';
   rejects(bad, '$.processing_overrides');
   for (const [index, track] of project.tracks.entries()) {

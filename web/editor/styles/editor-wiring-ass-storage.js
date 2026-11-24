@@ -1,3 +1,4 @@
+import { cueStyleUpdates } from '../../shared/utils/cue-styles.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager, initializeProjectStyles } from './editor-wiring-ass-manager.js';
 
@@ -279,9 +280,11 @@ async function persistAssStyleLibrary({ keepalive = false } = {}) {
   return assStyleSavePromise;
 }
 
-function refreshLinkedProjectStyles(previous) {
+function refreshLinkedProjectStyles(previous, { imported = false } = {}) {
   const record = MaweHistory.captureSegmentsRecord('更新联动样式');
-  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, ASS_STYLE_LIBRARY)) {
+  const updates = imported ? cueStyleUpdates(MaweBoot.DATA, ASS_STYLE_LIBRARY, previous) : [];
+  for (const { entry, style } of updates) entry.style = JSON.parse(JSON.stringify(style));
+  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, ASS_STYLE_LIBRARY) || updates.length) {
     MaweHistory.commitRecord(record);
     MaweState.markProjectDirty();
   }
@@ -425,7 +428,7 @@ storageService.importLibrary = async (library, expectedRevision) => {
     assStyleLibraryRevision += 1;
     setAssStyleLibrary(saved, { persistLocal: true });
     if (generation === MaweState.projectLoadGeneration && epoch === MaweState.projectEpoch && !MaweState.projectLoadPending) {
-      refreshLinkedProjectStyles(previous);
+      refreshLinkedProjectStyles(previous, { imported: true });
     } else {
       scheduleCurrentProjectStyleInit();
     }

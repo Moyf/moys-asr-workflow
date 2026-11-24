@@ -52,7 +52,12 @@ class SpeakerCleanupMigrationTests(unittest.TestCase):
             self.assertEqual(old_text, new_text)
             self.assertEqual(after["processing_overrides"], before["processing_overrides"])
             self.assertEqual(after["styles"], before["styles"])
-            self.assertTrue(all(c["assStyle"] == {"font": "x"} and c["vendor"] == 3 for c in after["tracks"][0]["segments"]))
+            styles_by_id = {entry["id"]: entry["style"] for entry in after["cue_styles"]}
+            self.assertEqual(len(styles_by_id), 1)
+            self.assertEqual(len(after["tracks"][0]["segments"]), 2)
+            for split_cue in after["tracks"][0]["segments"]:
+                self.assertEqual(styles_by_id[split_cue["cue_style_id"]], {"font": "x"})
+                self.assertEqual(split_cue["vendor"], 3)
             ranges = after["gap_remove"]["provenance"]["sources"]["ai_cleanup"]
             self.assertEqual((ranges[0]["start"], ranges[-1]["end"]), (entry["start"], entry["end"]))
             self.assertTrue(all(a["end"] == b["start"] for a, b in zip(ranges, ranges[1:])))

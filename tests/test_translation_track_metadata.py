@@ -9,6 +9,23 @@ from maw.project_tracks import get_main_track, get_tracks_by_role
 
 
 class TranslationTrackMetadataTests(unittest.TestCase):
+    def test_remap_translated_cue_styles_across_independent_projects(self):
+        for source_style in ({}, {"assStyle": {"fontSize": 32}}):
+            with self.subTest(source_style=source_style):
+                cue = {"id": "a", "start": 0, "end": 1000, "text": "source"}
+                source = normalize_project({"segments": [{**cue, **source_style}]})
+                translated = normalize_project({"segments": [{**cue, "text": "译文", "assStyle": {"fontSize": 64}}]})
+                translated["cue_styles"][0].update({"library_id": "title", "vendor": True})
+                merged = attach_translation_project(source, translated, target="zh")
+                target = get_tracks_by_role(merged, "secondary")[0]["segments"][0]
+                entries = {entry["id"]: entry for entry in merged["cue_styles"]}
+                entry = entries[target["cue_style_id"]]
+                self.assertEqual(entry["style"]["fontSize"], 64)
+                self.assertTrue(entry["vendor"])
+                self.assertEqual(entry["library_id"], "title")
+                if source_style:
+                    self.assertEqual(entries[get_main_track(merged)["segments"][0]["cue_style_id"]]["style"]["fontSize"], 32)
+
     def test_translation_keeps_secondary_groups_independent_of_main(self):
         source = normalize_project({
             "segments": [{"id": "source", "start": 0, "end": 1000, "text": "Hello",

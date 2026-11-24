@@ -16,9 +16,10 @@ export function initMaweProjectFontCheck() {
     const preview = MaweBoot.DATA.preview;
     const names = [preview?.subtitle?.font_family, preview?.extension_subtitle?.font_family];
     const styles = new Map((MaweBoot.DATA.styles || []).map(style => [style.id, style]));
+    const cueStyles = new Map((MaweBoot.DATA.cue_styles || []).map(entry => [entry.id, entry.style]));
     for (const track of MaweBoot.DATA.tracks || []) {
       if (track.style && track.style.font_default !== true) names.push(styles.get(track.style.style_id)?.fontName);
-      for (const segment of track.segments || []) names.push(segment.assStyle?.fontName);
+      for (const segment of track.segments || []) names.push(cueStyles.get(segment.cue_style_id)?.fontName);
     }
     return [...new Set(names
       .filter(name => typeof name === 'string' && name.trim() && name.trim() !== 'default')
@@ -45,9 +46,13 @@ export function initMaweProjectFontCheck() {
       const style = track.style?.font_default === true ? null : styles.get(track.style?.style_id);
       const replacement = replacements.get(style?.fontName?.trim());
       if (replacement) { styleReplacements.set(style, replacement); track.style.forked = true; changed = true; }
-      for (const segment of track.segments || []) {
-        const next = replacements.get(segment.assStyle?.fontName?.trim());
-        if (next) { segment.assStyle.fontName = next; changed = true; }
+    }
+    for (const entry of MaweBoot.DATA.cue_styles || []) {
+      const next = replacements.get(entry.style.fontName?.trim());
+      if (next) {
+        entry.style.fontName = next;
+        delete entry.library_id;
+        changed = true;
       }
     }
     for (const [style, replacement] of styleReplacements) style.fontName = replacement;

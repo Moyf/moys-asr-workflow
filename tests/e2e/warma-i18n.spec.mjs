@@ -22,34 +22,34 @@ test('ASS style choices follow language while custom names remain literal', asyn
     MaweCuePanel.setCuePanelTarget('main', 0);
   });
   const select = page.locator('#cue-ass-style');
-  await expect(select.locator('option[value="ass"]')).toHaveText('ASS default style');
-  await expect(select.locator('option[value="custom-style"]')).toHaveText('ASS 默认样式');
+  await expect(select.locator('option[value="ass"]')).toHaveText('ASS default style (linked)');
+  await expect(select.locator('option[value="custom-style"]')).toHaveText('ASS 默认样式 (linked)');
   await select.selectOption('custom-style');
   await expect(select).toHaveValue('custom-style');
-  await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
+  await expect(select.locator('option[value=":saved"]')).toHaveCount(0);
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-  await expect(select.locator('option[value="ass"]')).toHaveText('ASS 默认样式');
+  await expect(select.locator('option[value="ass"]')).toHaveText('ASS 默认样式（跟随）');
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(select.locator('option[value="ass"]')).toHaveText('ASS default style');
-  await expect(select.locator('option:checked')).toHaveText('ASS 默认样式');
+  await expect(select.locator('option[value="ass"]')).toHaveText('ASS default style (linked)');
+  await expect(select.locator('option:checked')).toHaveText('ASS 默认样式 (linked)');
   await select.selectOption('ass');
-  await expect(select.locator('option:checked')).toHaveText('ASS default style');
+  await expect(select.locator('option:checked')).toHaveText('ASS default style (linked)');
 
   const savedSize = await page.evaluate(() => {
-    const savedSize = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assStyle.fontSize;
+    const savedSize = MaweBoot.DATA.cue_styles.find(entry => entry.id === AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].cue_style_id).style.fontSize;
     MaweAssStorageWiring.styles().find(style => style.id === 'ass').fontSize = savedSize + 1;
     return savedSize;
   });
   await select.evaluate((element) => { element.blur(); element.focus(); });
-  await expect(select).toHaveValue('__snapshot');
-  await expect(select.locator('option:checked')).toHaveText('ASS default style (saved in project)');
+  await expect(select).toHaveValue(':saved');
+  await expect(select.locator('option:checked')).toHaveText('ASS default style (linked, using project copy)');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-  await expect(select.locator('option:checked')).toHaveText('ASS 默认样式（工程内保存）');
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assStyle.fontSize)).toBe(savedSize);
+  await expect(select.locator('option:checked')).toHaveText('ASS 默认样式（跟随，使用工程副本）');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.cue_styles.find(entry => entry.id === AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].cue_style_id).style.fontSize)).toBe(savedSize);
   await select.selectOption('ass');
   await expect(select).toHaveValue('ass');
-  await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assStyle.fontSize)).toBe(savedSize + 1);
+  await expect(select.locator('option[value=":saved"]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.cue_styles.find(entry => entry.id === AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].cue_style_id).style.fontSize)).toBe(savedSize + 1);
 });
 
 test('style library footer distinguishes project copies from user sync', async ({ page }, info) => {
@@ -63,18 +63,28 @@ test('style library footer distinguishes project copies from user sync', async (
   const userStatus = library.locator('#ass-style-library-status');
   const storage = library.locator('#ass-style-library-path-hint');
   const warning = library.locator('#ass-style-project-hint');
-  const english = 'Project styles differ and are not synced to user settings';
+  const english = 'Update linked cues from the local library';
   await expect(userStatus).toHaveAttribute('data-state', 'success');
   await expect(warning).toBeHidden();
   const fontSize = library.locator('#ass-style-font-size');
   const originalSize = await fontSize.inputValue();
   await fontSize.fill(String(Number(originalSize) + 1));
+  await expect(warning).toBeHidden();
+  // Reopen a project carrying the previous library snapshot.
+  const reopenStale = () => page.evaluate(async () => {
+    const data = JSON.parse(MaweJsonRepair.buildJson());
+    data.cue_styles[0].style.fontSize += 3;
+    await MaweMultiImport.openProjectFile(new File([JSON.stringify(data)], 'saved.mosp'), { suppressMediaPrompt: true });
+    await MaweAssManagerWiring.syncAssStyleManager();
+  });
+  await reopenStale();
+  await expect(warning).toBeVisible();
   await expect(warning).toHaveText(english);
   await expect(userStatus).toHaveText('Synced with user-level config');
   await expect(storage).toContainText('Saved to local user-level config');
 
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-  await expect(warning).toHaveText('工程内修改，未同步到用户级配置');
+  await expect(warning).toHaveText('用本机样式库更新跟随的字幕');
   const layout = await library.locator('footer').evaluate((footer) => {
     const hint = footer.querySelector('#ass-style-project-hint').getBoundingClientRect();
     const location = footer.querySelector('#ass-style-library-path-hint').getBoundingClientRect();
@@ -87,9 +97,25 @@ test('style library footer distinguishes project copies from user sync', async (
   await expect(warning).toHaveText(english);
   await library.locator('footer').screenshot({ path: info.outputPath('ass-style-project-hint-en.png') });
 
-  await fontSize.fill(originalSize);
+  const cueAndLibrarySizes = () => page.evaluate(() => {
+    const project = MaweBoot.DATA;
+    const cue = AsrEditorUtils.getMainTrack(project).segments[0];
+    const entry = project.cue_styles.find(style => style.id === cue.cue_style_id);
+    const preset = MaweAssStorageWiring.styles().find(style => style.id === entry.library_id);
+    return [entry.style.fontSize, preset.fontSize];
+  });
+  const [projectSize, librarySize] = await cueAndLibrarySizes();
+  expect(projectSize).toBe(librarySize + 3);
+  await warning.click();
   await expect(warning).toBeHidden();
-  await fontSize.fill(String(Number(originalSize) + 1));
+  expect(await cueAndLibrarySizes()).toEqual([librarySize, librarySize]);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect(warning).toBeVisible();
+  expect(await cueAndLibrarySizes()).toEqual([projectSize, librarySize]);
+  await page.evaluate(() => MaweHistory.performRedo());
+  await expect(warning).toBeHidden();
+  expect(await cueAndLibrarySizes()).toEqual([librarySize, librarySize]);
+  await reopenStale();
   await expect(warning).toBeVisible();
 
   const opened = await page.evaluate(() => {

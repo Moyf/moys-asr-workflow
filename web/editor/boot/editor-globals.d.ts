@@ -49,6 +49,7 @@ interface ProjectSegment {
   assOverride?: AssCueOverride;
   color_group_id?: string;
   sticker_group_id?: string;
+  cue_style_id?: string;
   assStyle?: Record<string, any>;
   _dirty?: boolean;
   items?: ProjectSegmentItem[];
@@ -110,6 +111,7 @@ interface ProjectData {
   speaker_shortcuts?: Record<string, string>;
   tracks: ProjectTrack[];
   styles?: Array<Record<string, unknown>>;
+  cue_styles?: Array<{ id: string; library_id?: string; style: Record<string, any> }>;
   bindings: ProjectBinding[];
   bilingual: { display_mode: string; active_track_id?: string };
   subtitle_groups?: {
