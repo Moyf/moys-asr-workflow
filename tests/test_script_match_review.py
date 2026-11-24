@@ -93,6 +93,33 @@ class ScriptMatchReviewTests(unittest.TestCase):
         self.assertEqual(data["groups"][0]["candidates"], ["甲乙。"])
         self.assertEqual(sorted(path.name for path in self.directory.iterdir()), ["original.srt", "script.txt"])
 
+    def test_launcher_uses_inline_manuscript_for_preview_review_and_export(self) -> None:
+        source = self.directory / "original.srt"
+        original = "1\n00:00:00,100 --> 00:00:01,000\n甲乙\n"
+        source.write_text(original, encoding="utf-8")
+        payload = {
+            "srtPath": str(source), "scriptPath": str(self.manuscript),
+            "scriptText": "**甲乙**。", "matchMode": "text", "cleanMarkdownSymbols": True,
+            "lang": "en", "outputMode": "srt",
+        }
+        api = LauncherApi()
+        self.assertEqual(api.read_script_preview(payload)["preview"], "甲乙。")
+        self.assertEqual(api.preview_script_match(payload)["preview"], "1. 甲乙。")
+        with patch("maw.gui_web._open_script_match_review") as open_review:
+            self.assertEqual(api.open_script_match_review(payload), {"ok": True})
+            _root, review = open_review.call_args.args
+        self.assertEqual(review.data()["script"], "Direct input")
+        self.assertEqual(review.data()["groups"][0]["candidates"], ["甲乙。"])
+        self.assertEqual(list(self.directory.iterdir()), [source])
+
+        rejected = api.run_script_match({**payload, "scriptText": " \n"})
+        self.assertEqual(rejected["code"], "script_invalid")
+        self.assertEqual(rejected["field"], "postprocessScriptText")
+        result = api.run_script_match(payload)
+        self.assertTrue(result["ok"], result)
+        self.assertIn("甲乙。", Path(result["srtPath"]).read_text(encoding="utf-8"))
+        self.assertEqual(source.read_text(encoding="utf-8"), original)
+
 
 if __name__ == "__main__":
     unittest.main()

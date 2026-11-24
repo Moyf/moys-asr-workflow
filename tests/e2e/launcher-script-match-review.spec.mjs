@@ -3,6 +3,70 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 
+test('manuscript source switch keeps both inputs and uses only the selected one', async ({ page }, testInfo) => {
+  await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
+  await completeStaticLauncherDiscovery(page);
+  await page.locator('#toolboxFab').click();
+  await page.locator('#toolboxMatchTab').click();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.manuscriptCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'choose_file') return { ok: true, path: 'D:\\Demo\\script.md' };
+      if (method === 'read_script_preview') return { ok: true, preview: payload.scriptText ?? '从文件读取的文稿' };
+      if (method === 'preview_script_match') return { ok: true, preview: '匹配结果' };
+      if (['open_script_match_review', 'run_script_match', 'save_postprocess_plan'].includes(method)) {
+        window.manuscriptCalls.push({ method, payload });
+        if (method === 'open_script_match_review') return { ok: true };
+        if (method === 'run_script_match') return { ok: true, projectPath: 'D:\\Demo\\matched.mosp' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
+  const fileMode = page.locator('#postprocessScriptModeFile');
+  const textMode = page.locator('#postprocessScriptModeText');
+  const file = page.locator('#postprocessScriptPath');
+  const text = page.locator('#postprocessScriptText');
+  const preview = page.locator('#postprocessScriptPreviewText');
+  await expect(fileMode).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#pickPostprocessScript').click();
+  await expect(file).toHaveValue('D:\\Demo\\script.md');
+  await expect(preview).toHaveText('从文件读取的文稿');
+  await textMode.click();
+  await expect(textMode).toHaveAttribute('aria-pressed', 'true');
+  await expect(file).toBeHidden();
+  await expect(preview).toBeHidden();
+  await page.locator('#runScriptMatch').click();
+  await expect(page.locator('#postprocessScriptTextError')).toHaveText('请输入文稿内容。');
+  const manuscript = '直接输入第一行。\n第二行。';
+  await text.fill(manuscript);
+  await expect(preview).toHaveText(manuscript);
+  const spacing = await text.evaluate(node =>
+    node.getBoundingClientRect().top - node.parentElement.previousElementSibling.getBoundingClientRect().bottom);
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  console.log(`Manuscript switch → textarea spacing: ${spacing}px`);
+  await page.locator('#toolboxMatchPanel .manuscript-source').screenshot({ path: testInfo.outputPath('launcher-manuscript-inline.png') });
+  await page.locator('#openScriptMatchReview').click();
+  await page.locator('#runScriptMatch').click();
+  await expect(page.locator('#toolboxResultText')).toContainText('文稿来源：直接输入');
+  await expect.poll(() => page.evaluate(() => window.manuscriptCalls.filter(call => call.method === 'save_postprocess_plan')
+    .at(-1)?.payload.plan.steps.find(step => step.id === 'match')))
+    .toMatchObject({ scriptSourceMode: 'text', scriptPath: 'D:\\Demo\\script.md', scriptText: manuscript });
+  const calls = await page.evaluate(() => window.manuscriptCalls.filter(call => call.method !== 'save_postprocess_plan'));
+  expect(calls.map(call => call.method)).toEqual(['open_script_match_review', 'run_script_match']);
+  for (const { payload } of calls) {
+    expect(payload.scriptText).toBe(manuscript);
+    expect(payload).not.toHaveProperty('scriptPath');
+  }
+  await fileMode.click();
+  await expect(file).toHaveValue('D:\\Demo\\script.md');
+  await expect(preview).toHaveText('从文件读取的文稿');
+  await textMode.click();
+  await expect(text).toHaveValue(manuscript);
+  await expect(preview).toHaveText(manuscript);
+});
+
 test('complete comparison opens from the current preview without starting a write', async ({ page }, testInfo) => {
   await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
   await completeStaticLauncherDiscovery(page);

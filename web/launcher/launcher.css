@@ -1564,9 +1564,13 @@ textarea::placeholder {
   gap: 12px;
 }
 
-.qwen-audio-hotwords-source {
+.input-source {
   display: grid;
   gap: 6px;
+}
+
+.field.manuscript-source {
+  gap: 8px;
 }
 
 #qwenAudioHotwordsSection {
@@ -1629,7 +1633,9 @@ textarea::placeholder {
 #ocrRuntimePath.drag-over,
 #ffmpegPath.drag-over,
 #stickerDir.drag-over,
-#postprocessScriptPath.drag-over {
+#postprocessScriptPath.drag-over,
+#toolboxTimestampScriptDropZone.drag-over input,
+#toolboxAlignmentScriptDropZone.drag-over input {
   border-color: var(--accent);
   background-color: var(--bg-raised);
   box-shadow: 0 0 0 2px var(--accent-soft);
@@ -2740,11 +2746,6 @@ textarea::placeholder {
   row-gap: 8px;
 }
 
-.toolbox-script-guidance {
-  gap: 8px;
-  margin: 0 0 12px;
-}
-
 .toolbox-preset-prompt {
   margin-top: 10px;
   padding: 9px 10px 8px;
@@ -2822,6 +2823,11 @@ textarea::placeholder {
   background: var(--amber-soft);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.toolbox-script-guidance {
+  gap: 8px;
+  margin: 0 0 12px;
 }
 
 .toolbox-media-log {

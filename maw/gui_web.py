@@ -124,7 +124,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, ScriptMatchTrace, SubtitleMatchError, _read_script, match_script_project, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, ScriptMatchTrace, SubtitleMatchError, match_script_project, processed_script_text, read_match_script, run_script_match as process_script_match
 from maw.script_match_review import ScriptMatchReview, ScriptMatchReviewApi
 from maw.tool_windows import open_comparison_window, timestamp_compare_payload, transcript_compare_payload
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
@@ -538,6 +538,8 @@ class LauncherApi:
         self._native_burn_port: int | None = None
         self._recording_preparation = None
         self.alignment_process: subprocess.Popen[str] | None = None
+        self._alignment_server_lock = Lock()
+        self._alignment_manuscript: tempfile.TemporaryDirectory[str] | None = None
         self.alignment_log_file: BinaryIO | None = None
         self.alignment_server_port: int | None = None
         self.alignment_project_path: Path | None = None
@@ -1134,28 +1136,37 @@ class LauncherApi:
         from maw.script_timestamp_alignment import ScriptAlignmentRequest, check_script_alignment
 
         media_path = _optional_path(payload.get("mediaPath"))
-        if not media_path or not _optional_path(payload.get("scriptPath")):
-            return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
+        script_path = _optional_path(payload.get("scriptPath"))
+        inline = _inline_manuscript(payload)
+        field = "toolboxTimestampScriptText" if inline is not None else "toolboxTimestampScriptPath"
+        if not media_path or (not script_path and inline is None):
+            return _error_result(field, "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
         self._emit_postprocess_status("toolbox_status_reading")
+        temporary = None
         try:
+            if inline is not None:
+                temporary, script_path = _stage_inline_manuscript(inline)
             tools = _postprocess_ffmpeg_tools(self.paths.env_path)
             report = check_script_alignment(
-                ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)),
+                ScriptAlignmentRequest(media_path=media_path, script_path=script_path, **self._script_alignment_options(payload)),
                 ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe,
             )
             return {"ok": True, "report": report.to_payload()}
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
-            return _error_result("toolboxTimestampScriptPath", "alignment_failed", str(error))
+            return _error_result(field, "alignment_failed", str(error))
+        finally:
+            if temporary is not None:
+                temporary.cleanup()
 
     @staticmethod
     def _script_alignment_options(payload: Mapping[str, object]) -> dict[str, object]:
         track = str(payload.get("audioTrack") if payload.get("audioTrack") is not None else "").strip()
+        anchors = _optional_path(payload.get("anchorsPath"))
         return {
-            "script_path": _optional_path(payload.get("scriptPath")),
             "language": str(payload.get("language") or "zh"),
             "silence_db": float(str(payload.get("silenceDb", -35))),
             "silence_ms": int(str(payload.get("silenceMs", 500))),
-            "anchors_path": _optional_path(payload.get("anchorsPath")),
+            "anchors_path": anchors.expanduser().resolve() if anchors is not None else None,
             "audio_track": int(track) if track else None,
         }
 
@@ -1169,11 +1180,14 @@ class LauncherApi:
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         media_path = _optional_path(payload.get("mediaPath"))
+        script_path = _optional_path(payload.get("scriptPath")) if script_mode else None
+        inline = _inline_manuscript(payload) if script_mode else None
+        script_field = "toolboxTimestampScriptText" if inline is not None else "toolboxTimestampScriptPath"
         if script_mode:
             if model.engine != "qwen":
                 return _error_result("toolboxTimestampModel", "alignment_failed", "文稿驱动对齐仅支持 Qwen ForcedAligner（不调用 ASR）。")
-            if not media_path or not _optional_path(payload.get("scriptPath")):
-                return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
+            if not media_path or (not script_path and inline is None):
+                return _error_result(script_field, "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         runtime = self._local_runtime_status(model_cache_root)
         status = inspect_alignment_model(
@@ -1190,6 +1204,7 @@ class LauncherApi:
             code = "local_runtime_missing" if not status.runtime_available else "alignment_model_missing"
             return _error_result("alignmentModel", code, status.detail)
         self._emit_postprocess_status("toolbox_status_reading")
+        temporary = None
         try:
             self._emit_postprocess_status("toolbox_status_aligning")
             alignment_mode = str(payload.get("alignmentMode") or "fill")
@@ -1197,9 +1212,21 @@ class LauncherApi:
             # 输入完全相同。时间码工具固定只更新工程，忽略共享输出选择。
             output_mode = OutputMode.JSON.value
             requested_model_path = _optional_path(payload.get("modelPath"))
+            output_directory = _optional_path(payload.get("outputDirectory"))
             script_options = {}
             if script_mode:
-                script_options = self._script_alignment_options(payload)
+                assert media_path is not None
+                media_path = media_path.expanduser().resolve()
+                if output_directory is not None:
+                    output_directory = output_directory.expanduser().resolve()
+                if inline is not None:
+                    # Both runtimes use the script stem when naming outputs. Keep
+                    # the private snapshot out of the output path and metadata.
+                    temporary, script_path = _stage_inline_manuscript(inline, f"{media_path.stem}.txt")
+                    output_directory = output_directory or media_path.parent
+                elif script_path is not None:
+                    script_path = script_path.expanduser().resolve()
+                script_options = {"script_path": script_path, **self._script_alignment_options(payload)}
             if runtime.ready:
                 worker_result = run_timestamp_alignment_in_runtime(
                     project_path=project_path,
@@ -1209,7 +1236,7 @@ class LauncherApi:
                     output_mode=output_mode,
                     alignment_mode=alignment_mode,
                     model_path=requested_model_path,
-                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    output_directory=output_directory,
                     device=str(payload.get("device") or "auto"),
                     model_cache_root=model_cache_root,
                     ffmpeg_path=effective_config_value(self.paths.env_path, "FFMPEG_PATH") or None,
@@ -1231,7 +1258,7 @@ class LauncherApi:
                     model_path=requested_model_path,
                     model_cache_root=Path(model_cache_root) if model_cache_root else None,
                     device=str(payload.get("device") or "auto"),
-                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    output_directory=output_directory,
                     **script_options,
                 ), ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
                 self._emit_postprocess_status("toolbox_status_writing")
@@ -1247,12 +1274,15 @@ class LauncherApi:
                     model_path=requested_model_path,
                     model_cache_root=Path(model_cache_root) if model_cache_root else None,
                     device=str(payload.get("device") or "auto"),
-                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    output_directory=output_directory,
                 ), ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path)
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, RuntimeError, TimestampAlignmentError) as error:
-            return _error_result("postprocessInput", "alignment_failed", str(error))
+            return _error_result(script_field if script_mode else "postprocessInput", "alignment_failed", str(error))
+        finally:
+            if temporary is not None:
+                temporary.cleanup()
         return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
 
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1271,8 +1301,11 @@ class LauncherApi:
         self, payload: Mapping[str, object], operation: _PostprocessOperation
     ) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
-        if script_path is None:
-            return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
+        script_text = payload.get("scriptText")
+        inline_text = script_text if isinstance(script_text, str) else None
+        field = "postprocessScriptText" if inline_text is not None else "postprocessScriptPath"
+        if (inline_text is not None and not inline_text.strip()) or (inline_text is None and script_path is None):
+            return _error_result(field, "script_invalid", "A manuscript is required.")
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         def emit_status(key: str) -> None:
@@ -1290,6 +1323,7 @@ class LauncherApi:
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols") is True,
+                    script_text=inline_text,
                 ),
                 is_cancelled=operation.cancel_event.is_set,
                 begin_commit=operation.begin_commit,
@@ -1298,7 +1332,7 @@ class LauncherApi:
         except MatchCancelledError:
             return {"ok": False, "code": "postprocess_cancelled", "detail": "Script matching was cancelled."}
         except MatchCoverageError as error:
-            return _match_coverage_error_result("postprocessScriptPath", error)
+            return _match_coverage_error_result(field, error)
         except PostprocessFileError as error:
             code = _script_match_input_error_code(
                 error,
@@ -1306,13 +1340,13 @@ class LauncherApi:
                 project_path=project_path,
                 srt_path=srt_path,
             )
-            return _error_result("postprocessScriptPath", code, str(error))
+            return _error_result(field, code, str(error))
         except ProjectValidationFailed as error:
-            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+            return _error_result(field, "subtitle_invalid", str(error))
         except SubtitleMatchError as error:
-            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+            return _error_result(field, "subtitle_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": field, "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -2023,29 +2057,29 @@ class LauncherApi:
     def read_script_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Return the bounded, processed manuscript preview used by matching."""
 
-        value = str(payload.get("path") or "").strip()
-        path = Path(value).expanduser()
-        if not value or not path.is_file() or path.suffix.lower() not in SCRIPT_EXTENSIONS:
-            return _error_result("postprocessScriptPath", "script_invalid", "文稿文件不存在或格式不支持。")
+        script_text = payload.get("scriptText")
+        inline_text = script_text if isinstance(script_text, str) else None
+        field = "postprocessScriptText" if inline_text is not None else "postprocessScriptPath"
         try:
-            _script_path, script_text = _read_script(path)
+            path, text = read_match_script(_optional_path(payload.get("scriptPath") or payload.get("path")), inline_text)
+        except (OSError, ValueError) as error:
+            return _error_result(field, "script_invalid", str(error))
+        try:
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
             preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
             text = processed_script_text(
-                script_text,
+                text,
                 match_mode=match_mode,
                 extra_split_punctuation=extra_split,
                 preserve_punctuation=preserve,
                 clean_markdown_symbols=payload.get("cleanMarkdownSymbols") is True,
             )
-        except PostprocessFileError as error:
-            return _error_result("postprocessScriptPath", "script_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
-            return _error_result("postprocessScriptPath", "match_invalid", str(error))
+            return _error_result(field, "match_invalid", str(error))
         preview_limit = 240
-        preview = text.replace("\r\n", "\n").replace("\r", "\n")[:preview_limit]
-        return {"ok": True, "path": str(path), "preview": preview, "truncated": len(text) > preview_limit}
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        return {"ok": True, "path": str(path) if path else "", "preview": text[:preview_limit], "truncated": len(text) > preview_limit}
 
     def preview_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
         return self._preview_script_match(payload, open_review=False)
@@ -2092,7 +2126,9 @@ class LauncherApi:
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         script_path = _optional_path(payload.get("scriptPath"))
-        if script_path is None or (project_path is None and srt_path is None):
+        script_text = payload.get("scriptText")
+        inline_text = script_text if isinstance(script_text, str) else None
+        if (script_path is None and inline_text is None) or (project_path is None and srt_path is None):
             return {"ok": False, "preview": "", "errorCode": "missing_source"}
         try:
             try:
@@ -2100,8 +2136,8 @@ class LauncherApi:
             except (PostprocessFileError, ProjectValidationFailed) as error:
                 return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
             try:
-                script_path, script_text = _read_script(script_path)
-            except PostprocessFileError as error:
+                script_path, script_text = read_match_script(script_path, inline_text)
+            except (OSError, ValueError) as error:
                 return {"ok": False, "preview": "", "errorCode": "script_invalid", "code": "script_invalid", "detail": str(error)}
             match_mode = str(payload.get("matchMode") or "script")
             extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
@@ -2320,6 +2356,10 @@ class LauncherApi:
         return {"ok": True, "url": launch_url}
 
     def start_alignment_server(self, payload: Mapping[str, object]) -> dict[str, object]:
+        with self._alignment_server_lock:
+            return self._start_owned_alignment_server(payload)
+
+    def _start_owned_alignment_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         auto_mark_silence = payload.get("autoMarkSilence") is not False
         gap_remove = normalize_gap_remove_settings(payload.get("gapRemove")) if auto_mark_silence else None
         project_path = _optional_path(payload.get("projectPath"))
@@ -2345,20 +2385,13 @@ class LauncherApi:
             return _error_result("toolboxAlignmentProjectPath", "alignment_project_invalid", str(error))
 
         script_path = _optional_path(payload.get("scriptPath"))
-        if script_path is None:
-            return _error_result(
-                "toolboxAlignmentScriptPath",
-                "alignment_script_missing",
-                "",
-            )
-        script_path = script_path.expanduser()
-        if not script_path.is_file() or script_path.suffix.lower() not in SCRIPT_EXTENSIONS:
-            return _error_result("toolboxAlignmentScriptPath", "alignment_script_missing", str(script_path))
-        script_path = script_path.resolve()
+        inline = _inline_manuscript(payload)
+        script_field = "toolboxAlignmentScriptText" if inline is not None else "toolboxAlignmentScriptPath"
         try:
-            script_path.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeError) as error:
-            return _error_result("toolboxAlignmentScriptPath", "alignment_script_missing", str(error))
+            script_path, inline_bytes = _validate_recording_manuscript(script_path, inline)
+        except (OSError, ValueError) as error:
+            return _error_result(script_field, "alignment_script_missing", str(error))
+        script_name = str(script_path or "")
 
         media_path = _optional_path(payload.get("mediaPath"))
         if media_path is not None:
@@ -2369,9 +2402,18 @@ class LauncherApi:
 
         existing_process = self.alignment_process
         if existing_process is not None and existing_process.poll() is None:
+            same_script = self._alignment_manuscript is None and self.alignment_script_path == script_path
+            if inline_bytes is not None:
+                try:
+                    same_script = (
+                        self._alignment_manuscript is not None and self.alignment_script_path is not None
+                        and self.alignment_script_path.read_bytes() == inline_bytes
+                    )
+                except OSError:
+                    same_script = False
             same_inputs = (
                 self.alignment_project_path == project_path
-                and self.alignment_script_path == script_path
+                and same_script
                 and self.alignment_media_path == media_path
                 and self.alignment_gap_remove == gap_remove
                 and self.alignment_auto_mark_silence == auto_mark_silence
@@ -2385,7 +2427,7 @@ class LauncherApi:
                         "url": f"{url}?lang={_gui_lang(payload)}",
                         "serverAlreadyRunning": True,
                         "projectPath": str(project_path),
-                        "scriptPath": str(script_path),
+                        "scriptPath": script_name,
                         "mediaPath": str(media_path or ""),
                         "gapRemove": gap_remove,
                     }
@@ -2399,6 +2441,16 @@ class LauncherApi:
             return _error_result("", "alignment_server_start_failed", str(error))
         url = f"http://127.0.0.1:{port}/"
         launch_url = f"{url}?lang={_gui_lang(payload)}"
+        environment = _alignment_server_child_environment()
+        if inline is not None:
+            from maw.script_timestamp_alignment import INLINE_MANUSCRIPT_PATH_ENV
+
+            try:
+                self._alignment_manuscript, script_path = _stage_inline_manuscript(inline)
+            except (OSError, UnicodeError, ValueError) as error:
+                return _error_result("toolboxAlignmentScriptText", "alignment_script_missing", str(error))
+            environment[INLINE_MANUSCRIPT_PATH_ENV] = str(script_path)
+        assert script_path is not None
         command = build_alignment_serve_command(
             project_path,
             script_path,
@@ -2408,14 +2460,14 @@ class LauncherApi:
             auto_mark_silence=auto_mark_silence,
         )
         command.append("--no-open")
-        self.alignment_log_file = tempfile.TemporaryFile(mode="w+b")
         try:
+            self.alignment_log_file = tempfile.TemporaryFile(mode="w+b")
             self.alignment_process = popen_process_tree(
                 command,
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_alignment_server_child_environment(),
+                env=environment,
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -2426,13 +2478,7 @@ class LauncherApi:
             self.alignment_gap_remove = gap_remove
             self.alignment_auto_mark_silence = auto_mark_silence
         except OSError as error:
-            self._close_alignment_log()
-            self.alignment_process = None
-            self.alignment_server_port = None
-            self.alignment_project_path = None
-            self.alignment_script_path = None
-            self.alignment_media_path = None
-            self.alignment_gap_remove = None
+            _ = self._stop_owned_alignment_server()
             detail = f"{url} | {error}"
             context = self._persist_start_failure("alignment_server_start_failed", detail)
             return _error_result("", "alignment_server_start_failed", detail, context=context)
@@ -2458,7 +2504,7 @@ class LauncherApi:
             "url": launch_url,
             "port": port,
             "projectPath": str(project_path),
-            "scriptPath": str(script_path),
+            "scriptPath": script_name,
             "mediaPath": str(media_path or ""),
             "gapRemove": gap_remove,
         }
@@ -2599,6 +2645,8 @@ class LauncherApi:
 
     def _stop_owned_alignment_server(self, *, close_log: bool = True) -> bool:
         process = self.alignment_process
+        temporary = self._alignment_manuscript
+        self._alignment_manuscript = None
         self.alignment_process = None
         self.alignment_server_port = None
         self.alignment_project_path = None
@@ -2614,6 +2662,8 @@ class LauncherApi:
         finally:
             if process is not None:
                 release_process_tree(process)
+            if temporary is not None:
+                temporary.cleanup()
             if close_log:
                 self._close_alignment_log()
 
@@ -2665,18 +2715,15 @@ class LauncherApi:
         return _error_result("port", "server_stop_failed", url)
 
     def stop_alignment_server(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
-        if self._stop_owned_alignment_server():
-            return {"ok": True, "stopped": True}
-        return {"ok": True, "stopped": False}
+        with self._alignment_server_lock:
+            return {"ok": True, "stopped": self._stop_owned_alignment_server()}
 
     def start_recording_review(self, payload: Mapping[str, object]) -> dict[str, object]:
         from maw.recording_preparation import RecordingPreparation
-        from maw.script_timestamp_alignment import read_script_lines
         if self.worker and self.worker.is_alive() or self.batch_worker and self.batch_worker.is_alive():
             return {"ok": False, "error": "已有转写正在运行，请先完成或停止。"}
         try:
-            script = Path(str(payload.get("scriptPath") or "")).expanduser().resolve()
-            read_script_lines(script)
+            script, _ = _validate_recording_manuscript(_optional_path(payload.get("scriptPath")), _inline_manuscript(payload))
             config = payload.get("transcription")
             if not isinstance(config, Mapping):
                 raise ValueError("缺少所选 ASR 配置。")
@@ -4918,6 +4965,39 @@ def _postprocess_pipeline_error_event(
     if diagnostic:
         event["diagnostic"] = diagnostic
     return event
+
+def _inline_manuscript(payload: Mapping[str, object]) -> str | None:
+    value = payload.get("scriptText")
+    return value if isinstance(value, str) else None
+
+
+def _validate_recording_manuscript(path: Path | None, inline: str | None) -> tuple[Path | None, bytes | None]:
+    """Review accepts any nonblank lines; model-specific checks run at generation."""
+    if inline is None:
+        source = path.expanduser().resolve() if path is not None else None
+        if source is None or not source.is_file() or source.suffix.lower() not in SCRIPT_EXTENSIONS:
+            raise ValueError(str(source or ""))
+        text = source.read_text(encoding="utf-8-sig")
+    else:
+        source, text = None, inline.removeprefix("\ufeff")
+    if not text.strip():
+        raise ValueError("文稿没有非空行。")
+    return source, inline.encode("utf-8") if inline is not None else None
+
+
+def _stage_inline_manuscript(text: str, filename: str = "manuscript.txt") -> tuple[tempfile.TemporaryDirectory[str], Path]:
+    """Give the existing file-based child processes a private UTF-8 snapshot."""
+    if not text.removeprefix("\ufeff").strip():
+        raise ValueError("文稿没有非空行。")
+    temporary = tempfile.TemporaryDirectory(prefix="maw-manuscript-")
+    try:
+        path = (Path(temporary.name) / filename).resolve()
+        path.write_text(text, encoding="utf-8", newline="\n")
+    except (OSError, ValueError):
+        temporary.cleanup()
+        raise
+    return temporary, path
+
 
 def _optional_path(value: object) -> Path | None:
     text = str(value or "").strip()

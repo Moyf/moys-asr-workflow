@@ -63,11 +63,11 @@ def group_cues(before: list[JsonDict], after: list[JsonDict]) -> list[ReviewGrou
 class ScriptMatchReview:
     def __init__(
         self, before: JsonDict, after: JsonDict, trace: ScriptMatchTrace,
-        source: Path, script: Path, warnings: tuple[str, ...], mode: str,
+        source: Path, script: Path | None, warnings: tuple[str, ...], mode: str,
         *, media: Path | None = None, lang: str = "zh",
     ) -> None:
         self.source = source.resolve()
-        self.script = script.resolve()
+        self.script = script.resolve() if script is not None else None
         self.warnings = warnings
         self.mode = mode
         self.lang = lang
@@ -109,7 +109,9 @@ class ScriptMatchReview:
                                sorted(set(before_ranges + after_ranges)) if key in self._trace.candidates],
             })
         return {
-            "source": self.source.name, "script": self.script.name, "warnings": self.warnings,
+            "source": self.source.name,
+            "script": self.script.name if self.script else ("Direct input" if self.lang == "en" else "直接输入"),
+            "warnings": self.warnings,
             "mode": self.mode, "lang": self.lang, "groups": rows,
             "beforeCount": len(self._before), "afterCount": len(self._after),
             "coverage": self._trace.coverage,

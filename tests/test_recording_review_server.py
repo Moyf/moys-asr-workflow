@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -13,6 +14,7 @@ from tests.test_script_recording_workflow import cue, project
 from maw.gui_workflow import TranscriptionRequest
 from maw.recording_preparation import RecordingPreparation
 from maw.script_recording_workflow import input_signature
+from maw.script_timestamp_alignment import INLINE_MANUSCRIPT_PATH_ENV
 
 
 class RecordingServerTests(unittest.TestCase):
@@ -55,6 +57,13 @@ class RecordingServerTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             self.post("/api/recording/review",{**self.body,"requestToken":"wrong"})
         self.assertEqual(error.exception.code,403)
+
+    def test_inline_manuscript_export_does_not_store_the_temporary_path(self):
+        with mock.patch.dict(os.environ, {INLINE_MANUSCRIPT_PATH_ENV: str(self.script.resolve())}):
+            self.assertEqual(self.get("/api/state")["scriptName"], "直接输入")
+            exported = self.post("/api/export", self.body)
+        saved = json.loads(Path(exported["path"]).read_text(encoding="utf-8"))
+        self.assertNotIn("scriptPath", saved["script_alignment"])
 
     def test_silence_detection_is_opt_in_to_server_session_and_worker_request(self):
         from dataclasses import replace

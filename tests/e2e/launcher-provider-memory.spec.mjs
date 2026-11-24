@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
 
-test('startup migrates legacy cleanup memory, preserves newer choices and restores comparison from other AI steps', async ({ page }) => {
+test('startup migrates legacy cleanup memory, preserves newer choices and restores comparison from other AI steps', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
@@ -26,6 +26,16 @@ test('startup migrates legacy cleanup memory, preserves newer choices and restor
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await expect(page.locator('#postprocessProvider')).toHaveValue('deepseek');
   await expect(page.locator('#postprocessGenerateComparison')).toBeChecked();
+  await expect(page.locator('#toolboxLlmPanel > .toolbox-panel-hint')).toHaveText('调用大语言模型，对字幕进行翻译、校对等操作，支持自定义提示词。');
+  const gap = await page.locator('#postprocessGenerateComparisonHint').evaluate(hint =>
+    hint.getBoundingClientRect().top - hint.previousElementSibling.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThan(0);
+  expect(gap).toBeLessThan(8);
+  console.log(`Comparison checkbox → hint spacing: ${gap}px`);
+  await page.locator('#toolboxLlmPanel').screenshot({ path: testInfo.outputPath('ai-processing-copy.png') });
+  await page.locator('#postprocessGenerateComparisonHint').locator('xpath=..').screenshot({
+    path: testInfo.outputPath('ai-processing-comparison-hint.png'),
+  });
   const result = await page.evaluate(() => ({
     memory: JSON.parse(localStorage.getItem('maw.launcher.llm.provider_by_task')),
     plan: window.MAWLauncher.getAutoPostprocessPayload(),

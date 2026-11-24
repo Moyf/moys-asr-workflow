@@ -248,12 +248,51 @@ class ScriptTimestampTests(unittest.TestCase):
             root = Path(directory)
             api = LauncherApi(paths=LauncherPaths(root=root, env_path=root / "unused-config", launcher_html=root / "launcher.html"), window_getter=lambda: None)
             with mock.patch.object(api, "_local_runtime_status", return_value=SimpleNamespace(ready=True, python_path="python")), mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")), mock.patch("maw.gui_web.inspect_alignment_model", return_value=SimpleNamespace(status="ready", installed=True)), mock.patch("maw.gui_web.run_timestamp_alignment_in_runtime", return_value={"artifact": {"projectPath": "out.mosp", "srtPath": "out.srt"}, "report": {"strategy": "single"}}) as worker:
-                result = api.run_timestamp_alignment({"alignmentMode": "script", "modelId": "qwen", "scriptPath": "script.txt", "mediaPath": "audio.wav", "audioTrack": "1", "outputDirectory": "output"})
+                result = api.run_timestamp_alignment({"alignmentMode": "script", "modelId": "qwen", "scriptPath": "script.txt", "mediaPath": "audio.wav", "audioTrack": "1", "anchorsPath": "anchors.json", "outputDirectory": "output"})
             self.assertTrue(result["ok"])
             self.assertIsNone(worker.call_args.kwargs["project_path"])
-            self.assertEqual(worker.call_args.kwargs["script_path"], Path("script.txt"))
+            self.assertEqual(worker.call_args.kwargs["script_path"], Path("script.txt").resolve())
+            self.assertEqual(worker.call_args.kwargs["media_path"], Path("audio.wav").resolve())
+            self.assertEqual(worker.call_args.kwargs["anchors_path"], Path("anchors.json").resolve())
             self.assertEqual(worker.call_args.kwargs["audio_track"], 1)
-            self.assertEqual(worker.call_args.kwargs["output_directory"], Path("output"))
+            self.assertEqual(worker.call_args.kwargs["output_directory"], Path("output").resolve())
+
+    def test_gui_inline_script_is_staged_for_check_and_worker_then_removed(self):
+        from maw.gui_web import LauncherApi, LauncherPaths
+        from maw.script_timestamp_alignment import ScriptAlignmentReport
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            api = LauncherApi(paths=LauncherPaths(root=root, env_path=root / "unused-config", launcher_html=root / "launcher.html"), window_getter=lambda: None)
+            payload = {"alignmentMode": "script", "modelId": "qwen", "scriptText": "第一行。\n\n第二行！",
+                       "scriptPath": str(root / "ignored.txt"), "mediaPath": str(root / "recording.wav")}
+            staged = []
+            report = ScriptAlignmentReport("single", 1000, 1, 2, ())
+
+            def read_snapshot(path):
+                staged.append(path)
+                self.assertEqual(read_script_lines(path), ["第一行。", "第二行！"])
+
+            def check(request, **_kwargs):
+                read_snapshot(request.script_path)
+                return report
+
+            def worker(*, script_path, output_directory, **_kwargs):
+                read_snapshot(script_path)
+                self.assertEqual(script_path.name, "recording.txt")
+                # Windows TEMP may use a short (8.3) alias; the worker sees
+                # the absolute canonical path resolved by the Launcher.
+                self.assertEqual(output_directory, root.resolve())
+                return {"artifact": {"projectPath": "out.mosp"}, "report": report.to_payload()}
+
+            with mock.patch("maw.script_timestamp_alignment.check_script_alignment", side_effect=check):
+                self.assertTrue(api.check_script_alignment(payload)["ok"])
+                failed = api.check_script_alignment({**payload, "scriptText": "\n "})
+                self.assertEqual(failed["field"], "toolboxTimestampScriptText")
+            with mock.patch.object(api, "_local_runtime_status", return_value=SimpleNamespace(ready=True, python_path="python")), mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")), mock.patch("maw.gui_web.inspect_alignment_model", return_value=SimpleNamespace(status="ready", installed=True)), mock.patch("maw.gui_web.run_timestamp_alignment_in_runtime", side_effect=worker):
+                self.assertTrue(api.run_timestamp_alignment(payload)["ok"])
+            self.assertEqual(len(staged), 2)
+            self.assertTrue(all(not path.parent.exists() for path in staged))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")
     def test_eleven_minute_real_audio_preserves_acoustic_offsets(self):

@@ -37,6 +37,7 @@ from maw.timestamp_alignment import (
 
 
 MAX_SCRIPT_ALIGNMENT_MS = 300_000
+INLINE_MANUSCRIPT_PATH_ENV = "MAW_INLINE_MANUSCRIPT_PATH"
 SCRIPT_ALIGNMENT_WARNINGS = (
     "文稿为字幕真值；未使用 ASR。口误、额外语句和重复可能被忽略，时间码不能证明录音与文稿一致，请听审。",
 )
