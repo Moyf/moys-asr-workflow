@@ -45,6 +45,7 @@ from maw.script_alignment import (  # noqa: E402
     make_selection_manifest,
     normalize_gap_remove_settings,
 )
+from maw.script_timestamp_alignment import INLINE_MANUSCRIPT_PATH_ENV  # noqa: E402
 from maw.waveform import audio_track_from_payloads, waveform_matches_media  # noqa: E402
 
 
@@ -69,6 +70,10 @@ class AlignmentState:
     gap_remove_override: dict[str, int | float] | None = None
     auto_mark_silence: bool = True
 
+    @property
+    def inline_script(self) -> bool:
+        return os.environ.get(INLINE_MANUSCRIPT_PATH_ENV) == str(self.script_path)
+
     def payload(self) -> dict[str, object]:
         media_kind = ""
         if self.media_path is not None:
@@ -77,7 +82,7 @@ class AlignmentState:
             } else "audio"
         return {
             "projectName": self.project_path.name,
-            "scriptName": self.script_path.name,
+            "scriptName": "直接输入" if self.inline_script else self.script_path.name,
             "media": {
                 "available": self.media_path is not None,
                 "name": self.media_path.name if self.media_path is not None else "",
@@ -198,7 +203,8 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
             )
             output_project["script_alignment"]["createdAt"] = datetime.now().astimezone().isoformat(timespec="seconds")
             output_project["script_alignment"]["sourceProjectPath"] = str(self.server.state.project_path)
-            output_project["script_alignment"]["scriptPath"] = str(self.server.state.script_path)
+            if not self.server.state.inline_script:
+                output_project["script_alignment"]["scriptPath"] = str(self.server.state.script_path)
             output_project = normalize_project(output_project)
             output_path = write_project(self.server.state.project_path, output_project)
         except PermissionError as error:
@@ -532,7 +538,7 @@ def main() -> int:
         url = f"http://{host}:{port}/"
         print("MAW 口播对齐 MVP Server 已启动（仅本机可访问）")
         print(f"工程: {project_path}")
-        print(f"文稿: {script_path}")
+        print("文稿: 直接输入" if state.inline_script else f"文稿: {script_path}")
         print(f"地址: {url}")
         if not args.no_open:
             webbrowser.open(url)

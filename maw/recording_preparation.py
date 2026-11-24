@@ -11,7 +11,7 @@ from maw.gui_workflow import TranscriptionRequest, run_transcription, unique_out
 
 
 class RecordingPreparation:
-    def __init__(self, request: TranscriptionRequest, script: Path):
+    def __init__(self, request: TranscriptionRequest, script: Path | None):
         self.request = replace(request, srt_path=unique_output_path(request.srt_path, request.media_path),
                                generate_html=False, srt_only=False, postprocess_plan=None,
                                length_limit="", alignment_model="", alignment_model_path="")
@@ -32,7 +32,7 @@ class RecordingPreparation:
                 raise RuntimeError("ASR 准备已取消。")
             with self.lock:
                 self.status.update(status="ready", message="ASR 证据已保存，可进入口播审查。",
-                                   projectPath=str(result.json_path), scriptPath=str(self.script),
+                                    projectPath=str(result.json_path), scriptPath=str(self.script or ""),
                                    mediaPath=str(self.request.media_path), srtPath=str(result.srt_path))
         except Exception as error:
             with self.lock:

@@ -76,7 +76,7 @@ class SubtitleMatchError(ValueError):
 class ScriptMatchRequest:
     project_path: Path | None
     srt_path: Path | None
-    script_path: Path
+    script_path: Path | None
     output_mode: OutputMode
     output_directory: Path | None = None
     media_path: Path | None = None
@@ -84,6 +84,7 @@ class ScriptMatchRequest:
     preserve_punctuation: tuple[str, ...] = DEFAULT_PRESERVE_PUNCTUATION
     match_mode: str = "script"
     clean_markdown_symbols: bool = True
+    script_text: str | None = None
 
 
 @dataclass(slots=True)
@@ -146,7 +147,7 @@ def run_script_match(
         on_status("toolbox_status_reading")
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     check_match_cancelled(is_cancelled)
-    script_path, script_text = _read_script(request.script_path)
+    script_path, script_text = read_match_script(request.script_path, request.script_text)
     check_match_cancelled(is_cancelled)
     if on_status is not None:
         on_status("toolbox_status_matching")
@@ -165,7 +166,7 @@ def run_script_match(
         operation="match",
         write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
         write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
-        warnings=(f"文稿来源：{script_path}", *warnings),
+        warnings=(f"文稿来源：{script_path}" if script_path else "文稿来源：直接输入", *warnings),
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
@@ -1215,6 +1216,16 @@ def _normalize_text(value: str, *, is_cancelled: Callable[[], bool] | None = Non
             chars.append(char)
             original_starts.append(index)
     return _NormalizedText("".join(chars), tuple(original_starts))
+
+
+def read_match_script(path: Path | None, inline_text: str | None) -> tuple[Path | None, str]:
+    if inline_text is not None:
+        if not inline_text.strip():
+            raise ValueError("Manuscript text is empty.")
+        return None, inline_text
+    if path is None:
+        raise ValueError("A manuscript file is required.")
+    return _read_script(path)
 
 
 def _read_script(path: Path) -> tuple[Path, str]:

@@ -373,30 +373,69 @@
     stats.className = `match-stats${kind ? ` ${kind}` : ""}${message ? "" : " hidden"}`;
   }
 
-  async function refreshScriptPreview() {
+  function manuscriptInput(prefix = "postprocessScript") {
+    if ($(`${prefix}Mode`).value === "text") {
+      const field = `${prefix}Text`;
+      const scriptText = $(field).value;
+      return { field, source: { scriptText }, valid: Boolean(scriptText.trim()) };
+    }
+    const field = `${prefix}Path`;
+    const scriptPath = $(field).value.trim();
+    return { field, source: { scriptPath }, valid: SCRIPT_EXTS.has(extension(scriptPath)) };
+  }
+
+  function setManuscriptMode(prefix, mode) {
+    window.MAWLauncher.setInputSourceMode(prefix, mode);
+    $(`${prefix}Label`).htmlFor = manuscriptInput(prefix).field;
+  }
+
+  function bindManuscriptSource(prefix, onChange) {
+    const changed = (debounce = false) => {
+      setFieldError(`${prefix}Text`, "");
+      setFieldError(`${prefix}Path`, "");
+      onChange({ debounce });
+    };
+    $(`${prefix}Path`).addEventListener("input", () => changed());
+    $(`${prefix}Text`).addEventListener("input", () => changed(true));
+    for (const [suffix, mode] of [["Text", "text"], ["File", "file"]]) {
+      $(`${prefix}Mode${suffix}`).addEventListener("click", () => {
+        if ($(`${prefix}Mode`).value === mode) return;
+        setManuscriptMode(prefix, mode);
+        changed();
+      });
+    }
+  }
+
+  function validateManuscript(input) {
+    if (input.valid) return input;
+    const message = t(input.source.scriptText !== undefined ? "toolbox_need_script_text" : "toolbox_alignment_script_missing");
+    setFieldError(input.field, message);
+    setResult(message, "error");
+    return null;
+  }
+
+  async function refreshScriptPreview({ debounce = false } = {}) {
     const requestId = ++scriptPreviewRequest;
     splitPreviewRequest += 1;
     hideSplitPreview();
     setMatchStats("");
-    const path = $("postprocessScriptPath").value.trim();
+    const { source, valid } = manuscriptInput();
     const preview = $("postprocessScriptPreview");
-    if (!path || !SCRIPT_EXTS.has(extension(path))) {
-      preview.classList.add("hidden");
-      $("postprocessScriptPreviewText").textContent = "";
-      return;
+    preview.classList.add("hidden");
+    $("postprocessScriptPreviewText").textContent = "";
+    if (!valid) return;
+    if (debounce) {
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      if (requestId !== scriptPreviewRequest) return;
     }
     const result = await bridge("read_script_preview", {
-      path,
+      ...source,
       matchMode: $("postprocessMatchMode").value,
       extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
       preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
       cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
     });
-    if (requestId !== scriptPreviewRequest || path !== $("postprocessScriptPath").value.trim()) return;
-    if (!result.ok) {
-      preview.classList.add("hidden");
-      return;
-    }
+    if (requestId !== scriptPreviewRequest || !result.ok) return;
     $("postprocessScriptPreviewText").textContent = `${result.preview}${result.truncated ? "\n…" : ""}`;
     preview.classList.remove("hidden");
     await refreshSplitPreview();
@@ -405,10 +444,10 @@
   async function refreshSplitPreview() {
     const requestId = ++splitPreviewRequest;
     const preview = $("postprocessSplitPreview");
-    const path = $("postprocessScriptPath").value.trim();
+    const { source, valid } = manuscriptInput();
     const mode = $("postprocessMatchMode").value;
     const paths = inputPaths();
-    if (!path || !paths || (!paths.projectPath && !paths.srtPath) || !validateMatchPunctuation()) {
+    if (!valid || !paths || (!paths.projectPath && !paths.srtPath) || !validateMatchPunctuation()) {
       hideSplitPreview();
       setMatchStats("");
       return;
@@ -427,7 +466,7 @@
     $("postprocessScriptPreview")?.classList.remove("full-width-preview");
     const payload = {
       ...paths,
-      scriptPath: path,
+      ...source,
       matchMode: mode,
       extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
       preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
@@ -494,7 +533,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },
+        { id: "match", enabled: false, scriptPath: "", scriptSourceMode: "file", scriptText: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -749,6 +788,7 @@
   function syncAlignmentNames() {
     syncAlignmentName("toolboxAlignmentProjectPath", "toolboxAlignmentProjectName");
     syncAlignmentName("toolboxAlignmentScriptPath", "toolboxAlignmentScriptName");
+    $("toolboxAlignmentScriptName").classList.toggle("hidden", $("toolboxAlignmentScriptMode").value === "text");
   }
 
   function syncPaths() {
@@ -1298,6 +1338,9 @@
     $("toolboxProgress").classList.toggle("hidden", !busy);
     ["toolboxScriptAlignmentModel", "runScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
     ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
+    for (const prefix of ["toolboxTimestampScript", "toolboxAlignmentScript"]) {
+      for (const suffix of ["Text", "ModeText", "ModeFile"]) $(`${prefix}${suffix}`).disabled = busy;
+    }
     ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxGreenScreenIncludeAudio", "toolboxGreenScreenSize", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
@@ -1403,28 +1446,24 @@
     renderAudioTracks();
   }
 
-  function alignmentInputs() {
+  function alignmentInputs(source = manuscriptInput("toolboxAlignmentScript").source) {
     return {
       projectPath: $("toolboxAlignmentProjectPath").value.trim(),
-      scriptPath: $("toolboxAlignmentScriptPath").value.trim(),
+      ...source,
       mediaPath: $("toolboxUtilityMediaPath").value.trim(),
     };
   }
 
   function validateAlignmentInputs() {
-    const paths = alignmentInputs();
+    const manuscript = manuscriptInput("toolboxAlignmentScript");
+    const paths = alignmentInputs(manuscript.source);
     if ($("toolboxRecordingInputMode").value !== "recording" && (!paths.projectPath || !ALIGNMENT_PROJECT_EXTS.has(extension(paths.projectPath)))) {
       const message = t("toolbox_alignment_project_invalid");
       setFieldError("toolboxAlignmentProjectPath", message);
       setResult(message, "error");
       return null;
     }
-    if (!paths.scriptPath || !SCRIPT_EXTS.has(extension(paths.scriptPath))) {
-      const message = t("toolbox_alignment_script_missing");
-      setFieldError("toolboxAlignmentScriptPath", message);
-      setResult(message, "error");
-      return null;
-    }
+    if (!validateManuscript(manuscript)) return null;
     if (paths.mediaPath && !MEDIA_EXTS.has(extension(paths.mediaPath))) {
       const message = t("toolbox_alignment_media_invalid");
       setFieldError("toolboxUtilityMediaPath", message);
@@ -1432,18 +1471,18 @@
       return null;
     }
     setFieldError("toolboxAlignmentProjectPath", "");
-    setFieldError("toolboxAlignmentScriptPath", "");
+    setFieldError(manuscript.field, "");
     setFieldError("toolboxUtilityMediaPath", "");
     return paths;
   }
 
   let pendingRecordingKey = null;
-  function recordingPreparationKey(scriptPath, transcription) {
+  function recordingPreparationKey({ scriptPath, scriptText }, transcription) {
     // Compare the submitted settings in memory only. Ignore probe metadata and options
     // overridden by recording preparation; compare the effective track, not probe state.
     const { audioTrackCount, defaultAudioTrack, audioTrack, testRun, lengthLimit,
       alignmentModel, alignmentModelPath, autoPostprocess, ...settings } = transcription;
-    return JSON.stringify([scriptPath, audioTrack ?? defaultAudioTrack ?? 0, settings]);
+    return JSON.stringify([scriptPath, scriptText, audioTrack ?? defaultAudioTrack ?? 0, settings]);
   }
 
   function changedRecordingNotice(running) {
@@ -1466,7 +1505,8 @@
       let inputs = paths;
       if ($("toolboxRecordingInputMode").value === "recording") {
         const transcription = window.MAWLauncher.getRecordingReviewTranscriptionPayload(paths.mediaPath);
-        const key = recordingPreparationKey(paths.scriptPath, transcription);
+        const scriptSource = paths.scriptText === undefined ? { scriptPath: paths.scriptPath } : { scriptText: paths.scriptText };
+        const key = recordingPreparationKey(scriptSource, transcription);
         if (pendingRecordingKey !== null && pendingRecordingKey !== key) {
           const previous = await bridge("recording_review_status");
           if (!previous.ok || previous.status === "running") {
@@ -1478,7 +1518,7 @@
           $("cancelRecordingPreparation").classList.add("hidden");
         }
         if (pendingRecordingKey === null) {
-          const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
+          const started = await bridge("start_recording_review", { ...scriptSource, transcription });
           if (!started.ok) { setResult(postprocessErrorText(started), "error"); return; }
           pendingRecordingKey = key;
         }
@@ -1512,12 +1552,13 @@
         if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
         const current = alignmentInputs();
         if ($("toolboxRecordingInputMode").value !== "recording" || key !== recordingPreparationKey(
-          current.scriptPath, window.MAWLauncher.getRecordingReviewTranscriptionPayload(current.mediaPath),
+          current, window.MAWLauncher.getRecordingReviewTranscriptionPayload(current.mediaPath),
         )) {
           setResult(changedRecordingNotice(false), "info");
           return;
         }
-        inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
+        const preparedSource = scriptSource.scriptText !== undefined ? scriptSource : { scriptPath: prepared.scriptPath };
+        inputs = {projectPath:prepared.projectPath, ...preparedSource, mediaPath:prepared.mediaPath};
         $("toolboxAlignmentProjectPath").value = prepared.projectPath;
         window.MAWLauncher.setJsonPath(prepared.projectPath);
       }
@@ -1833,9 +1874,9 @@
     setMatchStats(chain?.kind === "ai_cleanup" && result.stats ? aiCleanupStatsText(result.stats) : "");
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
-    if (chain?.kind === "match" && chain.scriptPath && (result.projectPath || result.srtPath)) {
+    if (chain?.kind === "match" && (result.projectPath || result.srtPath)) {
       for (const warning of warnings) window.MAWLauncher.appendLog?.(warning);
-      setResult([t("toolbox_done"), t("toolbox_match_source").replace("{path}", () => chain.scriptPath), t("toolbox_match_compare_hint")].join("\n"), "success", { revealWarning: warnings.length > 0 });
+      setResult([t("toolbox_done"), t("toolbox_match_source").replace("{path}", () => chain.scriptPath || t("input_source_text")), t("toolbox_match_compare_hint")].join("\n"), "success", { revealWarning: warnings.length > 0 });
       return;
     }
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
@@ -1933,8 +1974,9 @@
   function autoStepHint(stepId) {
     if (stepId === "match") {
       if (batchMode) return t("batch_manuscript_disabled");
-      const path = $("postprocessScriptPath").value.trim();
-      return path ? fileName(path) : t("auto_step_hint_no_file");
+      const { source } = manuscriptInput();
+      if (source.scriptText !== undefined) return source.scriptText.trim() ? t("input_source_text") : t("toolbox_need_script_text");
+      return source.scriptPath ? fileName(source.scriptPath) : t("auto_step_hint_no_file");
     }
     if (stepId === "replace") {
       const count = parseReplacements().length;
@@ -1968,7 +2010,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), scriptSourceMode: $("postprocessScriptMode").value, scriptText: $("postprocessScriptText").value, matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
         { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked), reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
@@ -2065,11 +2107,7 @@
 
   function autoStepReady(stepId) {
     if (stepId === "resegment" && !resegmentMaxCharsValid()) return false;
-    if (stepId === "match") {
-      const path = $("postprocessScriptPath").value.trim();
-      if (!path || !SCRIPT_EXTS.has(extension(path))) return false;
-      return true;
-    }
+    if (stepId === "match") return manuscriptInput().valid;
     if (stepId === "cleanup") {
       const path = $("postprocessCleanupScriptPath").value.trim();
       return (!path || SCRIPT_EXTS.has(extension(path))) && autoLlmReady(stepProviderId(stepId));
@@ -2190,7 +2228,7 @@
   function autoStepFocusField(stepId) {
     if (stepId === "resegment" && !resegmentMaxCharsValid()) return "postprocessResegmentMaxChars";
     if (stepId === "cleanup" && $("postprocessCleanupScriptPath").value.trim() && !SCRIPT_EXTS.has(extension($("postprocessCleanupScriptPath").value))) return "postprocessCleanupScriptPath";
-    if (stepId === "match") return "postprocessScriptPath";
+    if (stepId === "match") return manuscriptInput().field;
     if (stepId === "replace") return parseReplacements().length ? "postprocessConversion" : "postprocessReplacements";
     if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
     if (stepId === "burn") {
@@ -2268,6 +2306,8 @@
     const match = byId.get("match") || {};
     $("postprocessMatchMode").value = match.matchMode === "text" ? "text" : "script";
     $("postprocessScriptPath").value = String(match.scriptPath || "");
+    $("postprocessScriptText").value = String(match.scriptText || "");
+    setManuscriptMode("postprocessScript", match.scriptSourceMode === "text" ? "text" : "file");
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols === true;
@@ -2348,17 +2388,19 @@
   async function runScriptMatch() {
     const paths = resolveInputPaths();
     if (!paths) return;
-    const scriptPath = $("postprocessScriptPath").value.trim();
-    if (!SCRIPT_EXTS.has(extension(scriptPath))) {
-      setFieldError("postprocessScriptPath", t("toolbox_script_reject"));
-      setResult(t("toolbox_need_script"), "error");
+    const { field, source, valid } = manuscriptInput();
+    if (!valid) {
+      const inline = source.scriptText !== undefined;
+      const message = t(inline ? "toolbox_need_script_text" : "toolbox_need_script");
+      setFieldError(field, inline ? message : t("toolbox_script_reject"));
+      setResult(message, "error");
       return;
     }
     if (!validateMatchPunctuation()) {
       setResult(t("toolbox_preserve_punctuation_invalid"), "error");
       return;
     }
-    setFieldError("postprocessScriptPath", "");
+    setFieldError(field, "");
     const operationId = beginAiPostprocessOperation();
     resetStreamOutput();
     setBusy(true, "toolbox_status_starting");
@@ -2367,14 +2409,14 @@
       const result = await bridge("run_script_match", {
         ...paths,
         operationId,
-        scriptPath,
+        ...source,
         matchMode: $("postprocessMatchMode").value,
         extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
         preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
-      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath });
+      if (result.ok) applySubtitleResult(result, { kind: "match", scriptPath: source.scriptPath });
       else if (cancelled) setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
@@ -2416,10 +2458,10 @@
     }
   }
 
-  function scriptAlignmentPayload() {
+  function scriptAlignmentPayload(source) {
     return {
       mediaPath: $("toolboxUtilityMediaPath").value.trim(),
-      scriptPath: $("toolboxTimestampScriptPath").value.trim(),
+      ...source,
       language: $("toolboxTimestampLanguage").value,
       silenceDb: $("toolboxTimestampSilenceDb").value,
       silenceMs: $("toolboxTimestampSilenceMs").value,
@@ -2447,8 +2489,10 @@
 
   async function checkScriptAlignment() {
     if (busy) return;
-    const payload = scriptAlignmentPayload();
-    if (!payload.mediaPath || !MEDIA_EXTS.has(extension(payload.mediaPath)) || !SCRIPT_EXTS.has(extension(payload.scriptPath))) {
+    const manuscript = validateManuscript(manuscriptInput("toolboxTimestampScript"));
+    if (!manuscript) return;
+    const payload = scriptAlignmentPayload(manuscript.source);
+    if (!MEDIA_EXTS.has(extension(payload.mediaPath))) {
       setResult(t("toolbox_timestamp_script_hint"), "error");
       return;
     }
@@ -2461,7 +2505,11 @@
         $("toolboxTimestampCheckResult").textContent = text;
         $("toolboxTimestampCheckResult").classList.remove("hidden");
         setResult(text, "success");
-      } else setResult(postprocessErrorText(result), "error");
+      } else {
+        const message = postprocessErrorText(result);
+        if (result.field) setFieldError(result.field, message);
+        setResult(message, "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -2481,14 +2529,9 @@
       setResult(message, "error");
       return;
     }
-    const scriptPath = $("toolboxTimestampScriptPath").value.trim();
-    if (scriptMode && (!scriptPath || !SCRIPT_EXTS.has(extension(scriptPath)))) {
-      const message = t("toolbox_alignment_script_missing");
-      setFieldError("toolboxTimestampScriptPath", message);
-      setResult(message, "error");
-      return;
-    }
-    setFieldError("toolboxTimestampScriptPath", "");
+    const manuscript = scriptMode ? validateManuscript(manuscriptInput("toolboxTimestampScript")) : null;
+    if (scriptMode && !manuscript) return;
+    if (manuscript) setFieldError(manuscript.field, "");
     const modelId = $(scriptMode ? "toolboxScriptAlignmentModel" : "toolboxTimestampModel").value;
     const model = (window.MAWLauncher.config?.alignmentModels || []).find((item) => item.id === modelId);
     const runtimeReady = model?.runtimeAvailable === undefined
@@ -2508,7 +2551,7 @@
         modelId,
         alignmentMode: scriptMode ? "script" : $("toolboxTimestampMode").value,
         device: $("localDevice")?.value || "auto",
-        ...(scriptMode ? scriptAlignmentPayload() : {}),
+        ...(manuscript ? scriptAlignmentPayload(manuscript.source) : {}),
       });
       if (result.ok) {
         applySubtitleResult(result, { kind: scriptMode ? "scriptAlignment" : "timestamps" });
@@ -3101,7 +3144,12 @@
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runTimestampAlignment").addEventListener("click", () => { void runTimestampAlignment(); });
   $("runScriptMatch").addEventListener("click", runScriptMatch);
-  $("postprocessScriptPath").addEventListener("input", () => { void refreshScriptPreview(); });
+  bindManuscriptSource("postprocessScript", ({ debounce }) => {
+    void refreshScriptPreview({ debounce });
+    renderAutoPostprocessState();
+    maybeEnablePendingAutoStep();
+    persistAutoPlanSoon();
+  });
   $("postprocessCleanMarkdownSymbols").addEventListener("input", () => { void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
@@ -3148,8 +3196,6 @@
     if (result.ok) {
       $("postprocessScriptPath").value = result.path;
       $("postprocessScriptPath").dispatchEvent(new Event("input", { bubbles: true }));
-      setFieldError("postprocessScriptPath", "");
-      void refreshScriptPreview();
     }
   });
   $("pickToolboxInput").addEventListener("click", async () => {
@@ -3248,10 +3294,7 @@
     setFieldError("toolboxAlignmentProjectPath", "");
     syncAlignmentNames();
   });
-  $("toolboxAlignmentScriptPath").addEventListener("input", () => {
-    setFieldError("toolboxAlignmentScriptPath", "");
-    syncAlignmentNames();
-  });
+  bindManuscriptSource("toolboxAlignmentScript", syncAlignmentNames);
   ["toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut"].forEach((id) => {
     $(id).addEventListener("change", () => alignmentGapRemoveFromControls({ normalizeFields: true }));
   });
@@ -3262,7 +3305,6 @@
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
   $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection", "llmApiKey"); });
-  $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
     persistLlmPrompt();
     setFieldError("postprocessPrompt", "");
@@ -3374,7 +3416,7 @@
       const result = await bridge("choose_file", { kind: name.endsWith("Script") ? "script" : "json" });
       if (result.ok) {
         $(name + "Path").value = result.path;
-        clearScriptAlignmentCheck();
+        $(name + "Path").dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
   });
@@ -3383,7 +3425,8 @@
     const result = await bridge("choose_folder", { kind: "output" });
     if (result.ok) $("toolboxTimestampOutputDirectory").value = result.path;
   });
-  ["toolboxTimestampScriptPath", "toolboxUtilityMediaPath", "toolboxTimestampLanguage", "toolboxTimestampAudioTrack", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath"].forEach((id) => {
+  bindManuscriptSource("toolboxTimestampScript", clearScriptAlignmentCheck);
+  ["toolboxUtilityMediaPath", "toolboxTimestampLanguage", "toolboxTimestampAudioTrack", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath"].forEach((id) => {
     $(id).addEventListener("input", clearScriptAlignmentCheck);
     $(id).addEventListener("change", clearScriptAlignmentCheck);
   });

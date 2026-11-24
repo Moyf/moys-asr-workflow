@@ -24,7 +24,7 @@ from maw.script_alignment import (
     normalize_alignment_text, normalize_gap_remove_settings,
 )
 from maw.script_timestamp_alignment import (
-    MAX_SCRIPT_ALIGNMENT_MS, read_script_lines, tokens_to_script_segments,
+    INLINE_MANUSCRIPT_PATH_ENV, MAX_SCRIPT_ALIGNMENT_MS, read_script_lines, tokens_to_script_segments,
 )
 from maw.timestamp_alignment import (
     AlignmentBackend, QwenForcedAlignerBackend, _check_cancel,
@@ -436,8 +436,11 @@ def run_recording_job(project_path: Path, script_path: Path, request: Mapping[st
                   "reportPath": str(final_directory / "report.json"),
                   "warnings": output["script_alignment"]["recording"]["warnings"]}
         report = {"version": 1, "status": "complete", "inputSignature": signature,
-                  "sourceProjectPath": str(project_path.resolve()), "scriptPath": str(script_path.resolve()),
-                  "request": review.get("request", {}), "review": review, "artifact": result}
+                   "sourceProjectPath": str(project_path.resolve()),
+                   "request": review.get("request", {}), "review": review, "artifact": result}
+        resolved_script = str(script_path.resolve())
+        if os.environ.get(INLINE_MANUSCRIPT_PATH_ENV) != resolved_script:
+            report["scriptPath"] = resolved_script
         (staging / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
                                            encoding="utf-8", newline="\n")
         _check_cancel(cancel_event)

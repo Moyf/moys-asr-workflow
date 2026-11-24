@@ -3395,6 +3395,49 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(invalid_media["code"], "alignment_media_invalid")
         self.assertEqual(invalid_media["field"], "toolboxUtilityMediaPath")
 
+    def test_inline_alignment_server_reuses_unchanged_text_and_cleans_snapshots(self) -> None:
+        from maw.script_timestamp_alignment import INLINE_MANUSCRIPT_PATH_ENV
+
+        project = self.root / "project.mosp"
+        script = self.root / "script.md"
+        project.write_text(json.dumps({"segments": []}), encoding="utf-8")
+        payload = {"projectPath": str(project), "scriptText": "第一句。\n---\n第二句！"}
+        script.write_text(payload["scriptText"], encoding="utf-8")
+        staged = []
+
+        with mock.patch("maw.gui_web._request_from_payload") as build_request:
+            invalid = self.api.start_recording_review({"scriptText": "\ud800", "transcription": {}})
+            self.assertFalse(invalid["ok"])
+            self.assertIn("utf-8", invalid["error"])
+            build_request.assert_not_called()
+
+        def start(command, *, env, **_kwargs):
+            path = Path(env.get(INLINE_MANUSCRIPT_PATH_ENV, str(script.resolve())))
+            self.assertIn(str(path), command)
+            self.assertNotIn(payload["scriptText"], command)
+            staged.append((path, path.read_text(encoding="utf-8")))
+            return mock.Mock(poll=mock.Mock(return_value=None))
+
+        with mock.patch("maw.gui_web.popen_process_tree", side_effect=start), mock.patch(
+            "maw.gui_web.terminate_process_tree"
+        ), mock.patch("maw.gui_web.release_process_tree"), mock.patch(
+            "maw.gui_web._wait_for_server", return_value=True
+        ):
+            self.assertEqual(self.api.start_alignment_server(payload)["scriptPath"], "")
+            first_path, first_text = staged[0]
+            self.assertEqual(first_text, payload["scriptText"])
+            self.assertTrue(self.api.start_alignment_server(payload)["serverAlreadyRunning"])
+            self.assertEqual(len(staged), 1)
+            self.assertTrue(self.api.start_alignment_server({**payload, "scriptText": "改过的文稿。"})["ok"])
+            self.assertFalse(first_path.exists())
+            self.assertEqual(staged[1][1], "改过的文稿。")
+            self.assertTrue(self.api.stop_alignment_server()["stopped"])
+            self.assertFalse(staged[1][0].exists())
+            self.assertTrue(self.api.start_alignment_server({"projectPath": str(project), "scriptPath": str(script)})["ok"])
+            self.assertEqual(staged[2], (script.resolve(), first_text))
+            self.assertTrue(self.api.stop_alignment_server()["stopped"])
+            self.assertTrue(script.exists())
+
     def test_start_alignment_server_reuses_owned_server_for_same_inputs(self) -> None:
         project = self.root / "project.mosp"
         script = self.root / "script.md"
@@ -6251,7 +6294,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false },',
+            'matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)

@@ -92,6 +92,8 @@ def default_postprocess_plan() -> dict[str, object]:
                 "id": "match",
                 "enabled": False,
                 "scriptPath": "",
+                "scriptSourceMode": "file",
+                "scriptText": "",
                 "matchMode": "script",
                 "aiCleanup": False,
                 "aiCleanupNotes": "",
@@ -178,6 +180,10 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key == "scriptSourceMode":
+                step[key] = "text" if value == "text" else "file"
+            elif key == "scriptText":
+                step[key] = value if isinstance(value, str) else ""
             elif key == "aiCleanup":
                 step[key] = bool(value)
             elif key == "aiCleanupNotes":
@@ -399,9 +405,13 @@ def validate_plan(
     for step in active_steps:
         step_id = str(step["id"])
         if step_id == "match":
-            path = Path(str(step.get("scriptPath") or "")).expanduser()
-            if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
-                errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
+            if step.get("scriptSourceMode") == "text":
+                if not str(step.get("scriptText") or "").strip():
+                    errors.append({"step": step_id, "field": "postprocessScriptText", "message": "请输入文稿内容。"})
+            else:
+                path = Path(str(step.get("scriptPath") or "")).expanduser()
+                if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
+                    errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
             if step.get("aiCleanup") is True:
                 provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
                 if provider_error is not None:
@@ -1072,10 +1082,11 @@ def _run_step(
             llm_settings=llm_settings,
         )
     if step_id == "match":
+        inline = step.get("scriptSourceMode") == "text"
         return run_script_match(ScriptMatchRequest(
             project_path=project_path,
             srt_path=srt_path,
-            script_path=Path(str(step.get("scriptPath") or "")).expanduser(),
+            script_path=None if inline else Path(str(step.get("scriptPath") or "")).expanduser(),
             output_mode=output_mode,
             output_directory=output_directory,
             media_path=media_path,
@@ -1083,6 +1094,7 @@ def _run_step(
             extra_split_punctuation=tuple(str(value) for value in step.get("extraSplitPunctuation", ()) if str(value)),
             preserve_punctuation=tuple(str(value) for value in step.get("preservePunctuation", ()) if str(value)),
             clean_markdown_symbols=step.get("cleanMarkdownSymbols") is True,
+            script_text=str(step.get("scriptText") or "") if inline else None,
         ))
     if step_id == "replace":
         replacements = tuple(

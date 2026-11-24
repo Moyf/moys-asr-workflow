@@ -329,6 +329,7 @@ function handleBackendEvent(event) {
 }
 window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents: handleBackendEvents, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
 window.MAWLauncher.getRecordingReviewTranscriptionPayload = recordingReviewTranscriptionPayload;
+window.MAWLauncher.setInputSourceMode = setInputSourceMode;
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));

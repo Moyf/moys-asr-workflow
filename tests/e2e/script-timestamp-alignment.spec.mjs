@@ -81,6 +81,84 @@ test('script mode sends script and media without a source project, displays arti
   await expect(page.locator('#toolboxResult')).toContainText('人工锚点 · 12 行 · 2 个块');
 });
 
+test('both alignment tools accept pasted manuscripts and keep their file inputs', async ({ page }, testInfo) => {
+  await openScriptMode(page);
+  await page.evaluate(() => {
+    const model = window.MAWLauncher.config.alignmentModels[0];
+    model.installed = model.runtimeAvailable = true;
+    document.getElementById('toolboxScriptAlignmentModel').dispatchEvent(new Event('change'));
+    const original = window.MAWLauncher.callBackend;
+    window.inlineCalls = {};
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      const report = { strategy: 'single', scriptLines: 2, chunks: 1 };
+      if (method === 'check_script_alignment') {
+        window.inlineCalls[method] = payload;
+        return { ok: true, report };
+      }
+      if (method === 'run_timestamp_alignment') {
+        window.inlineCalls[method] = payload;
+        return { ok: true, projectPath: '/tmp/generated.mosp', report };
+      }
+      if (method === 'start_recording_review') {
+        window.inlineCalls[method] = payload;
+        return { ok: true, status: 'running' };
+      }
+      if (method === 'recording_review_status') return { ok: true, status: 'ready', projectPath: '/tmp/raw.mosp', mediaPath: '/tmp/audio.wav' };
+      if (method === 'start_alignment_server') {
+        window.inlineCalls[method] = payload;
+        return { ok: true, url: 'http://127.0.0.1:8260/' };
+      }
+      if (method === 'open_url') return { ok: true };
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxUtilityMediaPath').fill('/tmp/audio.wav');
+  const draft = '文稿第一行。\n文稿第二行！';
+  const timestamps = 'toolboxTimestampScript';
+  const recording = 'toolboxAlignmentScript';
+
+  async function switchToText(prefix) {
+    await expect(page.locator(`#${prefix}ModeFile`)).toHaveAttribute('aria-pressed', 'true');
+    await page.locator(`#${prefix}Path`).fill('/tmp/old.md');
+    await page.locator(`#${prefix}ModeText`).click();
+    await expect(page.locator(`#${prefix}ModeText`)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator(`#${prefix}Path`)).toBeHidden();
+    await page.locator(`#${prefix}Text`).fill(draft);
+    const spacing = await page.locator(`#${prefix}Text`).evaluate(node =>
+      node.getBoundingClientRect().top - node.parentElement.previousElementSibling.getBoundingClientRect().bottom);
+    expect(spacing).toBeGreaterThanOrEqual(8);
+    console.log(`${prefix} switch → textarea: ${spacing}px`);
+    await page.locator(`#${prefix}Text`).locator('xpath=ancestor::div[contains(@class, "manuscript-source")]').screenshot({
+      path: testInfo.outputPath(`${prefix}.png`),
+    });
+    await page.locator(`#${prefix}ModeFile`).click();
+    await expect(page.locator(`#${prefix}Path`)).toHaveValue('/tmp/old.md');
+    await page.locator(`#${prefix}ModeText`).click();
+    await expect(page.locator(`#${prefix}Text`)).toHaveValue(draft);
+  }
+
+  await switchToText(timestamps);
+  await page.locator('#checkScriptAlignment').click();
+  await expect(page.locator('#toolboxTimestampCheckResult')).toBeVisible();
+  await page.locator(`#${timestamps}ModeFile`).click();
+  await expect(page.locator('#toolboxTimestampCheckResult')).toBeHidden();
+  await page.locator(`#${timestamps}ModeText`).click();
+  await page.locator('#runScriptAlignment').click();
+  await expect(page.locator('#jsonPath')).toHaveValue('/tmp/generated.mosp');
+  await page.locator('#toolboxAlignmentTab').click();
+  await switchToText(recording);
+  await expect(page.locator('#toolboxAlignmentScriptName')).toBeHidden();
+  await page.locator('#toolboxRecordingInputMode').selectOption('recording');
+  await page.locator('#runToolboxAlignment').click();
+  await expect(page.locator('#toolboxResultText')).toContainText('口播对齐 Server 已启动');
+  const calls = await page.evaluate(() => window.inlineCalls);
+  for (const method of ['check_script_alignment', 'run_timestamp_alignment', 'start_recording_review', 'start_alignment_server']) {
+    expect(calls[method]).toMatchObject({ scriptText: draft });
+    expect(calls[method]).not.toHaveProperty('scriptPath');
+  }
+  expect(calls.start_alignment_server.projectPath).toBe('/tmp/raw.mosp');
+});
+
 test('input check needs no model, keeps current project and invalidates on input changes', async ({ page }) => {
   await openScriptMode(page);
   await page.evaluate(() => {
@@ -142,7 +220,10 @@ test('script matching guidance is bilingual, spaced and opens the standalone too
   await page.locator('#toolboxInputPath').fill('/tmp/existing.mosp');
   await page.locator('#postprocessScriptPath').fill('/tmp/corrected.txt');
   const guidance = page.locator('#toolboxScriptAlignmentGuidance');
-  await expect(guidance).toContainText('如果不需要生成转录文本');
+  await expect(guidance).toContainText('如果不需要生成转录结果，可以直接使用');
+  await expect(guidance).toHaveRole('note');
+  await expect(guidance).toHaveCSS('border-left-width', '2px');
+  await expect(guidance.locator('xpath=preceding-sibling::*[1]')).toHaveText('使用文稿来匹配和修正转录后的字幕文本。');
   const gap = await guidance.evaluate((element) => element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(8);
   console.log(`Script guidance bottom spacing: ${gap}px`);

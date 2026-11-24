@@ -416,6 +416,23 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(errors, ())
         self.assertEqual(normalized["steps"][0]["matchMode"], "text")
+        self.assertEqual(normalized["steps"][0]["scriptSourceMode"], "file")
+
+    def test_auto_match_uses_only_selected_manuscript_source(self) -> None:
+        step = {**self.match_step(), "scriptSourceMode": "text", "scriptText": " \n"}
+        _, errors = validate_plan(self.plan(step), env_path=self.env_path, media_path=self.media)
+        self.assertEqual([error["field"] for error in errors], ["postprocessScriptText"])
+
+        step["scriptText"] = "错字。\n保留！"
+        step["scriptPath"] = str(self.root / "missing.txt")
+        step["matchMode"] = "text"
+        plan, errors = validate_plan(self.plan(step), env_path=self.env_path, media_path=self.media)
+        self.assertEqual(errors, ())
+        self.assertEqual(plan["steps"][0]["scriptText"], step["scriptText"])
+        result = run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project,
+            srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event())
+        project = json.loads(result.project_path.read_text(encoding="utf-8"))
+        self.assertEqual([segment["text"] for segment in project["segments"]], ["错字。", "保留！"])
 
     def test_markdown_cleanup_setting_is_preserved_when_normalizing_plan(self) -> None:
         plan = default_postprocess_plan()

@@ -59,6 +59,7 @@ function handleRoutedDrop(path, fileCount, targetId) {
     return;
   }
   if (target === "toolboxTimestampScript") {
+    if ($("toolboxTimestampScriptPath").disabled || $("toolboxTimestampScriptMode").value !== "file") return;
     if (SCRIPT_EXTS.has(suffix)) setDroppedPath("toolboxTimestampScriptPath", value);
     else setError("toolboxTimestampScriptPath", t("toolbox_alignment_script_missing"));
     return;
@@ -79,6 +80,7 @@ function handleRoutedDrop(path, fileCount, targetId) {
     return;
   }
   if (target === "toolboxAlignmentScript") {
+    if ($("toolboxAlignmentScriptPath").disabled || $("toolboxAlignmentScriptMode").value !== "file") return;
     if (SCRIPT_EXTS.has(suffix)) setDroppedPath("toolboxAlignmentScriptPath", value);
     else setError("toolboxAlignmentScriptPath", t("toolbox_alignment_script_missing"));
     return;

@@ -234,15 +234,15 @@
                   <div id="qwenAudioHotwordsField" class="field">
                     <input type="hidden" id="qwenAudioHotwordsMode" value="text">
                     <div class="segmented" role="group">
-                      <button type="button" class="segment active" id="qwenAudioHotwordsModeText" data-i18n="qwen_audio_hotwords_mode_text">直接输入</button>
-                      <button type="button" class="segment" id="qwenAudioHotwordsModeFile" data-i18n="qwen_audio_hotwords_mode_file">从文件读取</button>
+                      <button type="button" class="segment active" id="qwenAudioHotwordsModeText" aria-pressed="true" data-i18n="input_source_text">直接输入</button>
+                      <button type="button" class="segment" id="qwenAudioHotwordsModeFile" aria-pressed="false" data-i18n="input_source_file">从文件读取</button>
                     </div>
-                    <div id="qwenAudioHotwordsTextField" class="qwen-audio-hotwords-source">
+                    <div id="qwenAudioHotwordsTextField" class="input-source">
                       <textarea id="qwenAudioHotwords" rows="3" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_placeholder"></textarea>
                       <p class="hint" data-i18n="qwen_audio_hotwords_hint">每行一个词；只对本次识别生效。可直接拖入文本文件。</p>
                       <p id="qwenAudioHotwordsError" class="field-error"></p>
                     </div>
-                    <div id="qwenAudioHotwordsFileField" class="qwen-audio-hotwords-source hidden">
+                    <div id="qwenAudioHotwordsFileField" class="input-source hidden">
                       <div class="path-row">
                         <input id="qwenAudioHotwordsFile" type="text" autocomplete="off" data-i18n-placeholder="qwen_audio_hotwords_file_placeholder">
                         <button id="pickQwenAudioHotwordsFile" class="ghost" type="button" data-i18n="choose">选择</button>
@@ -691,13 +691,24 @@
         </div>
       <div id="toolboxTimestampScriptInputs" class="adv-group">
         <h3 data-i18n="toolbox_script_alignment_heading">文稿驱动对齐</h3>
-        <div id="toolboxTimestampScriptDropZone" class="field toolbox-input">
-          <label for="toolboxTimestampScriptPath" data-i18n="toolbox_script_alignment_script">准确文稿（UTF-8）</label>
-          <div class="path-row">
-            <input id="toolboxTimestampScriptPath" type="text" autocomplete="off" placeholder=".txt / .md / .markdown">
-            <button id="pickToolboxTimestampScript" class="ghost" type="button" data-i18n="choose">选择</button>
+        <div class="field toolbox-input manuscript-source">
+          <label id="toolboxTimestampScriptLabel" for="toolboxTimestampScriptPath" data-i18n="toolbox_script_alignment_script">准确文稿</label>
+          <input type="hidden" id="toolboxTimestampScriptMode" value="file">
+          <div class="segmented" role="group" aria-labelledby="toolboxTimestampScriptLabel">
+            <button type="button" class="segment" id="toolboxTimestampScriptModeText" aria-pressed="false" data-i18n="input_source_text">直接输入</button>
+            <button type="button" class="segment active" id="toolboxTimestampScriptModeFile" aria-pressed="true" data-i18n="input_source_file">从文件读取</button>
           </div>
-          <p id="toolboxTimestampScriptPathError" class="field-error"></p>
+          <div id="toolboxTimestampScriptTextField" class="input-source hidden">
+            <textarea id="toolboxTimestampScriptText" rows="4" autocomplete="off" aria-describedby="toolboxTimestampScriptTextError" data-i18n-placeholder="toolbox_script_text_placeholder" placeholder="在此输入或粘贴文稿"></textarea>
+            <p id="toolboxTimestampScriptTextError" class="field-error"></p>
+          </div>
+          <div id="toolboxTimestampScriptFileField" class="input-source">
+            <div id="toolboxTimestampScriptDropZone" class="path-row">
+              <input id="toolboxTimestampScriptPath" type="text" autocomplete="off" aria-describedby="toolboxTimestampScriptPathError" placeholder="UTF-8 .txt / .md / .markdown">
+              <button id="pickToolboxTimestampScript" class="ghost" type="button" data-i18n="choose">选择</button>
+            </div>
+            <p id="toolboxTimestampScriptPathError" class="field-error"></p>
+          </div>
         </div>
         <div class="toolbox-grid">
           <div class="field">
@@ -732,7 +743,7 @@
           </div>
         </div>
         <div class="field">
-          <label for="toolboxTimestampOutputDirectory" data-i18n="toolbox_script_alignment_output">输出目录（可选，默认文稿所在目录）</label>
+          <label for="toolboxTimestampOutputDirectory" data-i18n="toolbox_script_alignment_output">输出目录（可选，默认使用文稿文件或媒体所在目录）</label>
           <div class="path-row">
             <input id="toolboxTimestampOutputDirectory" type="text" autocomplete="off">
             <button id="pickToolboxTimestampOutput" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
@@ -770,17 +781,28 @@
             <p class="hint" data-i18n="toolbox_alignment_project_hint">默认跟随当前 Launcher 工程；口播对齐需要 MAW 工程中的 ASR 时间码，不能只使用 SRT。</p>
             <p id="toolboxAlignmentProjectPathError" class="field-error"></p>
           </div>
-          <div id="toolboxAlignmentScriptDropZone" class="field toolbox-input">
+          <div class="field toolbox-input manuscript-source">
             <div class="toolbox-input-heading">
-              <label for="toolboxAlignmentScriptPath" data-i18n="toolbox_alignment_input_script">校对文稿</label>
+              <label id="toolboxAlignmentScriptLabel" for="toolboxAlignmentScriptPath" data-i18n="toolbox_alignment_input_script">校对文稿</label>
               <span id="toolboxAlignmentScriptName" class="toolbox-input-name empty" aria-live="polite" data-i18n="toolbox_input_empty">未选择文件</span>
             </div>
-            <div class="path-row">
-              <input id="toolboxAlignmentScriptPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_alignment_script_placeholder" placeholder="选择或拖入 UTF-8 .txt / .md 校对文稿">
-              <button id="pickToolboxAlignmentScript" class="ghost" type="button" data-i18n="choose">选择</button>
+            <input type="hidden" id="toolboxAlignmentScriptMode" value="file">
+            <div class="segmented" role="group" aria-labelledby="toolboxAlignmentScriptLabel">
+              <button type="button" class="segment" id="toolboxAlignmentScriptModeText" aria-pressed="false" data-i18n="input_source_text">直接输入</button>
+              <button type="button" class="segment active" id="toolboxAlignmentScriptModeFile" aria-pressed="true" data-i18n="input_source_file">从文件读取</button>
+            </div>
+            <div id="toolboxAlignmentScriptTextField" class="input-source hidden">
+              <textarea id="toolboxAlignmentScriptText" rows="4" autocomplete="off" aria-describedby="toolboxAlignmentScriptTextError" data-i18n-placeholder="toolbox_script_text_placeholder" placeholder="在此输入或粘贴文稿"></textarea>
+              <p id="toolboxAlignmentScriptTextError" class="field-error"></p>
+            </div>
+            <div id="toolboxAlignmentScriptFileField" class="input-source">
+              <div id="toolboxAlignmentScriptDropZone" class="path-row">
+                <input id="toolboxAlignmentScriptPath" type="text" autocomplete="off" aria-describedby="toolboxAlignmentScriptPathError" data-i18n-placeholder="toolbox_alignment_script_placeholder" placeholder="选择或拖入 UTF-8 .txt / .md 校对文稿">
+                <button id="pickToolboxAlignmentScript" class="ghost" type="button" data-i18n="choose">选择</button>
+              </div>
+              <p id="toolboxAlignmentScriptPathError" class="field-error"></p>
             </div>
             <p class="hint" data-i18n="toolbox_alignment_script_hint">每个非空行视为一行校对文稿。</p>
-            <p id="toolboxAlignmentScriptPathError" class="field-error"></p>
           </div>
         </div>
         <div id="toolboxAlignmentGapSettings" class="adv-group toolbox-alignment-gap-settings">
@@ -925,17 +947,29 @@
       </div>
 
       <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
-        <p id="toolboxScriptAlignmentGuidance" class="hint toolbox-settings-hint toolbox-script-guidance">
-          <span data-i18n="toolbox_script_alignment_guidance">如果不需要生成转录文本，可以直接使用</span>
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">使用文稿来匹配和修正转录后的字幕文本。</p>
+        <p id="toolboxScriptAlignmentGuidance" class="toolbox-notice toolbox-settings-hint toolbox-script-guidance" role="note">
+          <span data-i18n="toolbox_script_alignment_guidance">如果不需要生成转录结果，可以直接使用</span>
           <button id="openScriptAlignmentTool" class="inline-link" type="button" data-i18n="toolbox_script_alignment_link">媒体工具 / 文稿匹配</button>
         </p>
-        <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
-        <div class="field">
-        <label for="postprocessScriptPath" data-i18n="toolbox_script">文稿文件</label>
-        <div class="path-row">
-          <input id="postprocessScriptPath" type="text" autocomplete="off" data-i18n-placeholder="toolbox_script_placeholder" placeholder="UTF-8 .txt / .md 文稿">
-          <button id="pickPostprocessScript" class="ghost" type="button" data-i18n="choose">选择</button>
-        </div>
+        <div class="field manuscript-source">
+          <label id="postprocessScriptLabel" for="postprocessScriptPath" data-i18n="toolbox_manuscript">文稿</label>
+          <input type="hidden" id="postprocessScriptMode" value="file">
+          <div class="segmented" role="group" aria-labelledby="postprocessScriptLabel">
+            <button type="button" class="segment" id="postprocessScriptModeText" aria-pressed="false" data-i18n="input_source_text">直接输入</button>
+            <button type="button" class="segment active" id="postprocessScriptModeFile" aria-pressed="true" data-i18n="input_source_file">从文件读取</button>
+          </div>
+          <div id="postprocessScriptTextField" class="input-source hidden">
+            <textarea id="postprocessScriptText" rows="4" autocomplete="off" aria-describedby="postprocessScriptTextError" data-i18n-placeholder="toolbox_script_text_placeholder" placeholder="在此输入或粘贴文稿"></textarea>
+            <p id="postprocessScriptTextError" class="field-error"></p>
+          </div>
+          <div id="postprocessScriptFileField" class="input-source">
+            <div class="path-row">
+              <input id="postprocessScriptPath" type="text" autocomplete="off" aria-describedby="postprocessScriptPathError" data-i18n-placeholder="toolbox_script_placeholder" placeholder="UTF-8 .txt / .md 文稿">
+              <button id="pickPostprocessScript" class="ghost" type="button" data-i18n="choose">选择</button>
+            </div>
+            <p id="postprocessScriptPathError" class="field-error"></p>
+          </div>
           <p class="hint" data-i18n="toolbox_script_hint">文稿文字会替换字幕文字；原字幕时间保持不变。</p>
            <div class="match-previews">
              <div id="postprocessScriptPreview" class="script-preview hidden" aria-live="polite">
@@ -950,7 +984,6 @@
                 <p id="scriptMatchReviewError" class="field-error" role="status"></p>
              </div>
            </div>
-          <p id="postprocessScriptPathError" class="field-error"></p>
         </div>
         <div class="field" id="postprocessMatchModeField">
           <label for="postprocessMatchMode" data-i18n="toolbox_match_mode">换行来源</label>
@@ -972,7 +1005,7 @@
      </section>
 
     <section id="toolboxTimestampsPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxTimestampsTab">
-      <p id="toolboxTimestampModeHint" class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">保留已有字幕文字，在原字幕范围内补充或重新生成字词时间码。</p>
+      <p id="toolboxTimestampModeHint" class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">基于已有的字幕工程，补充或重新生成字词时间码。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_timestamp_media">媒体来源</h3>
         <div id="toolboxTimestampMediaDropZone" class="field toolbox-input">
@@ -1008,7 +1041,7 @@
     </section>
 
       <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
-        <p class="hint toolbox-panel-hint" data-i18n="toolbox_ocr_hint">画面文字与字幕高度相似的段会被禁用或从 SRT 移除。</p>
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_ocr_hint">使用 OCR 识别画面中的文字，并禁用和画面文字重复的字幕。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_ocr_video">视频来源</h3>
         <div id="ocrVideoPathField" class="field toolbox-input">
@@ -1079,6 +1112,7 @@
     </section>
 
     <section id="toolboxLlmPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxLlmTab">
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_llm_hint">调用大语言模型，对字幕进行翻译、校对等操作，支持自定义提示词。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_llm_model">模型</h3>
         <div class="toolbox-grid">
@@ -1118,11 +1152,13 @@
           <p id="postprocessResegmentMaxCharsError" class="field-error"></p>
           <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_resegment_max_hint">留空按自然语义断句；中文、英文和标点逐字符计数，空白不计。无法安全拆分的超长词项或缺时间码段会保留并提示。</p>
         </div>
-        <label class="check-field" for="postprocessGenerateComparison" style="margin-top: 16px;">
-          <input id="postprocessGenerateComparison" type="checkbox">
-          <span data-i18n="toolbox_generate_comparison">生成处理前后对比结果</span>
-        </label>
-        <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_generate_comparison_hint">同时生成本地 HTML，可查看原文、处理结果及待核查原因。</p>
+        <div style="margin-top: 16px;">
+          <label class="check-field" for="postprocessGenerateComparison">
+            <input id="postprocessGenerateComparison" type="checkbox" aria-describedby="postprocessGenerateComparisonHint">
+            <span data-i18n="toolbox_generate_comparison">生成处理前后对比结果</span>
+          </label>
+          <p id="postprocessGenerateComparisonHint" class="hint" style="margin-top: 3px;" data-i18n="toolbox_generate_comparison_hint">同时生成本地 HTML，可查看原文、处理结果及待核查原因。</p>
+        </div>
         <div id="postprocessTranslationOptions" class="toolbox-translation-options hidden">
           <div class="toolbox-merge-row">
             <label class="check-field" for="postprocessMergeBilingual">
@@ -1167,7 +1203,7 @@
     </section>
 
     <section id="toolboxReplacePanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxReplaceTab">
-      <p class="hint toolbox-panel-hint" data-i18n="toolbox_replace_safe">分段起止时间保持不变。</p>
+      <p class="hint toolbox-panel-hint" data-i18n="toolbox_replace_safe">将字幕中的特定文本替换成另外的文本（替换为空即删除）。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_fixed_replacements">批量替换</h3>
         <div class="field">
