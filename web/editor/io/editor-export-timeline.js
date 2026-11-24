@@ -821,11 +821,32 @@ export function initExportTimelineModule() {
 
 
   // === 标题区：媒体名点击复制 / 工程文件名点击复制 ===
-  function copyText(text, hint) {
-    navigator.clipboard.writeText(text).then(
-      () => MaweHint.flashHint(hint || `已复制：${text}`, 'success'),
-      () => { /* 降级：exec */ document.execCommand('copy'); MaweHint.flashHint(hint || `已复制：${text}`, 'success'); }
-    );
+  async function copyText(text, hint) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const field = document.createElement('textarea');
+      field.value = text;
+      field.readOnly = true;
+      field.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      const active = document.activeElement;
+      let copied = false;
+      try {
+        document.body.appendChild(field);
+        field.select();
+        copied = document.execCommand('copy');
+      } catch {
+        // This browser may not permit clipboard access through either API.
+      } finally {
+        field.remove();
+        active?.focus?.({ preventScroll: true });
+      }
+      if (!copied) {
+        MaweHint.flashHint(window.MAWE_I18N?.translateText?.('复制失败，请检查剪贴板权限。') || '复制失败，请检查剪贴板权限。', 'warning');
+        return;
+      }
+    }
+    MaweHint.flashHint(hint || `已复制：${text}`, 'success');
   }
 
 

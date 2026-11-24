@@ -46,7 +46,7 @@ test.beforeAll(async () => {
   );
   boundServer = await makeLocalhost(
     'localhost-bound.html',
-    '{ "saveUrl": "/api/project", "requestToken": "request-token", "canSave": true, "canGapRemovedVideoExport": true, "gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "old.mp4" }',
+    '{ "saveUrl": "/api/project", "requestToken": "request-token", "canSave": true, "projectFilePath": "/fixture/old-project.mosp", "autoLoadedMediaPath": "/fixture/old.mp4", "canGapRemovedVideoExport": true, "gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "old.mp4" }',
   );
 });
 
@@ -132,6 +132,10 @@ test('server-bound page stops writing the old server project after browser New P
 test('opening a browser project detaches the previous server-bound video export', async ({ page }) => {
   await page.addInitScript(() => {
     window.__savePickerCalls = 0;
+    window.__copiedProjectValues = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async text => { window.__copiedProjectValues.push(text); } },
+    });
     window.showSaveFilePicker = async () => {
       window.__savePickerCalls += 1;
       return { name: 'unexpected.mp4' };
@@ -145,17 +149,27 @@ test('opening a browser project detaches the previous server-bound video export'
   expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport)).toBe(true);
 
   await page.locator('#open-project-file').setInputFiles({
-    name: 'browser-project.mosp',
+    name: ' browser-project.mosp',
     mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ media: '', segments: [{ start: 0, end: 1000, text: 'Browser project' }] })),
+    buffer: Buffer.from(JSON.stringify({ media: ' clip.wav ', segments: [{ start: 0, end: 1000, text: 'Browser project' }] })),
   });
 
-  await expect(page.locator('#json-name')).toHaveText('browser-project.mosp');
+  const projectName = page.locator('#json-name');
+  await expect(projectName).toHaveText('browser-project.mosp');
+  await page.locator('#project-media-later').click();
+  await expect(projectName).toHaveAttribute('data-title', '点击复制工程文件名');
+  await projectName.click();
+  await expect.poll(() => page.evaluate(() => window.__copiedProjectValues)).toEqual([' browser-project.mosp']);
+  const mediaName = page.locator('#media-name');
+  await expect(mediaName).toHaveAttribute('data-title', '点击复制媒体文件名');
+  await mediaName.click();
+  await expect.poll(() => page.evaluate(() => window.__copiedProjectValues)).toEqual([' browser-project.mosp', ' clip.wav ']);
   expect(await page.evaluate(() => ({
     canSave: MaweBoot.SERVER_CONFIG.canSave,
+    projectPath: MaweBoot.SERVER_CONFIG.projectFilePath,
     canExportVideo: MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport,
     sourceName: MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName,
-  }))).toEqual({ canSave: false, canExportVideo: false, sourceName: null });
+  }))).toEqual({ canSave: false, projectPath: null, canExportVideo: false, sourceName: null });
   await page.evaluate(() => document.getElementById('download-gap-removed-video').click());
   expect(await page.evaluate(() => window.__savePickerCalls)).toBe(0);
   expect(exportRequests).toEqual([]);
@@ -164,6 +178,10 @@ test('opening a browser project detaches the previous server-bound video export'
 test('replacing media detaches the previous server-bound video export', async ({ page }) => {
   await page.addInitScript(() => {
     window.__savePickerCalls = 0;
+    window.__copiedMediaValues = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: async text => { window.__copiedMediaValues.push(text); } },
+    });
     window.showSaveFilePicker = async () => {
       window.__savePickerCalls += 1;
       return { name: 'unexpected.mp4' };
@@ -176,9 +194,23 @@ test('replacing media detaches the previous server-bound video export', async ({
   await page.goto(boundServer.url);
   expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport)).toBe(true);
 
-  await page.locator('#load-media-file').setInputFiles(mediaPath);
+  await page.locator('#load-media-file').setInputFiles({
+    name: ' clip.wav', mimeType: 'audio/wav', buffer: readFileSync(mediaPath),
+  });
 
-  await expect(page.locator('#media-name')).toHaveText('clip.wav');
+  const mediaName = page.locator('#media-name');
+  await expect(mediaName).toHaveText('clip.wav');
+  await expect(mediaName).toHaveAttribute('data-title', '点击复制媒体文件名');
+  await mediaName.click();
+  await expect.poll(() => page.evaluate(() => window.__copiedMediaValues)).toEqual([' clip.wav']);
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = async () => { throw new DOMException('Denied', 'NotAllowedError'); };
+    document.execCommand = () => false;
+    document.querySelector('#hint-stack')?.replaceChildren();
+  });
+  await mediaName.click();
+  await expect(page.locator('.hint-warning')).toContainText('复制失败，请检查剪贴板权限。');
+  await expect(page.locator('.hint-success').filter({ hasText: '已复制媒体文件名' })).toHaveCount(0);
   expect(await page.evaluate(() => ({
     canExportVideo: MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport,
     sourceName: MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName,

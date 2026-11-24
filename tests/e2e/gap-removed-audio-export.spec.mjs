@@ -89,7 +89,7 @@ async function fixture(page, mode, run) {
 
 test('audio source uses WAV picker, media capability, exact intervals and complete save', async ({ page }) => {
   await fixture(page, 'save', async ({ job }) => {
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
+    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组音频（精确）');
     await page.click('#download-gap-removed-video');
     await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
     expect(await page.evaluate(() => window.hints.find(hint => hint.text.includes('精确裁切'))?.level)).toBe('info');
@@ -214,22 +214,26 @@ test('detach clears all capabilities and label follows media and language change
       MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension, MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime,
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName, MaweBoot.SERVER_CONFIG.sourceMediaId,
       MaweBoot.SERVER_CONFIG.gapRemovedMediaAudioTrack])).toEqual([null, null, null, null, null, null, null]);
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
+    const option = page.locator('#download-gap-removed-video');
+    await expect(option).toHaveText('重组音频（精确）');
+    await expect(option).toHaveAttribute('title', '按保留区域精确裁切音频，导出为 WAV。');
     await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('Reconstructed audio');
+    await expect(option).toHaveText('Rebuild audio (precise cuts)');
     await page.evaluate(() => { MaweBoot.SERVER_CONFIG.gapRemovedMediaKind = 'video'; MaweGapRemovedMediaExport.updateButton(); });
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('Reconstructed video');
+    await expect(option).toHaveText('Rebuild video (approximate cuts)');
+    await expect(option).toHaveAttribute('title', 'No re-encoding. Cuts are limited by keyframes, so some gaps marked for removal may remain.');
     await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后视频');
+    await expect(option).toHaveText('重组视频（近似裁剪）');
+    await expect(option).toHaveAttribute('title', '不重新编码。切点受关键帧限制，可能保留部分原本要移除的空隙。');
     await page.evaluate(() => {
       MaweBoot.SERVER_CONFIG.gapRemovedMediaKind = null;
       MaweBoot.DATA.media = 'not-yet-loaded.mp4';
       MaweGapRemovedMediaExport.updateButton();
     });
     // Project reset uses an empty audio element even for a video project.
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后视频');
+    await expect(option).toHaveText('重组视频（近似裁剪）');
     await page.evaluate(() => { MaweBoot.DATA.media = ''; MaweGapRemovedMediaExport.updateButton(); });
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后视频');
+    await expect(option).toHaveText('重组视频（近似裁剪）');
   });
 });
 
@@ -242,7 +246,7 @@ test('rendered audio editor offers WAV and saves the real server output', async 
     server = await startServer(project, wav, await findFreePort());
     await page.goto(server.url);
     await page.waitForFunction(() => window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport);
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
+    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组音频（精确）');
     await page.evaluate(() => {
       MaweBoot.DATA.gap_remove = { gaps: [{ start: 567, end: 1001, removed: true }] };
       MaweGapRemoveUi.updateGapRemoveUi();
@@ -303,7 +307,7 @@ test('rendered compressed stereo audio exports float WAV decodable by the browse
     server = await startServer(project, mp3, await findFreePort());
     await page.goto(server.url);
     await page.waitForFunction(() => window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport);
-    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
+    await expect(page.locator('#download-gap-removed-video')).toHaveText('重组音频（精确）');
     await page.evaluate(() => {
       window.floatChunks = []; window.floatSaved = false; window.floatHints = [];
       window.MaweHint = { ...window.MaweHint, flashHint: text => window.floatHints.push(text) };

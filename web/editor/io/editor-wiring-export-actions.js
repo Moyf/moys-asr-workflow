@@ -110,20 +110,8 @@ function flushInlineEditsForSave() {
 
 
 
-if (MaweProjectSave.mediaNameEl && !MaweProjectSave.mediaNameEl.classList.contains('empty')) {
-  MaweProjectSave.mediaNameEl.addEventListener('click', () => {
-    const name = MaweProjectSave.mediaNameEl.textContent.trim();
-    if (name) MaweExportTimeline.copyText(name, `已复制媒体名：${name}`);
-  });
-}
-
-
-if (MaweProjectSave.jsonNameEl && !MaweProjectSave.jsonNameEl.classList.contains('empty')) {
-  MaweProjectSave.jsonNameEl.addEventListener('click', () => {
-    const name = MaweProjectSave.jsonNameEl.textContent.trim();
-    if (name) MaweExportTimeline.copyText(name, `已复制：${name}`);
-  });
-}
+MaweProjectSave.updateMediaCopyHint();
+MaweProjectSave.updateProjectDirtyIndicator();
 
 
 
@@ -545,7 +533,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       && currentAudioTrack() === selectedAudioTrack))
     && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
     && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
-  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'info');
+  MaweHint.flashHint(tr(gapRebuildHint(isAudio)), 'info');
 
   let handle;
   try {
@@ -1040,6 +1028,10 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     }
   }
 });
+function gapRebuildHint(audio) {
+  return audio ? '按保留区域精确裁切音频，导出为 WAV。' : '不重新编码。切点受关键帧限制，可能保留部分原本要移除的空隙。';
+}
+
 // Refresh both initial server media and browser-local project/media changes.
 window.MaweGapRemovedMediaExport = Object.freeze({
   applyMediaSizeToResolutionModal,
@@ -1056,8 +1048,8 @@ window.MaweGapRemovedMediaExport = Object.freeze({
     const audio = config?.gapRemovedMediaKind === 'audio'
       || (!config?.gapRemovedMediaKind && (knownAudio || (!knownVideo && hasPlayerSource && player?.tagName === 'AUDIO')));
     const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
-    button.textContent = translate(audio ? '重组后音频' : '重组后视频');
-    button.title = translate(audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。');
+    button.textContent = translate(audio ? '重组音频（精确）' : '重组视频（近似裁剪）');
+    button.title = translate(gapRebuildHint(audio));
   },
 });
 window.MaweGapRemovedMediaExport.updateButton();

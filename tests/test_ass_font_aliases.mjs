@@ -389,13 +389,16 @@ test('lazy coverage deadline includes JSON, settles legacy fallback and does not
 test('ASS downloads and burns retain picker activation and font readiness', () => {
   const read = file => fs.readFileSync(new URL(`../web/editor/${file}`, import.meta.url), 'utf8');
   const downloads = read('io/editor-wiring-export-actions.js');
-  assert.equal((downloads.match(/await downloadPreparedAss\(/g) || []).length, 2);
-  assert.ok(downloads.indexOf('await MaweHost.files.pickSaveFile') < downloads.indexOf('await loading'), 'ASS downloads retain picker activation');
+  assert.equal((downloads.match(/await downloadPreparedAss\(/g) || []).length, 1, 'both timelines share one ASS save call');
+  assert.match(downloads, /await downloadPreparedAss\(gap \? MaweExportSrt\.buildGapRemovedAss : MaweExportSrt\.buildAss,/);
+  const downloadPicker = downloads.indexOf('await MaweHost.files.pickSaveFile');
+  assert.ok(downloadPicker >= 0 && downloadPicker < downloads.indexOf('await loading'), 'ASS downloads retain picker activation');
   // FCP7 image exports exercise both font waits and actual job admission in
   // tests/e2e/fcp7-png.spec.mjs, including cancellation and shared loading.
   // Frame readiness and lifecycle cancellation are exercised against the actual
   // module in test_ass_frame_font_wait.mjs, not a first-statement source regex.
   const burn = read('io/editor-wiring-burn-video.js');
-  assert.ok(burn.indexOf('await MaweHost.files.pickSaveFile') < burn.indexOf('await fontsReady'), 'picker retains user activation while coverage loads');
+  const burnPicker = burn.indexOf('await MaweHost.files.pickSaveFile');
+  assert.ok(burnPicker >= 0 && burnPicker < burn.indexOf('await fontsReady'), 'picker retains user activation while coverage loads');
   assert.match(burn, /if \(deferRequest\) {\s*(?:try {\s*)?await fontsReady/);
 });

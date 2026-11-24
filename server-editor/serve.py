@@ -1756,7 +1756,7 @@ def build_server_page(
         filename_base = project.json_path.stem if project.json_path else source_media.stem
         json_display = project.json_path.name if project.json_path else "未加载工程"
         media_display = source_media.name
-        media_title = f"点击复制媒体名：{source_media.name}"
+        media_title = "点击复制媒体完整路径"
         json_class = "" if project.json_path else "empty"
         media_class = ""
     else:
@@ -1860,6 +1860,7 @@ def build_server_page(
             "startupProgress": startup_status.get("progress", 100),
             "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
+            "projectFilePath": str(project.json_path) if project.json_path is not None else None,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "canOtozTimelineExport": project.json_path is not None,
@@ -4488,6 +4489,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, font_alias_payload())
             return
         if path == "/":
+            # The bootstrap HTML includes local paths and the request token.
+            port = self.editor_server.server_address[1]
+            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if port == 80:
+                hosts.update(("127.0.0.1", "localhost"))
+            host = self.headers.get_all("Host", [])
+            if len(host) != 1 or host[0].lower() not in hosts:
+                self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "invalid editor host"}, include_body=include_body)
+                return
             with self.editor_server.settings_lock:
                 project = self.editor_server.project
                 settings = self.editor_server.settings
