@@ -163,7 +163,7 @@ export function initMaweSettingsPanels() {
 
 
 
-  function positionAnchoredSettingsPanel(panel, toggle) {
+  function positionAnchoredSettingsPanel(panel, toggle, gap = 6) {
     if (!panel || panel.hidden || !toggle) return;
     const buttonRect = toggle.getBoundingClientRect();
     const panelWidth = panel.offsetWidth;
@@ -173,8 +173,8 @@ export function initMaweSettingsPanels() {
       Math.max(margin, buttonRect.right - panelWidth),
       Math.max(margin, window.innerWidth - panelWidth - margin),
     );
-    const belowTop = buttonRect.bottom + 6;
-    const aboveTop = buttonRect.top - panelHeight - 6;
+    const belowTop = buttonRect.bottom + gap;
+    const aboveTop = buttonRect.top - panelHeight - gap;
     let top = belowTop;
     if (belowTop + panelHeight > window.innerHeight - margin && aboveTop >= margin) {
       top = aboveTop;

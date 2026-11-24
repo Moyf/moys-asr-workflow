@@ -644,17 +644,11 @@ label {
 /* API Key 获取提示行：与参考价 callout 同款结构，蓝色（--info，独立于强调色）。 */
 .key-hint-callout {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   padding: 5px 10px;
   border-left: 3px solid color-mix(in srgb, var(--info) 55%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--info) 8%, transparent);
-}
-
-/* MOSS 免费积分提示行：Key callout 下的次级提示，自带 8px 垂直间隔。 */
-#mossCreditsHint {
-  display: block;
-  margin-top: 8px;
 }
 
 .settings-punctuation-hint {
