@@ -2,6 +2,12 @@
   "format": 1,
   "modules": [
     {
+      "file": "editor/boot/editor-boot.js",
+      "kind": "init",
+      "name": "editor-boot-init",
+      "exportName": "initMaweBoot"
+    },
+    {
       "file": "editor/state/editor-state.js",
       "kind": "init",
       "name": "state-init",
@@ -594,6 +600,12 @@
       "exportName": "initMaweSpeakerManager"
     },
     {
+      "file": "editor/boot/editor.js",
+      "kind": "init",
+      "name": "editor-init",
+      "exportName": "initMaweBootDiagnostics"
+    },
+    {
       "file": "editor/cues/editor-wiring-overlay-transfer.js",
       "kind": "init",
       "name": "overlay-transfer-wiring-init",
@@ -840,10 +852,22 @@
       "exportName": "initMaweFileDropWiring"
     },
     {
+      "file": "editor/boot/editor-startup.js",
+      "kind": "init",
+      "name": "editor-startup-init",
+      "exportName": "initMaweStartup"
+    },
+    {
       "file": "editor/ui/editor-command-palette.js",
       "kind": "init",
       "name": "command-palette-init",
       "exportName": "initMaweCommandPalette"
+    },
+    {
+      "file": "editor/boot/editor-onboarding.js",
+      "kind": "init",
+      "name": "editor-onboarding-init",
+      "exportName": "initMaweOnboarding"
     }
   ],
   "externalBridges": []

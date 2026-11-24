@@ -28,7 +28,7 @@ const seamFixture = (t, kind, specifier = './helper.js', imports = {}) => {
     `import { value } from ${JSON.stringify(specifier)};\nexport function runSeam() { window.result = value; }\n`);
   fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'inside';\n");
   fs.writeFileSync(path.join(root,'outside-helper.js'),"export const value = 'outside';\n");
-  for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+  for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','scripts/build-shared.mjs','pnpm-lock.yaml']) {
     fs.writeFileSync(path.join(root,name),'fixture input\n');
   }
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({imports})+'\n');
@@ -64,6 +64,7 @@ test('two real watchers rebuild edited sources and then stay idle together', {ti
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'maw-dual-watch-'));
   fs.mkdirSync(path.join(root, 'web'), {recursive:true});
   fs.mkdirSync(path.join(root, 'scripts'), {recursive:true});
+  fs.writeFileSync(path.join(root, 'scripts/build-shared.mjs'), '// shared builder fixture\n');
   fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
   fs.writeFileSync(path.join(root, 'package.json'), '{}\n');
   fs.writeFileSync(path.join(root, 'pnpm-lock.yaml'), 'fixture\n');
@@ -197,7 +198,7 @@ for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher
     fs.writeFileSync(path.join(root,'web/seam.js'),
       `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
     fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'first';\n");
-    for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+    for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','scripts/build-shared.mjs','pnpm-lock.yaml']) {
       fs.writeFileSync(path.join(root,name),'fixture input\n');
     }
     fs.writeFileSync(path.join(root,'package.json'),'{}\n');
@@ -241,7 +242,7 @@ for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher
 }
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
-  for (const changed of [`web/${kind}-modules.json`, 'scripts/build-editor.mjs', 'pnpm-lock.yaml', 'web/source.js']) {
+  for (const changed of [`web/${kind}-modules.json`, 'scripts/build-shared.mjs', 'pnpm-lock.yaml', 'web/source.js']) {
     test(`${kind} rejects ${changed} changing while compilation yields`, async t => {
       const root = fixture(t);
       fs.mkdirSync(path.join(root, 'web'), {recursive:true});
@@ -249,7 +250,7 @@ for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher
       fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
       fs.writeFileSync(path.join(root, `web/${kind}-scripts.txt`), 'source.js\n');
       fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
-      for (const name of ['scripts/build-editor.mjs', 'scripts/build-launcher.mjs', 'package.json', 'pnpm-lock.yaml']) {
+      for (const name of ['scripts/build-editor.mjs', 'scripts/build-launcher.mjs','scripts/build-shared.mjs', 'package.json', 'pnpm-lock.yaml']) {
         fs.writeFileSync(path.join(root, name), '{}\n');
       }
       // build() has consumed its synchronous inputs when it yields to esbuild.

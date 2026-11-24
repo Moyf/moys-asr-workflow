@@ -158,17 +158,15 @@ class BundleStatusTests(unittest.TestCase):
         self.repo.builders[0].write_text("// builder v2\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
-    def test_launcher_builder_hash_covers_both_builders(self) -> None:
-        """Given launcher 的 builderHash 覆盖两个构建脚本, When 共享的
-        build-editor.mjs 变更, Then launcher 产物同样判定过期。"""
+    def test_launcher_builder_hash_covers_shared_builder_only(self) -> None:
         launcher = _FakeRepo(self.root, "launcher")
         launcher.materialize()
         self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "fresh")
 
-        # editor 构建器被 launcher 复用（compileSources 所在文件），任一变更都应失效
-        editor_builder = self.root / "scripts" / "build-editor.mjs"
-        editor_builder.write_text("// builder v2\n", encoding="utf-8")
+        self.repo.builders[0].write_text("// editor builder v2\n", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "fresh")
 
+        launcher.builders[1].write_text("// shared builder v2\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "stale")
 
     def test_incomplete_input_ledger_cannot_hide_changed_source(self) -> None:

@@ -1,4 +1,4 @@
-// Launcher 装配构建器：复用 build-editor.mjs 的编译核心（compileSources），
+// Launcher 装配构建器：复用 build-shared.mjs 的编译核心（compileSources），
 // 按 web/launcher-scripts.txt 清单原序把 classic 模块装配为单文件构建产物。
 // pywebview 以 file:// URI 加载 index.html；发布包内置 bundle，运行时不依赖 Node。
 import fs from 'node:fs';
@@ -7,13 +7,13 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { assertBuildInputsUnchanged, captureBuildInputs, compileSources,
-  assertMetafileInputsCaptured, dependencyHash, shouldRebuildBundle, validateSources, writeArtifact } from './build-editor.mjs';
+  assertMetafileInputsCaptured, dependencyHash, shouldRebuildBundle, validateSources, writeArtifact } from './build-shared.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const BUNDLE = 'launcher/boot/launcher-bundle.js';
 export const BUILD_INFO = 'launcher/boot/launcher-bundle.meta.json';
 export const CONFIG = 'launcher-modules.json';
-export const BUILDERS = ['scripts/build-launcher.mjs', 'scripts/build-editor.mjs'];
+export const BUILDERS = ['scripts/build-launcher.mjs', 'scripts/build-shared.mjs'];
 const sha = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 
@@ -67,7 +67,7 @@ export async function buildLauncher(root = ROOT) {
     moduleKinds: modules.map(item => ({ file: item.file, kind: item.kind ?? 'factory', binding: item.binding ?? null })),
     inputs: inputHashes,
     configHash: sha(configText),
-    // compileSources 来自 build-editor.mjs，它的变更同样要求重建产物。
+    // compileSources 来自 build-shared.mjs，它的变更同样要求重建产物。
     builderHash: sha(BUILDERS.map(name => snapshot[name]).join('\n')),
     dependencyHash: dependencyHash(snapshot),
     metafile: result.metafile,

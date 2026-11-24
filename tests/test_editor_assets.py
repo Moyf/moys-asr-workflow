@@ -553,21 +553,21 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
-        # Bundle minification can rename local parameters and remove whitespace;
-        # assert the public facade assignments and their order, not source spelling.
-        # editor-utils 已是 init 模块：esbuild 把定义提升到 bundle 顶部，
-        # 静态扫描函数体内的 window.AsrEditorUtils= 不再反映运行时顺序。
-        # editor-utils 的顺序用 __mawEsmInitializationTrace.push 序列核对；
-        # 尚未 init 化的门面仍按静态标记核对相对位置。
+        # ESM definitions may be hoisted. The trace records execution order.
         pushed = re.findall(r'__mawEsmInitializationTrace\.push\("([^"]+)"\)', page)
-        self.assertIn("shared/gap-remove-core.js", pushed)
-        self.assertIn("shared/editor-utils.js", pushed)
-        self.assertLess(pushed.index("shared/gap-remove-core.js"),
-                        pushed.index("shared/editor-utils.js"))
-        # AsrWaveform 已随 G05 init 化：定义被 esbuild 提升，
-        # 运行时顺序由 trace 序列核对（见
-        # test_editor_script_payload_is_one_complete_artifact）；
-        # 其余仍 classic 的门面继续按静态标记核对相对位置。
+        files = (
+            "editor/boot/editor-boot.js",
+            "editor/boot/editor-runtime.js",
+            "shared/gap-remove-core.js",
+            "shared/editor-utils.js",
+            "shared/editor-i18n.js",
+            "editor/media/waveform.js",
+            "editor/io/editor-sticker-otio-export.js",
+            "editor/boot/editor-startup.js",
+            "editor/boot/editor-onboarding.js",
+        )
+        indices = [pushed.index(file) for file in files]
+        self.assertEqual(indices, sorted(indices))
         markers = (
             r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
             r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
@@ -575,11 +575,9 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
             r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
-        indices = [re.search(marker, page).start() for marker in markers]
-        self.assertEqual(indices, sorted(indices))
+        for marker in markers:
+            self.assertRegex(page, marker)
         self.assertIn('window.AsrWaveform=', page)
-        self.assertLess(pushed.index('editor/media/waveform.js'),
-                        pushed.index('editor/io/editor-sticker-otio-export.js'))
 
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:

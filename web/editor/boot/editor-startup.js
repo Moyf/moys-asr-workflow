@@ -1,11 +1,21 @@
+import { setOnboardingEditor } from './editor-boot.js';
+import { updateSelectionCountText } from '../cues/editor-overlay-cue-selection.js';
+import { applySearch } from '../cues/editor-search.js';
+import { clearTemporaryVisibleSplitCues } from '../cues/editor-cue-elements.js';
+import { captureCueListRenderAnchor, restoreCueListRenderAnchor } from '../cues/editor-cue-list-anchor.js';
+import { syncTimelineGroupRanges } from '../cues/editor-text-cleanup.js';
+import { syncProjectTimebaseAndBindingOffsets } from '../cues/editor-timeline.js';
+import { enableForProjectMarkers } from '../markers/editor-marker-editing.js';
+import { hasUnsavedProjectChanges } from '../io/editor-server-save.js';
 
+export function initMaweStartup() {
 // === 启动 ===
 MaweState.beginProjectSession();
 MaweState.setSnapshotReader(MaweJsonRepair.projectSnapshot);
 const timingBeforeStartup = MaweJsonRepair.projectTimingSignature(MaweBoot.DATA);
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
-MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
+syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
 const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA, { preserveValid: true });
 // 服务器注入的工程里 markers 是 MOSP 包装对象（{schema, items}）；编辑器内部
@@ -14,11 +24,11 @@ const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA
 MaweJsonRepair.setMarkerContainer(MaweBoot.DATA.markers);
 MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(MaweBoot.DATA.markers);
 // 带 markers 的工程（如 AI 整理产物）默认启用标记轨道，方便直接复核待确认项。
-window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
-MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+enableForProjectMarkers(MaweBoot.DATA.markers);
+syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
 // Server/portable startup injects DATA directly instead of applyCanonicalProject.
 // Repair legacy group ranges before the first render and saved fingerprint.
-MaweTextCleanup.syncTimelineGroupRanges();
+syncTimelineGroupRanges();
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),
   segments: Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length : null,
@@ -34,7 +44,7 @@ MaweWorkspaces.configureServerWorkspaceLibrary();
 MaweWorkspaces.configureWorkspaceTransfer();
 MaweDom.totalCountEl.textContent = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length;
 // 新手引导通过这个窄桥接访问编辑器核心状态；引导本身在 editor-onboarding.js 中按需初始化。
-window.MAWE_EDITOR_BRIDGE = Object.freeze({
+const editorBridge = Object.freeze({
   get data() { return MaweBoot.DATA; },
   get selectedIdxs() { return MaweSelection.selectedIdxs; },
   get currentCuePanelIdx() { return MaweCuePanelState.currentCuePanelIdx; },
@@ -51,6 +61,8 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
   openHelpAtTab: MaweHelpPanel.openHelpAtTab,
   closeHelp: () => MaweHelpPanel.helpFloatingPanel.close(),
 });
+setOnboardingEditor(editorBridge);
+window.MAWE_EDITOR_BRIDGE = editorBridge;
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
 const importedProjectChanges = MaweBoot.SERVER_CONFIG?.projectImportChanges || [];
@@ -86,14 +98,14 @@ document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
   e.currentTarget.setAttribute('aria-pressed', String(e.currentTarget.classList.contains('active')));
   if (!e.currentTarget.classList.contains('active')) {
-    MaweCueElements.clearTemporaryVisibleSplitCues();
+    clearTemporaryVisibleSplitCues();
   }
-  MaweSearch.applySearch(MaweDom.searchEl.value);
+  applySearch(MaweDom.searchEl.value);
 });
 
 // 「隐藏禁用项」开关：开启后禁用项 display:none，并从选中集移除
 MaweDom.hideDisabledToggle?.addEventListener('change', () => {
-  const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
+  const cueListAnchor = captureCueListRenderAnchor();
   MaweDom.hideDisabled = MaweDom.hideDisabledToggle.checked;
   MaweSettings.updateEditorSettings({ cueListHideDisabled: MaweDom.hideDisabled });
   MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
@@ -111,14 +123,15 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
       if (extensionTrack?.segments[index]?.disabled) MaweState.selection.remove('extension', index);
     });
     MaweSelection.updateMultiSelectionClasses();
-    window.MaweCuePanelWiring.updateSelectionCountText();
+    updateSelectionCountText();
     if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   }
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateDisabledVisibility();
-  MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
+  restoreCueListRenderAnchor(cueListAnchor);
 });
 
 // 离开提示
 window.addEventListener('beforeunload', (e) => {
-  if (MaweServerSave.hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
+  if (hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
 });
+}

@@ -16,7 +16,7 @@ replay = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(replay)
 ROOT = replay.ROOT
 CONSUMERS = ("edit.py",)
-TOOLS = ("scripts/build-editor.mjs", "scripts/migrate-editor-factories.mjs")
+TOOLS = ("scripts/build-editor.mjs", "scripts/migrate-editor-factories.mjs", "scripts/build-shared.mjs")
 
 
 def resolve_text(text, rules):

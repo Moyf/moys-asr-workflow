@@ -1,3 +1,4 @@
+import { scheduleOnboarding } from '../boot/editor-onboarding.js';
 // 工程与媒体文件输入：input 元素、Blob URL 与媒体选择弹窗。
 // ESM init 模块：initMaweProjectMediaInputs 在原清单位次执行原 IIFE 体（挂
 // window.MaweProjectMediaInputs 冻结门面——classic 侧出接口）；底部具名导出经门面
@@ -31,7 +32,7 @@ export function initMaweProjectMediaInputs() {
   function closeProjectMediaModal(clearPending = false) {
     MaweDom.projectMediaModal.classList.remove('show');
     if (clearPending) pendingProjectMediaSelection = null;
-    setTimeout(() => window.MAWE_ONBOARDING?.scheduleStart(), 0);
+    setTimeout(() => scheduleOnboarding(), 0);
   }
 
 

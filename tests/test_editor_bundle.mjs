@@ -226,6 +226,7 @@ test('transitive imports invalidate the artifact like manifest sources', async (
       `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
     fs.writeFileSync(path.join(project,'web/helper.js'),"export const value = 'v1';\n");
     fs.writeFileSync(path.join(project,'scripts/build-editor.mjs'),fs.readFileSync(fileURLToPath(builder),'utf8'));
+    fs.copyFileSync(new URL('../scripts/build-shared.mjs', import.meta.url), path.join(project, 'scripts/build-shared.mjs'));
     fs.writeFileSync(path.join(project,'package.json'),'{}\n');
     fs.writeFileSync(path.join(project,'pnpm-lock.yaml'),'lockfileVersion: 9\n');
 
