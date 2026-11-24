@@ -517,12 +517,9 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
                 if not isinstance(item, dict) or not str(item.get("text") or ""):
                     items_complete = False
                     break
-                timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
-                if timestamp is None:
-                    # 零宽词（begin == end）是确定时间点而非损坏数据，保留
-                    # 给 repair_segment_durations 拉宽；否则合并段会整段
-                    # 丢弃词级时间码。
-                    timestamp = _zero_duration_range(item.get("start"), item.get("end"))
+                timestamp = normalize_timestamp_range(
+                    item.get("start"), item.get("end"), allow_zero=True
+                )
                 if timestamp is None:
                     items_complete = False
                     break
@@ -562,7 +559,7 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
     for raw_segment in segments:
         segment = dict(raw_segment)
         # A valid enclosing segment can safely keep its items only when every
-        # item has a strictly positive, non-negative range. A single malformed
+        # item has a valid non-negative range. A single malformed
         # token downgrades the complete segment to sentence precision.
         if "items" in segment:
             raw_items = segment.get("items")
@@ -572,11 +569,9 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
                     if not isinstance(item, dict) or not str(item.get("text") or ""):
                         normalized_items = []
                         break
-                    timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
-                    if timestamp is None:
-                        # 零宽词保留（确定时间点），交给 repair_segment_durations
-                        # 拉宽；否则含零宽词的段会整段丢失词级时间码。
-                        timestamp = _zero_duration_range(item.get("start"), item.get("end"))
+                    timestamp = normalize_timestamp_range(
+                        item.get("start"), item.get("end"), allow_zero=True
+                    )
                     if timestamp is None:
                         normalized_items = []
                         break
@@ -807,25 +802,6 @@ def split_coarse_segments(
     return result
 
 
-def _zero_duration_range(begin_time: object, end_time: object) -> tuple[int, int] | None:
-    """把云端偶发的零时长句子/词（begin == end）保留为一个确定时间点。
-
-    qwen3-asr-flash-filetrans 会为语气词等占位句返回 begin_time == end_time
-    （实测"啊。"600640→600640），也会对部分正常词给出零宽时间码（实测
-    "玩"2000→2000，紧贴前词结束点）。范围虽然零宽但时间点真实：句子保留
-    为零长段、词保留为零宽 item，交给下游修复/插值；1.6.x 曾因这类数据
-    触发保险把整份时间码废弃成整段单条字幕，2 句废掉全片。
-    """
-    if (
-        isinstance(begin_time, int)
-        and isinstance(end_time, int)
-        and begin_time == end_time
-        and begin_time >= 0
-    ):
-        return (begin_time, end_time)
-    return None
-
-
 def build_segments_preserving_speakers(
     items: list[dict],
     *,
@@ -895,12 +871,8 @@ def build_segments_from_api_sentences(
                 continue
             raw_item_texts.append(item_text)
             timestamp = normalize_timestamp_range(
-                raw_item.get("start"), raw_item.get("end")
+                raw_item.get("start"), raw_item.get("end"), allow_zero=True
             )
-            if timestamp is None:
-                timestamp = _zero_duration_range(
-                    raw_item.get("start"), raw_item.get("end")
-                )
             if timestamp is None:
                 invalid_item = True
                 continue
@@ -929,7 +901,7 @@ def build_segments_from_api_sentences(
             if not sentence_text:
                 continue
             sentence_range = normalize_timestamp_range(
-                sentence.get("start"), sentence.get("end")
+                sentence.get("start"), sentence.get("end"), allow_zero=True
             )
             if sentence_range is None:
                 if item_range is None:
@@ -998,7 +970,7 @@ def build_segments_from_api_sentences(
         # 扩展到句级范围，内部边界仍使用词级时间戳。若 API 句级范围
         # 缺失或没有包住词级范围，则扩大到两者的包络，避免生成越界 item。
         sentence_range = normalize_timestamp_range(
-            sentence.get("start"), sentence.get("end")
+            sentence.get("start"), sentence.get("end"), allow_zero=True
         )
         if sentence_range is None:
             sentence_range = (

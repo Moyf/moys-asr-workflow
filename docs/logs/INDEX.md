@@ -15,8 +15,10 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.12.0 之后 | 2026-11-24 | [达芬奇 OTIO 媒体链接独立审查](release1.12.0/261124_达芬奇OTIO媒体链接/REVIEW_FINDINGS.md) | 直接引用带特殊字符的媒体路径，macOS 导入实测，Windows 路径自动化验证 |
+| 1.12.0 之后 | 2026-11-24 | [Soniox 词级时间码修复审查](release1.12.0/261124_Soniox词级时间码/REVIEW_FINDINGS.md) | 模拟云端返回经 CLI 写出 SRT 和 MOSP，覆盖零宽词、空白分隔及审查发现的边界 |
 | 1.11.4 之后 | 2026-11-23 | [单句样式跟随样式库](release1.11.4/261123_单句样式跟随样式库/REVIEW_FINDINGS.md) / [人工清单](release1.11.4/261123_单句样式跟随样式库/单句样式跟随样式库.checklist.md) | 单句 ASS 样式改为快照 + 跟随：改库即跟、改名不分叉、旧句按钮一键更新；含 5000 句性能实测与独立审查（0 blocker/major，6 nit），人工核验待维护者 |
 | 1.12.0 之后 | 2026-11-24 | [烧录保存与 OTIO 导出独立审查](release1.12.0/261124_烧录保存与OTIO导出/REVIEW_FINDINGS.md) | macOS 原生选址、POSIX 重启、烧录失败提示与 WebKit 配套下载。 |
+| 1.12.0 之后 | 2026-11-24 | [macOS 跨平台快捷键](release1.12.0/261124_跨平台快捷键/REVIEW_FINDINGS.md) | 对照工具 Cmd+点击跳转修复、Alt→Option 提示适配与 Alt+拖动 e2e 回归；含独立审查与双向红绿证据 |
 | 1.11.4 之后 | 2026-11-23 | [1.12.0 发布记录](release1.11.4/261123_1.12.0发布/发布记录.md) | minor 版本发布：CL 编辑器升格流程与两个小修复随版；macOS 编辑器子进程冷启动竞态修复后移动 tag 重发布，双层核验通过 |
 | 1.11.4 之后 | 2026-11-23 | [GitHub Star 审查](release1.11.4/261123_GitHubStar/REVIEW_FINDINGS.md) / [人工核对](release1.11.4/261123_GitHubStar/GitHubStar.checklist.md) | Launcher 和本地编辑器星标入口，覆盖点击写入、回退及仓库导航；不调用真实 Star API |
 | 1.11.4 之后 | 2026-11-22 | [口播与文稿匹配核验](release1.11.4/261122_口播与文稿匹配核验/口播与文稿匹配.checklist.md) / [独立审查与处置](release1.11.4/261122_口播与文稿匹配核验/REVIEW_FINDINGS.md) | 口播准备、运行环境升级交互、逐字差异和多字符断句保留字词码 |

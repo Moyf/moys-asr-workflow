@@ -13,6 +13,7 @@ import requests
 
 from maw import soniox
 from maw.project import validate_project
+from tests.compact_assertions import CompactContainerAssertions
 
 BASE = "https://api.soniox.com"
 KEY = "test-key"
@@ -72,6 +73,8 @@ class TokenMappingTests(unittest.TestCase):
             _token("a", 100, 200),
             {"text": "b"},  # 缺时间戳 → 跳过，不能伪造零宽 item
             {"text": "c", "start_ms": 500, "end_ms": 400},  # 倒挂 → 跳过
+            _token("d", True, True),
+            _token("e", -1, -1),
             {"text": ""},  # 空文本跳过
         ]
 
@@ -92,6 +95,29 @@ class TokenMappingTests(unittest.TestCase):
 
 
 class WordFragmentMergeTests(unittest.TestCase):
+    def test_standalone_whitespace_separates_words_without_extending_their_times(self) -> None:
+        for separator in (" ", "\n\n"):
+            with self.subTest(separator=separator):
+                tokens = [
+                    _token("on", 0, 100),
+                    _token(separator, 100, 150),
+                    _token("right", 150, 250),
+                ]
+
+                items = soniox.tokens_to_items(soniox.merge_word_fragments(tokens))
+
+                self.assertEqual(items, [
+                    {"text": "on", "start": 0, "end": 100},
+                    {"text": " right", "start": 150, "end": 250},
+                ])
+
+    def test_zero_width_continuation_preserves_previous_fragment_end(self) -> None:
+        tokens = [_token("hel", 100, 220), _token("lo", 100, 100)]
+
+        items = soniox.tokens_to_items(soniox.merge_word_fragments(tokens))
+
+        self.assertEqual(items, [{"text": "hello", "start": 100, "end": 220}])
+
     def test_merges_subword_fragments_by_leading_space(self) -> None:
         # 实测契约：词首片段带前导空格，续段无空格（" edit"+"ing" → " editing"）
         tokens = [
@@ -656,7 +682,51 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(req.delete.call_args.args[0], f"{BASE}/v1/transcriptions/t1")
 
 
-class SonioxCliExitContractTests(unittest.TestCase):
+class SonioxCliExitContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_transcript_with_zero_width_word_writes_multiple_word_timed_cues(self) -> None:
+        from maw.asr.soniox import main
+
+        config = {"api_key": KEY, "base_url": BASE, "model": "stt-async-v5",
+                  "poll_interval": 0, "poll_timeout": 60}
+        transcript = {"tokens": [
+            _token("Then", 100, 200, language="en"),
+            _token(" I", 200, 200, language="en"),
+            _token(" can", 320, 450, language="en"),
+            _token(" go", 450, 550, language="en"),
+            _token(" ", 550, 600),
+            _token("right.", 600, 720, language="en"),
+            _token(" See", 1500, 1600, language="en"),
+            _token(" you", 1600, 1750, language="en"),
+            _token(" soon.", 1750, 1900, language="en"),
+        ]}
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            media = Path(tmp_dir) / "speech.wav"
+            media.touch()
+            output = media.with_suffix(".srt")
+            with mock.patch("sys.argv", ["maw.asr.soniox", str(media), "-o", str(output),
+                                         "--json", "--no-html", "--keep-punct"]), \
+                 mock.patch("maw.asr.soniox.load_config", return_value=config), \
+                 mock.patch("maw.asr.soniox.get_duration_sec", return_value=2.0), \
+                 mock.patch.object(soniox, "upload_file", return_value="f1"), \
+                 mock.patch.object(soniox, "create_transcription", return_value="t1"), \
+                 mock.patch.object(soniox, "poll_transcription"), \
+                 mock.patch.object(soniox, "get_transcript", return_value=transcript), \
+                 mock.patch.object(soniox, "delete_transcription"), \
+                 redirect_stdout(io.StringIO()):
+                main()
+
+            project = json.loads(output.with_suffix(".mosp").read_text(encoding="utf-8"))
+            srt = output.read_text(encoding="utf-8")
+
+        self.assertEqual(project["timestamp_granularity"], "word")
+        self.assertEqual(len(project["segments"]), 2)
+        self.assertTrue(validate_project(project).ok)
+        first = project["segments"][0]
+        self.assertEqual(first["text"], "Then I can go right.")
+        self.assertEqual(first["items"][1], {"text": " I", "start": 200, "end": 300})
+        self.assertIn("Then I can go right.", srt)
+        self.assertIn("See you soon.", srt)
+
     def test_missing_input_exits_nonzero(self) -> None:
         """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
         from maw.asr.soniox import main

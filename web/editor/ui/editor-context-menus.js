@@ -17,6 +17,9 @@ export function initMaweContextMenus() {
   // 顶层 DOM 查询/监听随函数体在装配器调用位次执行，时机不变（G07 gate）。
   const global = window;
 
+  // 菜单快捷键提示按平台显示 Alt/Option（macOS 为 ⌥ Option）。
+  const altClickHint = () => `${window.MaweDisplaySettings?.altKeyLabel?.() || 'Alt'}+点击`;
+
 
 
   function findWaveformCueAtTime(timeMs, segments = MaweBoot.DATA.segments) {
@@ -401,7 +404,7 @@ export function initMaweContextMenus() {
     // 组 3：状态与删除
     addItem(
       MaweBoot.DATA.segments[idx].disabled ? '启用此条' : '禁用此条',
-      'Alt+点击',
+      altClickHint(),
       () => MaweStickerPicker.toggleDisabled([idx])
     );
     addItem('删除字幕', 'Delete', () => {
@@ -506,7 +509,7 @@ export function initMaweContextMenus() {
       () => MaweStickerPicker.toggleDisabled([index], track),
       false,
       false,
-      'Alt+点击',
+      altClickHint(),
     );
     const deleteIndices = extensionSelectionOnly ? [...MaweSelection.selectedExtensionIdxs] : [index];
     addItem(deleteIndices.length > 1 ? `删除 ${deleteIndices.length} 条副字幕` : '删除副字幕',

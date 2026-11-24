@@ -134,6 +134,8 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
+  // macOS 上 Alt 标签在启动时被替换为 Option；断言按平台计算期望值。
+  const altLabel = await page.evaluate(() => window.AsrEditorUtils.isMacPlatform() ? 'Option' : 'Alt');
   // Required destinations and their accessible panel links are the contract;
   // adding another help topic must not break the onboarding replay test.
   const requiredTabs = [
@@ -215,7 +217,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(helpPanel).toContainText('切换空隙的启用/禁用状态');
   await expect(helpPanel).toContainText('添加新的移除空隙');
   await expect(helpPanel).toContainText('（也可以在右键中选择「添加空隙」）');
-  await expect(helpPanel).toContainText('Alt+左键拖动');
+  await expect(helpPanel).toContainText(`${altLabel}+左键拖动`);
   await expect(helpPanel).toContainText('移动与调整');
   await expect(helpPanel).toContainText('批量操作');
   await expect(helpPanel).toContainText('右侧显示可禁用数量');
@@ -227,7 +229,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(gapPanel).toContainText('具体操作取决于');
   await expect(gapPanel.locator('#help-open-gap-settings')).toHaveText('全局设置');
   await expect(gapPanel).toContainText('「高级编辑」中的「空隙编辑」，其中「边界与中键」可同时使用两套操作。');
-  await expect(gapPanel.locator('.help-important').filter({ hasText: 'Alt+左键拖动' })).toHaveCount(1);
+  await expect(gapPanel.locator('.help-important').filter({ hasText: `${altLabel}+左键拖动` })).toHaveCount(1);
   await helpPanel.getByRole('tab', { name: '批量操作', exact: true }).click();
   const batchPanel = helpPanel.locator('#help-tab-panel-batch');
   await expect(batchPanel).toBeVisible();
@@ -266,7 +268,9 @@ test('Gap help translates the updated operations in English', async ({ page }) =
 
   const gapHelp = page.locator('#help-tab-panel-gap');
   await expect(gapHelp.locator('.help-subtitle')).toHaveText(['Gap states', 'Movement and adjustment', 'Clear gap', 'Batch actions']);
-  await expect(gapHelp).toContainText('Alt+left-drag');
+  // 英文帮助同样按平台显示 Alt/Option。
+  const altLabel = await page.evaluate(() => window.AsrEditorUtils.isMacPlatform() ? 'Option' : 'Alt');
+  await expect(gapHelp).toContainText(`${altLabel}+left-drag`);
   await expect(gapHelp).toContainText('Add a new removed gap');
   await expect(gapHelp).toContainText('Batch actions');
   await expect(gapHelp).toContainText('Right-click a gap and choose “Clear gap” to clear the current gap');

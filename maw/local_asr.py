@@ -45,6 +45,7 @@ from maw.language import (
     timestamp_items_cover_text,
     timestamp_granularity_for_items,
 )
+from maw.project import repair_segment_durations
 from maw.project_io import write_mosp
 
 
@@ -404,7 +405,7 @@ def _timestamp_pair(value: object) -> tuple[int, int] | None:
         return None
     if start is None or end is None:
         return None
-    return normalize_timestamp_range(start, end, scale=scale)
+    return normalize_timestamp_range(start, end, scale=scale, allow_zero=True)
 
 
 def _text_units(text: str, count: int) -> list[str]:
@@ -453,7 +454,7 @@ def items_from_timestamps(text: str, timestamps: object) -> list[dict[str, Any]]
                 _item(
                     match.group(0),
                     valid_pairs[match.start()][0],
-                    valid_pairs[match.end() - 1][1],
+                    max(end for _, end in valid_pairs[match.start():match.end()]),
                 )
                 for match in word_matches
             ]
@@ -541,6 +542,7 @@ def funasr_output_to_transcription(
         sentence_range = normalize_timestamp_range(
             sentence.get("start", sentence.get("begin_time")),
             sentence.get("end", sentence.get("end_time")),
+            allow_zero=True,
         )
         timestamp_range = _timestamp_range(raw_timestamps)
         if timestamp_range is not None:
@@ -593,9 +595,8 @@ def funasr_output_to_transcription(
         fallback_range = _timestamp_range(raw_timestamps)
         if not all_items and fallback_range is not None and text:
             start, end = fallback_range
-            if end > start:
-                segments = [{"start": start, "end": end, "text": text}]
-                has_fallback_segments = True
+            segments = [{"start": start, "end": end, "text": text}]
+            has_fallback_segments = True
 
     language, language_source = resolve_language(
         payload.get("language") or payload.get("lang"),
@@ -1404,7 +1405,7 @@ class MossDiarizeEngine:
         items: list[dict[str, Any]] = []
         has_unranged_text = False
         for entry in parsed:
-            timestamp = normalize_timestamp_range(entry.start, entry.end, scale=1000)
+            timestamp = normalize_timestamp_range(entry.start, entry.end, scale=1000, allow_zero=True)
             entry_text = str(entry.text or "")
             if not entry_text.strip():
                 continue
@@ -2075,6 +2076,7 @@ class WhisperEngine:
                 _read_field(segment, "start"),
                 _read_field(segment, "end"),
                 scale=1000,
+                allow_zero=True,
             )
             segment_items: list[dict[str, Any]] = []
             invalid_word_timestamp = False
@@ -2086,6 +2088,7 @@ class WhisperEngine:
                     _read_field(word, "start"),
                     _read_field(word, "end"),
                     scale=1000,
+                    allow_zero=True,
                 )
                 if timestamp_range is None:
                     invalid_word_timestamp = True
@@ -2402,9 +2405,19 @@ def build_local_segments(
             # with interpolated in-segment times, mirroring the cloud
             # coarse-segment path. Pieces carry no items because interpolated
             # times must not pose as word-level precision.
+            sources = [dict(source) for source in transcription.segments]
+            if any(source["start"] == source["end"] for source in sources):
+                # Keep point cues independent when they mark a speaker turn.
+                for source in sources:
+                    raw_items = source.get("items")
+                    if isinstance(raw_items, list):
+                        source["items"] = [
+                            dict(item) if isinstance(item, dict) else item for item in raw_items
+                        ]
+                repair_segment_durations(sources)
             segments.extend(
                 split_coarse_segments(
-                    [dict(source) for source in transcription.segments],
+                    sources,
                     max_len=max_len,
                     min_len=min_len,
                     gap_split_ms=gap_split_ms,

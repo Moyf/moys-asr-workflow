@@ -42,6 +42,7 @@ from requests.exceptions import RequestException
 
 from maw.app_paths import default_env_path
 from maw.language import normalize_timestamp_range
+from maw.project import repair_segment_durations
 
 BASE_URL = "https://api.mosi.cn/v1"
 TRANSCRIPTION_PATH = "/audio/transcriptions"
@@ -358,9 +359,7 @@ def parse_result(body: Mapping[str, Any]) -> dict[str, Any]:
         if not seg_text:
             continue
         ordered_texts.append(seg_text)
-        start = _seconds_milliseconds(raw.get("start"))
-        end = _seconds_milliseconds(raw.get("end"))
-        timestamp = normalize_timestamp_range(start, end)
+        timestamp = normalize_timestamp_range(raw.get("start"), raw.get("end"), scale=1000, allow_zero=True)
         if timestamp is None:
             has_unranged = True
             continue
@@ -388,6 +387,9 @@ def parse_result(body: Mapping[str, Any]) -> dict[str, Any]:
                 "MOSS 返回了转写文本，但没有可用的时间戳或音频时长，无法生成字幕时间码。"
             )
         segments = [{"start": 0, "end": fallback_end, "text": text}]
+    elif any(segment["start"] == segment["end"] for segment in segments):
+        # Widen point cues before coarse splitting can merge speaker turns.
+        repair_segment_durations(segments)
 
     return {
         "text": text,
