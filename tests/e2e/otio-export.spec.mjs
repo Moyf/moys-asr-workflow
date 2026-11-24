@@ -83,12 +83,9 @@ for (const [format, gapRemoved] of [['otio', false], ['otio', true], ['otioz', f
         };
         MaweGapRemoveUi.updateGapRemoveUi();
       });
-      await page.locator('#gap-removed-export-btn').click();
-      await page.locator('[aria-controls="gap-removed-otio-menu"]').hover();
-      await page.locator(`#download-gap-removed-${format}`).click();
-    } else {
-      await exportSourceOtio(page, format);
+      await page.locator('#gap-export-checkbox').check();
     }
+    await exportSourceOtio(page, format);
     const basename = gapRemoved ? 'project_去空隙' : 'project';
     const names = [`${basename}.${format}`, `${basename}.srt`];
     await expect.poll(() => [...downloads.keys()].sort()).toEqual(names);

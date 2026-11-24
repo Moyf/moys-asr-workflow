@@ -17,17 +17,9 @@ export function initMaweProjectLoad() {
     const mediaName = window.AsrEditorUtils.fileBasename(mediaPath);
     const mediaNameEl = document.getElementById('media-name');
     if (!mediaNameEl) return;
-    if (!mediaName) {
-      mediaNameEl.textContent = '未导入媒体';
-      mediaNameEl.title = '';
-      mediaNameEl.classList.add('empty');
-      mediaNameEl.onclick = null;
-      return;
-    }
-    mediaNameEl.textContent = `未加载：${mediaName}`;
-    mediaNameEl.title = `工程关联媒体：${mediaPath}`;
+    mediaNameEl.textContent = mediaName ? `未加载：${mediaName}` : '未导入媒体';
     mediaNameEl.classList.add('empty');
-    mediaNameEl.onclick = () => MaweExportTimeline.copyText(mediaPath, `已复制媒体路径：${mediaPath}`);
+    MaweProjectSave.updateMediaCopyHint();
   }
 
 
@@ -174,9 +166,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   const jsonEl = document.getElementById('json-name');
   if (jsonEl) {
     jsonEl.textContent = filename;
-    jsonEl.title = `点击复制工程文件名：${filename}`;
     jsonEl.classList.remove('empty');
-    jsonEl.onclick = () => MaweExportTimeline.copyText(filename, `已复制：${filename}`);
   }
   MaweProjectSave.updateProjectDirtyIndicator();
   MaweServerSave.projectCheckpointed = true;
@@ -259,10 +249,12 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   // 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
   function detachServerProjectSaving() {
     projectBindingEpoch += 1;
+    window.MaweGapRemoveUi?.resetGapExport?.();
     if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
     MaweCoreState.waveformEditor?.setThumbnailBinding('');
     if (MaweBoot.SERVER_CONFIG) {
       MaweBoot.SERVER_CONFIG.canSave = false;
+      MaweBoot.SERVER_CONFIG.projectFilePath = null;
       MaweBoot.SERVER_CONFIG.canPortableStickerExport = false;
       MaweBoot.SERVER_CONFIG.canLottieExport = false;
       MaweBoot.SERVER_CONFIG.canOgrafExport = false;
@@ -276,6 +268,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
       MaweBoot.SERVER_CONFIG.sourceMediaId = null;
     }
+    window.MaweProjectSave?.updateProjectDirtyIndicator?.();
     window.MaweBurnVideoExport?.invalidateBinding();
     window.MaweGapRemovedMediaExport?.updateButton();
     MaweServerSave.configureServerSaveControls();

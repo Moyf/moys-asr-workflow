@@ -134,9 +134,8 @@ export function initMediaLoadModule() {
     const mnEl = document.getElementById('media-name');
     if (mnEl) {
       mnEl.textContent = file.name;
-      mnEl.title = `点击复制媒体名：${file.name}`;
       mnEl.classList.remove('empty');
-      mnEl.onclick = () => MaweExportTimeline.copyText(file.name, `已复制媒体名：${file.name}`);
+      MaweProjectSave.updateMediaCopyHint();
     }
 
     MawePlaybackLoop.lastActive = -1;

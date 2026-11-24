@@ -192,10 +192,11 @@ function indicatorFixture() {
     _classes: new Set(),
     textContent: 'captions.mosp',
     title: '',
+    addEventListener() {},
   };
   const context = vm.createContext({
     window: {},
-    document: {getElementById: () => jsonEl, addEventListener() {}},
+    document: {getElementById: id => id === 'json-name' ? jsonEl : null, addEventListener() {}},
     setInterval: (fn) => { tick = fn; return 7; },
     confirm: () => false,
     MaweBoot: {DATA: {segments: []}, SERVER_CONFIG: {saveUrl: '/api/project'}, FILENAME_BASE: 'captions'},
@@ -260,9 +261,9 @@ test('the indicator dot reflects the dirty state reported by the save module on 
   view.state.unsaved = true;
   view.fireDirtyEvent();
   assert.equal(view.jsonEl._classes.has('dirty'), true);
-  assert.match(view.jsonEl.title, /有未保存的修改/);
+  assert.equal(view.jsonEl.title, '有未保存的修改；点击复制工程文件名');
   view.state.unsaved = false;
   view.fireDirtyEvent();
   assert.equal(view.jsonEl._classes.has('dirty'), false);
-  assert.doesNotMatch(view.jsonEl.title, /有未保存的修改/);
+  assert.equal(view.jsonEl.title, '点击复制工程文件名');
 });

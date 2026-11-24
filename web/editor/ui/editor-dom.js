@@ -518,7 +518,6 @@ export function initMaweDom() {
   const fcp7ExportModal = document.getElementById('fcp7-export-modal');
 
 
-  const fcp7ExportTimelineMode = document.getElementById('fcp7-export-timeline-mode');
 
 
   const fcp7ExportFps = document.getElementById('fcp7-export-fps');
@@ -542,7 +541,6 @@ export function initMaweDom() {
   const lottieExportTrack = document.getElementById('lottie-export-track');
 
 
-  const lottieExportGapRemoved = document.getElementById('lottie-export-gap-removed');
 
 
   const lottieExportResolution = document.getElementById('lottie-export-resolution');
@@ -566,7 +564,6 @@ export function initMaweDom() {
   const ografExportTrack = document.getElementById('ograf-export-track');
 
 
-  const ografExportGapRemoved = document.getElementById('ograf-export-gap-removed');
 
 
   const ografExportResolution = document.getElementById('ograf-export-resolution');
@@ -635,7 +632,6 @@ export function initMaweDom() {
   const saveProjectDropdown = document.getElementById('save-project-dropdown');
 
 
-  const gapRemovedExportDropdown = document.getElementById('gap-removed-export-dropdown');
 
 
   const downloadMultiSrtButton = document.getElementById('download-multi-srt');
@@ -648,10 +644,6 @@ export function initMaweDom() {
 
   // 配色 SRT 分组分隔线（main 新增 DOM 常量，合并时补录）。
   const subtitleExportSeparator = document.getElementById('subtitle-export-separator');
-  const gapRemovedSubtitleExportSeparator = document.getElementById('gap-removed-subtitle-export-separator');
-
-
-  const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 
 
   const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
@@ -1209,7 +1201,6 @@ export function initMaweDom() {
     projectMediaSelectButton,
     projectMediaLaterButton,
     fcp7ExportModal,
-    fcp7ExportTimelineMode,
     fcp7ExportFps,
     fcp7ExportSubtitleTracks,
     fcp7ExportNativeText,
@@ -1217,7 +1208,6 @@ export function initMaweDom() {
     fcp7ExportConfirm,
     lottieExportModal,
     lottieExportTrack,
-    lottieExportGapRemoved,
     lottieExportResolution,
     lottieExportFps,
     lottieExportRenderMode,
@@ -1225,7 +1215,6 @@ export function initMaweDom() {
     lottieExportConfirm,
     ografExportModal,
     ografExportTrack,
-    ografExportGapRemoved,
     ografExportResolution,
     ografExportFps,
     ografExportCancel,
@@ -1248,13 +1237,10 @@ export function initMaweDom() {
     saveProjectButton,
     saveProjectAsButton,
     saveProjectDropdown,
-    gapRemovedExportDropdown,
     downloadMultiSrtButton,
     subtitleExportDropdown,
     downloadColorSrtItem,
     subtitleExportSeparator,
-    gapRemovedSubtitleExportSeparator,
-    downloadGapRemovedColorSrtItem,
     multiSubtitleToggleLabel,
     multiSubtitleEmptyHint,
     multiSubtitleSwapButton,

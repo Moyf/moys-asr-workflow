@@ -800,10 +800,11 @@ for (const diagnostic of ['raw 3D perspective', 'negative base spacing', 'negati
       try { MaweExportSrt.buildAss(); return ''; } catch (error) { return String(error.message); }
     }, diagnostic);
     expect.soft(expectedDiagnostic, 'real project invokes the production planner diagnostic').not.toBe('');
-    for (const [menu, button] of [['#subtitle-export-btn', '#download-full-ass'],
-      ['#gap-removed-export-btn', '#download-gap-removed-ass']]) {
+    for (const gap of [false, true]) {
+      const button = '#download-full-ass';
+      await page.locator('#gap-export-checkbox').setChecked(gap);
       await page.evaluate(() => document.querySelector('#hint-stack')?.replaceChildren());
-      await page.locator(menu).click();
+      await page.locator('#subtitle-export-btn').click();
       await page.locator(button).click();
       // Observe the real handler, DOM hint, browser picker and rejection event;
       // none of the production export or diagnostic functions are substituted.

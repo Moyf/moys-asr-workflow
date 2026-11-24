@@ -503,7 +503,7 @@ def main():
         json_display=html.escape(json_path.name),
         json_name_class="",
         media_name_display=html.escape(media_path.name),
-        media_name_title=html.escape(f"点击复制媒体名：{media_path.name}"),
+        media_name_title="点击复制媒体文件名",
         media_name_class="",
     )
 

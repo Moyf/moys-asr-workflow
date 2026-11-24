@@ -726,6 +726,28 @@ test('exports main, secondary and combined bilingual SRT from one menu', async (
   await page.locator('#download-full-srt').click();
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(3);
   expect(await page.evaluate(() => window.__exportSaves[2].content)).not.toContain('Secondary line');
+  await page.evaluate(() => MaweGapRemoveUi.setGapRemoveData({
+    detector: 'audio_gate', gaps: [{ start: 2500, end: 2800, removed: true }],
+  }));
+  await page.locator('#gap-export-checkbox').check();
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-bilingual-srt').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves[3])).toEqual({
+    suggestedName: 'project_去空隙_bilingual.srt',
+    content: [
+      '1', '00:00:01,000 --> 00:00:02,500', 'Main line\nSecondary line', '',
+      '2', '00:00:02,700 --> 00:00:03,700', 'Unmatched secondary', '',
+    ].join('\n'),
+  });
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-multi-srt').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves[4])).toEqual({
+    suggestedName: 'project_去空隙_extension.srt',
+    content: [
+      '1', '00:00:01,000 --> 00:00:02,500', 'Secondary line', '',
+      '2', '00:00:02,700 --> 00:00:03,700', 'Unmatched secondary', '',
+    ].join('\n'),
+  });
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-srt')).toHaveText('SRT');
@@ -741,6 +763,10 @@ test('shows disabled secondary export entries when bilingual mode has no second 
   await expect.poll(() => page.evaluate(() => (MaweBoot.DATA.multi_subtitle?.tracks || []).length)).toBe(0);
   page.once('dialog', (dialog) => dialog.dismiss());
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
+  await page.evaluate(() => MaweGapRemoveUi.setGapRemoveData({
+    detector: 'audio_gate', gaps: [{ start: 2500, end: 2800, removed: true }],
+  }));
+  await page.locator('#gap-export-checkbox').check();
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-srt')).toHaveText('主字幕 SRT');
   await expect(page.locator('#download-multi-srt')).toBeVisible();
@@ -750,7 +776,7 @@ test('shows disabled secondary export entries when bilingual mode has no second 
   expect(await page.evaluate(() => window.__exportSaves.length)).toBe(0);
 });
 
-test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }) => {
+test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }, testInfo) => {
   // This case checks exported content, not the machine-wide font scan.
   await stubAssFontCoverage(page);
   await disableOnboarding(page);
@@ -780,14 +806,34 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
     MaweCuePanel.renderAll();
   });
 
-  await page.locator('#gap-removed-export-btn').click();
-  await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
-  await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）', '重组后音频']);
-  await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
-    .toHaveText('OTIO');
-
-  await page.locator('#download-gap-removed-ass').click();
+  const toggle = page.locator('#gap-export-checkbox');
+  const label = page.locator('#gap-export-option');
+  const controlColors = () => label.evaluate(element => {
+    const colors = node => {
+      const style = getComputedStyle(node);
+      return [style.backgroundColor, style.borderTopColor, style.color];
+    };
+    return { toggle: colors(element), neighbor: colors(element.nextElementSibling.querySelector('button')) };
+  });
+  await expect(toggle).not.toBeChecked();
+  await expect(page.locator('#download-gap-removed-video')).toHaveAttribute('hidden', '');
+  const uncheckedColors = await controlColors();
+  await toggle.check();
+  await page.mouse.move(0, 0);
+  const checkedColors = await controlColors();
+  checkedColors.toggle.forEach((color, index) => expect(color).not.toBe(uncheckedColors.toggle[index]));
+  expect(checkedColors.neighbor).toEqual(uncheckedColors.neighbor);
+  const spacing = await label.evaluate(element =>
+    element.nextElementSibling.getBoundingClientRect().left - element.getBoundingClientRect().right);
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  await testInfo.attach('toolbar-spacing', { body: String(spacing), contentType: 'text/plain' });
+  await label.hover();
+  const tooltip = page.locator('.mawe-tooltip.show');
+  await expect(tooltip).toHaveText('当前工程共 1 个空隙，总时长 1秒（占比 25%）');
+  await page.locator('.toolbar.row-actions').screenshot({ path: testInfo.outputPath('gap-export-toolbar.png') });
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-color-srt')).toBeVisible();
+  await page.locator('#download-full-ass').click();
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toBe('project_去空隙.ass');
@@ -799,6 +845,19 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   );
   // 完全位于已移除空隙内的字幕不进去空隙导出（否则会堆叠在同一时刻）。
   expect(save.content).not.toContain('in gap');
+  await page.evaluate(() => MaweGapRemoveUi.setGapRemoveData({
+    detector: 'audio_gate', gaps: [{ start: 0, end: 948, removed: false }, { start: 2000, end: 3000, removed: true }],
+  }));
+  await label.hover();
+  await expect(tooltip).toContainText('当前工程共 2 个空隙，总时长 1秒（占比 48.7%）');
+  await expect(tooltip).toContainText('其中 1 个会在导出时移除，共 1秒（占比 25%）');
+  await page.evaluate(() => MaweGapRemoveUi.setGapRemoveData({ gaps: [] }, { clearProvenance: true }));
+  await expect(toggle).toBeHidden();
+  await expect(toggle).not.toBeChecked();
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.map(save => save.suggestedName)))
+    .toEqual(['project_去空隙.ass', 'project.ass']);
 });
 
 test('keeps ASS style actions and preview-mode hints attached to the active form', async ({ page }) => {

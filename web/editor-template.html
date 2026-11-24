@@ -85,6 +85,7 @@ __WAVEFORM_CSS__
 
 
   <span class="right-group">
+    <label id="gap-export-option" class="toggle" hidden><input type="checkbox" id="gap-export-checkbox" autocomplete="off" disabled> <span>导出去空隙版本</span></label>
     <span class="dropdown" id="subtitle-export-dropdown">
       <button id="subtitle-export-btn" title="导出 SRT/ASS 字幕，或按颜色拆分导出" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu" role="menu">
@@ -98,45 +99,17 @@ __WAVEFORM_CSS__
     </span>
     <button id="download-json">导出工程</button>
     <button type="button" id="burn-video-export-btn" hidden title="将当前字幕烧录进源视频；关闭 ASS 模式时使用样式库指定的 SRT 烧录样式，输出 MP4。">烧录视频</button>
-    <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
-      <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">去空隙导出 ▾</button>
-      <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
-        <div class="dropdown-item" id="download-gap-removed-srt" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出字幕；原工程时间不变">SRT</div>
-        <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">SRT（按颜色拆分）</div>
-        <div class="dropdown-separator" id="gap-removed-subtitle-export-separator" role="separator" hidden></div>
-        <div class="dropdown-item" id="download-gap-removed-ass" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变">ASS（带样式）</div>
-        <div class="dropdown-item" id="download-gap-removed-video" role="menuitem" tabindex="0" title="按保留区域重组视频；切点可能受关键帧影响。">重组后视频</div>
-        <div class="dropdown-item" id="download-gap-removed-burn-video" role="menuitem" tabindex="0" hidden title="按保留区域重新编码并烧录当前 ASS 字幕；重新编码使切点帧级精确，输出 MP4。">重组后烧录视频</div>
-        <div class="dropdown-submenu" role="none">
-          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OTIO</div>
-          <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
-            <div class="dropdown-item" id="download-gap-removed-otio" role="menuitem" tabindex="0" title="导出原视频/音频的去空隙 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO</div>
-            <div class="dropdown-item" id="download-gap-removed-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的去空隙 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ</div>
-            <div class="dropdown-item" id="download-gap-removed-sticker-otio" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIO；完全落在空隙内的表情包会被丢弃">表情包 OTIO</div>
-            <div class="dropdown-item" id="download-gap-removed-sticker-otioz" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）；完全落在空隙内的表情包会被丢弃">表情包 OTIOZ</div>
-            <div class="dropdown-separator" role="separator"></div>
-            <button type="button" class="dropdown-item" role="menuitem" data-settings-page="export-more" data-settings-target="export-otio-options">OTIO 导出选项…</button>
-          </div>
-        </div>
-        <div class="dropdown-submenu" role="none">
-          <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-data-menu">数据文件</div>
-          <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-data-menu" role="menu">
-          <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制切点可能出现重复帧或时间戳边界">FFconcat 文件</div>
-            <div class="dropdown-item" id="download-gap-removed-regions-json" role="menuitem" tabindex="0" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
-          </div>
-        </div>
-      </div>
-    </span>
     <span class="dropdown" id="extra-export-dropdown">
       <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu" role="menu">
+        <div class="dropdown-item" id="download-gap-removed-video" role="menuitem" tabindex="0" data-gap-export-only hidden>重组视频（近似裁剪）</div>
         <div class="dropdown-item" id="download-green-screen-video" role="menuitem" tabindex="0" hidden>生成绿幕视频</div>
         <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="导出 FCP 7 XML">FCP 7 XML</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-otio-menu" role="menu">
-            <div class="dropdown-item" id="download-otio" role="menuitem" tabindex="0" title="导出原视频/音频的完整 OTIO 时间线，供支持 OTIO 的剪辑工具或工作流使用">时间线 OTIO</div>
-            <div class="dropdown-item" id="download-otioz" role="menuitem" tabindex="0" title="导出原视频/音频的完整 OTIOZ 时间线；服务器只打包当前工程媒体文件">时间线 OTIOZ</div>
+            <div class="dropdown-item" id="download-otio" role="menuitem" tabindex="0">时间线 OTIO</div>
+            <div class="dropdown-item" id="download-otioz" role="menuitem" tabindex="0">时间线 OTIOZ</div>
             <div class="dropdown-item" id="download-sticker-otio" role="menuitem" tabindex="0" title="导出只包含表情包图片轨道的 OTIO 工程">表情包 OTIO</div>
             <div class="dropdown-item" id="download-sticker-otioz" role="menuitem" tabindex="0" title="导出表情包图片轨道 OTIOZ 打包工程（服务器打包图片进 zip，需校验表情包根目录）">表情包 OTIOZ</div>
             <div class="dropdown-separator" role="separator"></div>
@@ -155,6 +128,8 @@ __WAVEFORM_CSS__
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-data-menu" role="menu">
             <div class="dropdown-item" id="download-plain-text" role="menuitem" tabindex="0" title="导出纯文本 TXT 字幕">TXT 文本</div>
             <div class="dropdown-item" id="download-resolve-json" role="menuitem" tabindex="0" title="导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入">Resolve JSON</div>
+            <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" data-gap-export-only hidden title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制切点可能出现重复帧或时间戳边界">FFconcat 文件</div>
+            <div class="dropdown-item" id="download-gap-removed-regions-json" role="menuitem" tabindex="0" data-gap-export-only hidden title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
           </div>
         </div>
       </div>
@@ -922,9 +897,9 @@ __WAVEFORM_CSS__
         </div>
       </section>
       <section class="help-subgroup">
-        <h5 class="help-subtitle">去空隙导出</h5>
+        <h5 class="help-subtitle">导出去空隙版本</h5>
         <div class="help-category">
-          <span>「重组后视频」按安全切点流复制，可能保留额外画面，可导出匹配结果视频的 SRT。「重组后烧录视频」解码后精确裁剪，使用去空隙字幕的收缩时间轴。</span>
+          <span>勾选工具栏「导出去空隙版本」，字幕、媒体与时间线使用去空隙结果。「更多导出 → 重组视频（近似裁剪）」按安全切点流复制，可能保留额外画面，可保存匹配字幕。勾选后点击「烧录视频」则会重新编码并精确裁剪。</span>
         </div>
       </section>
     </section>
@@ -1756,7 +1731,7 @@ __WAVEFORM_CSS__
   </div></div><span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>
 <div class="editor-settings-group" role="group" aria-labelledby="export-green-screen-title"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item"><input type="checkbox" id="green-screen-include-audio"> 附带音轨</label>
-<small class="editor-settings-hint">默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P，时长为最后字幕结束后半秒。</small>
+<small class="editor-settings-hint">默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P；原始版本到最后一条字幕结束后半秒，去空隙版本按保留区间总时长导出。</small>
 <button type="button" data-settings-export="download-green-screen-video">生成绿幕视频</button>
   </div></div><span class="editor-settings-group-heading" id="export-format-options-title">格式参数</span>
 <div class="editor-settings-group" role="group" aria-labelledby="export-format-options-title"><div class="editor-settings-sub-group">
@@ -2449,10 +2424,6 @@ __WAVEFORM_CSS__
       <option value="webp">透明 WebP 图片字幕（目标软件需支持 WebP）</option>
       <option value="png">透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
     </select>
-    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
-      <label><input type="radio" id="fcp7-export-timeline-mode" name="fcp7-export-timeline-mode" value="gap_removed" checked> 去空隙时间线</label>
-      <label><input type="radio" name="fcp7-export-timeline-mode" value="source"> 原始时间线</label>
-    </fieldset>
     <div id="fcp7-export-png-options" hidden style="margin-top: 12px">
       <fieldset class="fcp7-radio-group"><legend>输出范围</legend>
         <label><input type="radio" name="fcp7-export-scope" value="subtitles" checked> 仅字幕</label>
@@ -2512,11 +2483,6 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lottie-export-title" aria-describedby="lottie-export-description">
     <h3 id="lottie-export-title">Lottie 动态字幕</h3>
     <p class="modal-desc" id="lottie-export-description">导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。</p>
-    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
-      <label><input type="radio" name="lottie-export-timeline-mode" value="source" checked> 原始时间线</label>
-      <label><input type="radio" id="lottie-export-gap-removed" name="lottie-export-timeline-mode" value="gap_removed"> 去空隙时间线</label>
-    </fieldset>
-    <p class="modal-hint">去空隙时间线将字幕和字词时间映射到压缩后的时间线。</p>
     <label for="lottie-export-resolution">合成尺寸</label>
     <select id="lottie-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -2565,11 +2531,6 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ograf-export-title" aria-describedby="ograf-export-description">
     <h3 id="ograf-export-title">OGraf 动态字幕</h3>
     <p class="modal-desc" id="ograf-export-description">导出符合 OGraf 规范的 .ograf.zip；解压后保持 .ograf.json 与 .mjs 同目录，再把 .ograf.json 拖入 DaVinci Resolve 21。字幕由 Canvas Web Component 渲染。</p>
-    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
-      <label><input type="radio" name="ograf-export-timeline-mode" value="source" checked> 原始时间线</label>
-      <label><input type="radio" id="ograf-export-gap-removed" name="ograf-export-timeline-mode" value="gap_removed"> 去空隙时间线</label>
-    </fieldset>
-    <p class="modal-hint">去空隙时间线将字幕和字词时间映射到压缩后的时间线。</p>
     <label for="ograf-export-resolution">合成尺寸</label>
     <select id="ograf-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>

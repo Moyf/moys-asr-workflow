@@ -18,19 +18,20 @@ test.beforeEach(async ({ page }) => {
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
 });
 
-for (const menuId of ['extra-otio-menu', 'gap-removed-otio-menu']) {
+for (const gap of [false, true]) {
+  const menuId = 'extra-otio-menu';
   for (const language of ['zh', 'en']) {
-    test(`${menuId} settings button has left and right breathing room (${language})`, async ({ page }, testInfo) => {
-      await page.evaluate(({menuId, language}) => {
+    test(`${menuId} settings button has breathing room (${language}, gap=${gap})`, async ({ page }, testInfo) => {
+      await page.evaluate(({gap, language}) => {
         MAWE_I18N.applyLanguage(language);
-        if (menuId === 'gap-removed-otio-menu') {
+        if (gap) {
           MaweBoot.DATA.segments.push({id: 'test', start: 0, end: 1000, text: 'Test'});
-          MaweBoot.DATA.gap_remove = {gaps: [{start: 100, end: 300}], enabled: true};
-          document.getElementById('gap-removed-export-dropdown').hidden = false;
+          MaweBoot.DATA.gap_remove = {schema: 'moy.asr.gap_remove.v1', gaps: [{start: 100, end: 300, removed: true}]};
+          MaweGapRemoveUi.updateGapRemoveUi();
         }
-      }, {menuId, language});
-      const button = menuId.startsWith('extra') ? '#extra-export-btn' : '#gap-removed-export-btn';
-      await page.locator(button).click();
+      }, {gap, language});
+      if (gap) await page.locator('#gap-export-checkbox').check();
+      await page.locator('#extra-export-btn').click();
       await page.locator(`[aria-controls="${menuId}"]`).hover();
       await expect(page.locator(`#${menuId}`)).toBeVisible();
       const gaps = await page.locator(`#${menuId}`).evaluate(menu => {

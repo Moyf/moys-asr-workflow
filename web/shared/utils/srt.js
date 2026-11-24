@@ -167,7 +167,9 @@ export function createUtilsModule(dependencies) {
     const secondary = Array.isArray(secondarySegments) ? secondarySegments : [];
     const labels = options.speakerLabelsEnabled === true ? normalizeSpeakerLabels(options.speakerLabels) : null;
     const separator = normalizeSpeakerLabelSeparator(options.speakerLabelSeparator);
-    const firstMain = getSrtExportFirstIndex(main, options.alignFirstStart === true);
+    const mapTime = typeof options.mapTime === 'function' ? options.mapTime : null;
+    const firstMain = getSrtExportFirstIndex(main, !mapTime && options.alignFirstStart === true);
+    let extendFirstMappedMain = Boolean(mapTime && options.alignFirstStart === true);
     const events = new Map();
     const addEvent = (time, record, entering) => {
       if (!events.has(time)) events.set(time, []);
@@ -178,8 +180,11 @@ export function createUtilsModule(dependencies) {
       const rawStart = Number(segment.start);
       const rawEnd = Number(segment.end);
       if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) return;
-      const start = track === 0 && index === firstMain ? 0 : Math.max(0, Math.round(rawStart));
-      const end = Math.max(0, Math.round(rawEnd));
+      const mappedStart = Math.max(0, Math.round(mapTime ? mapTime(rawStart) : rawStart));
+      const end = Math.max(0, Math.round(mapTime ? mapTime(rawEnd) : rawEnd));
+      if (mapTime && end <= mappedStart) return;
+      const extend = track === 0 && (index === firstMain || extendFirstMappedMain);
+      const start = extend ? 0 : mappedStart;
       if (end <= start) return;
       const context = track === 0 && typeof options.colorContextResolver === 'function'
         ? options.colorContextResolver(segment) || source : source;
@@ -187,6 +192,7 @@ export function createUtilsModule(dependencies) {
       const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator)
         : strippedText).replace(/\r\n?/g, '\n');
       if (!text.trim()) return;
+      if (extend) extendFirstMappedMain = false;
       const record = { track, index, text };
       addEvent(start, record, true);
       addEvent(end, record, false);

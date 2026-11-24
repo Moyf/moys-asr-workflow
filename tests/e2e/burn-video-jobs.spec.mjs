@@ -43,7 +43,7 @@ async function fixture(mode, run) {
     requests.push(req.url);
     if (req.url === '/') {
       res.end('<button id="burn-video-export-btn">Burn</button>'
-        + '<button id="download-gap-removed-burn-video">Burn gap-removed</button>'
+        + '<input type="checkbox" id="gap-export-checkbox">'
         + '<button id="download-green-screen-video">Green screen</button>'
         + '<input type="checkbox" id="green-screen-include-audio">');
       return;
@@ -112,6 +112,8 @@ async function install(page, origin, mode) {
     window.hints = []; window.saved = false;
     window.subtitleBuildOptions = [];
     window.MaweGapRemoveData = { getRemovedGapRanges: () => [] };
+    const gapExport = document.getElementById('gap-export-checkbox');
+    window.MaweGapRemoveUi = { usesGapExport: () => gapExport.checked, resetGapExport: () => { gapExport.checked = false; } };
     window.MaweInlineEdit = {};
     window.MaweCoreState = { player: { currentSrc: location.origin + '/media' } };
     window.MaweSettings = { EDITOR_SETTINGS: { assMode: mode !== 'ass-off' },
@@ -147,6 +149,10 @@ async function install(page, origin, mode) {
 }
 
 async function startBurn(page, button = '#burn-video-export-btn') {
+  if (button === 'gap') {
+    await page.check('#gap-export-checkbox');
+    button = '#burn-video-export-btn';
+  }
   await page.click(button);
   if (button !== '#download-green-screen-video') await page.locator('#burn-video-encoding [type="submit"]').click();
 }
@@ -250,7 +256,7 @@ test('burn failure points to the source disk or save destination as appropriate'
 
 for (const [buttonId, label, expected] of [
   ['#burn-video-export-btn', '烧录视频', { ass: '[Script Info] full' }],
-  ['#download-gap-removed-burn-video', '重组后烧录视频',
+  ['gap', '重组后烧录视频',
     { ass: '[Script Info] gap-removed', intervals: [{ startMs: 0, endMs: 1000 }] }],
 ]) {
   test(`${label} burns, downloads and saves with a dated MP4 name`, async ({ page }) => {
@@ -275,8 +281,8 @@ for (const [buttonId, label, expected] of [
   });
 }
 
-for (const includeAudio of [false, true]) {
-  test(`green screen works without ASS preview and includeAudio=${includeAudio}`, async ({ page }) => {
+for (const [includeAudio, gap] of [[false, false], [true, false], [false, true], [true, true]]) {
+  test(`green screen works without ASS preview (audio=${includeAudio}, gap=${gap})`, async ({ page }) => {
     await fixture('ready', async (origin, state) => {
       await install(page, origin, 'ass-off');
       await page.evaluate(() => {
@@ -285,9 +291,11 @@ for (const includeAudio of [false, true]) {
       });
       await expect(page.locator('#green-screen-include-audio')).not.toBeChecked();
       if (includeAudio) await page.check('#green-screen-include-audio');
+      if (gap) await page.check('#gap-export-checkbox');
       await page.click('#download-green-screen-video');
       await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
-      expect(state.payloads[0]).toMatchObject({ greenScreen: true, includeAudio, ass: '[Script Info] full' });
+      expect(state.payloads[0]).toMatchObject({ greenScreen: true, includeAudio, ass: `[Script Info] ${gap ? 'gap-removed' : 'full'}` });
+      expect(state.payloads[0].intervals).toEqual(gap ? [{startMs: 0, endMs: 1000}] : undefined);
       await page.evaluate(() => MaweBurnVideoExport.invalidateBinding());
       await expect(page.locator('#download-green-screen-video')).toBeHidden();
     });
@@ -359,7 +367,7 @@ test('gap-removed entry without removed gaps or ASS content stays silent and fai
         return null;
       };
     });
-    await startBurn(page, '#download-gap-removed-burn-video');
+    await startBurn(page, 'gap');
     await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('静音空隙')))).toBe(true);
     expect(await page.evaluate(() => window.saved)).toBe(false);
   });
@@ -383,7 +391,7 @@ test('toolbar burn button supports ASS and SRT with a bound video project', asyn
 });
 
 for (const [buttonId, text] of [['#burn-video-export-btn', 'CURRENT SRT'],
-  ['#download-gap-removed-burn-video', 'SHORTENED SRT']]) {
+  ['gap', 'SHORTENED SRT']]) {
   test(`SRT mode uses current text through the same job API: ${buttonId}`, async ({ page }) => {
     await fixture('ready', async (origin, state) => {
       await install(page, origin, 'ass-off');
@@ -427,7 +435,7 @@ test('picker resume rejects revoked burn capability before creating a job', asyn
   });
 });
 
-for (const button of ['#burn-video-export-btn', '#download-gap-removed-burn-video', '#download-green-screen-video']) {
+for (const button of ['#burn-video-export-btn', 'gap', '#download-green-screen-video']) {
   test(`${button} snapshots project gain before waiting for the save picker`, async ({ page }) => {
     await fixture('ready', async (origin, state) => {
       await install(page, origin, 'ready');
@@ -493,7 +501,6 @@ for (const phase of ['admission-body', 'write-pending']) {
       expect(await page.evaluate(() => window.saved)).toBe(false);
       if (phase === 'write-pending') expect(await page.evaluate(() => window.fileAborted)).toBe(true);
       await expect(page.locator('#burn-video-export-btn')).toBeHidden();
-      await expect(page.locator('#download-gap-removed-burn-video')).toBeHidden();
       await expect(page.locator('#download-green-screen-video')).toBeHidden();
     });
   });
@@ -543,7 +550,7 @@ for (const assMode of [true, false]) {
             gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }, { start: 2000, end: 5000 }] }),
           });
         }, { assMode, gapRemoved });
-        await startBurn(page, gapRemoved ? '#download-gap-removed-burn-video' : '#burn-video-export-btn');
+        await startBurn(page, gapRemoved ? 'gap' : '#burn-video-export-btn');
         await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
         expect(state.payloads).toHaveLength(1);
         const payload = state.payloads[0];

@@ -110,20 +110,8 @@ function flushInlineEditsForSave() {
 
 
 
-if (MaweProjectSave.mediaNameEl && !MaweProjectSave.mediaNameEl.classList.contains('empty')) {
-  MaweProjectSave.mediaNameEl.addEventListener('click', () => {
-    const name = MaweProjectSave.mediaNameEl.textContent.trim();
-    if (name) MaweExportTimeline.copyText(name, `已复制媒体名：${name}`);
-  });
-}
-
-
-if (MaweProjectSave.jsonNameEl && !MaweProjectSave.jsonNameEl.classList.contains('empty')) {
-  MaweProjectSave.jsonNameEl.addEventListener('click', () => {
-    const name = MaweProjectSave.jsonNameEl.textContent.trim();
-    if (name) MaweExportTimeline.copyText(name, `已复制：${name}`);
-  });
-}
+MaweProjectSave.updateMediaCopyHint();
+MaweProjectSave.updateProjectDirtyIndicator();
 
 
 
@@ -250,13 +238,18 @@ document.addEventListener('keydown', (event) => {
   MaweDynamicExports.closeOgrafExportModal();
 }, true);
 
+const useGapExport = () => window.MaweGapRemoveUi.usesGapExport();
+const gapExportBasename = () => `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}`;
 MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
   if (MaweDom.downloadMultiSrtButton.classList.contains('disabled')
       || MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return;
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
-  await MaweExportTimeline.downloadFile(MaweExportSrt.buildExtensionSrt(track), `${MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
+  const gap = useGapExport();
+  const payload = MaweExportSrt.buildExtensionSrt(track, gap ? MaweGapRemoveData.getRemovedGapRanges() : []);
+  if (gap && !payload) return;
+  await MaweExportTimeline.downloadFile(payload, `${gap ? gapExportBasename() : MaweBoot.FILENAME_BASE}_extension.srt`, 'text/plain', {
     desc: '副字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
@@ -265,14 +258,23 @@ document.getElementById('download-bilingual-srt')?.addEventListener('click', asy
       || MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-  const payload = MaweExportSrt.buildBilingualSrt();
+  const gap = useGapExport();
+  const payload = MaweExportSrt.buildBilingualSrt(gap ? MaweGapRemoveData.getRemovedGapRanges() : []);
   if (!payload) return;
-  await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_bilingual.srt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(payload, `${gap ? gapExportBasename() : MaweBoot.FILENAME_BASE}_bilingual.srt`, 'text/plain', {
     desc: '双语整合字幕 SRT', types: { 'text/plain': ['.srt'] },
   });
 });
 document.getElementById('download-full-srt')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  const gap = useGapExport();
+  if (gap) {
+    const payload = MaweExportSrt.buildGapRemovedSrt();
+    if (payload) await MaweExportTimeline.downloadFile(payload, `${gapExportBasename()}.srt`, 'text/plain', {
+      desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] },
+    });
+    return;
+  }
   await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
@@ -333,13 +335,16 @@ async function downloadPreparedAss(build, filename, desc) {
 }
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  const gap = useGapExport();
   try {
-    await downloadPreparedAss(() => MaweExportSrt.buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, '完整 ASS 字幕文件');
+    if (gap && !MaweGapRemoveData.getRemovedGapRanges().length) { MaweExportSrt.buildGapRemovedAss(); return; }
+    await downloadPreparedAss(gap ? MaweExportSrt.buildGapRemovedAss : MaweExportSrt.buildAss,
+      `${gap ? gapExportBasename() : MaweBoot.FILENAME_BASE}.ass`, gap ? '去空隙带样式 ASS 字幕' : '完整 ASS 字幕文件');
   } catch (error) {
     MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
 });
-document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
+document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(useGapExport()));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(MaweExportSrt.cleanupMainSegments(), {
@@ -369,6 +374,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.getElementById('download-resolve-json')?.addEventListener('click', async () => {
+  if (useGapExport()) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const payload = MaweExportTimeline.buildResolveJson();
   if (payload) {
@@ -390,30 +396,16 @@ MaweStickerOtioExport.stickerOtioExportMode?.addEventListener('change', () => {
 
 document.getElementById('download-sticker-otio')?.addEventListener('click', () => {
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otio')) return;
+  if (useGapExport()) {
+    MaweStickerOtioExport.exportStickerOtio(
+      'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
+      `${gapExportBasename()}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程',
+    );
+    return;
+  }
   MaweStickerOtioExport.exportStickerOtio(
     'stickers', MaweExportTimeline.buildStickerOtio, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
   );
-});
-document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
-  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = MaweExportSrt.buildGapRemovedSrt();
-  if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
-      desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
-    });
-  }
-});
-document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(true));
-document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
-  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  try {
-    // Preserve the no-gap early return without opening an empty save dialog.
-    if (!MaweGapRemoveData.getRemovedGapRanges().length) { MaweExportSrt.buildGapRemovedAss(); return; }
-    await downloadPreparedAss(() => MaweExportSrt.buildGapRemovedAss(),
-      `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, '去空隙带样式 ASS 字幕');
-  } catch (error) {
-    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
-  }
 });
 async function downloadTimelineWithSrt(basename, saveTimeline, buildSrt, srtDescription) {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
@@ -433,33 +425,34 @@ function downloadTimelineOtio(buildTimeline, basename, description) {
   });
 }
 
-const gapRemovedOtioBasename = () => `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}`;
 const buildGapRemovedOtioSrt = () => MaweExportSrt.buildGapRemovedSrt() || null;
 
 document.getElementById('download-otio')?.addEventListener('click', async () => {
+  if (useGapExport()) {
+    const basename = gapExportBasename();
+    await downloadTimelineWithSrt(basename,
+      () => downloadTimelineOtio(MaweExportTimeline.buildGapRemovedOtio, basename, '去空隙 OTIO 工程'),
+      buildGapRemovedOtioSrt, '去空隙字幕 SRT');
+    return;
+  }
   const basename = MaweBoot.FILENAME_BASE;
   await downloadTimelineWithSrt(basename,
     () => downloadTimelineOtio(MaweExportTimeline.buildSourceOtio, basename, 'OTIO 工程'),
     MaweExportSrt.buildSrt, '完整 SRT 字幕文件');
 });
 document.getElementById('download-otioz')?.addEventListener('click', async () => {
+  if (useGapExport()) {
+    const basename = gapExportBasename();
+    await downloadTimelineWithSrt(basename,
+      () => MaweExportTimeline.exportTimelineOtioz('gap-removed', MaweExportTimeline.buildGapRemovedOtio,
+        `${basename}.otioz`, '去空隙时间线 OTIOZ 打包工程'),
+      buildGapRemovedOtioSrt, '去空隙字幕 SRT');
+    return;
+  }
   const basename = MaweBoot.FILENAME_BASE;
   await downloadTimelineWithSrt(basename,
     () => MaweExportTimeline.exportTimelineOtioz('source', MaweExportTimeline.buildSourceOtio, `${basename}.otioz`, 'OTIOZ 打包工程'),
     MaweExportSrt.buildSrt, '完整 SRT 字幕文件');
-});
-document.getElementById('download-gap-removed-otio')?.addEventListener('click', async () => {
-  const basename = gapRemovedOtioBasename();
-  await downloadTimelineWithSrt(basename,
-    () => downloadTimelineOtio(MaweExportTimeline.buildGapRemovedOtio, basename, '去空隙 OTIO 工程'),
-    buildGapRemovedOtioSrt, '去空隙字幕 SRT');
-});
-document.getElementById('download-gap-removed-otioz')?.addEventListener('click', async () => {
-  const basename = gapRemovedOtioBasename();
-  await downloadTimelineWithSrt(basename,
-    () => MaweExportTimeline.exportTimelineOtioz('gap-removed', MaweExportTimeline.buildGapRemovedOtio,
-      `${basename}.otioz`, '去空隙时间线 OTIOZ 打包工程'),
-    buildGapRemovedOtioSrt, '去空隙字幕 SRT');
 });
 document.getElementById('download-gap-removed-ffconcat')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
@@ -540,7 +533,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       && currentAudioTrack() === selectedAudioTrack))
     && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
     && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
-  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'info');
+  MaweHint.flashHint(tr(gapRebuildHint(isAudio)), 'info');
 
   let handle;
   try {
@@ -1035,6 +1028,10 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     }
   }
 });
+function gapRebuildHint(audio) {
+  return audio ? '按保留区域精确裁切音频，导出为 WAV。' : '不重新编码。切点受关键帧限制，可能保留部分原本要移除的空隙。';
+}
+
 // Refresh both initial server media and browser-local project/media changes.
 window.MaweGapRemovedMediaExport = Object.freeze({
   applyMediaSizeToResolutionModal,
@@ -1051,12 +1048,8 @@ window.MaweGapRemovedMediaExport = Object.freeze({
     const audio = config?.gapRemovedMediaKind === 'audio'
       || (!config?.gapRemovedMediaKind && (knownAudio || (!knownVideo && hasPlayerSource && player?.tagName === 'AUDIO')));
     const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
-    button.textContent = translate(audio ? '重组后音频' : '重组后视频');
-    button.title = translate(audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。');
-    // 烧录需要视频画面；音频工程隐藏去空隙菜单里的烧录入口。
-    const burnItem = document.getElementById('download-gap-removed-burn-video');
-    if (burnItem) burnItem.hidden = audio || !config?.canBurnVideoExport || !config?.burnVideoJobsUrl
-      || window.MaweSettings?.EDITOR_SETTINGS?.assMode !== true;
+    button.textContent = translate(audio ? '重组音频（精确）' : '重组视频（近似裁剪）');
+    button.title = translate(gapRebuildHint(audio));
   },
 });
 window.MaweGapRemovedMediaExport.updateButton();
@@ -1071,36 +1064,22 @@ document.getElementById('download-gap-removed-regions-json')?.addEventListener('
     });
   }
 });
-document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('click', async () => {
-  if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otio')) return;
-  await MaweStickerOtioExport.exportStickerOtio(
-    'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
-  );
-});
-document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
-  if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otioz')) return;
-  const removed = MaweGapRemoveData.getRemovedGapRanges();
-  if (!removed.length) {
-    const msg = '没有已移除的静音空隙；请先在「静音空隙」中扫描';
-    MaweHint.flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
-    return;
-  }
-  await MaweExportTimeline.exportStickerOtoz(
-    'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
-  );
-});
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otioz')) return;
+  if (useGapExport()) {
+    await MaweExportTimeline.exportStickerOtoz(
+      'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
+      `${gapExportBasename()}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程',
+    );
+    return;
+  }
   await MaweExportTimeline.exportStickerOtoz(
     'stickers', MaweExportTimeline.buildStickerOtio,
     `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
 
-// 时间线 OTIO / OTIOZ 导出选项：两个 OTIO 子菜单（原始 / 去空隙）共享同一份设置，
-// 任一处勾选立即持久化并同步另一处；导出时由 buildSourceOtio / buildGapRemovedOtio 读取。
+// OTIO 导出选项对两条时间线生效。
 
 
 
