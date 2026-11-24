@@ -171,7 +171,7 @@ def release_body(changelog: str, tag: str, releases_dir: Path) -> str:
     if metadata["base"]:
         _, base_body = check_document(changelog, "v" + metadata["base"], releases_dir)
         # X.Y.0 is a full summary: never append beta history or earlier patches.
-        body = "# 修复版本说明\n\n" + body + "\n\n# 大版本更新特性\n\n" + base_body
+        body = "# 补丁版本说明\n\n" + body + "\n\n# 大版本更新特性\n\n" + base_body
     return body
 
 
