@@ -22,6 +22,44 @@ const render = (segment = cue, overrides = {}) =>
 const events = ass => ass.match(/^Dialogue: .*$/gm) || [];
 const hideText = String.raw`{\1a&HFF&\2a&HFF&`;
 const hideBox = String.raw`{\3a&HFF&\4a&HFF&}`;
+const karaokeCue = {
+  ...cue, text: '标兵怕碰炮兵炮',
+  items: Array.from('标兵怕碰炮兵炮', (text, index) => ({
+    text, start: 100 + index * 250, end: 350 + index * 250,
+  })),
+};
+const karaokeOptions = {
+  speakerLabelsEnabled: false,
+  assProfile: { animations: { karaoke: { enabled: true } } },
+  assStyle: { ...style, fontName: 'Microsoft YaHei', primaryColor: '#f04422', secondaryColor: '#2277ef' },
+};
+
+test('only the karaoke glyph event carries the original clock', () => {
+  const [box, text, extra] = events(render(karaokeCue, karaokeOptions));
+  assert.equal(extra, undefined);
+  assert.ok(box.includes(hideText) && !box.includes('\\k') && box.endsWith(karaokeCue.text));
+  assert.ok(text.includes(hideBox) && text.includes('{\\k10}{\\k25}标{\\k25}兵'));
+  assert.equal(box.split(',,')[0], text.split(',,')[0]);
+
+  const [speakerBox, speakerText] = events(render(karaokeCue, { ...karaokeOptions, speakerLabelsEnabled: true }));
+  assert.ok(speakerBox.endsWith(`MOY: ${karaokeCue.text}`));
+  assert.match(speakerText, /MOY: .*\\k10/u);
+
+  const emphasized = { ...karaokeCue, text: '**标兵**怕碰炮兵炮' };
+  const emphasisStyle = { ...karaokeOptions.assStyle, emphasisStyle: 'text', emphasisScale: 1 };
+  const [colorBox, colorText] = events(render(emphasized, { ...karaokeOptions, assStyle: emphasisStyle }));
+  assert.ok(colorBox.endsWith(karaokeCue.text));
+  assert.match(colorText, /\\1c.*标/u);
+  const mixedSize = events(render(emphasized, {
+    ...karaokeOptions, assStyle: { ...emphasisStyle, emphasisScale: 1.5 },
+  }));
+  assert.equal(mixedSize.length, 1);
+  assert.match(mixedSize[0], /\\k25.*\\fs.*标/u);
+
+  const [plain, unexpected] = events(render({ ...karaokeCue, items: [] }, karaokeOptions));
+  assert.equal(unexpected, undefined);
+  assert.ok(!plain.includes(hideText) && !plain.includes('\\k'));
+});
 
 test('speaker box and text stay consecutive on the original track and clock', () => {
   const ass = render(cue, {
@@ -128,6 +166,75 @@ function frameRenderer() {
     return result.stdout;
   };
 }
+
+test('libass karaoke box has no seams and the original glyphs still flip on time', {
+  skip: skipWithoutLibass,
+}, () => {
+  const frame = frameRenderer();
+  const ass = render(karaokeCue, karaokeOptions);
+  const [box, text] = events(ass);
+  assert.ok(box?.includes(hideText) && text?.includes(hideBox));
+  const header = ass.slice(0, ass.indexOf('Dialogue:'));
+  const old = text.replace(hideBox, '');
+  const textAt = old.indexOf(',,') + 2;
+  const oldBox = old.slice(0, textAt) + hideText + '}' + old.slice(textAt);
+  let beforeFirstFlip;
+  for (const time of [90, 100, 850]) {
+    const raw = frame(`ktv-old-${time}`, header + old + '\n', time);
+    const fixed = frame(`ktv-new-${time}`, ass, time);
+    const glyphs = frame(`ktv-text-${time}`, header + text + '\n', time);
+    const background = frame(`ktv-box-${time}`, header + box + '\n', time);
+    const rawBox = frame(`ktv-old-box-${time}`, header + oldBox + '\n', time);
+    let seams = 0, sung = 0, unsung = 0;
+    for (let index = 0; index < raw.length; index += 3) {
+      if (rawBox[index] < 128) {
+        seams++;
+        assert.equal(background[index], 128);
+      }
+      const contrast = image => image[index] - image[index + 2];
+      const glyph = contrast(glyphs);
+      assert.ok(Math.abs(contrast(raw) - contrast(fixed)) <= 1);
+      if (Math.abs(glyph) <= 10) continue;
+      assert.equal(background[index], 128);
+      if (glyph > 0) sung++;
+      else unsung++;
+    }
+    assert.ok(seams > 100 && unsung > 100);
+    if (time === 90) {
+      assert.equal(sung, 0);
+      beforeFirstFlip = background;
+    } else {
+      assert.ok(sung > 100);
+      assert.deepEqual(background, beforeFirstFlip);
+    }
+  }
+});
+
+test('libass karaoke text and box wrap together', { skip: skipWithoutLibass }, () => {
+  const frame = frameRenderer();
+  const wrappedCue = {
+    ...karaokeCue, text: 'HELLO WORLD HELLO',
+    items: ['HELLO', 'WORLD', 'HELLO'].map((text, index) => ({
+      text, start: index * 500, end: (index + 1) * 500,
+    })),
+  };
+  const ass = render(wrappedCue, {
+    ...karaokeOptions,
+    assStyle: { ...karaokeOptions.assStyle, fontName: 'Arial', marginL: 160, marginR: 160, outline: 6 },
+  });
+  const [box, text] = events(ass);
+  const header = ass.slice(0, ass.indexOf('Dialogue:'));
+  const background = frame('wrapped-ktv-box', header + box + '\n');
+  const glyphs = frame('wrapped-ktv-text', header + text + '\n');
+  const rows = new Set();
+  for (let index = 0; index < glyphs.length; index += 3) {
+    if (Math.abs(glyphs[index] - glyphs[index + 2]) <= 10) continue;
+    assert.equal(background[index], 128);
+    rows.add(Math.floor(index / (640 * 3)));
+  }
+  assert.ok(Math.max(...rows) - Math.min(...rows) > 48,
+    'the glyph bounds must exceed one line at the fixture’s 48px font size');
+});
 
 test('libass aligns native box and glyph layers and removes speaker-seam pixels', {
   skip: skipWithoutLibass,
