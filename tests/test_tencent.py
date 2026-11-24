@@ -49,17 +49,20 @@ class TencentProviderTests(unittest.TestCase):
     def test_parse_result_derives_word_granularity_for_latin_text(self) -> None:
         result = parse_result({
             "ResultDetail": [{
-                "FinalSentence": "hello world",
+                "FinalSentence": "hello dear world",
                 "StartMs": 0,
                 "EndMs": 800,
                 "Words": [
                     {"Word": "hello", "OffsetStartMs": 0, "OffsetEndMs": 400},
+                    {"Word": " ", "OffsetStartMs": -1, "OffsetEndMs": -1},
+                    {"Word": "dear", "OffsetStartMs": 400, "OffsetEndMs": 400},
                     {"Word": " world", "OffsetStartMs": 400, "OffsetEndMs": 800},
                 ],
             }],
         })
 
         self.assertEqual(result["timestamp_granularity"], "word")
+        self.assertEqual(result["items"][1], {"text": " dear", "start": 400, "end": 400})
 
     def test_parse_result_marks_non_mapping_word_as_sentence_fallback(self) -> None:
         result = parse_result({

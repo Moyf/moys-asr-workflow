@@ -71,6 +71,25 @@ test('candidate locate button scrolls the basic waveform to its range', async ({
   ).toBeGreaterThan(before);
 });
 
+test('Cmd/Ctrl+click on a take jumps to its recording card without toggling it', async ({ page }) => {
+  await page.goto(server.url);
+  const take = page.locator('#take-overlay .take-range[data-candidate-id]').first();
+  await expect(take).toBeVisible();
+  const candidateId = await take.getAttribute('data-candidate-id');
+  const pressedBefore = await take.getAttribute('aria-pressed');
+
+  // macOS 上 Ctrl+点击会触发右键菜单，跳转手势的 Mac 入口是 Cmd（metaKey）。
+  await take.click({ modifiers: ['Meta'] });
+
+  const card = page.locator('#lines .recording-card', {
+    has: page.locator(`.recording-entry[data-candidate-id="${candidateId}"]`),
+  }).first();
+  // scrollToRecordingCard 给目标卡片加上 900ms 的 jump-target 高亮。
+  await expect(card).toHaveClass(/jump-target/, { timeout: 2000 });
+  // 跳转手势在回调前 return，不应改变 take 的采用状态。
+  await expect(take).toHaveAttribute('aria-pressed', pressedBefore);
+});
+
 test('defaults to multi-row mode and adopted takes toggle manual disable', async ({ page }) => {
   await page.goto(server.url);
 

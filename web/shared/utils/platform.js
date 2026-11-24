@@ -5,6 +5,8 @@ export function createUtilsModule(dependencies) {
 
 
   // macOS 上用 ⌘（event.metaKey）替代 Ctrl；Win/Linux 仍是 Ctrl。
+  // server-align/index.html 的 ALT_KEY_LABEL 复制了本判定（独立页面不引共享
+  // 模块）；改正则或回退时需两侧同步。
   function isMacPlatform(nav) {
     const n = nav || getNavigator();
     if (!n) return false;

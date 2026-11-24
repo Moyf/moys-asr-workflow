@@ -1041,7 +1041,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('切换空隙的启用/禁用状态', page)
         self.assertIn('添加新的移除空隙', page)
         self.assertIn('Alt+左键拖动', page)
-        self.assertIn('<span class="help-important"><kbd>Alt+左键拖动</kbd> 添加新的移除空隙</span>', page)
+        self.assertIn('<span class="help-important"><kbd data-alt-key>Alt+左键拖动</kbd> 添加新的移除空隙</span>', page)
         self.assertIn('右侧显示可禁用数量', page)
         self.assertIn('点击「进一步收缩空隙」在现有结果上继续收缩', page)
         self.assertIn('仅在拖动边界模式生效', page)
