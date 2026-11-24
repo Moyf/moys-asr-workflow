@@ -293,6 +293,9 @@ export function initMaweHistory() {
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();
   MaweState.reconcileSegmentsDirty();
+  // 样式库跟随：已跟随过的句子被历史恢复成旧快照后，重新对齐到库的当前版本
+  //（打开工程时就是旧版本的句子不在跟随记录里，不会被动到）。必须在 renderAll 之前。
+  window.MaweAssCueStyleSync?.reapply?.();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
   MaweCuePanelState.currentCuePanelIdx = -1;

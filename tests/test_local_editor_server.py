@@ -8,6 +8,7 @@ import http.client
 import io
 import json
 import os
+import socket
 import struct
 import subprocess
 import sys
@@ -3239,6 +3240,25 @@ def _blank_project() -> "server_editor.ServerProject":
 
 
 class EditorPortSelectionTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX address reuse after an active close")
+    def test_open_editor_server_reuses_port_after_the_previous_editor_closes(self) -> None:
+        with server_editor.EditorServer(("127.0.0.1", 0), _blank_project()) as previous:
+            address = previous.server_address
+            with socket.create_connection(address, timeout=2) as client:
+                accepted, _ = previous.socket.accept()
+                with accepted:
+                    # The server sends the first FIN and owns the TIME_WAIT socket.
+                    accepted.shutdown(socket.SHUT_WR)
+                    self.assertEqual(client.recv(1), b"")
+                    client.shutdown(socket.SHUT_WR)
+                    accepted.settimeout(2)
+                    self.assertEqual(accepted.recv(1), b"")
+
+        server, advanced = server_editor.open_editor_server(*address, _blank_project())
+        with server:
+            self.assertFalse(advanced)
+            self.assertEqual(server.server_address, address)
+
     def test_open_editor_server_advances_when_omitted_port_is_busy(self) -> None:
         """Given 端口省略且起始端口被占用，When 绑定服务，Then 自动顺延到之后的空闲端口并标记 advanced。"""
         blocker = server_editor.EditorServer(("127.0.0.1", 0), _blank_project())
