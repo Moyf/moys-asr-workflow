@@ -31,6 +31,19 @@ async function importSubtitleFromInput(event) {
   const importAsExtension = MaweMultiSubtitleCore.pendingSrtImportAsExtension;
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
   if (!file) return;
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.ass') || name.endsWith('.ssa')) {
+    MaweHint.flashHint('编辑器不支持导入 ASS/SSA 字幕。可在 Launcher 的「烧录字幕」中使用。', 'warning');
+    return;
+  }
+  const isSubtitle = MaweDragDrop.isSrtFile(file) || MaweDragDrop.isLrcFile(file);
+  const isSecondaryProject = importAsExtension && (name.endsWith('.json') || name.endsWith('.mosp'));
+  if (!isSubtitle && !isSecondaryProject) {
+    MaweHint.flashHint(importAsExtension
+      ? '请选择 SRT、LRC、JSON 或 MOSP 文件。'
+      : '请选择 SRT 或 LRC 字幕文件。', 'warning');
+    return;
+  }
   if (importAsExtension) {
     try {
       const segments = await MaweLoadingProgress.parseSubtitleImportFile(file);

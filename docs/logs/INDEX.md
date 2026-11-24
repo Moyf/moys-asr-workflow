@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.12.0 之后 | 2026-11-24 | [ASS/SSA 导入提示独立盲审](release1.12.0/261124_ASS导入提示/REVIEW_FINDINGS.md) | 文件选择器后缀校验及主副轨、拖放回归。 |
 | 1.12.0 之后 | 2026-11-24 | [烧录保存与 OTIO 导出独立审查](release1.12.0/261124_烧录保存与OTIO导出/REVIEW_FINDINGS.md) | macOS 原生选址、POSIX 重启、烧录失败提示与 WebKit 配套下载。 |
 | 1.11.4 之后 | 2026-11-23 | [1.12.0 发布记录](release1.11.4/261123_1.12.0发布/发布记录.md) | minor 版本发布：CL 编辑器升格流程与两个小修复随版；macOS 编辑器子进程冷启动竞态修复后移动 tag 重发布，双层核验通过 |
 | 1.11.4 之后 | 2026-11-23 | [GitHub Star 审查](release1.11.4/261123_GitHubStar/REVIEW_FINDINGS.md) / [人工核对](release1.11.4/261123_GitHubStar/GitHubStar.checklist.md) | Launcher 和本地编辑器星标入口，覆盖点击写入、回退及仓库导航；不调用真实 Star API |
