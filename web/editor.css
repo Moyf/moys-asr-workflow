@@ -2220,7 +2220,10 @@
   .ass-frame-sticker-layer .sticker-overlay-content img:not(:only-child) { max-height: 50%; }
   .ass-frame-image-wrap.ass-frame-native { display: block; overflow: auto; }
   .ass-frame-native .ass-frame-image { width: auto; height: auto; max-width: none; max-height: none; border-radius: 0; }
-  .ass-frame-placeholder { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
+  .ass-frame-placeholder {
+    margin: 0; max-inline-size: 28em; color: var(--text-muted);
+    font-size: 16px; line-height: 1.5; text-align: center; text-wrap: balance;
+  }
   /* 播放中画面必然滞后于播放头：灰色斜纹压住旧帧并提示暂停后自动重渲染。 */
   .ass-frame-stale {
     position: absolute; inset: 8px;

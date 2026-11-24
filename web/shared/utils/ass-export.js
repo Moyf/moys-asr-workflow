@@ -301,21 +301,34 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function assSpeakerBoxText(content) {
+  function assBoxPlainText(content) {
+    const plain = content.replaceAll('\\N', '\n');
+    return /^[\p{Script=Latin}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{P}\p{Zs}0-9０-９\n]+$/u.test(plain)
+      && !/[\\{}]/u.test(plain);
+  }
+
+  function assSpeakerBoxText(content, { allowSameColor = false } = {}) {
     // Both export paths emit a fill override before each half. Any other
     // inline override (including font fallback) keeps its original event.
     const match = /^\{\\(?:1c|c)(&H00[0-9A-F]{6}&)\}([^{}]+)\{\\(?:1c|c)(&H00[0-9A-F]{6}&)\}([^{}]+)$/u.exec(content);
-    if (!match || match[1] === match[3]) return '';
+    if (!match || (!allowSameColor && match[1] === match[3])) return '';
     const [, , label, , body] = match;
-    const plain = (label + body).replaceAll('\\N', '\n');
     const bodyStart = body.replaceAll('\\N', '\n').trimStart();
     // Merging colour runs also merges their shaping context. A bare ASCII
     // colon can change glyph advance when joined to the surrounding text.
     // Keep the existing separators and admit only common opening punctuation.
     if (!/[：\p{Zs}]$/u.test(label) || !/^[\p{L}0-9０-９"'“‘「『＂＇(（—…]/u.test(bodyStart)
-        || plain.includes('\\')
-        || !/^[\p{Script=Latin}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{P}\p{Zs}0-9０-９\n]+$/u.test(plain)) return '';
+        || !assBoxPlainText(label + body)) return '';
     return label + body;
+  }
+
+  function assKaraokeBoxText(content, hasSpeaker) {
+    // Only the glyph event needs the syllable boundaries. Keep the native
+    // box as one run wherever possible, without dropping typography overrides.
+    const withoutKaraoke = content.replace(/(?<!\\)\{\\k\d+\}/gu, '');
+    if (hasSpeaker) return assSpeakerBoxText(withoutKaraoke, { allowSameColor: true });
+    const plain = withoutKaraoke.replace(/(?<!\\)\{\\1c&H00[0-9A-F]{6}&\}/gu, '');
+    return assBoxPlainText(plain) ? plain : '';
   }
 
 
@@ -645,8 +658,8 @@ export function createUtilsModule(dependencies) {
       // The two masks run after animation so even a shared \alpha transform
       // can only paint the channels assigned to each event. Custom tags
       // outside this grammar keep their original rendering.
-      const canSplitSpeakerBox = colorStyle === 'speaker' && (!transform.enabled || !transform.tags
-        || /^(?:\\(?:(?:fs|fscx|fscy|fsp|frz|fr|bord|shad|b|i|u|s)-?\d+(?:\.\d+)?|[1234]?c&H[0-9a-f]{6,8}&?|(?:alpha|[1234]a)&H[0-9a-f]{2}&?)\s*)+$/iu.test(transform.tags));
+      const canSplitBox = !transform.enabled || !transform.tags
+        || /^(?:\\(?:(?:fs|fscx|fscy|fsp|frz|fr|bord|shad|b|i|u|s)-?\d+(?:\.\d+)?|[1234]?c&H[0-9a-f]{6,8}&?|(?:alpha|[1234]a)&H[0-9a-f]{2}&?)\s*)+$/iu.test(transform.tags);
       for (const slice of plan.slices) {
         if (slice.diagnostic) continue;
         for (const piece of slice.pieces) for (const item of slice.items) {
@@ -670,7 +683,7 @@ export function createUtilsModule(dependencies) {
           }
           const size = Math.max(1, number(item.fontSize * scale));
           // 普通句按排布分片发射，震动句在每个分片内再按固定间隔发射。
-          // 说话人底框与文字在同一个发射点复用时钟及排版信息。
+          // 底框与文字在同一个发射点复用时钟及排版信息。
           const emitEvent = (start, end, position, { includeMove = slice.legacy && item.role === 'main' && !item.manual } = {}) => {
             const animation = start === item.start && end === item.end && scale === 1
               ? assAnimationOverrideTags(profile, { includeMove, fad: item.fad, pop: item.pop, style: item.style })
@@ -692,8 +705,11 @@ export function createUtilsModule(dependencies) {
             const overrides = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '');
             const eventName = options.pngEventNames ? `maw:${item.role}:${item.index}` : item.speakerName;
             const event = `Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(eventName)},0,0,0,,${overrides}`;
-            const box = canSplitSpeakerBox && item.speakerName && item.style.borderStyle === 3
-              ? assSpeakerBoxText(content) : '';
+            let box = '';
+            if (canSplitBox && item.style.borderStyle === 3) {
+              if (item.karaoke) box = assKaraokeBoxText(content, Boolean(item.speakerName));
+              else if (colorStyle === 'speaker' && item.speakerName) box = assSpeakerBoxText(content);
+            }
             if (box) {
               // libass exempts transforms from collision detection. For the
               // unpositioned main cue, put a no-op clock on the box only.

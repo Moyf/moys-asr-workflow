@@ -1023,7 +1023,7 @@
     '如果想要查看当前画面实际的 ASS 字幕效果，可以': 'To see the actual ASS subtitle rendering for the current frame,',
     '打开 ASS 实际画面预览窗口': 'open the ASS actual-frame preview window',
     '编辑 ASS 字幕样式': 'Edit ASS subtitle styles',
-    '点击下方按钮，用 libass 渲染当前播放位置的实际画面。': 'Click the button below to render the actual frame at the playhead with libass.',
+    '首次打开实际画面渲染，请稍等片刻。勾选左下角按钮可以自动更新渲染。': 'The first actual-frame render may take a moment. Check the box at the bottom left to update the preview automatically.',
     '📷 渲染当前帧': '📷 Render current frame', 'libass 实际渲染': 'Actual libass render',
     '暂停后重新渲染': 'Re-renders once paused',
     '画面已过期': 'Frame is out of date',

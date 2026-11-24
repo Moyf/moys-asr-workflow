@@ -51,6 +51,32 @@ async function seek(page, seconds) {
   await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.seeking)).toBe(false);
 }
 
+test('shows a readable hint while waiting for the first actual frame', async ({ page }) => {
+  const { promise, resolve } = Promise.withResolvers();
+  await page.route('**/api/ass-frame', async (route) => {
+    await promise;
+    await route.continue();
+  });
+  try {
+    await enableAss(page);
+    await seek(page, 1.5);
+    await page.locator('#ass-frame-quick-open').click();
+    const hint = page.locator('#ass-frame-placeholder');
+    await expect(hint).toBeVisible();
+    await expect(hint).toHaveText('首次打开实际画面渲染，请稍等片刻。勾选左下角按钮可以自动更新渲染。');
+    await expect(hint).toHaveCSS('font-size', '16px');
+    await expect(hint).toHaveCSS('line-height', '24px');
+    const bounds = await hint.boundingBox();
+    const controls = await page.locator('.ass-frame-options').boundingBox();
+    expect(controls.y - bounds.y - bounds.height).toBeGreaterThanOrEqual(8);
+    await page.locator('#ass-frame-window').screenshot({ path: test.info().outputPath('ass-frame-first-render-hint.png') });
+  } finally {
+    resolve();
+  }
+  await expect(page.locator('#ass-frame-image')).toBeVisible();
+  await expect(page.locator('#ass-frame-placeholder')).toBeHidden();
+});
+
 test('only auto-renders while the comparison window or stage overlay needs a frame', async ({ page }) => {
   let requests = 0;
   await page.route('**/api/ass-frame', async (route) => { requests += 1; await route.continue(); });
