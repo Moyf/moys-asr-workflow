@@ -213,6 +213,8 @@ interface Window {
 interface Window {
   AsrEditorUtils: any;
   MAWE_I18N: any;
+  // 单句 ASS 样式跟随样式库（editor-wiring-ass-cue-sync.js 注入）。
+  MaweAssCueStyleSync?: any;
   MaweMarkersPanel?: {
     createAiCleanupReviewMuteButton?: (markerId: string) => HTMLButtonElement;
     updateAiCleanupReviewMuteButton?: (button: HTMLElement, markerId: string) => void;
@@ -233,7 +235,7 @@ interface MaweHostApi {
     hasSavePicker(): boolean;
     pickSaveFile(options: object): Promise<FileSystemFileHandle>;
     writeBlob(handle: FileSystemFileHandle, buildBlob: () => Blob): Promise<void>;
-    downloadBlob(blob: Blob, filename: string): void;
+    downloadBlob(blob: Blob, filename: string, options?: { separateFrame?: boolean }): void;
   };
   server: { fetch(url: string | URL, options?: RequestInit): Promise<Response> };
   runtime: { getNavigator(): Navigator | undefined; hasUserActivation(): boolean };

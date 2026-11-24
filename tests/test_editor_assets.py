@@ -196,6 +196,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/boot/editor-wiring-initial-config.js",
                 "editor/ui/editor-dom-panels.js",
                 "editor/ui/editor-wiring-dom-panels.js",
+                "editor/styles/editor-wiring-ass-cue-sync.js",
                 "editor/styles/editor-wiring-ass-manager.js",
                 "editor/styles/editor-wiring-ass-transfer.js",
                 "editor/ui/editor-wiring-settings-init.js",
@@ -575,12 +576,16 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 其余仍 classic 的门面继续按静态标记核对相对位置。
         markers = (
             r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
-            r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
-            r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
+            r'(?<![\w$])[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
+            r'(?<![\w$])[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
             r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
             r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
-        indices = [re.search(marker, page).start() for marker in markers]
+        indices = []
+        for marker in markers:
+            match = re.search(marker, page)
+            self.assertIsNotNone(match, f"Missing facade assignment: {marker}")
+            indices.append(match.start())
         self.assertEqual(indices, sorted(indices))
         self.assertIn('window.AsrWaveform=', page)
         self.assertLess(pushed.index('editor/media/waveform.js'),
