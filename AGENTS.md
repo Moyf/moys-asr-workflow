@@ -163,6 +163,8 @@ uv run python edit.py --blank
 
 有明显用户感知的改动必须写进 CHANGELOG，按 PR 或 branch 的整体结果汇总。小节归属：行为与体验改进进【✨ 提升】，问题修复进【🐛 修复】，行为与默认值变化进【🔄 变更】；只有完整的新能力才进【🚀 全新特性】，不确定时放提升，由维护者上调。开发期间为完成某特性产生的内部修复并入该特性，不单列；已发布版本不回改。
 
+日常 PR 把新条目写入 `CHANGELOG.md` 顶部的 `## [未发布]`。发布后若该区尚未建立，就按这个标题原样补上。发布脚本只识别 `未发布`，会把 `## [Unreleased]` 当成无效版本，导致 `Blocking / release` 失败。凡改动 CHANGELOG，提交前运行 `uv run --no-sync python scripts/prepare_release_notes.py --check-all`，校验通过后再提交。
+
 条目面向用户，默认一句话「**简短标题** ： 结果」。不写实现细节、根因、重试过程、测试与边缘情况；操作步骤和限制放用户指南，技术细节放工程文档或日志。
 
 发布前确认：版本号、`CHANGELOG.md`、README 命令与 `blank-editor.html` 相互一致；含 `web/` 或模板变更时此时才运行 `uv run python edit.py --blank`；跑完上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 仍正确。新增远端、发布相关的推送、打 tag 或创建 GitHub Release 均需维护者明确授权；日常更新已开启的 PR 按上节执行。
