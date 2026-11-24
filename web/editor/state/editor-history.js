@@ -279,7 +279,7 @@ export function initMaweHistory() {
     applyHistoryRecord(record);
     // 撤销可能变脏也可能变清洁，两种方向都立即刷新指示器（事件回调整体重算）。
     MaweState.markProjectDirty();
-    MaweHint.flashHint(`已撤销：${record.label}（剩 ${editorHistory.undoLength()} 步）`, 'success');
+    MaweHint.flashHint(`已撤销：${record.label}（剩 ${editorHistory.undoLength()} 步）`, 'success', { passive: true });
     updateUndoRedoButtons();
   }
 
@@ -299,7 +299,7 @@ export function initMaweHistory() {
     applyHistoryRecord(record);
     // 与撤销一致：重做两个方向都立即刷新指示器。
     MaweState.markProjectDirty();
-    MaweHint.flashHint(`已重做：${record.label}（剩 ${editorHistory.redoLength()} 步）`, 'success');
+    MaweHint.flashHint(`已重做：${record.label}（剩 ${editorHistory.redoLength()} 步）`, 'success', { passive: true });
     updateUndoRedoButtons();
   }
 
