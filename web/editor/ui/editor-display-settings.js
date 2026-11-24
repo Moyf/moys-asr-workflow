@@ -390,6 +390,12 @@ export function initMaweDisplaySettings() {
   }
 
 
+  // macOS 用 ⌥（Option）替代 Alt；Win/Linux 仍显示 Alt。
+  function altKeyLabel() {
+    return window.AsrEditorUtils?.isMacPlatform() ? 'Option' : 'Alt';
+  }
+
+
 
   function splitKeyLabel() {
     return MaweDom.splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
@@ -403,15 +409,25 @@ export function initMaweDisplaySettings() {
 
 
 
-  // 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
+  // 把帮助面板等静态 <kbd data-mod-key> / <kbd data-alt-key> 与「拆分按键」
+  // 下拉选项文本按平台替换。
   function applyPlatformKeyLabels() {
-    if (modKeyLabel() === 'Ctrl') return;
-    document.querySelectorAll('[data-mod-key]').forEach((el) => {
-      el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
-    });
-    if (MaweDom.splitKeySel) {
-      const opt = MaweDom.splitKeySel.querySelector('option[value="ctrl-enter"]');
-      if (opt) opt.textContent = 'Cmd+Enter';
+    const macMod = modKeyLabel() === 'Cmd';
+    const macAlt = altKeyLabel() === 'Option';
+    if (!macMod && !macAlt) return;
+    if (macMod) {
+      document.querySelectorAll('[data-mod-key]').forEach((el) => {
+        el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
+      });
+      if (MaweDom.splitKeySel) {
+        const opt = MaweDom.splitKeySel.querySelector('option[value="ctrl-enter"]');
+        if (opt) opt.textContent = 'Cmd+Enter';
+      }
+    }
+    if (macAlt) {
+      document.querySelectorAll('[data-alt-key]').forEach((el) => {
+        el.textContent = el.textContent.replace(/^Alt/, 'Option');
+      });
     }
   }
 
@@ -433,6 +449,7 @@ export function initMaweDisplaySettings() {
     applyEditorDisplaySettings,
     bindCueEditorDisplayToggle,
     modKeyLabel,
+    altKeyLabel,
     splitKeyLabel,
     confirmKeyLabel,
     applyPlatformKeyLabels
