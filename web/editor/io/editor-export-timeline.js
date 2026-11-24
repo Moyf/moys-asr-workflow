@@ -728,7 +728,7 @@ export function initExportTimelineModule() {
 
 
 
-  const TIMELINE_OTIOZ_BUTTONS = ['download-otioz', 'download-gap-removed-otioz'];
+  const TIMELINE_OTIOZ_BUTTONS = ['download-otioz'];
 
 
 
@@ -753,7 +753,7 @@ export function initExportTimelineModule() {
   // 表情包导出的两种交付格式：
   //   .otio（original 模式，引用本机路径）始终可用
   //   .otioz（服务器打包 zip）需要 server-editor + 已绑定工程文件，否则灰显并说明原因
-  const STICKER_OTIOZ_BUTTONS = ['download-sticker-otioz', 'download-gap-removed-sticker-otioz'];
+  const STICKER_OTIOZ_BUTTONS = ['download-sticker-otioz'];
 
 
 

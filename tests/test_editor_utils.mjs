@@ -3756,6 +3756,10 @@ test('formats removed silence duration and media share for the summary', () => {
     '45秒（占比 45.9%）',
   );
   assert.equal(helpers.formatGapRemoveDuration(45_890, 0), '45秒');
+  assert.equal(helpers.formatGapRemoveDuration(168_000, 345_000), '2分48秒（占比 48.7%）');
+  assert.equal(i18n.translateText('1小时1分1秒（占比 25%）', 'en'), '1h 1m 1s (25% of media)');
+  assert.equal(i18n.translateText('2分（占比 25%）', 'en'), '2m (25% of media)');
+  assert.equal(i18n.translateText('2分', 'en'), '2m');
 });
 
 
@@ -6609,7 +6613,9 @@ test('rejects export plans whose overlay stickers fall outside the output durati
 
 test('translates every project-export option, outcome, and warning key in both locales', () => {
   const keys = [
-    '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',
+    '导出去空隙版本', '导出帧率', '写入原生字幕文本对象',
+    '当前工程共 {count} 个空隙，总时长 {duration}', '其中 {count} 个会在导出时移除，共 {duration}',
+    'Resolve JSON 仅支持原始时间线', '空隙区间已变化，请重新导出。',
     '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
@@ -7651,6 +7657,24 @@ test('bilingual SRT preserves speaker color contexts and only extends the first 
     '3', '1500 --> 2000', 'A：Later\nB：Second', '',
   ].join('\n'));
   assert.equal(helpers.buildBilingualSrtPayload([], []), '');
+});
+
+test('bilingual SRT merges on the compressed clock and drops collapsed cues before aligning to zero', () => {
+  const main = [{ start: 450, end: 550, text: 'removed main' },
+    { start: 800, end: 1100, text: 'kept main' }];
+  const secondary = [{ start: 450, end: 600, text: 'removed secondary', color: { name: 'blue' } },
+    { start: 750, end: 1000, text: 'translation', color_ref: { headIdx: 0, name: 'blue' } }];
+  const snapshot = JSON.stringify([main, secondary]);
+  const result = helpers.buildBilingualSrtPayload(main, secondary, {
+    mapTime: time => helpers.mapGapRemovedTime(time, [{ start: 400, end: 700 }]),
+    alignFirstStart: true, speakerLabelsEnabled: true, speakerLabels: { blue: 'B' }, speakerLabelSeparator: ': ',
+  });
+  assert.equal(result, [
+    '1', '0 --> 450', 'kept main', '',
+    '2', '450 --> 700', 'kept main\nB: translation', '',
+    '3', '700 --> 800', 'kept main', '',
+  ].join('\n'));
+  assert.equal(JSON.stringify([main, secondary]), snapshot);
 });
 
 test('wrap chars presets insert at both ends and skip already wrapped text', () => {

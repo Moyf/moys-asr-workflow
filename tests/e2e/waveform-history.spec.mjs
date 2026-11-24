@@ -2100,10 +2100,10 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
     MaweGapRemoveUi.updateGapRemoveUi();
     MaweCuePanel.renderAll();
   });
-  await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
-  await page.locator('#gap-removed-export-btn').click();
-  await expect(page.locator('#download-gap-removed-color-srt')).toBeHidden();
-  await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeHidden();
+  await page.locator('#gap-export-checkbox').check();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-color-srt')).toBeHidden();
+  await expect(page.locator('#subtitle-export-separator')).toBeHidden();
 });
 
 test('nested export menus preserve pointer reachability and keyboard focus', async ({ page }) => {
@@ -2310,12 +2310,13 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
       window.showSaveFilePicker = undefined;
     });
 
-    await page.locator('#gap-removed-export-btn').click();
-    await expect(page.locator('#download-gap-removed-color-srt')).toBeVisible();
-    await expect(page.locator('#download-gap-removed-otio')).toHaveText(expectedByLang[lang].otioLabel);
+    await page.locator('#gap-export-checkbox').check();
+    await page.locator('#subtitle-export-btn').click();
+    await expect(page.locator('#download-color-srt')).toBeVisible();
+    await expect(page.locator('#download-otio')).toHaveText(expectedByLang[lang].otioLabel);
 
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('#download-gap-removed-color-srt').click();
+    await page.locator('#download-color-srt').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe(expectedByLang[lang].colorSrtName);
   }
@@ -2367,10 +2368,11 @@ test('server media loads from the resolved project path and OTIO keeps its liter
   });
   const timelineDownload = page.waitForEvent('download', (download) => download.suggestedFilename().endsWith('.otio'));
   const subtitleDownload = page.waitForEvent('download', (download) => download.suggestedFilename().endsWith('.srt'));
-  await page.locator('#gap-removed-export-btn').click();
-  await page.locator('#gap-removed-export-menu > .dropdown-submenu').first()
+  await page.locator('#gap-export-checkbox').check();
+  await page.locator('#extra-export-btn').click();
+  await page.locator('#extra-export-menu > .dropdown-submenu').first()
     .locator(':scope > .dropdown-submenu-toggle').click();
-  await page.locator('#download-gap-removed-otio').click();
+  await page.locator('#download-otio').click();
   const [download, subtitle] = await Promise.all([timelineDownload, subtitleDownload]);
   expect(subtitle.suggestedFilename()).toBe(download.suggestedFilename().replace(/\.otio$/, '.srt'));
   const payload = await download.createReadStream().then(async (stream) => {

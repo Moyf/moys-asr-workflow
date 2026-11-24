@@ -350,20 +350,29 @@ export function initMaweExportSrt() {
 
 
 
-  function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+  function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack(), removed = []) {
+    const segments = track?.segments || [];
+    return window.AsrEditorUtils.buildSrtPayload(removed.length ? filterSegmentsInsideRemovedGaps(segments, removed) : segments, {
+      ...(removed.length ? {
+        mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+        ensurePositiveDuration: true,
+        colorContextResolver: () => segments,
+      } : {}),
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
     });
   }
 
-  function buildBilingualSrt() {
+  function buildBilingualSrt(removed = []) {
     if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
-    return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
-      MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
+    const secondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
+    // The SRT merge skips collapsed cues before creating events. Keep both
+    // source arrays intact so speaker/color references still use source indices.
+    return window.AsrEditorUtils.buildBilingualSrtPayload(segments, secondary, {
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+        ...(removed.length ? { mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed) } : {}),
         colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
         assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
@@ -465,8 +474,6 @@ export function initMaweExportSrt() {
     const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
     if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
     if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !(hasColors || bilingual);
-    if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
-    if (MaweDom.gapRemovedSubtitleExportSeparator) MaweDom.gapRemovedSubtitleExportSeparator.hidden = !hasColors;
     if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
     for (const item of [MaweDom.downloadMultiSrtButton, document.getElementById('download-bilingual-srt')]) {
       if (!item) continue;

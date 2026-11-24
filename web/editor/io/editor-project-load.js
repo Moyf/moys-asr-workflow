@@ -259,6 +259,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   // 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
   function detachServerProjectSaving() {
     projectBindingEpoch += 1;
+    window.MaweGapRemoveUi?.resetGapExport?.();
     if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
     MaweCoreState.waveformEditor?.setThumbnailBinding('');
     if (MaweBoot.SERVER_CONFIG) {

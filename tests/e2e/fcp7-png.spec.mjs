@@ -20,14 +20,14 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
-async function open(page, format = 'png') {
+async function open(page, format = 'png', gapRemoved = false) {
   await disableOnboarding(page);
   await page.goto(server.url);
+  if (gapRemoved) await page.locator('#gap-export-checkbox').check();
   await page.locator('#extra-export-btn').click();
   await page.locator('#download-fcp7-export').click();
   await page.locator('#fcp7-export-format').selectOption(format);
   await expect(page.locator('#fcp7-export-native-text')).toBeHidden();
-  await page.locator('input[name="fcp7-export-timeline-mode"][value="source"]').check();
   await page.locator('#fcp7-export-fps').selectOption('25');
 }
 
@@ -395,8 +395,7 @@ for (const format of ['png', 'webp']) test(`${format} options and completed stat
 });
 
 test('gap-removed PNG and source media share the compressed frame clock', async ({ page }) => {
-  await open(page);
-  await page.locator('input[name="fcp7-export-timeline-mode"][value="gap_removed"]').check();
+  await open(page, 'png', true);
   await page.locator('input[name="fcp7-export-scope"][value="media"]').check();
   const published = page.waitForResponse(r => r.url().endsWith('/publish'));
   await page.locator('#fcp7-export-confirm').click();
@@ -409,6 +408,39 @@ test('gap-removed PNG and source media share the compressed frame clock', async 
   const xml = readFileSync(result.xmlPath, 'utf8');
   expect(xml).toContain('<start>25</start><end>65</end>');
   expect(xml).toContain('<in>35</in><out>75</out>');
+});
+
+test('dynamic subtitle exports inherit the toolbar timeline for both formats', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+  await page.goto(`${server.url}?lang=zh`);
+  const toggle = page.locator('#gap-export-checkbox');
+  for (const gap of [false, true]) {
+    await toggle.setChecked(gap);
+    for (const [format, extension] of [['lottie', '.lottie'], ['ograf', '.ograf.zip']]) {
+      await page.locator('#extra-export-btn').click();
+      await page.locator('[aria-controls="extra-dynamic-menu"]').hover();
+      await page.locator(`#download-${format}`).click();
+      const modal = page.locator(`#${format}-export-modal`);
+      await expect(modal).not.toContainText(/原始时间线|去空隙时间线/);
+      await expect(modal.locator('input[name$="timeline-mode"]')).toHaveCount(0);
+      const pending = page.waitForEvent('download');
+      const request = page.waitForRequest(req => req.method() === 'POST' && req.url().endsWith(`/api/exports/${format}`));
+      await page.locator(`#${format}-export-confirm`).click();
+      const [download, exported] = await Promise.all([pending, request]);
+      expect(download.suggestedFilename()).toContain(`${gap ? '_去空隙' : ''}_dynamic-caption${extension}`);
+      expect(download.suggestedFilename().includes('_去空隙')).toBe(gap);
+      const { animation, graphic } = exported.postDataJSON();
+      if (format === 'lottie') {
+        expect(animation.op).toBe(gap ? 78 : 90);
+        expect(animation.layers[0]).toMatchObject({ ip: 6, op: gap ? 60 : 72 });
+      } else {
+        const embedded = JSON.parse(graphic.mainSource.match(/const DEFAULT_DATA = ([\s\S]*?);\r?\n/)[1]);
+        expect(embedded.durationMs).toBe(gap ? 2600 : 3000);
+        expect(embedded.cues[0]).toMatchObject({ startMs: 200, endMs: gap ? 2000 : 2400 });
+      }
+    }
+  }
 });
 
 test('image and dynamic caption custom dimensions are conditionally visible', async ({ page }) => {

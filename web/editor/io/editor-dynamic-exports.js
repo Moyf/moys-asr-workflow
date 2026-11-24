@@ -63,7 +63,7 @@ export function initMaweDynamicExports() {
   updateFcp7Mode();
   updateFcp7RatioWarning();
   MaweDom.fcp7ExportModal.classList.add('show');
-  MaweDom.fcp7ExportTimelineMode.focus();
+  document.getElementById('fcp7-export-format').focus();
 }
 
 
@@ -78,12 +78,13 @@ export function initMaweDynamicExports() {
         || MaweBoot.DATA.waveform?.duration_ms
         || 0;
       const options = window.AsrEditorUtils.normalizeExportOptions({
-        timelineMode: document.querySelector('input[name="fcp7-export-timeline-mode"]:checked').value,
+        timelineMode: window.MaweGapRemoveUi.usesGapExport() ? 'gap_removed' : 'source',
         fps: MaweDom.fcp7ExportFps.value,
         subtitleTracks: MaweDom.fcp7ExportSubtitleTracks.value,
         nativeTextObjects: MaweDom.fcp7ExportNativeText.checked,
         baseName: MaweBoot.FILENAME_BASE,
       });
+      const removed = options.timelineMode === 'gap_removed' ? MaweGapRemoveData.getRemovedGapRanges() : null;
       const plan = window.AsrEditorUtils.buildProjectExportPlan(MaweBoot.DATA, {
         ...options,
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
@@ -119,8 +120,10 @@ export function initMaweDynamicExports() {
           await waitForFcp7Fonts(window.MaweAssFontAliases, controller.signal);
           if (controller.signal.aborted) throw new DOMException('图片字幕导出已停止', 'AbortError');
           const assOptions = { alignFirstStart: false, pngEventNames: true };
-          const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
-            ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
+          if (removed && MaweGapRemoveData.getRemovedGapRanges() !== removed) {
+            throw new Error(MaweProjectSave.translatedEditorText('空隙区间已变化，请重新导出。'));
+          }
+          const ass = removed ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
           const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
           const result = await runFcp7PngExport({ plan, ass, layers,
             includeMedia: document.querySelector('input[name="fcp7-export-scope"]:checked').value === 'media',
@@ -286,7 +289,7 @@ export function initMaweDynamicExports() {
           extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
         ));
       }
-      const gapRemoved = MaweDom.lottieExportGapRemoved?.checked === true;
+      const gapRemoved = window.MaweGapRemoveUi.usesGapExport();
       const exportData = MaweExportSrt.buildDynamicCaptionExportData(sourceSegments, gapRemoved);
       if (!exportData) return;
       const { segments, durationMs } = exportData;
@@ -408,7 +411,7 @@ export function initMaweDynamicExports() {
           extension ? '当前副字幕轨没有可导出的字幕' : '当前主轨没有可导出的字幕',
         ));
       }
-      const gapRemoved = MaweDom.ografExportGapRemoved?.checked === true;
+      const gapRemoved = window.MaweGapRemoveUi.usesGapExport();
       const exportData = MaweExportSrt.buildDynamicCaptionExportData(sourceSegments, gapRemoved);
       if (!exportData) return;
       const { segments, durationMs } = exportData;

@@ -247,7 +247,8 @@ test('rendered audio editor offers WAV and saves the real server output', async 
       MaweBoot.DATA.gap_remove = { gaps: [{ start: 567, end: 1001, removed: true }] };
       MaweGapRemoveUi.updateGapRemoveUi();
     });
-    await page.click('#gap-removed-export-btn');
+    await page.check('#gap-export-checkbox');
+    await page.click('#extra-export-btn');
     await expect(page.locator('#download-gap-removed-video')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('real-audio-export-menu.png') });
     await page.evaluate(() => {

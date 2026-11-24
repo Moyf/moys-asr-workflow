@@ -158,7 +158,14 @@
     "开启 ASS 模式使用当前 ASS 方案；关闭时将当前 SRT 按样式库指定的 SRT 烧录样式转为 ASS。进度窗口可停止任务；更换工程或媒体后旧任务失效。": "ASS mode uses the current ASS profile; otherwise the current SRT is converted with the library’s assigned SRT burn style. Stop a task in its progress window; switching the project or media invalidates the old task.",
     "需要已绑定的视频源、支持 libass 的 FFmpeg、FFprobe 和浏览器文件保存选择器；便携页面或仅上传到浏览器的媒体不可用。烧录会重新编码。": "Requires a bound video source, FFmpeg with libass, FFprobe and a browser file save picker. Unavailable for portable pages or browser-only media. Burning re-encodes the video.",
     "纯音频可用「更多导出 → 生成绿幕视频」；在全局设置的「绿幕视频导出」中选择是否附带音轨。": "For audio projects, use More exports → Generate green-screen video. Choose whether to include audio under Green-screen video export in global settings.",
-    "去空隙导出": "Gap-removed export",
+    "导出去空隙版本": "Export without gaps",
+    "当前工程共 {count} 个空隙，总时长 {duration}": "Project gaps: {count} · Total duration: {duration}",
+    "其中 {count} 个会在导出时移除，共 {duration}": "Removed on export: {count} · {duration}",
+    "Resolve JSON 仅支持原始时间线": "Resolve JSON only supports the source timeline",
+    "Resolve JSON（仅原始时间线）": "Resolve JSON (source timeline only)",
+    "空隙区间已变化，请重新导出。": "Gap intervals changed. Please export again.",
+    "按保留区域重新编码并烧录当前字幕；切点帧级精确。": "Re-encode the kept intervals and burn in the current subtitles, with frame-accurate cuts.",
+    "勾选工具栏「导出去空隙版本」，字幕、媒体与时间线使用去空隙结果。「更多导出 → 重组后视频」按安全切点流复制，可能保留额外画面，可保存匹配字幕。勾选后点击「烧录视频」则会重新编码并精确裁剪。": "Check Export without gaps in the toolbar to use the shortened timeline for subtitles, media, and timelines. More exports → Rebuilt video copies streams at safe cut points and may retain extra footage; save its matching SRT if needed. Burn video re-encodes and cuts precisely when the option is checked.",
     "「重组后视频」按安全切点流复制，可能保留额外画面，可导出匹配结果视频的 SRT。「重组后烧录视频」解码后精确裁剪，使用去空隙字幕的收缩时间轴。": "Rebuilt video copies streams at safe cut points and may retain extra footage; export its matching SRT when needed. Rebuilt subtitled video precisely cuts decoded media and uses the shortened subtitle timeline.",
     "创建与编辑": "Create and edit",
     "按 M 或点击波形「标记编辑」，打开「标记与区段」。可创建单点标记或有起止时间的区段，填写名称、备注和颜色。": "Press M or click Marker editing in the waveform, then open Markers and ranges. Create a point marker or a timed range with a name, note and color.",
@@ -567,7 +574,7 @@
     '按颜色导出字幕': 'Export by color', '按颜色导出字幕（SRT）': 'Export by color (SRT)',
     'SRT（按颜色拆分）': 'SRT (split by color)',
     '导出纯文本（TXT）': 'Export plain text (TXT)',
-    '导出工程': 'Export project', '去空隙导出 ▾': 'Export gap-removed ▾',
+    '导出工程': 'Export project',
     '字幕 SRT': 'Subtitle SRT', '时间线 OTIO': 'Timeline OTIO', '时间线 OTIOZ': 'Timeline OTIOZ bundle',
     '表情包 OTIO': 'Sticker OTIO', '表情包 OTIOZ': 'Sticker OTIOZ bundle',
     '同时导出 SRT': 'Also export SRT',
@@ -578,14 +585,12 @@
     '把每条字幕的文本与时间作为标记写入时间线片段': 'Write each subtitle text and timing as markers on the timeline clips',
     'OpenTimeline': 'OpenTimeline', 'OpenTimelineIO': 'OpenTimelineIO', 'OTIO': 'OTIO', '数据': 'Data', '数据文件': 'Data files',
     '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
-    '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
     '导出 FCP 7 XML': 'Export FCP 7 XML', '图片尺寸': 'Image size', '导出 XML + 图片': 'Export XML + images',
     '导出形式': 'Export format', 'FCP7XML 工程（PR 可用）': 'FCP7XML project (for PR)',
     'FCP 7 XML 工程和字幕导出': 'Export FCP 7 XML project and subtitles',
     '已保存 {count} 张字幕图片与对应工程 XML 文件': 'Saved {count} subtitle images and the corresponding XML project files',
     '点击打开导出文件夹：': 'Click to open the export folder: ', '无法打开导出文件夹': 'Could not open the export folder',
-    '去空隙时间线将字幕和字词时间映射到压缩后的时间线。': 'The gap-removed timeline maps subtitle and word timing to the compressed timeline.',
     '图片尺寸不能超过 33554432 像素': 'Image size cannot exceed 33554432 pixels',
     '自定义图片尺寸需要 16–8192 之间的整数宽高': 'Custom image size needs integer width and height between 16 and 8192',
     '导出 FCP 7 XML 工程文件，供 Premiere、Vegas 等剪辑软件使用。': 'Export an FCP 7 XML project for Premiere, Vegas, and other editing applications.',
@@ -803,9 +808,8 @@
     '附带音轨': 'Include audio track',
     '正在生成绿幕字幕视频…': 'Generating green screen subtitle video…',
     '绿幕视频已保存': 'Green screen video saved',
-    '默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P，时长为最后字幕结束后半秒。': 'Exports a silent green screen video by default; enable to include the current source audio. Output is 1080P and ends half a second after the last subtitle.',
+    '默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P；原始版本到最后一条字幕结束后半秒，去空隙版本按保留区间总时长导出。': 'Exports a silent 1080p green screen video by default. Enable to include the selected source audio. The source-timeline version ends half a second after the last subtitle; the gap-removed version uses the total duration of the kept intervals.',
     '绿幕视频和附带音轨选项必须是布尔值': 'Green screen and include audio options must be booleans',
-    '绿幕视频暂不支持去空隙区间': 'Green screen video does not support gap removal intervals',
     '重组后烧录视频': 'Burn reconstructed video',
     '请从启动器打开关联源媒体的工程，再烧录视频': 'Open a project with bound source media from the launcher before burning video',
     '当前页面没有有效的启动器保存会话，浏览器也未提供文件保存选择器。请回到 MAW 启动器，点击「打开编辑器」后重试。': 'This page has no valid launcher save session, and the browser provides no file save picker. Return to the MAW launcher, click “Open editor,” and try again.',
@@ -2155,14 +2159,14 @@
     if (match) return `${translateText(match[1], EN)} (press ${match[2]})`;
     // 时长片段（供下面各摘要规则递归调用，必须排在它们之前，且只匹配纯时长，
     //  不能吞掉前缀文字，否则会抢先匹配整句）：6秒 / 6秒（占比 2.1%） / 1分 6秒
+    match = /^(\d+)小时(?:(\d+)分)?(?:(\d+)秒)?(?:（占比\s+([\d.]+%)）)?$/.exec(text);
+    if (match) return `${match[1]}h${match[2] ? ` ${match[2]}m` : ''}${match[3] ? ` ${match[3]}s` : ''}${match[4] ? ` (${match[4]} of media)` : ''}`;
     match = /^(\d+(?:\.\d+)?)\s*秒（占比\s+(.+?)）$/.exec(text);
     if (match) return `${match[1]}s (${match[2]} of media)`;
-    match = /^(\d+)\s*分\s*(\d+(?:\.\d+)?)\s*秒（占比\s+(.+?)）$/.exec(text);
-    if (match) return `${match[1]}m ${match[2]}s (${match[3]} of media)`;
+    match = /^(\d+)\s*分(?:\s*(\d+(?:\.\d+)?)\s*秒)?(?:（占比\s+([\d.]+%)）)?$/.exec(text);
+    if (match) return `${match[1]}m${match[2] ? ` ${match[2]}s` : ''}${match[3] ? ` (${match[3]} of media)` : ''}`;
     match = /^(\d+(?:\.\d+)?)\s*秒$/.exec(text);
     if (match) return `${match[1]}s`;
-    match = /^(\d+)\s*分\s*(\d+(?:\.\d+)?)\s*秒$/.exec(text);
-    if (match) return `${match[1]}m ${match[2]}s`;
     // 空隙摘要（工具栏紧凑版）：已移除 4/4 段 · 6秒（占比 2.1%）[ · 人工修正]
     // 先剥离可选的「· 人工修正」尾巴，再整体翻译中间的时长片段。
     {
