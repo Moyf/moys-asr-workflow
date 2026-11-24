@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
-import { invokedInitModuleSource } from '../helpers/init-module-source.mjs';
+import { initModuleSource, invokedInitModuleSource } from '../helpers/init-module-source.mjs';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -11,7 +11,7 @@ const first = source.indexOf("document.getElementById('download-gap-removed-vide
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
 const handler = source.slice(first, last);
 const projectLoad = invokedInitModuleSource('editor/io/editor-project-load.js', 'initMaweProjectLoad');
-const i18n = fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8');
+const i18n = initModuleSource('shared/editor-i18n.js');
 
 async function fixture(page, mode, run) {
   const requests = [];

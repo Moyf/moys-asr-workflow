@@ -1,5 +1,4 @@
-
-
+export function initMaweBootDiagnostics() {
 // 导出文件名前缀会随媒体切换变化；ASS 的 Title 必须跟随当前工程文件名，
 // 因此单独保留工程名，避免加载媒体或导入字幕时把 Title 改成媒体名。
 
@@ -58,3 +57,4 @@ if (!window.AsrEditorUtils) {
 
 
 MaweBoot.maweDomContractCheck();
+}

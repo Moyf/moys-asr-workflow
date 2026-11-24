@@ -1,3 +1,4 @@
+export function initEditorRuntime() {
 // Shared frontend runtime registry.
 //
 // This is deliberately small: it owns module factories only, not editor
@@ -49,3 +50,4 @@
     writable: false,
   });
 })(window);
+}

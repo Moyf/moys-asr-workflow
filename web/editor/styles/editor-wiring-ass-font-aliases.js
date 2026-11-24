@@ -1,3 +1,4 @@
+export function initMaweAssFontAliases() {
 // 服务端 ASS 字体别名表：libass（Windows directwrite/GDI 提供器）只按字体
 // nameID1（GDI 兼容 family）匹配，样式里存的排版名（nameID16，如
 // "Smiley Sans"）会被静默回退。启动时拉取本机字体别名表，供导出归一化
@@ -366,3 +367,4 @@
   });
   void loadAliases();
 })(typeof window !== 'undefined' ? window : globalThis);
+}

@@ -46,6 +46,8 @@ class _FakeRepo:
         self.bundle = root / spec.bundle
         self.meta = root / spec.meta
         self.sources = [f"src/{name}.js" for name in ("a", "b")]
+        if kind == "editor":
+            self.sources.insert(0, web_build._EDITOR_ENTRY)
         for relative in self.sources:
             path = root / "web" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +87,15 @@ class _FakeRepo:
             "dependencyHash": self.dependency_hash(),
             "bundleHash": _sha("/* fake artifact */\n"),
         }
+        if self.kind == "editor":
+            metadata.update(
+                format=2,
+                entry=web_build._EDITOR_ENTRY,
+                sourceFiles=web_build._editor_sort(inputs),
+                discovery=web_build._editor_discovery(self.root / "web"),
+                metafile={"inputs": {f"web/{file}": {} for file in inputs}},
+            )
+            metadata.pop("configHash")
         self.bundle.parent.mkdir(parents=True, exist_ok=True)
         self.bundle.write_text("/* fake artifact */\n", encoding="utf-8", newline="\n")
         self.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8", newline="\n")
@@ -127,17 +138,31 @@ class BundleStatusTests(unittest.TestCase):
         self.assertEqual(status, "stale")
         self.assertIn("src/a.js", reason)
 
-    def test_stale_when_manifest_gains_file(self) -> None:
-        """Given 清单新增源文件, When 预检, Then stale（清单与构建时不一致）。"""
+    def test_editor_detects_candidate_addition_removal_and_rename(self) -> None:
+        new_candidate = self.root / "web" / "src" / "a.ts"
         self.repo.materialize()
-        (self.root / "web" / "src" / "c.js").write_text("// new\n", encoding="utf-8")
-        self.repo.manifest.write_text(
-            "\n".join([*self.repo.sources, "src/c.js"]) + "\n", encoding="utf-8"
-        )
 
-        status, _ = web_build.bundle_status(self.root, "editor")
+        new_candidate.write_text("// unreferenced or higher priority candidate", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
-        self.assertEqual(status, "stale")
+        self.repo.materialize()
+        new_candidate.rename(new_candidate.with_suffix(".mjs"))
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+        self.repo.materialize()
+        new_candidate.with_suffix(".mjs").unlink()
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_editor_detects_an_extensionless_candidate(self) -> None:
+        self.repo.materialize()
+        (self.root / "web" / "src" / "a").write_text("exact path candidate", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_launcher_stales_when_manifest_changes(self) -> None:
+        launcher = _FakeRepo(self.root, "launcher")
+        launcher.materialize()
+        launcher.manifest.write_text("src/b.js\nsrc/a.js\n", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "stale")
 
     def test_stale_when_meta_missing_or_corrupt(self) -> None:
         """Given meta 缺失或不是 JSON, When 预检, Then stale。"""
@@ -148,27 +173,32 @@ class BundleStatusTests(unittest.TestCase):
         self.repo.meta.write_text("not json\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
-    def test_stale_when_config_or_builder_changes(self) -> None:
-        """Given 模块配置或构建器脚本变更, When 预检, Then stale。"""
+    def test_stale_when_editor_resolution_config_or_builder_changes(self) -> None:
+        # The compatibility harness still uses the old manifests. Production
+        # uses the real entry and fingerprints package resolution configuration.
         self.repo.materialize()
-        self.repo.config.write_text('{\n  "modules": [],\n  "x": 1\n}\n', encoding="utf-8")
+        self.repo.config.write_text('{"modules": [], "experimental": true}\n', encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "fresh")
+
+        config = self.root / "web" / "src" / "package.json"
+        config.write_text('{"main": "./a.js"}', encoding="utf-8")
+        self.repo.materialize()
+        config.write_text('{"main": "./b.js"}', encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
         self.repo.materialize()
         self.repo.builders[0].write_text("// builder v2\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
-    def test_launcher_builder_hash_covers_both_builders(self) -> None:
-        """Given launcher 的 builderHash 覆盖两个构建脚本, When 共享的
-        build-editor.mjs 变更, Then launcher 产物同样判定过期。"""
+    def test_launcher_builder_hash_covers_shared_builder_only(self) -> None:
         launcher = _FakeRepo(self.root, "launcher")
         launcher.materialize()
         self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "fresh")
 
-        # editor 构建器被 launcher 复用（compileSources 所在文件），任一变更都应失效
-        editor_builder = self.root / "scripts" / "build-editor.mjs"
-        editor_builder.write_text("// builder v2\n", encoding="utf-8")
+        self.repo.builders[0].write_text("// editor builder v2\n", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "fresh")
 
+        launcher.builders[1].write_text("// shared builder v2\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "stale")
 
     def test_incomplete_input_ledger_cannot_hide_changed_source(self) -> None:
@@ -200,7 +230,7 @@ class BundleStatusTests(unittest.TestCase):
         (self.root / "pnpm-lock.yaml").write_text("lockfileVersion: '10.0'\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
-    def test_invalid_manifest_cannot_read_outside_web(self) -> None:
+    def test_invalid_input_cannot_read_outside_web(self) -> None:
         self.repo.materialize()
         metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
         metadata["sourceFiles"] = ["../outside.js"]
@@ -210,16 +240,11 @@ class BundleStatusTests(unittest.TestCase):
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
     def test_transitive_dependency_in_inputs_is_verified(self) -> None:
-        """Given 构建器在 inputs 中额外记录了一个清单外的传递依赖
-        （静态 import 图引入）, When 该依赖源码变更, Then 预检判定
-        stale 且说明指向该文件。"""
-        self.repo.materialize()
         dependency = "src/seam-dep.js"
         (self.root / "web" / dependency).write_text(
             "// dep v1\n", encoding="utf-8", newline="\n")
-        metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
-        metadata["inputs"][dependency] = _sha("// dep v1\n")
-        self.repo.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+        self.repo.sources.append(dependency)
+        self.repo.materialize()
 
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "fresh")
 

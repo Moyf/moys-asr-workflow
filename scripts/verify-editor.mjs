@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { chromium } from '@playwright/test';
-import { buildEditor } from './build-editor.mjs';
+import { buildLegacyEditor } from './build-editor.mjs';
 
 const [baselineArg, rootArg, pythonArg] = process.argv.slice(2);
 if (!baselineArg || !rootArg || !pythonArg) throw new Error('Usage: verify-editor.mjs CLASSIC_BASELINE ROOT PYTHON');
@@ -14,9 +14,9 @@ process.env.MAW_E2E_PYTHON = python;
 process.env.PYTHONIOENCODING = 'utf-8';
 process.chdir(root);
 const { startBlankServer, findFreePort } = await import(pathToFileURL(path.join(root, 'tests/e2e/helpers.mjs')).href);
-const built = await buildEditor(root);
+const built = await buildLegacyEditor(root);
 const artifact = fs.readFileSync(path.join(root, 'web/editor/boot/editor-bundle.js'), 'utf8');
-if (built.code !== artifact) throw new Error('Editor artifact is stale');
+if (built.code !== artifact) throw new Error('This historical probe requires a classic rehearsal artifact');
 const sample = { schema: 'moy.asr.project.v1', media: '', language: 'en', model: 'synthetic',
   segments: [
     { id: 'sample-a', start: 0, end: 1000, text: 'First', items: [{ start: 0, end: 1000, text: 'First' }] },

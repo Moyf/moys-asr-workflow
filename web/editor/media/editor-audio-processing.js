@@ -1,3 +1,4 @@
+export function initEditorAudioProcessing() {
 // Project gain is separate from the player's listening volume. Loudness results
 // belong to a live server/media binding and are deliberately never persisted.
 (function initMaweAudioProcessing(global) {
@@ -341,3 +342,4 @@
     setGapPlaybackMuted, scheduleGapPlaybackMute, waitForGapPlaybackSilence,
     get measurement() { return measurement; }, get measurementState() { return measurementState; } });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

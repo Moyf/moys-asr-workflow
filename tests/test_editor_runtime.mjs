@@ -1,10 +1,10 @@
+import { initModuleSource } from './helpers/init-module-source.mjs';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
 
-const source = fs.readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8');
+const source = initModuleSource('editor/boot/editor-runtime.js');
 
 
 test('MAWE runtime exposes a factory-only module registry', () => {

@@ -1,3 +1,4 @@
+export function initProjectValidation() {
 // Project import/validation facade. The canonical model owns format rules;
 // repair remains an explicit, observable input-boundary operation.
 (function (global) {
@@ -70,3 +71,4 @@
 
   global.MaweProjectValidation = Object.freeze({ validateProject, prepareProject, changes });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

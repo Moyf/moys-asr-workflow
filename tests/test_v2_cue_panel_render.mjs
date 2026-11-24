@@ -30,6 +30,7 @@ test('single-track render uses the canonical main track and imported cue builder
     buildCueEl: (cue, index) => { built.push({ cue, index }); return { id: cue.id }; },
     refreshColorFilterUi: noop, applySearch: noop, updateMultiSelectionClasses: noop,
     refreshTimedTextEditButton: noop, restoreCueListRenderAnchor: noop,
+    scheduleOnboarding: noop,
   };
   context.window = context;
   vm.createContext(context);

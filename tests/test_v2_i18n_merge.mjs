@@ -1,10 +1,10 @@
+import { initModuleSource } from './helpers/init-module-source.mjs';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
 test('merged translations cover 2.0 track controls and main quick-edit/image export', () => {
-  const source = fs.readFileSync(new URL('../web/shared/editor-i18n.js', import.meta.url), 'utf8');
+  const source = initModuleSource('shared/editor-i18n.js');
   const context = { window: {} };
   vm.runInNewContext(source, context);
   const i18n = context.window.MAWE_I18N;
@@ -21,7 +21,7 @@ test('merged translations cover 2.0 track controls and main quick-edit/image exp
 
 test('manual and automatic merge compound toasts translate duration impacts and speaker synchronization together', () => {
   const context = { window: {} };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/shared/editor-i18n.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('shared/editor-i18n.js'), context);
   const i18n = context.window.MAWE_I18N;
   const speakerZh = '副字幕说话人已按主字幕统一';
   const speakerEn = 'Secondary subtitle speakers now match the main subtitles';

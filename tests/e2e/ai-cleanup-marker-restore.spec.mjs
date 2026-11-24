@@ -187,9 +187,11 @@ test('partial and edited regions use current coverage; existing actions and meas
   await page.locator('.markers-item[data-marker-id="review"] .markers-item-edit').click();
   await expect(page.locator('.markers-item[data-marker-id="review"] .markers-ai-review-mute-toggle')).toHaveText('设静音');
   await page.locator('#markers-manage').click();
-  await openPopup(page);
   for (const language of ['zh', 'en']) {
+    // Locale changes can redraw the waveform. Open the popup after choosing
+    // the language, as when changing it in the settings window.
     await page.evaluate(language => MAWE_I18N.applyLanguage(language), language);
+    await openPopup(page);
     await expect(action).toHaveText(language === 'zh' ? '移除' : 'Remove');
     const geometry = await popup.evaluate(element => {
       const swatches = element.querySelector('.markers-color-swatches').getBoundingClientRect();

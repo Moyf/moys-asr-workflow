@@ -1,5 +1,3 @@
-import { updateSelectionCountText } from './editor-overlay-cue-selection.js';
-
 export function initMaweCuePanelWiring() {
 'use strict';
 
@@ -222,5 +220,4 @@ MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCur
 
 // === 字数 ===
 
-window.MaweCuePanelWiring = Object.freeze({ updateSelectionCountText });
 }
