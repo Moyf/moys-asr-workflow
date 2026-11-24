@@ -1,10 +1,11 @@
+import { editorInitializers } from './helpers/editor-entry.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
 const web = new URL('../web/', import.meta.url);
-const manifest = JSON.parse(fs.readFileSync(new URL('editor-modules.json', web), 'utf8'));
-const scripts = fs.readFileSync(new URL('editor-scripts.txt', web), 'utf8').trim().split('\n');
+
+const scripts = editorInitializers.map(item => item.file);
 const targets = new Map([
   ['editor/boot/editor-wiring-initial-config.js', 'initMaweInitialConfigWiring'],
   ['editor/ui/editor-dom-panels.js', 'initMaweDomPanels'],
@@ -15,15 +16,13 @@ const targets = new Map([
 test('G16-A/C initializers occupy their original startup slots', () => {
   for (const [file, exportName] of targets) {
     assert.ok(scripts.includes(file), file);
-    const entry = manifest.modules.find(item => item.file === file);
-    assert.equal(entry?.kind, 'init', file);
+    const entry = editorInitializers.find(item => item.file === file);
     assert.equal(entry?.exportName, exportName, file);
   }
   assert.ok(scripts.indexOf('editor/media/editor-ass-preview-refresh.js')
     < scripts.indexOf('editor/media/editor-wiring-keyboard-guards.js'));
   assert.ok(scripts.indexOf('editor/ui/editor-dom-panels.js')
     < scripts.indexOf('editor/ui/editor-wiring-dom-panels.js'));
-  assert.ok(!manifest.externalBridges.some(item => item.file === 'editor/ui/editor-wiring-dom-panels.js'));
 });
 
 test('G16-A/C modules are inert on import', async () => {

@@ -347,7 +347,5 @@ window.AsrWaveform = {
       drawWordChips: WaveformEditor.prototype.drawWordChips,
     },
   };
-  if (window.MAWE?.register) {
-    window.MAWE.register('waveform', () => window.AsrWaveform);
-  }
+
 }

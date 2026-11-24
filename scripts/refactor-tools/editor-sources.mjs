@@ -1,4 +1,4 @@
-// Developer tooling must enumerate the same ordered sources as the renderer.
+// Read ordered sources from a historical classic checkout.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -10,9 +10,8 @@ export function editorScriptFiles(webDir) {
 // Historical mutation tools rebuild a single monolith and cannot safely
 // replay into the continuous wiring slices. Refuse before writing anything.
 export function requireLegacyEditor(webDir) {
-  const files = editorScriptFiles(webDir);
   if (!existsSync(path.join(webDir, 'editor.js'))
-      || files.some((file) => path.basename(file).startsWith('editor-wiring-'))) {
+      || editorScriptFiles(webDir).some((file) => path.basename(file).startsWith('editor-wiring-'))) {
     throw new Error('This historical mutation tool requires the unsliced web/editor.js layout; use a legacy checkout. No files were written.');
   }
 }

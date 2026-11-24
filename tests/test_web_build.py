@@ -41,8 +41,8 @@ class _FakeRepo:
         self.root = root
         self.kind = kind
         spec = web_build._SPECS[kind]
-        self.manifest = root / spec.manifest
-        self.config = root / spec.config
+        self.manifest = root / spec.manifest if spec.manifest else None
+        self.config = root / spec.config if spec.config else None
         self.bundle = root / spec.bundle
         self.meta = root / spec.meta
         self.sources = [f"src/{name}.js" for name in ("a", "b")]
@@ -52,9 +52,10 @@ class _FakeRepo:
             path = root / "web" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"// {relative}\n", encoding="utf-8", newline="\n")
-        self.manifest.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest.write_text("\n".join(self.sources) + "\n", encoding="utf-8", newline="\n")
-        self.config.write_text('{\n  "modules": []\n}\n', encoding="utf-8", newline="\n")
+        if self.manifest and self.config:
+            self.manifest.parent.mkdir(parents=True, exist_ok=True)
+            self.manifest.write_text("\n".join(self.sources) + "\n", encoding="utf-8", newline="\n")
+            self.config.write_text('{\n  "modules": []\n}\n', encoding="utf-8", newline="\n")
         self.builders = [root / builder for builder in spec.builders]
         for builder in self.builders:
             builder.parent.mkdir(parents=True, exist_ok=True)
@@ -82,7 +83,7 @@ class _FakeRepo:
             "format": 1,
             "sourceFiles": list(self.sources),
             "inputs": inputs,
-            "configHash": _sha(self.config.read_text(encoding="utf-8")),
+
             "builderHash": builder_hash,
             "dependencyHash": self.dependency_hash(),
             "bundleHash": _sha("/* fake artifact */\n"),
@@ -95,7 +96,8 @@ class _FakeRepo:
                 discovery=web_build._editor_discovery(self.root / "web"),
                 metafile={"inputs": {f"web/{file}": {} for file in inputs}},
             )
-            metadata.pop("configHash")
+        elif self.config:
+            metadata["configHash"] = _sha(self.config.read_text(encoding="utf-8"))
         self.bundle.parent.mkdir(parents=True, exist_ok=True)
         self.bundle.write_text("/* fake artifact */\n", encoding="utf-8", newline="\n")
         self.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8", newline="\n")
@@ -177,7 +179,6 @@ class BundleStatusTests(unittest.TestCase):
         # The compatibility harness still uses the old manifests. Production
         # uses the real entry and fingerprints package resolution configuration.
         self.repo.materialize()
-        self.repo.config.write_text('{"modules": [], "experimental": true}\n', encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "fresh")
 
         config = self.root / "web" / "src" / "package.json"
@@ -235,7 +236,6 @@ class BundleStatusTests(unittest.TestCase):
         metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
         metadata["sourceFiles"] = ["../outside.js"]
         metadata["inputs"] = {"../outside.js": _sha("outside")}
-        self.repo.manifest.write_text("../outside.js\n", encoding="utf-8")
         self.repo.meta.write_text(json.dumps(metadata), encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 

@@ -5,12 +5,26 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as acorn from 'acorn';
 import * as eslintScope from 'eslint-scope';
 import { convertFactory, inspectSource } from './esm-mechanical/research.mjs';
-import { readSources } from './build-editor.mjs';
+import { validateSources } from './build-shared.mjs';
 
 const ROOT = fileURLToPath(new URL('../',import.meta.url));
 const walkFiles = dir => fs.existsSync(dir) ? fs.readdirSync(dir,{withFileTypes:true}).flatMap(entry =>
   entry.isDirectory() ? walkFiles(path.join(dir,entry.name))
     : entry.name.endsWith('.mjs') ? [path.join(dir,entry.name)] : []) : [];
+
+// Historical migration operates on a checkout with the classic source list.
+function readSources(root) {
+  const web = fs.realpathSync(path.join(root,'web'));
+  const files = validateSources(fs.readFileSync(path.join(web,'editor-scripts.txt'),'utf8').split('\n')
+    .map(line => line.split('#')[0].trim()).filter(Boolean));
+  for (const file of files) {
+    const canonical = fs.realpathSync(path.join(web,file));
+    if (!canonical.startsWith(web+path.sep) || !fs.statSync(canonical).isFile()) {
+      throw new Error(`Source path escapes web or is not a file: ${file}`);
+    }
+  }
+  return files;
+}
 
 export function planMigration(root = ROOT, selectedFiles) {
   if (fs.existsSync(path.join(root,'web/editor-modules.json'))) throw new Error('Batch already migrated; refusing overwrite');

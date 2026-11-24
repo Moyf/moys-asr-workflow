@@ -40,9 +40,9 @@ function compositionFixture() {
   };
   context.window = context;
   vm.createContext(context);
-  for (const file of ['boot/editor-runtime', 'state/editor-state', 'media/editor-audio-processing',
+  for (const file of ['state/editor-state', 'media/editor-audio-processing',
     'io/editor-json-repair', 'io/editor-project-save']) {
-    const initializers = { 'boot/editor-runtime': 'initEditorRuntime', 'media/editor-audio-processing': 'initEditorAudioProcessing', 'state/editor-state': 'initMaweState', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-project-save': 'initMaweProjectSave' };
+    const initializers = { 'media/editor-audio-processing': 'initEditorAudioProcessing', 'state/editor-state': 'initMaweState', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-project-save': 'initMaweProjectSave' };
     vm.runInContext(initializers[file] ? invokedInitModuleSource(`editor/${file}.js`, initializers[file]) : read(file), context, { filename: file });
   }
   context.MaweAudioProcessing.loadProject({ gain_db: 1, target_lufs: -16, peak_ceiling_dbtp: -1 });

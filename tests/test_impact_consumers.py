@@ -90,7 +90,7 @@ class ConsumerSelectionTests(unittest.TestCase):
         self.assertIn('tests/e2e/cue-color-filter.spec.mjs', plan['e2e_specs'])
         self.assertIn('tests/e2e/speaker-identity-surfaces.spec.mjs', plan['e2e_specs'])
         self.assertIn('tests/e2e/overlay-track.spec.mjs', plan['e2e_specs'])
-        self.assertIn('tests/test_editor_script_syntax.mjs', plan['node_tests'])
+        self.assertNotIn('tests/test_editor_entry.mjs', plan['node_tests'])
         self.assertIn('tests/test_editor_cues_imports.mjs', plan['node_tests'])
         self.assertNotIn('tests/test_v2_cue_panel_render.mjs', plan['node_tests'])
         self.assertNotIn('tests/test_track_semantics.mjs', plan['node_tests'])
@@ -144,7 +144,7 @@ class ConsumerSelectionTests(unittest.TestCase):
     def test_preparation_follows_real_bundle_and_python_imports(self):
         for path in ('tests/test_editor_assets.py', 'tests/test_editor_bundle.mjs'):
             self.assertTrue(impact.select_packs([path])['preparation']['application'], path)
-        for path in ('tests/test_editor_manifest.py', 'tests/test_web_build.py', 'tests/test_web_build_artifact.mjs'):
+        for path in ('tests/test_web_build.py', 'tests/test_web_build_artifact.mjs'):
             self.assertFalse(impact.select_packs([path])['preparation']['application'], path)
         self.assertFalse(impact.select_packs(['tests/test_editor_bundle.mjs'])['preparation']['python_dependencies'])
         self.assertTrue(impact.select_packs(['tests/e2e/filmstrip-real.spec.mjs'])['preparation']['python_dependencies'])

@@ -21,9 +21,11 @@ const seamFixture = (t, kind, specifier = './helper.js', imports = {}) => {
   const root = fixture(t);
   fs.mkdirSync(path.join(root,'web'),{recursive:true});
   fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
-  fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
-  fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
-    modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+  if (kind === 'launcher') {
+    fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
+    fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
+      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+  }
   fs.writeFileSync(path.join(root,'web/seam.js'),
     `import { value } from ${JSON.stringify(specifier)};\nexport function runSeam() { window.result = value; }\n`);
   fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'inside';\n");
@@ -48,7 +50,7 @@ test('watchers ignore both bundles, metadata and atomic publication files on eit
       assert.equal(isBundleArtifact(file.replaceAll('/', '\\')), true, file);
     }
   }
-  for (const file of ['editor-scripts.txt', 'launcher-modules.json', 'editor/boot/editor.js',
+  for (const file of ['editor/boot/editor-entry.mjs', 'launcher-modules.json', 'editor/boot/editor.js',
     'launcher/boot/launcher-state.js', 'shared/utils.js']) {
     assert.equal(isBundleArtifact(file), false, file);
   }
@@ -76,8 +78,10 @@ test('two real watchers rebuild edited sources and then stay idle together', {ti
   for (const kind of ['editor', 'launcher']) {
     // 开发会话已先完成两套构建，watcher 启动时双方输出目录都已存在。
     fs.mkdirSync(path.join(root, `web/${kind}/boot`), {recursive:true});
-    fs.writeFileSync(path.join(root, `web/${kind}-scripts.txt`), 'source.js\n');
-    fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
+    if (kind === 'launcher') {
+      fs.writeFileSync(path.join(root, 'web/launcher-scripts.txt'), 'source.js\n');
+      fs.writeFileSync(path.join(root, 'web/launcher-modules.json'), '{"modules":[],"externalBridges":[]}\n');
+    }
     fs.writeFileSync(path.join(root, `scripts/build-${kind}.mjs`), '// fixture build input\n');
   }
   fs.writeFileSync(path.join(root, 'web', ENTRY), "import '../../source.js';\n");

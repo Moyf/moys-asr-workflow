@@ -170,9 +170,6 @@ jobs:
       - name: Python editor asset contracts
         if: ${{ !cancelled() && steps.python.outcome == 'success' && steps.editor_build.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_editor_assets.py
-      - name: Python editor manifest contracts
-        if: ${{ !cancelled() && steps.python.outcome == 'success' }}
-        run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_editor_manifest.py
       - name: OCR term extraction and runtime cleanup contracts
         if: ${{ !cancelled() && steps.python_install.outcome == 'success' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_ocr_scan.py tests/test_ocr_scan_regressions.py tests/test_ocr_runtime.py tests/test_runtime_process_cleanup.py tests/test_process_tree_posix.py tests/test_term_extract_aggregate.py tests/test_term_extract_ai_filter.py tests/test_term_extract_cli_cache.py tests/test_term_extract_export.py tests/test_term_extract_report.py tests/test_term_extract_score.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py

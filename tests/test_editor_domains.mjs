@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
+import { createWaveformModule as createWaveformPlayback } from '../web/editor/media/waveform/playback.js';
 import { createWaveformModule as createWaveformMedia } from '../web/editor/media/waveform/media.js';
 
 function waveformContext() {
@@ -48,11 +49,8 @@ test('utility consumers preserve a custom runtime method receiver and observe it
 });
 
 test('waveform composition preserves getter and non-enumerable class method descriptors', () => {
-  const context = waveformContext();
-  // G06 后注册表条目退役：media 描述符契约直接对
-  // 工厂实例核对；playback 仍走注册表（G05 叶子）。
   const media = createWaveformMedia({});
-  const playback = context.window.MAWE.resolve('waveform-playback', {});
+  const playback = createWaveformPlayback({});
   assert.equal(media.durationMs.enumerable, false);
   assert.equal(media.durationMs.configurable, true);
   assert.equal(typeof media.durationMs.get, 'function');
@@ -67,7 +65,7 @@ test('waveform composition preserves getter and non-enumerable class method desc
 
 test('palette consumers observe replacements through the same private module state', () => {
   const context = waveformContext();
-  const colors = context.window.MAWE.resolve('waveform-colors', {
+  const colors = context.waveformColors.createWaveformModule({
     getSubtitleGroupValue: (segment, kind) => context.window.AsrEditorUtils.getSubtitleGroupValue(context.window.MaweBoot.DATA, segment, kind),
   });
   const segment = context.window.AsrEditorUtils.getMainTrack(context.window.MaweBoot.DATA).segments[0];

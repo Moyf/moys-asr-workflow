@@ -4,7 +4,6 @@ import '../../shared/gap-remove-core.js';
 import '../../shared/tooltip.js';
 
 import { initMaweBoot } from './editor-boot.js';
-import { initEditorRuntime } from './editor-runtime.js';
 import { initMaweState } from '../state/editor-state.js';
 import { initMaweViewUpdates } from '../state/editor-view-updates.js';
 import { initMaweCommands } from '../state/editor-commands.js';
@@ -144,7 +143,6 @@ import { initMaweOnboarding } from './editor-onboarding.js';
 // Compose startup capabilities before initializing consumers.
 function initializeEditorRuntime() {
   initMaweBoot();
-  initEditorRuntime();
   initMaweState();
   initMaweViewUpdates();
   initMaweCommands();

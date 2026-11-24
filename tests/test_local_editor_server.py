@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.editor_source import editor_source_text
+
 from tests.compact_assertions import CompactContainerAssertions
 
 import base64
@@ -1397,7 +1399,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="load-srt"', page)
         self.assertIn('id="load-srt-file"', page)
         self.assertIn('id="download-gap-removed-video"', page)
-        source = "\n\n".join(server_editor.edit.read_web_asset(name) for name in server_editor.edit.read_editor_script_manifest())
+        source = editor_source_text()
         self.assertIn('function parseSrtSegments(text)', source)
         self.assertIn('function isMawProject(data)', source)
         self.assertIn('请使用 MAW 生成的工程文件', page)

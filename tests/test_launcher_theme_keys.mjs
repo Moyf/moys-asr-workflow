@@ -10,12 +10,12 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const editorBuilder = new URL('../scripts/build-editor.mjs', import.meta.url);
+const sharedBuilder = new URL('../scripts/build-shared.mjs', import.meta.url);
 const leafSource = () => fs.readFileSync(
   fileURLToPath(new URL('../web/launcher/theme/launcher-theme-keys.js', import.meta.url)), 'utf8');
 
 const assemble = async (project, files, modules, options = {}) => {
-  const { compileSources } = await import(editorBuilder);
+  const { compileSources } = await import(sharedBuilder);
   return compileSources(project, files, modules,
     file => fs.readFileSync(path.join(project, 'web', file), 'utf8'), options);
 };

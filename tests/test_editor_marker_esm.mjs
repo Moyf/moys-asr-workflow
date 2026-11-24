@@ -1,3 +1,4 @@
+import { editorInitializers } from './helpers/editor-entry.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -11,17 +12,16 @@ test('marker modules import without initializing browser state', async () => {
   assert.equal(typeof panel.initMaweMarkersPanel, 'function');
 });
 
-test('marker ESM consumers use the editing module at their original ordered positions', () => {
-  const files = readFileSync(new URL('editor-scripts.txt', web), 'utf8').trim().split('\n');
-  const manifest = JSON.parse(readFileSync(new URL('editor-modules.json', web), 'utf8'));
+test('marker ESM consumers use the editing module in production initialization order', () => {
+  const files = editorInitializers.map(item => item.file);
+
   const targets = [
     ['editor/markers/editor-marker-editing.js', 'initMaweMarkerEditing'],
     ['editor/markers/editor-markers-panel.js', 'initMaweMarkersPanel'],
   ];
   assert.equal(files.indexOf(targets[1][0]), files.indexOf(targets[0][0]) + 1);
   for (const [file, exportName] of targets) {
-    assert.ok(manifest.modules.some(module => module.file === file && module.kind === 'init'
-      && module.exportName === exportName));
+    assert.ok(editorInitializers.some(module => module.file === file && module.exportName === exportName));
   }
   for (const file of [targets[1][0], 'editor/media/editor-waveform-init.js']) {
     const source = readFileSync(new URL(file, web), 'utf8');

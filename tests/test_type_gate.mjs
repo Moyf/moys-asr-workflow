@@ -3,7 +3,7 @@
 //
 // fixture 模拟真实形态：owner 模块挂载冻结门面（强类型），caller 模块经
 // window.MaweDemo 消费并写出违约赋值。预期 tsc 报错、非零退出。
-// typescript 未安装时 skip（与 test_editor_script_order 的 acorn 缺失处理一致）。
+// typescript 未安装时 skip。
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

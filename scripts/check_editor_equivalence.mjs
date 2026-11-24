@@ -1,17 +1,16 @@
-// Audit a mechanical editor split/move against a Git revision.
-// Usage: node scripts/check_editor_equivalence.mjs --base <revision> [--target <revision>]
+// Audit a historical classic editor split between Git revisions.
+// Usage: node scripts/check_editor_equivalence.mjs --base <revision> --target <revision>
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { parse } from 'acorn';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const args = process.argv.slice(2);
-if (![2, 4].includes(args.length) || args[0] !== '--base'
-    || (args.length === 4 && args[2] !== '--target')) {
-  throw new Error('Usage: node scripts/check_editor_equivalence.mjs --base <revision> [--target <revision>]');
+if (args.length !== 4 || args[0] !== '--base'
+    || args[2] !== '--target') {
+  throw new Error('Usage: node scripts/check_editor_equivalence.mjs --base <revision> --target <revision>');
 }
 const base = execFileSync('git', ['rev-parse', '--verify', `${args[1]}^{commit}`], {
   cwd: root, encoding: 'utf8',
@@ -19,12 +18,12 @@ const base = execFileSync('git', ['rev-parse', '--verify', `${args[1]}^{commit}`
 const previous = (name) => execFileSync('git', ['show', `${base}:web/${name}`], {
   cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
 });
-const target = args.length === 4 ? execFileSync('git', ['rev-parse', '--verify', `${args[3]}^{commit}`], {
+const target = execFileSync('git', ['rev-parse', '--verify', `${args[3]}^{commit}`], {
   cwd: root, encoding: 'utf8',
-}).trim() : null;
-const current = (name) => target ? execFileSync('git', ['show', `${target}:web/${name}`], {
+}).trim();
+const current = (name) => execFileSync('git', ['show', `${target}:web/${name}`], {
   cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
-}) : readFileSync(new URL(`../web/${name}`, import.meta.url), 'utf8');
+});
 function sources(read) {
   return read('editor-scripts.txt').split('\n')
     .map((line) => line.split('#')[0].trim()).filter(Boolean).map(read);

@@ -487,9 +487,8 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   expect(renderedSegments(afterOut, 'main')[0].color).toMatchObject({ name: 'red', start: 1000, end: 1900 });
   expect(renderedSegments(afterOut, 'main')[0].color_ref).toBeNull();
 
-  // 转为主字幕：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
-  const reverted = await page.evaluate(() => window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0));
-  expect(reverted).toBe(true);
+  await page.locator('.overlay-track-cue[data-overlay-idx="0"]').click({ button: 'right' });
+  await page.locator('#ctxmenu .item', { hasText: '转为主字幕' }).click();
   const afterBack = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(renderedSegments(afterBack, 'overlay')).toHaveLength(0);
   expect(renderedSegments(afterBack, 'main').find((segment) => segment.id === 'head-1').color)
@@ -966,22 +965,11 @@ test('keeps color group references valid through an overlay round trip', async (
     .toEqual(['head-1', 'member-1', 'member-3', 'tail-1']);
 
   // 经叠加轨右键「转为主字幕」：headIdx 按插入位置整体平移，不能出现悬空引用。
-  // 右键验证叠加行菜单可开、条目齐全；实际回转走数据层直调——
-  // E2E 里菜单项点击与列表重渲染存在难以稳定的时序竞态，
-  // 真实鼠标路径已在本地浏览器手动 QA 中验证（含撤销与导出）。
   const overlayRow = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
-  await expect(overlayRow).toBeVisible();
-  await page.waitForTimeout(200);
-  await overlayRow.click({ button: 'right', force: true });
-  await expect(page.locator('#ctxmenu.show')).toBeVisible();
-  await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  const reverted = await page.evaluate(() => {
-    const ok = window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0);
-    return { ok, segs: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((s) => s.id) };
-  });
-  expect(reverted.ok).toBe(true);
-  expect(reverted.segs).toHaveLength(5);
+  await overlayRow.click({ button: 'right' });
+  await page.locator('#ctxmenu .item', { hasText: '转为主字幕' }).click();
+  const ids = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.id));
+  expect(ids).toHaveLength(5);
   await expect(page.locator('.overlay-track-cue')).toHaveCount(0);
 
   const exported = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));

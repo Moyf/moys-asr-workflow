@@ -205,7 +205,6 @@ export async function compileSources(root, files, modules, read, options = {}) {
   if (options.trace) body.push('window.__mawEsmInitializationTrace = [];');
   for (const file of files) {
     const item = byFile.get(file);
-    if (options.beforeEntry === file) body.push('globalThis.__mawBeforeFixture?.(window);');
     if (item?.kind === 'init') {
       const index = modules.indexOf(item);
       body.push(`// Init module: ${file}\nfactory${index}();`);

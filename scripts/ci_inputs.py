@@ -12,7 +12,7 @@ def preview_for(paths):
     return any(p.startswith(('maw/', 'server-editor/', 'web/launcher/', 'web/editor/boot/',
                              'web/shared/host/', 'scripts/packaging/', 'scripts/build-', 'desktop/'))
                or p in {'maw_gui.py', 'edit.py', 'pyproject.toml', 'uv.lock', 'package.json', 'pnpm-lock.yaml',
-                        'web/editor-scripts.txt', 'web/launcher-scripts.txt', 'web/editor-modules.json',
+                        'web/launcher-scripts.txt',
                         'web/editor-template.html', 'docs/user/FAQ-常见问题.txt'} for p in paths)
 
 

@@ -1,5 +1,5 @@
 // v1 read protocol only. The project and its arrays remain the sole data tree.
-// The assembler registers this factory; module evaluation has no side effects.
+// Tests and historical callers instantiate the adapter directly.
 export function createTrackModule() {
   const MAIN_TRACK_ID = 'main';
   const OVERLAY_TRACK_ID = 'overlay';

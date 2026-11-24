@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { createTrackModule } from '../web/shared/utils/tracks.js';
 import { fixtureNames, fixtureRoot, readFixture, createProjectHarness, browserOutputs } from './helpers/track-golden.mjs';
-const context = { window: {} };
-loadEditorModule(context, 'shared/editor-utils.js');
-const api = context.window.MAWE.resolve('project-tracks');
+const api = createTrackModule();
 const { LegacyProjectAdapter, secondaryTrackId } = api;
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -103,14 +101,14 @@ test('production getters proxy the same live project objects after load/restore'
   assert.deepEqual(plain(data), beforeReads, 'pure accessor never normalizes/creates legacy state');
   assert.equal(legacy.getActiveExtensionTrack(), h.getExtensionTrack(data));
   assert.equal(legacy.getExtensionTrack('translation'), store.getTrack('translation').source);
-  assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), store.getTrack('overlay').source);
+  assert.equal(context.overlayTrack.getOverlayTrack(), store.getTrack('overlay').source);
   assert.equal(store.getSegments('main'), h.getMainTrack(data).segments);
   context.MaweBoot.DATA = h.importProject(readFixture('unbound-secondary')).project;
   const restored = legacy.getExtensionTrack('translation');
   assert.equal(legacy.getTrackStore(), store);
   assert.equal(restored, store.getTrack('translation').source);
   assert.equal(store.getSegments('main'), h.getMainTrack(context.MaweBoot.DATA).segments);
-  assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), h.getOverlayTrack(context.MaweBoot.DATA));
+  assert.equal(context.overlayTrack.getOverlayTrack(), h.getOverlayTrack(context.MaweBoot.DATA));
 });
 
 
@@ -129,7 +127,7 @@ test('ESM overlay getter and TrackStore follow import and container replacement'
   const { context, h } = createProjectHarness(readFixture('three-tracks'));
   const core = context.MaweMultiSubtitleCore;
   const store = core.getTrackStore();
-  const overlay = context.MAWE.resolve('overlay-track');
+  const overlay = context.overlayTrack;
   const ref = { track_id: 'overlay', segment_id: 'replacement' };
   const legacy = readFixture('three-tracks');
   const incoming = { enabled: false, segments: [{ id: ref.segment_id, start: 0, end: 1000, text: 'replacement' }] };

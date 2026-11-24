@@ -1,17 +1,11 @@
 // DOM-free production serializer/export harness. No golden writes during tests.
 import fs from 'node:fs';
 import vm from 'node:vm';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { compileSources, readSources, readModules } from '../../scripts/build-editor.mjs';
+import { compileEditorFixture } from './editor-entry.mjs';
 import { loadEditorModule } from './editor-module-loader.mjs';
 export const fixtureRoot = new URL('../fixtures/track-access/', import.meta.url);
 export const fixtureNames = fs.readdirSync(fixtureRoot).filter(n => n.endsWith('.input.json')).map(n => n.slice(0, -11)).sort();
 export const readFixture = name => JSON.parse(fs.readFileSync(new URL(`${name}.input.json`, fixtureRoot), 'utf8'));
-// Compile the complete selected sources at their production manifest slots.
-// This executes init functions and follows real static imports; no source slicing.
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const manifest = readSources(root), modules = readModules(root);
 const sourceGroups = {
   project: new Set([
     'editor/state/editor-state.js',
@@ -24,10 +18,9 @@ const sourceGroups = {
   stickers: new Set(['editor/media/editor-sticker-overlay.js']),
 };
 const compiled = new Map(await Promise.all(Object.entries(sourceGroups).map(async ([name, selected]) => {
-  const files = manifest.filter(file => selected.has(file));
-  const result = await compileSources(root, files, modules.filter(item => selected.has(item.file)),
-    file => fs.readFileSync(path.join(root, 'web', file), 'utf8'));
-  return [name, result.code];
+  return [name, await compileEditorFixture([...selected], {
+    exposed: name === 'project' ? { overlayTrack: 'editor/cues/overlay-track.js' } : {},
+  })];
 })));
 const loadSources = (context, name) => vm.runInNewContext(compiled.get(name), context, { filename: `track-${name}-fixture.js` });
 export const initializeStickerOverlay = context => loadSources(context, 'stickers');

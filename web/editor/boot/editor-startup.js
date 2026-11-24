@@ -63,7 +63,6 @@ const editorBridge = Object.freeze({
 });
 setOnboardingEditor(editorBridge);
 window.MAWE_EDITOR_BRIDGE = editorBridge;
-window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
 const importedProjectChanges = MaweBoot.SERVER_CONFIG?.projectImportChanges || [];
 MaweJsonRepair.noteImportReport(importedProjectChanges);

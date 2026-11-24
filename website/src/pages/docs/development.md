@@ -70,7 +70,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor/boot/editor-entry.mjs` 是生产入口。它用静态 import 连接源码，按运行时、领域服务、事件接线和最终启动的顺序调用初始化。新增功能沿所属域接入。迁移夹具和历史演练继续使用 `web/editor-scripts.txt` 与 `web/editor-modules.json`，编译器不从清单生成生产入口。Server 和 Electron 注入同一个 `web/editor/boot/editor-bundle.js`。发布包自带 bundle，运行无需 Node。
+`web/editor/boot/editor-entry.mjs` 是生产入口。它用静态 import 连接源码，按运行时、领域服务、事件接线和最终启动的顺序调用初始化。新增功能沿所属域接入。Editor 入口覆盖由实际 import 图检查。旧清单仅存在于历史 Git 修订，重演使用对应历史检出。Server 和 Electron 注入同一个 `web/editor/boot/editor-bundle.js`。发布包自带 bundle，运行无需 Node。
 
 Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的 `pnpm run build:editor` 或 `pnpm run build:launcher`，再运行同端的 `check:editor` 或 `check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。Launcher 按 `web/launcher-scripts.txt` 装配，`batch.js` 与 `postprocess.js` 经 `window.MAWLauncher` 访问主脚本。开发命令见[开发入口与 bundle](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
@@ -116,7 +116,7 @@ Agent 调试与测试使用[有界输出与分层调试](https://github.com/Moyf
 ```sh
 uv run --no-sync ruff check
 pnpm run check:editor
-node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs
+node --test tests/test_editor_entry.mjs
 node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs
 node --test tests/test_editor_state.mjs tests/test_editor_commands.mjs
 pnpm run typecheck

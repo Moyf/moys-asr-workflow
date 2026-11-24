@@ -26,8 +26,8 @@ function fixture() {
   };
   context.window = context;
   vm.createContext(context);
-  for (const file of ['boot/editor-runtime', 'state/editor-state', 'io/editor-project-save']) {
-    const initializers = { 'boot/editor-runtime': 'initEditorRuntime', 'state/editor-state': 'initMaweState', 'io/editor-project-save': 'initMaweProjectSave' };
+  for (const file of ['state/editor-state', 'io/editor-project-save']) {
+    const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-save': 'initMaweProjectSave' };
     const source = initializers[file] ? invokedInitModuleSource(`editor/${file}.js`, initializers[file]) : readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8');
     vm.runInContext(source, context);
   }

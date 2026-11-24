@@ -7,13 +7,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'acorn';
+import { editorInitializers } from './editor-entry.mjs';
 
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web');
 
 export function initModuleSource(relativeWebPath) {
   const source = fs.readFileSync(path.join(webDir, relativeWebPath), 'utf8');
-  const manifest = JSON.parse(fs.readFileSync(path.join(webDir, 'editor-modules.json'), 'utf8'));
-  const initializer = manifest.modules.find(item => item.file === relativeWebPath)?.exportName;
+  const initializer = editorInitializers.find(item => item.file === relativeWebPath)?.exportName;
   const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
   const init = ast.body.find(node => node.type === 'ExportNamedDeclaration'
     && node.declaration?.type === 'FunctionDeclaration' && node.declaration.id.name === initializer)?.declaration;

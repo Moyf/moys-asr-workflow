@@ -26,6 +26,7 @@ test('HTTP starts the editor once per page and preserves project/export/undo beh
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
   expect(await page.content()).toContain(identity);
+  expect(await page.evaluate(() => typeof window.MAWE)).toBe('undefined');
   // Startup guards unsaved edits and ASS storage guards its own pending writes.
   expect(await page.evaluate(() => window.mawStartupUnloadListeners)).toBe(2);
   const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,

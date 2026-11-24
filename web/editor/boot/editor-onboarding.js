@@ -667,6 +667,5 @@ document.addEventListener('keydown', (event) => {
     beginRealSplit: beginOnboardingRealSplit,
   });
   window.MAWE_ONBOARDING = hooks.current;
-  window.MAWE?.register('onboarding', () => window.MAWE_ONBOARDING);
   scheduleOnboardingAfterRender();
 }
