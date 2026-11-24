@@ -1,5 +1,6 @@
 // 烧录视频任务流回归：两个入口的请求契约、停止取消与保存校验。
 // 与 gap-removed-media-jobs.spec.mjs 同一模式：注入编辑器接线源码 + 本地假任务服务器。
+import { initModuleSource } from '../helpers/init-module-source.mjs';
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -27,7 +28,7 @@ const burnWiringFile = 'editor/io/editor-wiring-burn-video.js';
 const handler = (await compileSources(root, [burnWiringFile],
   readModules(root).filter(module => module.file === burnWiringFile),
   file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
-const stickerPlanSource = fs.readFileSync(new URL('../../web/editor/io/editor-sticker-burn-plan.js', import.meta.url), 'utf8');
+const stickerPlanSource = initModuleSource('editor/io/editor-sticker-burn-plan.js');
 
 
 async function fixture(mode, run) {

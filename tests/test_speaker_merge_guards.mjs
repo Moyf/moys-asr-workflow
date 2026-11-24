@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { readFileSync } from 'node:fs';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
@@ -50,7 +49,7 @@ function fixture({ main = [], secondary = [], overlay = [], bindings = [], langu
     MaweHint: { flashHint(text) { effects.hints.push(text); } },
   };
   context.window = context;
-  vm.runInNewContext(readFileSync(new URL('../web/shared/editor-i18n.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('shared/editor-i18n.js'), context);
   const translateText = context.MAWE_I18N.translateText;
   context.MAWE_I18N.translateText = text => translateText(text, language);
   vm.createContext(context);

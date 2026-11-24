@@ -1,3 +1,4 @@
+export function initMaweStickerBurnPlan() {
 // === 表情包烧录计划：把当前工程的表情包区间与预览几何编译成烧录请求字段 ===
 // 方案一（固定位置）：所有表情包图片出现在 preview.sticker 几何对应位置，与
 // 表情包预览层同一套归一化几何；服务端把这些像素矩形交给 FFmpeg overlay 滤镜
@@ -114,3 +115,4 @@
     stickerBackgroundPayload,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

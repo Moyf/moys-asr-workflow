@@ -13,3 +13,7 @@
 
 - 迁移演练将构建器复制到经典基线时遗漏共享文件，实测触发 `ERR_MODULE_NOT_FOUND`。已将 `scripts/build-shared.mjs` 加入演练的复制和快照记录。
 - 启动与共享构建候选无其余未处置 blocker 或 major。真实 Server 编辑器和 Launcher 的 Chromium 69/69。人工操作待确认。
+
+## G17-B/C
+
+独立复核对照 `5030631c`。直接入口的依赖和 137 个显式调用次序已核对。构建与产物 Node 44/44，Python 新鲜度 26/26，真实 Server 与 Launcher 悬停提示 Chromium 8/8。旧迁移演练使用显式 legacy 构建；生产仍保留被浏览器消费的叠加轨注册桥，波形及轨道领域工厂的旧注册只在夹具内执行。没有未处置 blocker 或 major。

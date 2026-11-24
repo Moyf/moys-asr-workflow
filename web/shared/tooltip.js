@@ -1,5 +1,5 @@
 // 共享悬停 tooltip：接管原生 title 属性，替换为跟随明暗主题的自定义气泡。
-// 编辑器（esbuild bundle）与 Launcher（classic script 引用）共用同一份实现；
+// Editor 与 Launcher 共用实现，由各自入口在装配时调用 MaweTooltip.start()；
 // 样式位于 editor.css / launcher.css 末尾的 .mawe-tooltip 规则，只使用设计令牌。
 //
 // 设计要点：
@@ -276,5 +276,3 @@
 
   global.MaweTooltip = Object.freeze({ start, hide: hideNow });
 })(window);
-
-window.MaweTooltip.start();

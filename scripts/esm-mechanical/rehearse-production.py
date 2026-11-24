@@ -115,7 +115,7 @@ def main():
                     "const {applyMigration}=await import(process.argv[1]); "
                     "console.log(JSON.stringify(applyMigration(process.argv[2],JSON.parse(process.argv[3]))));",
                     (target / TOOLS[1]).as_uri(), target, json.dumps(selected)])
-        replay.run(["node", target / TOOLS[0], "--write", target])
+        replay.run(["node", target / TOOLS[0], "--legacy-write", target])
         return replay.snapshot_case(repository, target, classic, stage=TOOLS)
 
     # All three trees must use exactly the same mechanical representation.
@@ -160,7 +160,7 @@ def main():
                         adapter = ROOT / "scripts/esm-mechanical/adapt-production-types.mjs"
                         row["typeAdapterSha256"] = hashlib.sha256(adapter.read_bytes()).hexdigest()
                         replay.run(["node", adapter, target, number, head])
-                    replay.run(["node", target / TOOLS[0], "--write", target])
+                    replay.run(["node", target / TOOLS[0], "--legacy-write", target])
                     row["sources"] = len(replay.validate_editor_manifest(target))
                     validation = replay.run(["node", "--test", *sorted((target / "tests").glob("test_*.mjs"))],
                                             cwd=target, accepted=(0, 1))

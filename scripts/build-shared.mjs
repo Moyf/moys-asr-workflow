@@ -151,12 +151,12 @@ function validateTransitionModule(source, item) {
   }
 }
 
-export function assertMetafileInputsCaptured(root, result, inputHashes) {
+export function assertMetafileInputsCaptured(root, result, inputHashes, virtualInput = 'web/editor-entry.mjs') {
   for (const input of Object.keys(result.metafile.inputs)) {
     const normalized = input.replace(/\\/g,'/');
     // esbuild reports stdin.sourcefile as an input too, but it is virtual and
     // has no corresponding source file under web/.
-    if (normalized === 'web/editor-entry.mjs') continue;
+    if (normalized === virtualInput) continue;
     const absolute = path.normalize(path.resolve(root, normalized));
     const relative = result.loadedInputs.get(absolute);
     if (!relative || !(relative in inputHashes)) {

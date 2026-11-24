@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 const source = readFileSync(new URL('../web/editor/io/editor-project-save.js', import.meta.url), 'utf8');
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture({accept = true, failure = new TypeError('Failed to fetch'), replacement = false} = {}) {
   const calls = {build: [], posted: [], downloaded: [], errors: [], saved: 0, confirmed: 0};
@@ -41,7 +41,7 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
   context.window = context;
   context.AsrEditorUtils = projectModel;
   for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    vm.runInContext(file.includes('editor-state') ? invokedInitModuleSource(file, 'initMaweState') : readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+    vm.runInContext(file.includes('editor-state') ? invokedInitModuleSource(file, 'initMaweState') : initModuleSource(file), context);
   }
   const state = context.MaweState;
   context.MaweState = { ...state, markSaved() { calls.saved += 1; state.markSaved(); } };
@@ -255,7 +255,7 @@ test('changing only the timed-text view during a save keeps the newer preference
   // Use the content checkpoint owner; markSaved being called no longer means
   // the current bytes match the request's acknowledged snapshot.
   context.window = context;
-  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/boot/editor-runtime.js'), context);
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweState.beginProjectSession();
   context.MaweState.establishProjectCheckpoint();

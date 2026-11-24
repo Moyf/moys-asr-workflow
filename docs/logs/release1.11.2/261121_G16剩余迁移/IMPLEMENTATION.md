@@ -64,3 +64,11 @@ I 收口前需要继续移出 `editor-startup.js` 的工程修复、Server 保�
 候选同步到 #431 合入后的 `2bfb4511`。Launcher 沿用原清单、编译参数、输出位置和 IIFE。两个构建器均记录共享构建脚本，Launcher 的新鲜度与 Editor 入口脚本解耦。旧清单的夹具和迁移演练继续使用共享编译器。
 
 Editor 与 Launcher 构建及新鲜度、TypeScript、45 条定向 Node 用例、51 条 Python 用例通过。真实 Server 编辑器和 Launcher 浏览器共 69/69。Node 双 watcher 用例验证两套产物能随源码重建并恢复空闲。Python 用例覆盖只改 Editor 构建器时 Launcher 保持新鲜，以及改共享脚本时 Launcher 失效。
+
+## G17-B/C 真实入口与产物新鲜度
+
+- 生产 Editor 从 `web/editor/boot/editor-entry.mjs` 的 import 图构建，为 Server 和 Electron 交付同一 IIFE。旧清单继续服务夹具和迁移演练，并保留产物覆盖检查。未更改 Launcher 构建入口。
+- 137 个显式初始化与原有顺序一致。以前为经典作用域拼接的编辑器文件使用具名 init。共享空隙数据和 tooltip 继续提供 classic 兼容门面，Editor 和 Launcher 在原有位置显式安装 tooltip 监听器。波形领域工厂由实际消费方导入，旧注册保留在经典夹具内；浏览器和宿主仍用的兼容接口继续保留。
+- Editor 单独升级到元数据版本 2，记录入口、esbuild 依赖图、已读取输入哈希和解析候选。Python 会核对文件集合、包解析配置、读入源码、构建器、锁文件和产物完整性。Launcher 仍用版本 1，打包运行时仍只要求 bundle 存在。
+- 负向实测中现有文件保持原字节，只新增优先级更高的 `choice.ts`。旧预检返回 fresh，新预检返回 stale，重新编译读取到 `choice.ts`。还验证了候选新增、改名、删除与编译中途变化，异常构建不会发布产物。
+- Editor 实际加载 221 个源码输入。Node 全量 1780/1780，Ruff、类型检查、双端构建和新鲜度通过。真实 Server 回归包含双页隔离、加载和撤销、键盘、引导、tooltip、烧录和去空隙。两项首次运行导航时发生空响应，冻结候选后定向复测全部通过。随后真实 Server 浏览器回归 109/109，Python 受影响集合 156/156。

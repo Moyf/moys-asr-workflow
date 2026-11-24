@@ -24,9 +24,8 @@ function fixture({ mediaControls = false } = {}) {
     setTimeout(fn, delay) { timers.set(++nextTimer, { fn, delay }); return nextTimer; },
     clearTimeout(id) { timers.delete(id); } };
   context.window = context;
-  for (const path of ['web/shared/gap-remove-core.js', 'web/editor/media/editor-gap-playback.js']) {
-    vm.runInNewContext(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'), context);
-  }
+  vm.runInNewContext(readFileSync(new URL('../web/shared/gap-remove-core.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/media/editor-gap-playback.js'), context);
   const api = context.MaweGapPlayback;
   if (mediaControls) {
     Object.assign(context, {

@@ -247,17 +247,15 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
-        self.assertEqual(metadata["sourceFiles"], list(edit.read_editor_script_manifest()))
-        # G04 后清单不再是全部输入：retired 工厂经 import graph
-        # 进入 bundle，inputs 是 sourceFiles 的超集。
-        self.assertTrue(set(metadata["sourceFiles"]) <= set(metadata["inputs"]))
-        modules = json.loads(edit.read_web_asset("editor-modules.json"))["modules"]
-        # init 条目没有 MAWE.register 字面量（minify 也剥掉构建器注释）；
-        # 统一用 __mawEsmInitializationTrace.push 序列核对执行顺序，
-        # trace 覆盖全部清单文件且顺序即清单位次。
-        trace = re.findall(r'__mawEsmInitializationTrace\.push\("([^"]+)"\)', payload)
-        positions = [trace.index(item["file"]) for item in modules]
-        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(metadata["entry"], "editor/boot/editor-entry.mjs")
+        self.assertEqual(set(metadata["sourceFiles"]), set(metadata["inputs"]))
+        self.assertEqual(
+            {f"web/{source}" for source in metadata["inputs"]},
+            set(metadata["metafile"]["inputs"]),
+        )
+        # Keep the transition covered while other PRs still register modules
+        # in the manifest. The production compiler never reads it.
+        self.assertLessEqual(set(edit.read_editor_script_manifest()), set(metadata["inputs"]))
 
     def test_ass_pop_animation_binds_template_profile_fields_and_unlocks_params(self) -> None:
         # 单句放大出现：模板 pop 卡片、解析/导出/预览接线与 fad/pop 参数解耦
@@ -540,7 +538,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(edit.read_web_asset("editor/io/editor-server-save.js").count("MaweStickerOtioExport.syncStickerOtioExportMode();"), 1)
         self.assertNotIn("const portableStickerExportEnabled", script)
 
-    def test_generated_page_contains_compatibility_facades_in_order(self) -> None:
+    def test_generated_page_contains_compatibility_facades(self) -> None:
         page = edit.render_empty_editor_page()
         tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
                                 edit.read_web_asset("editor-template.html") + self.source_contract_text()))
@@ -553,21 +551,6 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
-        # ESM definitions may be hoisted. The trace records execution order.
-        pushed = re.findall(r'__mawEsmInitializationTrace\.push\("([^"]+)"\)', page)
-        files = (
-            "editor/boot/editor-boot.js",
-            "editor/boot/editor-runtime.js",
-            "shared/gap-remove-core.js",
-            "shared/editor-utils.js",
-            "shared/editor-i18n.js",
-            "editor/media/waveform.js",
-            "editor/io/editor-sticker-otio-export.js",
-            "editor/boot/editor-startup.js",
-            "editor/boot/editor-onboarding.js",
-        )
-        indices = [pushed.index(file) for file in files]
-        self.assertEqual(indices, sorted(indices))
         markers = (
             r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
             r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
