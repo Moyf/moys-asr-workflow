@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { bindFileInputAction } from '../web/editor/io/editor-file-input-action.js';
 import { createCommandRegistry } from '../web/editor/ui/editor-command-palette.js';
 import { registerBuiltinCommands } from '../web/editor/ui/editor-command-defs.js';
 
@@ -70,6 +71,47 @@ test('Phase 1 registers 40 unique built-ins', () => {
   const ids = new Set();
   registerBuiltinCommands({ register(command) { ids.add(command.id); } });
   assert.equal(ids.size, 40);
+});
+
+test('explicit retries replace only waiting palette choices after a silent legacy click', async () => {
+  const input = Object.assign(new EventTarget(), {
+    ownerDocument: { defaultView: { navigator: {} } },
+    value: 'previous.mosp',
+    click() { clicks++; },
+  });
+  let clicks = 0;
+  let changes = 0;
+  let finishChange;
+  const pick = bindFileInputAction(input, () => {
+    changes++;
+    return new Promise(resolve => { finishChange = resolve; });
+  });
+
+  const ignoredPaletteChoice = pick(true);
+  assert.equal(clicks, 1);
+  assert.equal(input.value, '');
+  const ignoredRetry = pick(true);
+  assert.equal(clicks, 2);
+  assert.equal(await ignoredPaletteChoice, false);
+  pick(false);
+  assert.equal(clicks, 3);
+  assert.equal(await ignoredRetry, false);
+  input.dispatchEvent(new Event('change'));
+  assert.equal(pick(true), false);
+  assert.equal(pick(false), false);
+  assert.equal(clicks, 3);
+  assert.equal(changes, 1);
+  finishChange(true);
+  await Promise.resolve();
+
+  const paletteRetry = pick(true);
+  input.dispatchEvent(new Event('change'));
+  assert.equal(pick(true), false);
+  assert.equal(pick(false), false);
+  input.dispatchEvent(new Event('change'));
+  assert.equal(changes, 2);
+  finishChange(true);
+  assert.equal(await paletteRetry, true);
 });
 
 test('built-in save and seek commands follow the editor capability and reuse its actions', async () => {

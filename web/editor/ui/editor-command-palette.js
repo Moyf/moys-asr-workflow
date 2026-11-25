@@ -104,7 +104,7 @@ export function createCommandRegistry({ storage, translate = text => text, repor
   return Object.freeze({ register, unregister, registerProvider, list, available, markUsed });
 }
 
-export function initMaweCommandPalette() {
+export function initMaweCommandPalette(fileActions) {
   const button = document.getElementById('command-palette-open');
   const dialog = document.getElementById('command-palette');
   if (!button || !dialog?.showModal) return;
@@ -244,6 +244,6 @@ export function initMaweCommandPalette() {
   }, true);
   window.addEventListener('keyup', event => { if (dialog.open) event.stopImmediatePropagation(); }, true);
 
-  registerBuiltinCommands(registry, window, document);
+  registerBuiltinCommands(registry, window, document, fileActions);
   window.MaweCommandPalette = Object.freeze({ ...registry, open, close });
 }

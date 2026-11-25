@@ -1,30 +1,17 @@
+import { bindFileInputAction } from '../io/editor-file-input-action.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 
 export function initMaweMediaInputsWiring() {
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
-document.getElementById('load-media')?.addEventListener('click', () => {
-  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
-  MaweProjectMediaInputs.loadMediaFileInput.value = '';
-  MaweProjectMediaInputs.loadMediaFileInput.click();
-});
 // 「加载字幕（.srt）」与「加载歌词（.lrc）」共用一套导入流程与确认文案逻辑。
-function openSubtitleImportInput(input, confirmMessage) {
-  MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
-  if (MaweServerSave.hasUnsavedProjectChanges()
-      && !confirm(confirmMessage)) return;
-  input.value = '';
-  input.click();
+function openSubtitleImportInput(pickFile, confirmMessage, waitForResult) {
+  return pickFile(waitForResult, () => {
+    MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
+    return !MaweServerSave.hasUnsavedProjectChanges() || confirm(confirmMessage);
+  });
 }
-document.getElementById('load-srt')?.addEventListener('click', () => openSubtitleImportInput(
-  MaweProjectMediaInputs.loadSrtFileInput,
-  '当前有未保存的改动，是否确定加载字幕？将替换当前字幕。',
-));
-document.getElementById('load-lrc')?.addEventListener('click', () => openSubtitleImportInput(
-  MaweProjectMediaInputs.loadLrcFileInput,
-  '当前有未保存的改动，是否确定加载歌词？将替换当前字幕。',
-));
 
 // 两个隐藏 input 的 change 走同一导入：副字幕导入标记优先，否则替换主轨
 // （openSubtitleFile 内部按扩展名分流 SRT / LRC 解析）。
@@ -32,7 +19,7 @@ async function importSubtitleFromInput(event) {
   const file = event.target.files?.[0];
   const importAsExtension = MaweMultiSubtitleCore.pendingSrtImportAsExtension;
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
-  if (!file) return;
+  if (!file) return false;
   if (importAsExtension) {
     try {
       const segments = await MaweLoadingProgress.parseSubtitleImportFile(file);
@@ -40,12 +27,20 @@ async function importSubtitleFromInput(event) {
     } catch (error) {
       MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
     }
-    return;
+    return false;
   }
-  await MaweMultiImport.openSubtitleFile(file);
+  return MaweMultiImport.openSubtitleFile(file);
 }
-MaweProjectMediaInputs.loadSrtFileInput.addEventListener('change', importSubtitleFromInput);
-MaweProjectMediaInputs.loadLrcFileInput.addEventListener('change', importSubtitleFromInput);
+const pickSubtitleFile = bindFileInputAction(MaweProjectMediaInputs.loadSrtFileInput, importSubtitleFromInput);
+const pickLyricsFile = bindFileInputAction(MaweProjectMediaInputs.loadLrcFileInput, importSubtitleFromInput);
+const importSubtitles = waitForResult => openSubtitleImportInput(
+  pickSubtitleFile, '当前有未保存的改动，是否确定加载字幕？将替换当前字幕。', waitForResult,
+);
+const importLyrics = waitForResult => openSubtitleImportInput(
+  pickLyricsFile, '当前有未保存的改动，是否确定加载歌词？将替换当前字幕。', waitForResult,
+);
+document.getElementById('load-srt')?.addEventListener('click', () => importSubtitles(false));
+document.getElementById('load-lrc')?.addEventListener('click', () => importLyrics(false));
 
 MaweDom.multiSubtitleImportResultCancel?.addEventListener('click', MaweMultiImport.closeMultiSubtitleImportModal);
 MaweDom.multiSubtitleImportExtension?.addEventListener('click', MaweMultiImport.prepareMultiSubtitleImport);
@@ -187,15 +182,15 @@ document.addEventListener('keydown', (event) => {
 
 
 
-MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+const pickMediaFile = bindFileInputAction(MaweProjectMediaInputs.loadMediaFileInput, async e => {
+  const file = e.target.files?.[0];
+  if (!file) return false;
   if (!MaweProjectMediaInputs.pendingProjectMediaSelection) {
     const checkpoint = MaweProjectLoad.ensureProjectCheckpointForImport(file);
     const generation = MaweState.projectLoadGeneration;
     const mediaGeneration = MaweMediaLoad.mediaLoadGeneration;
     if (!await checkpoint || generation !== MaweState.projectLoadGeneration
-        || mediaGeneration !== MaweMediaLoad.mediaLoadGeneration) return;
+        || mediaGeneration !== MaweMediaLoad.mediaLoadGeneration) return false;
   }
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
   const imported = await MaweMediaLoad.loadMediaFile(file);
@@ -203,9 +198,27 @@ MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) =
     MaweServerSave.projectImportDirty = true;
     if (MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
   }
+  return imported;
 });
 
 MaweProjectMediaInputs.loadMediaFileInput.addEventListener('cancel', () => {
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
 });
+
+const importMedia = waitForResult => pickMediaFile(waitForResult, () => {
+  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+});
+document.getElementById('load-media')?.addEventListener('click', () => importMedia(false));
+MaweDom.projectMediaSelectButton.addEventListener('click', () => pickMediaFile(false, () => {
+  // This path is finishing an already loaded project, not importing into a new one.
+  MaweProjectMediaInputs.closeProjectMediaModal(false);
+}));
+return {
+  importMedia: () => importMedia(true),
+  importSubtitles: () => importSubtitles(true),
+  importLyrics: () => importLyrics(true),
+  pickExtensionSubtitle: () => pickSubtitleFile(false, () => {
+    MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
+  }),
+};
 }
