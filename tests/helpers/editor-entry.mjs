@@ -22,14 +22,17 @@ export const editorInitializerImports = [...imports.values()];
 function executedInitializers(statements, active = new Set()) {
   const initializers = [];
   for (const statement of statements) {
-    if (statement.type !== 'ExpressionStatement' || statement.expression.type !== 'CallExpression') continue;
-    const { callee } = statement.expression;
-    if (callee.type !== 'Identifier') continue;
-    const name = callee.name;
-    if (imports.has(name)) initializers.push(imports.get(name));
-    if (phases.has(name)) {
-      if (active.has(name)) throw new Error(`Recursive Editor startup phase: ${name}`);
-      initializers.push(...executedInitializers(phases.get(name), new Set([...active, name])));
+    // Startup calls can also return dependencies passed to later initializers.
+    const expressions = statement.type === 'ExpressionStatement' ? [statement.expression]
+      : statement.type === 'VariableDeclaration' ? statement.declarations.map(item => item.init) : [];
+    for (const expression of expressions) {
+      if (expression?.type !== 'CallExpression' || expression.callee.type !== 'Identifier') continue;
+      const name = expression.callee.name;
+      if (imports.has(name)) initializers.push(imports.get(name));
+      if (phases.has(name)) {
+        if (active.has(name)) throw new Error(`Recursive Editor startup phase: ${name}`);
+        initializers.push(...executedInitializers(phases.get(name), new Set([...active, name])));
+      }
     }
   }
   return initializers;
