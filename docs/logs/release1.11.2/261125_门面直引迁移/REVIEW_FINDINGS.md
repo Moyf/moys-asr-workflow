@@ -10,3 +10,9 @@
 | Nit · `launcher-media-server.js:134` 的最近工程注释仍引用已移除的全局名。 | 注释更新为当前运行时绑定，Launcher bundle 新鲜度检查通过。 |
 
 独立复核通过 7 项 Chromium 用例，覆盖生产 Editor 启动、命令面板、离线译文、对齐录制审查和新手引导。Acorn 对照了 2528 项有效翻译及导出名称，值一致。Launcher 和离线工具通过 80 项 Node、63 项 Python、7 个生成资源新鲜度检查及 CHANGELOG 对拍。审查范围内无未处置的 blocker 或 major。
+
+## PR #458 Windows 打包复核
+
+`521a615b` 的 Windows 打包预览在真实 exe 启动后报告 `Packaged editor has no application bundle`。用生产渲染器取出空白 Editor 页，旧检查复现失败，且页面里存在一个构建器写入的 SHA-256 产物头。
+
+`scripts/packaging/smoke_editor.py:17` 改为识别带代码的构建产物头。独立复核验证实际渲染结果、空标记和仅有旧全局名称的负例，确认启动、项目身份、资源请求与退出检查继续执行。资产与打包契约共 65 项通过，Ruff 通过。

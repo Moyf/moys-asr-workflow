@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
+from scripts.packaging.smoke_editor import is_inline_editor_bundle  # noqa: E402
 
 
 class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
@@ -63,6 +64,10 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         page = edit.render_empty_editor_page()
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
+        scripts = re.findall(r"<script\b[^>]*>([\s\S]*?)</script>", page)
+        self.assertEqual(sum(is_inline_editor_bundle(script) for script in scripts), 1)
+        self.assertFalse(is_inline_editor_bundle(payload.splitlines()[0]))
+        self.assertFalse(is_inline_editor_bundle("window.AsrEditorUtils; window.MAWE_I18N;"))
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
         self.assertEqual(metadata["entry"], "editor/boot/editor-entry.mjs")
         self.assertEqual(set(metadata["sourceFiles"]), set(metadata["inputs"]))
