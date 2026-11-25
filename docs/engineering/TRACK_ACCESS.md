@@ -2,7 +2,7 @@
 
 这是内部读取层，不是新工程格式。`segments`、`multi_subtitle.tracks[*].segments`、`overlay_track.segments` 仍是唯一真源；不新增顶层 tracks、不写 CueRef、不变更 enabled/绑定/导出/选择/历史语义。
 
-JS 工厂 `web/shared/utils/tracks.js:createTrackModule` 经 `editor-scripts.txt` / `editor-modules.json` 注册为 `project-tracks`，由 `editor-utils.js` 通过 `MAWE.resolve('project-tracks')` 取得并暴露到兼容门面。Python 对应 `maw.tracks`。运行不依赖 Node、外部 registry 或工程提供的代码。
+JS 工厂 `web/shared/utils/tracks.js:createTrackModule` 由 `editor-utils.js` 静态导入并组装到兼容门面。Python 对应 `maw.tracks`。运行不依赖 Node、外部 registry 或工程提供的代码。
 
 | 协议 | JS | Python |
 | --- | --- | --- |

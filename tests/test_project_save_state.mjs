@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 const deferred = () => {
@@ -23,7 +23,6 @@ function fixture() {
   };
   context.window = context;
   vm.createContext(context);
-  vm.runInContext(initModuleSource('editor/boot/editor-runtime.js'), context);
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   context.MaweState.beginProjectSession();

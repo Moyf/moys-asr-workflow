@@ -5,29 +5,15 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { compileSources, readSources, readModules } from '../../scripts/build-editor.mjs';
+import { compileEditorFixture } from '../helpers/editor-entry.mjs';
 import { makeTempDir, cleanupTempDir } from './helpers.mjs';
 
-// Compile the real DOM-free shared modules through the production translator,
-// as tests/helpers/editor-module-loader.mjs does for Node fixtures.
-const root = fileURLToPath(new URL('../../', import.meta.url));
-const utilityFiles = readSources(root).filter(name => name === 'editor/boot/editor-runtime.js'
-  || name === 'editor/boot/editor-host.js' || name.startsWith('shared/host/')
-  || name === 'shared/gap-remove-core.js' || name === 'shared/editor-utils.js'
-  || name.startsWith('shared/utils/'));
-const utilitySource = (await compileSources(root, utilityFiles,
-  readModules(root).filter(module => utilityFiles.includes(module.file)),
-  file => fs.readFileSync(join(root, 'web', file), 'utf8'),
-  { beforeEntry: 'shared/editor-utils.js' })).code;
-const projectLoadFile = 'editor/io/editor-project-load.js';
-const projectLoadSource = (await compileSources(root, [projectLoadFile],
-  readModules(root).filter(module => module.file === projectLoadFile),
-  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
-const burnWiringFile = 'editor/io/editor-wiring-burn-video.js';
-const handler = (await compileSources(root, [burnWiringFile],
-  readModules(root).filter(module => module.file === burnWiringFile),
-  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
+const utilitySource = await compileEditorFixture([
+  'shared/gap-remove-core.js', 'editor/boot/editor-host.js',
+  'shared/editor-utils.js',
+], { beforeEntry: 'shared/editor-utils.js' });
+const projectLoadSource = await compileEditorFixture(['editor/io/editor-project-load.js']);
+const handler = await compileEditorFixture(['editor/io/editor-wiring-burn-video.js']);
 const stickerPlanSource = initModuleSource('editor/io/editor-sticker-burn-plan.js');
 
 

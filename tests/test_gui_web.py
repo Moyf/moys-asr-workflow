@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 from tests.compact_assertions import CompactContainerAssertions
 from tests.launcher_sources import launcher_sources_dedented, launcher_sources_text
 
@@ -6500,12 +6501,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_workspace_select_is_owned_by_editor_not_waveform(self) -> None:
         script = (ROOT / "web" / "editor/ui/editor-workspaces.js").read_text(encoding="utf-8")
-        import edit
-
-        waveform = "\n".join(
-            edit.read_web_asset(name) for name in edit.read_editor_script_manifest()
-            if name.startswith("editor/media/waveform")
-        )
+        media = ROOT / "web/editor/media"
+        waveform = "\n".join(path.read_text(encoding="utf-8") for path in [
+            media / "waveform.js", *sorted((media / "waveform").glob("*.js")),
+        ])
 
         self.assertNotIn('layoutPresetSelect', waveform)
         self.assertIn('const workspacePresetSelect = document.getElementById(\'workspace-preset\');', script)

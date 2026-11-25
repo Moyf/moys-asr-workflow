@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const builder = new URL('../scripts/build-launcher.mjs', import.meta.url);
-const editorBuilder = new URL('../scripts/build-editor.mjs', import.meta.url);
+const sharedBuilder = new URL('../scripts/build-shared.mjs', import.meta.url);
 const artifact = path.join(root, 'web/launcher/boot/launcher-bundle.js');
 
 test('launcher bundle is the fresh classic artifact of the manifest sources', async () => {
@@ -35,7 +35,7 @@ test('launcher bundle boots without a backend and exposes the bridge', async ({ 
 // L01 过渡接入：ESM 导出以词法绑定进入 classic 作用域，
 // 不落到 window，不调用 MAWE.register。
 const assembly = async (files, modules, options = {}) => {
-  const { compileSources } = await import(editorBuilder);
+  const { compileSources } = await import(sharedBuilder);
   const sources = new Map(Object.entries(files));
   return compileSources(root, Object.keys(files), modules,
     file => sources.get(file), options);
@@ -99,7 +99,7 @@ test('transition invalidates when its transitive dependency changes', async () =
     fs.writeFileSync(path.join(project, 'web/seam.js'),
       'import { value } from "./helper.js";\nexport function createSeam() { return value; }');
     fs.writeFileSync(path.join(project, 'web/helper.js'), 'export const value = "v1";\n');
-    const { compileSources } = await import(editorBuilder);
+    const { compileSources } = await import(sharedBuilder);
     const read = file => fs.readFileSync(path.join(project, 'web', file), 'utf8');
     const modules = [{ file: 'seam.js', kind: 'transition', name: 'seam', exportName: 'createSeam', binding: 'seamFactory' }];
     const first = await compileSources(project, ['seam.js'], modules, read, { transitionBindings: new Set() });

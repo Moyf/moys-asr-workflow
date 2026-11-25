@@ -24,7 +24,7 @@ CHECKLIST_NODE = 'tests/test_verification_checklist.mjs'
 CHECKLIST_SPEC = 'tests/e2e/verification-checklist.spec.mjs'
 CHECKLIST_SPECS = (CHECKLIST_SPEC, 'tests/e2e/tool-compact.spec.mjs', 'tests/e2e/tool-pages.spec.mjs')
 DEV_PYTHON = ('tests.test_project_contract', 'tests.test_project_io', 'tests.test_project_backups')
-DEV_NODE = ('test_editor_runtime.mjs', 'test_editor_state.mjs', 'test_editor_commands.mjs',
+DEV_NODE = ('test_editor_entry.mjs', 'test_editor_state.mjs', 'test_editor_commands.mjs',
             'test_editor_host.mjs', 'test_editor_history_gestures.mjs')
 ALL_MERGE = {'common', 'browser', 'smoke', 'media', 'long-media', 'lifecycle', 'tools', 'editor-e2e', 'website'}
 MARKER_RUNTIME_SPECS = (
@@ -219,7 +219,7 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
         for path in web:
             if path.startswith(('web/editor/', 'web/shared/')):
                 add_consumers(path, [p for p in (
-                    'tests/test_editor_script_syntax.mjs', 'tests/test_editor_script_order.mjs'
+                    'tests/test_editor_entry.mjs'
                 ) if (ROOT / p).is_file()])
             if path.startswith(('web/launcher/', 'web/shared/')):
                 add_consumers(path, ['tests/test_launcher_script_syntax.mjs']

@@ -1,5 +1,5 @@
 // editor-globals.d.ts：编辑器脚本体系的共享类型契约（仅类型检查用，绝不进
-// editor-scripts.txt 清单，对运行时与三个消费者零影响）。
+// 生产依赖图只加载运行时代码，类型声明供静态检查使用。
 //
 // 为什么放 d.ts 而不是各模块 JSDoc：清单组装的脚本是经典脚本（无
 // import/export），JSDoc typedef 不跨文件传播；d.ts 的声明天然是全局的，
@@ -340,7 +340,6 @@ declare var MaweState: MaweStateApi;
 interface Window {
   MaweState: MaweStateApi;
   MaweProjectSettings?: { syncTrackControls(): void; syncControls(): void };
-  MAWE: { register(name: string, factory: (...args: any[]) => unknown): void; resolve(name: string, ...args: any[]): any };
 }
 
 interface ViewInvalidation {

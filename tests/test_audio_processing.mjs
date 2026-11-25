@@ -63,7 +63,6 @@ function fixture(transport = async () => response(result())) {
     MaweHost: { server: { fetch(url, options) { const body = JSON.parse(options.body); calls.push({ url, body, signal: options.signal }); return transport(body); } } },
   });
   context.window = context;
-  vm.runInContext(initModuleSource('editor/boot/editor-runtime.js'), context);
   context.AsrEditorUtils = editorUtils;
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweWordTiming = { clearSelection() {} };

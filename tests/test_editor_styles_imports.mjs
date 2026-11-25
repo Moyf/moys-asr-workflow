@@ -1,3 +1,4 @@
+import { editorInitializers } from './helpers/editor-entry.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,12 +16,11 @@ const styleFiles = [
 ];
 
 test('G09 style initializers use static imports for sibling function calls', () => {
-  const { modules } = JSON.parse(fs.readFileSync(path.join(web, 'editor-modules.json'), 'utf8'));
+
   const owners = new Map();
   const trees = new Map();
   for (const file of styleFiles) {
-    const item = modules.find(module => module.file === file);
-    assert.equal(item?.kind, 'init', `${file} must initialize at its manifest position`);
+    const item = editorInitializers.find(module => module.file === file);
     const source = fs.readFileSync(path.join(web, file), 'utf8');
     const tree = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
     trees.set(file, tree);
@@ -46,9 +46,9 @@ test('G09 style initializers use static imports for sibling function calls', () 
 
 test('G09 modules are safe to import before browser initialization', async () => {
   assert.equal(globalThis.window, undefined);
-  const { modules } = JSON.parse(fs.readFileSync(path.join(web, 'editor-modules.json'), 'utf8'));
+
   for (const file of styleFiles) {
     const module = await import(`../web/${file}`);
-    assert.equal(typeof module[modules.find(item => item.file === file).exportName], 'function');
+    assert.equal(typeof module[editorInitializers.find(item => item.file === file).exportName], 'function');
   }
 });

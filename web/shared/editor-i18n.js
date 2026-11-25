@@ -2412,7 +2412,6 @@ export function initEditorI18n() {
     translateText,
     validateTranslationKeys,
   };
-  global.MAWE?.register('i18n', () => global.MAWE_I18N);
 
   if (typeof document === 'undefined') return;
   if (document.readyState === 'loading') {

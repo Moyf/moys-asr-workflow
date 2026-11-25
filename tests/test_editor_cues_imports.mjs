@@ -1,3 +1,4 @@
+import { editorInitializers } from './helpers/editor-entry.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,11 +10,10 @@ import * as walk from 'acorn-walk';
 const web = fileURLToPath(new URL('../web/', import.meta.url));
 
 test('G08 cues initializers call sibling function exports through static imports', () => {
-  const { modules } = JSON.parse(fs.readFileSync(path.join(web, 'editor-modules.json'), 'utf8'));
+
   // Wiring and the earlier overlay-track pure module retain their own bridge
   // boundaries. G08 covers the cue-domain initializers, not every caller.
-  const core = modules.filter(item => item.kind === 'init'
-    && item.file.startsWith('editor/cues/') && !path.basename(item.file).startsWith('editor-wiring-'));
+  const core = editorInitializers.filter(item => item.file.startsWith('editor/cues/') && !path.basename(item.file).startsWith('editor-wiring-'));
   assert.ok(core.length > 0);
   const owners = new Map();
   const trees = new Map();

@@ -1,11 +1,5 @@
 import { selectOverlayCueRow, updateSelectionCountText } from './editor-overlay-cue-selection.js';
-// 叠加轨（overlay track）领域模块：轨道查询、主轨 ↔ 叠加轨迁移与叠加轨
-// 编辑动作。ESM 纯模块，不进 editor-scripts.txt 清单：模块求值只有函数与
-// 状态定义、零副作用，共享状态（MaweBoot.DATA、MaweSelection 等）经 window
-// 门面在调用时解析。classic 时代的两个 overlay 函数转发门面由对本模块的
-// 静态 import 取代；e2e 的数据层直调经 window.MAWE.resolve('overlay-track')
-// 访问，注册在 editor-wiring-overlay-transfer.js 的启动位置。
-
+// 叠加轨查询、迁移和编辑。运行时通过当前页面门面读取工程状态。
 // === 轨道查询 ===
 
 function getOverlayTrack() {
@@ -566,7 +560,6 @@ function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
 }
 
 // 公共 API：消费方静态 import 本对象以外的具名导出；这里集中 re-export
-// 便于 editor-wiring-overlay-transfer.js 向 window.MAWE 注册整体命名空间
 // （e2e 数据层直调入口）。
 export {
   getOverlayTrack,

@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import ClassVar
+
+from tests.editor_source import editor_source_text
 
 from tests.compact_assertions import CompactContainerAssertions
 
@@ -48,191 +49,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('<dialog id="command-palette"', page)
         self.assertIn('id="command-palette-results" role="listbox"', page)
 
-    # G06 后这些 composition 模块不再出现在清单里，
-    # 但仍是 waveform.js 的显式 import 与源码契约。
-    WAVEFORM_COMPOSITION_SOURCES: ClassVar[tuple[str, ...]] = (
-        "editor/media/editor-thumbnails.js",
-        "editor/media/waveform/thumbnails.js",
-        "editor/media/waveform/media.js",
-        "editor/media/waveform/render.js",
-        "editor/media/waveform/cue-blocks.js",
-        "editor/media/waveform/word-blocks.js",
-        "editor/media/waveform/canvas.js",
-        "editor/media/waveform/input.js",
-    )
-
     def source_contract_text(self) -> str:
-        """Historical source-shape checks inspect sources, not esbuild printing."""
-        names = list(edit.read_editor_script_manifest()) + list(self.WAVEFORM_COMPOSITION_SOURCES)
-        return "\n\n".join(edit.read_web_asset(name) for name in names)
-
-    def test_editor_script_manifest_is_complete(self) -> None:
-        manifest = edit.read_editor_script_manifest()
-        self.assertEqual(len(manifest), len(set(manifest)))
-        self.assertEqual(
-            set(manifest),
-            {
-                "editor/boot/editor-boot.js",
-                "editor/boot/editor-runtime.js",
-                "editor/state/editor-state.js",
-                "editor/state/editor-view-updates.js",
-                "editor/state/editor-commands.js",
-                "editor/boot/editor-host.js",
-                "shared/gap-remove-core.js",
-                "shared/utils/tracks.js",
-                "shared/editor-utils.js",
-                "shared/utils/project-validation.js",
-                "shared/editor-i18n.js",
-                "shared/tooltip.js",
-                "editor/media/waveform/constants.js",
-                "editor/media/waveform/labels.js",
-                "editor/media/waveform/scale.js",
-                "editor/media/waveform/layout.js",
-                "editor/media/waveform/settings.js",
-                "editor/media/waveform/payload.js",
-                "editor/media/waveform/colors.js",
-                "editor/media/waveform/timing.js",
-                "editor/media/waveform/visibility.js",
-                "editor/media/waveform/controls.js",
-                "editor/media/waveform/pointer.js",
-                "editor/media/waveform/workspace.js",
-                "editor/media/waveform/scale-controls.js",
-                "editor/media/waveform/cue-drag.js",
-                "editor/media/waveform/cue-commands.js",
-                "editor/media/waveform/gap-drag.js",
-                "editor/media/waveform/markers.js",
-                "editor/media/waveform/cue-drag-update.js",
-                "editor/media/waveform/playback.js",
-                "editor/media/waveform.js",
-                "editor/ui/editor-hint.js",
-                "editor/media/editor-jkl.js",
-                "editor/state/editor-settings.js",
-                "editor/state/editor-project-settings.js",
-                "editor/state/editor-multi-subtitle-core.js",
-                "editor/ui/editor-gap-remove-data.js",
-                "editor/styles/editor-colors.js",
-                "editor/ui/editor-dom.js",
-                "editor/state/editor-cue-panel-state.js",
-                "editor/state/editor-history.js",
-                "editor/state/editor-core-state.js",
-                "editor/cues/editor-split-trim.js",
-                "editor/cues/editor-split-mode.js",
-                "editor/ui/editor-display-settings.js",
-                "editor/ui/editor-floating-panel.js",
-                "editor/ui/editor-settings-panels.js",
-                "editor/ui/editor-ninja.js",
-                "editor/media/editor-audio-processing.js",
-                "editor/media/editor-gap-playback.js",
-                "editor/media/editor-media-playback.js",
-                "editor/cues/editor-keyboard-targets.js",
-                "editor/cues/editor-shortcuts.js",
-                "editor/cues/editor-merge-adjacent.js",
-                "editor/styles/editor-appearance.js",
-                "editor/media/editor-preview-geometry.js",
-                "editor/media/editor-playback-loop.js",
-                "editor/media/editor-sticker-overlay.js",
-                "editor/io/editor-export-srt.js",
-                "editor/io/editor-export-timeline.js",
-                "editor/io/editor-server-save.js",
-                "editor/ui/editor-workspaces.js",
-                "editor/io/editor-project-save.js",
-                "editor/io/editor-dynamic-exports.js",
-                "editor/ui/editor-export-menus.js",
-                "editor/io/editor-project-media-inputs.js",
-                "editor/io/editor-project-load.js",
-                "editor/io/editor-loading-progress.js",
-                "editor/io/editor-multi-import.js",
-                "editor/media/editor-media-load.js",
-                "editor/io/editor-sticker-root.js",
-                "editor/cues/editor-text-process.js",
-                "editor/cues/editor-text-presets.js",
-                "editor/cues/editor-timed-text-edit.js",
-                "editor/cues/editor-sticker-picker.js",
-                "editor/cues/editor-add-cue.js",
-                "editor/cues/editor-bound-drag.js",
-                "editor/ui/editor-context-menus.js",
-                "editor/cues/editor-text-cleanup.js",
-                "editor/media/editor-waveform-init.js",
-                "editor/cues/editor-word-timing.js",
-                "editor/media/editor-media-step.js",
-                "editor/styles/editor-appearance-inputs.js",
-                "editor/ui/editor-behavior-hints.js",
-                "editor/io/editor-server-connection.js",
-                "editor/io/editor-drag-drop.js",
-                "editor/io/editor-sticker-otio-export.js",
-                "editor/io/editor-json-repair.js",
-                "editor/ui/editor-help-panel.js",
-                "editor/ui/editor-theme.js",
-                "editor/ui/editor-gap-remove-ui.js",
-                "editor/markers/editor-marker-editing.js",
-                "editor/markers/editor-markers-panel.js",
-                "editor/cues/editor-selection.js",
-                "editor/cues/editor-binding-align.js",
-                "editor/cues/editor-cue-panel.js",
-                "editor/cues/editor-cue-elements.js",
-                "editor/cues/editor-color-filter.js",
-                "editor/cues/editor-search.js",
-                "editor/cues/editor-inline-edit.js",
-                "editor/cues/editor-split-core.js",
-                "editor/cues/editor-split-context.js",
-                "editor/cues/editor-segment-ops.js",
-                "editor/cues/editor-nav-preview.js",
-                "editor/cues/editor-cue-events.js",
-                "editor/cues/editor-cue-list-anchor.js",
-                "editor/cues/editor-timeline.js",
-                "editor/styles/editor-speaker-labels.js",
-                "editor/styles/editor-speaker-manager.js",
-                "editor/boot/editor.js",
-                "editor/cues/editor-wiring-overlay-transfer.js",
-                "editor/styles/editor-wiring-ass-font-aliases.js",
-                "editor/styles/editor-project-font-check.js",
-                "editor/styles/editor-wiring-ass-storage.js",
-                "editor/boot/editor-wiring-initial-config.js",
-                "editor/ui/editor-dom-panels.js",
-                "editor/ui/editor-wiring-dom-panels.js",
-                "editor/styles/editor-wiring-ass-manager.js",
-                "editor/styles/editor-wiring-ass-transfer.js",
-                "editor/ui/editor-wiring-settings-init.js",
-                "editor/ui/editor-wiring-settings-help.js",
-                "editor/ui/editor-wiring-theme-split-settings.js",
-                "editor/ui/editor-wiring-display-behavior.js",
-                "editor/styles/editor-wiring-appearance-settings.js",
-                "editor/ui/editor-wiring-gap-panel.js",
-                "editor/markers/editor-wiring-markers.js",
-                "editor/cues/editor-wiring-cue-panel.js",
-                "editor/cues/editor-wiring-search-filter.js",
-                "editor/cues/editor-wiring-overlay-split-merge.js",
-                "editor/cues/editor-wiring-list-navigation.js",
-                "editor/media/editor-ass-preview-refresh.js",
-                "editor/media/editor-wiring-keyboard-guards.js",
-                "editor/cues/editor-wiring-word-timing.js",
-                "editor/media/editor-wiring-media-controls.js",
-                "editor/cues/editor-wiring-edit-shortcuts.js",
-                "editor/styles/editor-wiring-font-geometry.js",
-                "editor/styles/editor-wiring-ass-preview.js",
-                "editor/styles/editor-wiring-ass-canvas.js",
-                "editor/styles/editor-wiring-ass-frame.js",
-                "editor/styles/editor-wiring-ass-cue-position.js",
-                "editor/media/editor-wiring-sticker-preview.js",
-                "editor/io/editor-wiring-export-context.js",
-                "editor/io/editor-wiring-export-actions.js",
-                "editor/io/editor-sticker-burn-plan.js",
-                "editor/io/editor-wiring-burn-video.js",
-                "editor/ui/editor-wiring-toolbar-menus.js",
-                "editor/io/editor-wiring-project-inputs.js",
-                "editor/media/editor-wiring-media-inputs.js",
-                "editor/io/editor-wiring-sticker-root.js",
-                "editor/cues/editor-wiring-text-tools.js",
-                "editor/cues/editor-wiring-overlay-actions.js",
-                "editor/ui/editor-wiring-context-menus.js",
-                "editor/media/editor-wiring-waveform-hints.js",
-                "editor/io/editor-wiring-server-events.js",
-                "editor/io/editor-wiring-file-drop.js",
-                "editor/boot/editor-startup.js",
-                "editor/boot/editor-onboarding.js",
-                "editor/ui/editor-command-palette.js",
-            },
-        )
+        return editor_source_text()
 
     # bundle 是构建产物（不入库）：本地未跑 pnpm install 时跳过，CI / 开发机在
     # postinstall 或显式 build 之后一定存在。
@@ -241,9 +59,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         "editor-bundle.js 未构建（pnpm install 的 postinstall 会自动构建）",
     )
     def test_editor_script_payload_is_one_complete_artifact(self) -> None:
-        with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
-            payload = edit.build_editor_scripts()
-            page = edit.render_empty_editor_page()
+        payload = edit.build_editor_scripts()
+        page = edit.render_empty_editor_page()
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
@@ -253,9 +70,17 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             {f"web/{source}" for source in metadata["inputs"]},
             set(metadata["metafile"]["inputs"]),
         )
-        # Keep the transition covered while other PRs still register modules
-        # in the manifest. The production compiler never reads it.
-        self.assertLessEqual(set(edit.read_editor_script_manifest()), set(metadata["inputs"]))
+
+    def test_frozen_renderer_uses_bundled_file_without_source_build(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            web = root / "web"
+            artifact = web / "editor/boot/editor-bundle.js"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text("// packaged artifact\n", encoding="utf-8")
+            with patch.object(edit, "WEB_DIR", web), patch.object(edit.sys, "frozen", True, create=True):
+                with patch("maw.web_build._run_build", side_effect=AssertionError("frozen source build")):
+                    self.assertEqual(edit.build_editor_scripts(), "// packaged artifact")
 
     def test_ass_pop_animation_binds_template_profile_fields_and_unlocks_params(self) -> None:
         # 单句放大出现：模板 pop 卡片、解析/导出/预览接线与 fad/pop 参数解耦
@@ -552,7 +377,6 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
         markers = (
-            r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
             r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
             r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
             r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',

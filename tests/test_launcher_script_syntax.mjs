@@ -1,5 +1,5 @@
 // 清单内全部 launcher 脚本的语法检查：不依赖任何 devDependency，任何环境都必须能跑。
-// 与 tests/test_editor_script_syntax.mjs 同构：ESM 工厂用 acorn 按 module 解析，
+// ESM 工厂用 acorn 按 module 解析，
 // 其余用 vm.Script 只编译不执行，保证「语法」这一层永远不会静默失守。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

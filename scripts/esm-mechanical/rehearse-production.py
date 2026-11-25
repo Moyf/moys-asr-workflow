@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import uuid
 
 spec = importlib.util.spec_from_file_location("replay", Path(__file__).with_name("rehearse-upstream.py"))
@@ -16,6 +15,7 @@ replay = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(replay)
 ROOT = replay.ROOT
 CONSUMERS = ("edit.py",)
+CLASSIC_TOOL_REF = "c79818d4"
 TOOLS = ("scripts/build-editor.mjs", "scripts/migrate-editor-factories.mjs", "scripts/build-shared.mjs")
 
 
@@ -96,6 +96,11 @@ def main():
     resolutions = json.loads(Path(args.resolutions).read_text(encoding="utf-8")) if args.resolutions else {}
     destination.mkdir(parents=True)
 
+    tool_sources = {
+        name: replay.git(repository, "show", f"{CLASSIC_TOOL_REF}:{name}").stdout
+        for name in TOOLS
+    }
+
     def prepare(classic, target):
         replay.export_tree(repository, classic, target)
         replay.attach_tools(target, dependencies, base)
@@ -110,7 +115,7 @@ def main():
         for filename in TOOLS:
             output = target / filename
             output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ROOT / filename, output)
+            output.write_bytes(tool_sources[filename])
         replay.run(["node", "--input-type=module", "-e",
                     "const {applyMigration}=await import(process.argv[1]); "
                     "console.log(JSON.stringify(applyMigration(process.argv[2],JSON.parse(process.argv[3]))));",
@@ -124,7 +129,7 @@ def main():
     results = {"scope": "actual partial production fork; individual PR build + Node + type validation",
                "base": base, "migration": migration, "fork": fork, "esmFactories": len(selected),
                "snapshotSha256": hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),
-               "toolHashes": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in TOOLS},
+               "toolHashes": {name: hashlib.sha256(tool_sources[name]).hexdigest() for name in TOOLS},
                "projectedBase": projected_base,
                "prs": []}
     if args.resolutions:

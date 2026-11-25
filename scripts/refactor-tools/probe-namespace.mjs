@@ -1,3 +1,4 @@
+// Historical browser probe for existing pre-ESM fixtures with window.MAWE.
 // 无头探针：加载产物页，断言各命名空间挂载且零 pageerror。
 // 用法: node scripts/refactor-tools/probe-namespace.mjs <html路径>
 import { pathToFileURL } from "node:url";

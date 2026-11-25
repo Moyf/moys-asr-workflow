@@ -43,7 +43,7 @@ PYTHON = {
     'ci': ['tests/test_ci_impact.py', 'tests/test_ci_acceptance.py', 'tests/test_run_check.py'],
 }
 NODE = {
-    'build': ['tests/test_editor_script_syntax.mjs', 'tests/test_editor_script_order.mjs'],
+    'build': ['tests/test_editor_entry.mjs'],
     'website': ['tests/test_readme_content_sync.mjs'],
     'editor': ['tests/test_editor_recovery_save.mjs', 'tests/test_project_save_state.mjs',
                'tests/test_v2_migration_save.mjs', 'tests/test_editor_state.mjs', 'tests/test_editor_commands.mjs'],

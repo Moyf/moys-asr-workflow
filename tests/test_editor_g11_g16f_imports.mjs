@@ -1,3 +1,4 @@
+import { editorInitializers } from './helpers/editor-entry.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import test from 'node:test';
 import { parse } from 'acorn';
 
 const web = fileURLToPath(new URL('../web/', import.meta.url));
-const manifest = JSON.parse(fs.readFileSync(path.join(web, 'editor-modules.json'), 'utf8'));
+
 const g11 = [
   'io/editor-drag-drop.js', 'io/editor-dynamic-exports.js', 'io/editor-export-srt.js',
   'io/editor-export-timeline.js', 'io/editor-loading-progress.js',
@@ -23,17 +24,12 @@ const g16f = [
   'editor-wiring-ass-storage.js', 'editor-wiring-font-geometry.js',
 ].map(file => `editor/styles/${file}`);
 
-test('G11 and G16-F initialize every planned module at its manifest position', () => {
-  const files = fs.readFileSync(path.join(web, 'editor-scripts.txt'), 'utf8').split(/\r?\n/);
+test('G11 and G16-F initialize every planned module from the production entry', () => {
+  const files = editorInitializers.map(item => item.file);
   for (const file of [...g11, ...g16f]) {
-    const entry = manifest.modules.find(item => item.file === file);
-    assert.equal(entry?.kind, 'init', `${file} must use its original manifest position`);
+    const entry = editorInitializers.find(item => item.file === file);
     assert.equal(typeof entry.exportName, 'string');
     assert.ok(files.includes(file), `${file} missing from source order`);
-  }
-  for (const bridge of manifest.externalBridges) {
-    assert.ok(![...g11, ...g16f].includes(bridge.file),
-      `Migrated module still has a classic lexical bridge: ${bridge.name}`);
   }
 });
 
@@ -59,7 +55,7 @@ test('G11 and G16-F modules are safe to import before browser initialization', a
   assert.equal(globalThis.window, undefined);
   for (const file of [...g11, ...g16f]) {
     const module = await import(`../web/${file}`);
-    const initializer = manifest.modules.find(item => item.file === file).exportName;
+    const initializer = editorInitializers.find(item => item.file === file).exportName;
     assert.equal(typeof module[initializer], 'function', file);
   }
 });

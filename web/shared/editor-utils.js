@@ -761,7 +761,5 @@ normalizePreviewGeometry,
   buildLottieAnimation,
   buildOgrafGraphic,
 };
-if (window.MAWE?.register) {
-  window.MAWE.register('editor-utils', () => window.AsrEditorUtils);
-}
+
 }

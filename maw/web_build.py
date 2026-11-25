@@ -105,8 +105,8 @@ class _BundleSpec:
     kind: str
     bundle: Path
     meta: Path
-    config: Path
-    manifest: Path
+    config: Path | None
+    manifest: Path | None
     builders: tuple[Path, ...]
     build_script: str
     pnpm_script: str
@@ -117,8 +117,8 @@ _SPECS: Final[dict[str, _BundleSpec]] = {
         kind="editor",
         bundle=Path("web/editor/boot/editor-bundle.js"),
         meta=Path("web/editor/boot/editor-bundle.meta.json"),
-        config=Path("web/editor-modules.json"),
-        manifest=Path("web/editor-scripts.txt"),
+        config=None,
+        manifest=None,
         builders=(Path("scripts/build-editor.mjs"), Path("scripts/build-shared.mjs")),
         build_script="scripts/build-editor.mjs",
         pnpm_script="build:editor",
