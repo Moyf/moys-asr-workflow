@@ -30,6 +30,11 @@ async function importSubtitleFromInput(event) {
 }
 const pickSubtitleFile = bindFileInputAction(MaweProjectMediaInputs.loadSrtFileInput, importSubtitleFromInput);
 const pickLyricsFile = bindFileInputAction(MaweProjectMediaInputs.loadLrcFileInput, importSubtitleFromInput);
+function importExtensionSubtitleAction() {
+  pickSubtitleFile(false, () => {
+    MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
+  });
+}
 const importSubtitlesAction = waitForResult => openSubtitleImportInput(
   pickSubtitleFile, '当前有未保存的改动，是否确定加载字幕？将替换当前字幕。', waitForResult,
 );
@@ -202,6 +207,10 @@ MaweProjectMediaInputs.loadMediaFileInput.addEventListener('cancel', () => {
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
 });
 
+MaweDom.projectMediaSelectButton.addEventListener('click', () => {
+  pickMediaFile(false, () => MaweProjectMediaInputs.closeProjectMediaModal(false));
+});
+
 function importMediaAction(waitForResult) {
   return pickMediaFile(waitForResult, () => {
     MaweProjectMediaInputs.pendingProjectMediaSelection = null;
@@ -212,4 +221,5 @@ window.MaweMediaFileActions = Object.freeze({
   importMedia: () => importMediaAction(true),
   importSubtitles: () => importSubtitlesAction(true),
   importLyrics: () => importLyricsAction(true),
+  importExtensionSubtitle: importExtensionSubtitleAction,
 });

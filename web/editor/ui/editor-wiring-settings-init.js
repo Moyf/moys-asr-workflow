@@ -206,16 +206,10 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
     command.commit({ cueList: true, waveform: 'full', preview: 'refresh' });
     // 先启用空副轨；快速导入询问只决定是否立即选择 SRT。
     if (!promptImportSecondSrt || !confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
-    MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
-    MaweProjectMediaInputs.loadSrtFileInput.value = '';
-    MaweProjectMediaInputs.loadSrtFileInput.click();
+    window.MaweMediaFileActions.importExtensionSubtitle();
   });
 });
-document.getElementById('multi-subtitle-import')?.addEventListener('click', () => {
-  MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
-  MaweProjectMediaInputs.loadSrtFileInput.value = '';
-  MaweProjectMediaInputs.loadSrtFileInput.click();
-});
+document.getElementById('multi-subtitle-import')?.addEventListener('click', () => window.MaweMediaFileActions.importExtensionSubtitle());
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweDom.multiSubtitleDisplayMode.value;

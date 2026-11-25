@@ -10,12 +10,6 @@
 
 
 
-MaweDom.projectMediaSelectButton.addEventListener('click', () => {
-  MaweProjectMediaInputs.closeProjectMediaModal(false);
-  MaweProjectMediaInputs.loadMediaFileInput.value = '';
-  MaweProjectMediaInputs.loadMediaFileInput.click();
-});
-
 MaweDom.projectMediaLaterButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(true);
   MaweHint.flashHint('可稍后点击“导入媒体”选择关联媒体', 'invalid');
@@ -124,17 +118,16 @@ function bindFileInputAction(input, handleChange) {
   input.addEventListener('cancel', cancelPendingChoice);
 
   return (waitForResult, prepare) => {
-    if ((waitForResult && pending) || prepare?.() === false) return false;
+    if ((waitForResult && pending?.processing) || prepare?.() === false) return false;
+    if (waitForResult && navigator.userActivation?.isActive === false) return false;
+    // A new explicit choice supersedes an unanswered one; older browsers can
+    // silently ignore click() without firing cancel.
+    cancelPendingChoice();
+    input.value = '';
     if (!waitForResult) {
-      // Older browsers can silently ignore click() without firing cancel.
-      // A toolbar retry must not inherit that palette invocation.
-      cancelPendingChoice();
-      input.value = '';
       input.click();
       return;
     }
-    if (navigator.userActivation?.isActive === false) return false;
-    input.value = '';
     return new Promise((resolve, reject) => {
       pending = { resolve, reject, processing: false };
       try {

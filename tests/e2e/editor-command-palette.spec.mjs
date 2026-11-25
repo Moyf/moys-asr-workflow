@@ -151,15 +151,29 @@ test('New Project is not recent after cancelling the save picker, only after sav
   await expect(recent).toBeVisible();
 });
 
-async function chooseFromPalette(page, title) {
+async function paletteChoice(page, title) {
   await page.locator('#command-palette-open').click();
   const palette = page.locator('#command-palette');
   await palette.getByRole('combobox').fill(title);
+  return palette.getByRole('option', { name: new RegExp(title) });
+}
+
+async function chooseFromPalette(page, title, timeout) {
+  const option = await paletteChoice(page, title);
   const [chooser] = await Promise.all([
-    page.waitForEvent('filechooser'),
-    palette.getByRole('option', { name: new RegExp(title) }).click(),
+    page.waitForEvent('filechooser', { timeout }),
+    option.click(),
   ]);
   return chooser;
+}
+
+async function refuseNextLegacyPicker(page, inputId) {
+  await page.locator(`#${inputId}`).evaluate(input => {
+    const click = input.click.bind(input);
+    input.showPicker = undefined;
+    // A browser may swallow the legacy click without change or cancel events.
+    input.click = () => { input.click = click; };
+  });
 }
 
 function commandRecent(page, id) {
@@ -234,6 +248,49 @@ test('A refused palette picker leaves the real Open Project toolbar button usabl
   await expect(page.locator('#json-name')).toHaveText(projectFile.name);
   expect(await commandRecent(page, 'file.open')).toBe(false);
   expect(await page.evaluate(() => window.projectPickerCalls)).toEqual({ showPicker: 1, click: 1 });
+});
+
+test('A silently refused legacy picker can be retried from the palette', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await refuseNextLegacyPicker(page, 'open-project-file');
+  await (await paletteChoice(page, '打开工程')).click();
+  expect(await commandRecent(page, 'file.open')).toBe(false);
+
+  const chooser = await chooseFromPalette(page, '打开工程', 4_000);
+  await chooser.setFiles(projectFile);
+  await expect(page.locator('#json-name')).toHaveText(projectFile.name);
+  await expect.poll(() => commandRecent(page, 'file.open')).toBe(true);
+});
+
+test('Relinking project media does not complete a silently refused palette import', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await refuseNextLegacyPicker(page, 'load-media-file');
+  await (await paletteChoice(page, '导入媒体')).click();
+  expect(await commandRecent(page, 'file.import-media')).toBe(false);
+
+  const [projectChooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.locator('#open-project').click(),
+  ]);
+  const media = 'palette-linked.wav';
+  await projectChooser.setFiles({
+    ...projectFile,
+    buffer: Buffer.from(JSON.stringify({ media, segments: [] })),
+  });
+  await expect(page.locator('#project-media-modal')).toBeVisible();
+  const [relinkChooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.locator('#project-media-select').click(),
+  ]);
+  expect(await page.evaluate(() => MaweProjectMediaInputs.pendingProjectMediaSelection?.projectReady)).toBe(true);
+  const audio = join(directory, media);
+  generateWav(audio, 2);
+  await relinkChooser.setFiles(audio);
+  await expect(page.locator('#media-name')).toHaveText(media);
+  await expect(page.locator('#editor-loading')).toBeHidden();
+  expect(await commandRecent(page, 'file.import-media')).toBe(false);
 });
 
 test('Palette checks transient activation after confirming project replacement', async ({ page }) => {
