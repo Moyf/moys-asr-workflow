@@ -474,7 +474,7 @@ export function initMaweServerSave() {
   let nativeProjectOpening = false;
   let nativeProjectReload = false;
   async function openNativeProject(connection) {
-    if (nativeProjectOpening || MaweState.projectLoadPending) return;
+    if (nativeProjectOpening || MaweState.projectLoadPending) return false;
     nativeProjectOpening = true;
     const beforePick = MaweState.projectLoadGeneration;
     const requestToken = MaweBoot.SERVER_CONFIG.requestToken;
@@ -482,7 +482,7 @@ export function initMaweServerSave() {
     const current = () => generation === MaweState.projectLoadGeneration;
     try {
       const nativeSession = await connection;
-      if (!current()) return;
+      if (!current()) return false;
       if (!nativeSession) throw new Error('启动器编辑器会话无效，请从启动器重新打开');
       const { response, result } = await MaweHint.withLauncherPickerHint(
         '请在 Launcher 的文件选择器中选择工程。如果提示重新定位媒体，请选择原始音视频。',
@@ -496,9 +496,9 @@ export function initMaweServerSave() {
           return { response, result: await response.json() };
         },
       );
-      if (!current()) return;
+      if (!current()) return false;
       if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
-      if (result.cancelled) return;
+      if (result.cancelled) return false;
       if (typeof result.selection !== 'string' || !result.selection) throw new Error('工程选择响应无效');
       // Let users keep editing while the picker and media preparation run.
       // Once selected, prevent new input while project settings settle.
@@ -513,23 +513,24 @@ export function initMaweServerSave() {
       blockedEvents.forEach(type => window.addEventListener(type, blockInput, true));
       try {
         await window.MaweStickerRoot?.waitForPending();
-        if (!current()) return;
+        if (!current()) return false;
         const stylesReady = await window.MaweAssStorageWiring?.flushBeforeProjectSwitch();
-        if (!current()) return;
+        if (!current()) return false;
         if (stylesReady === false) throw new Error('ASS 样式库尚未保存，请先处理样式库保存错误');
         const discardMessage = '当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。';
-        if (hasUnsavedProjectChanges() && !confirm(window.MAWE_I18N?.translateText?.(discardMessage) || discardMessage)) return;
+        if (hasUnsavedProjectChanges() && !confirm(window.MAWE_I18N?.translateText?.(discardMessage) || discardMessage)) return false;
         generation = MaweState.beginProjectLoad();
         const outcome = await MaweState.waitForProjectLoad(
           queueServerProjectSwitch('/api/project/native-bind', { requestToken, nativeSession, selection: result.selection }, current),
           generation);
-        if (!outcome || !current()) return;
+        if (!outcome || !current()) return false;
         if (!outcome.response.ok || !outcome.result.ok) {
           throw new Error(outcome.result.error || `服务器返回 ${outcome.response.status}`);
         }
         MaweProjectLoad.detachServerProjectSaving();
         nativeProjectReload = true; // The user already approved discarding these edits.
         window.location.reload();
+        return true;
       } finally {
         MaweState.finishProjectLoad(generation);
         body.inert = wasInert;
@@ -537,6 +538,7 @@ export function initMaweServerSave() {
       }
     } catch (error) {
       if (current()) MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning', { error });
+      return false;
     } finally {
       nativeProjectOpening = false;
     }

@@ -3,6 +3,7 @@ export function registerBuiltinCommands(palette, win, doc) {
   const byId = id => () => doc.getElementById(id);
   const usable = el => !!el && !el.matches(':disabled, [aria-disabled="true"], [hidden]');
   const click = (id, when) => control(byId(id), when);
+  const fileAction = (id, run) => ({ when: () => usable(byId(id)()), run });
   function control(get, when = () => true) {
     return { when: () => usable(get()) && when(), run: () => get().click() };
   }
@@ -22,13 +23,13 @@ export function registerBuiltinCommands(palette, win, doc) {
   };
 
   add('文件与工程', [
-    ['file.new', '新建工程', click('new-project')],
-    ['file.open', '打开工程', click('open-project')],
+    ['file.new', '新建工程', fileAction('new-project', () => win.MaweProjectFileActions.newProject())],
+    ['file.open', '打开工程', fileAction('open-project', () => win.MaweProjectFileActions.openProject())],
     ['file.save', '保存工程', { when: canSave, run: () => win.MaweProjectSave.saveCurrentProject() }, 'Ctrl+S'],
     ['file.save-as', '另存为', { when: canSaveAs, run: () => win.MaweProjectSave.saveProjectAsToFile() }, 'Ctrl+Shift+S'],
-    ['file.import-media', '导入媒体', click('load-media')],
-    ['file.import-subtitles', '导入字幕', click('load-srt'), null, ['SRT']],
-    ['file.import-lyrics', '导入歌词', click('load-lrc'), null, ['LRC']],
+    ['file.import-media', '导入媒体', fileAction('load-media', () => win.MaweMediaFileActions.importMedia())],
+    ['file.import-subtitles', '导入字幕', fileAction('load-srt', () => win.MaweMediaFileActions.importSubtitles()), null, ['SRT']],
+    ['file.import-lyrics', '导入歌词', fileAction('load-lrc', () => win.MaweMediaFileActions.importLyrics()), null, ['LRC']],
     ['file.export', '导出工程', { when: () => usable(byId('download-json')()), run: () => win.MaweProjectSave.exportProjectToFile() }, null, ['JSON', 'MOSP']],
   ]);
   add('播放与导航', [

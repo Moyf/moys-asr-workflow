@@ -3,7 +3,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { cleanupTempDir, findFreePort, generateWav, makeTempDir, startBlankServer, testSegments } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, makeTempDir, startBlankServer, testSegments } from './helpers.mjs';
 
 async function startLauncherTestEditor(root, pick) {
   const key = randomBytes(32).toString('hex');
@@ -61,6 +61,7 @@ function pausePicker(operation) {
 }
 
 test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the selected path', async ({ page }) => {
+  await disableOnboarding(page);
   await page.addInitScript(() => {
     window.__copiedProjectValues = [];
     Object.defineProperty(navigator, 'clipboard', {
@@ -85,12 +86,17 @@ test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the
 
     const open = page.locator('#open-project');
     const pickerToast = page.locator('.hint-card.hint-info').filter({ hasText: '如果提示重新定位媒体' });
-    async function pick(path, { reload = false, pause, status = 200 } = {}) {
+    async function pick(path, { reload = false, pause, status = 200, palette = false } = {}) {
       selected = path;
       paused = pause ? pausePicker(pause) : null;
       const response = page.waitForResponse('**/api/project/native-pick');
       const loaded = reload ? page.waitForEvent('load', { timeout: 20_000 }) : null;
-      await open.click();
+      if (palette) {
+        await page.locator('#command-palette-open').click();
+        await page.locator('#command-palette').getByRole('option', { name: /打开工程/ }).click();
+      } else {
+        await open.click();
+      }
       if (paused) {
         await paused.entered;
         await expect(pickerToast).toBeVisible();
@@ -112,6 +118,8 @@ test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the
       await page.locator('#cue-panel-target').click();
     }
     const projectName = page.locator('#json-name');
+    const openIsRecent = () => page.evaluate(() => window.MaweCommandPalette.list()
+      .find(row => row.command.id === 'file.open').recent >= 0);
     const dialogs = [];
     let acceptDiscard = false;
     page.on('dialog', async dialog => {
@@ -127,24 +135,29 @@ test('Launcher Open Project keeps edits on cancellation and Ctrl+S writes to the
     await expect.poll(() => page.evaluate(() => window.__copiedProjectValues)).toEqual([realpathSync(first)]);
     await edit('Keep this unsaved edit');
     await expect(projectName).toHaveAttribute('data-title', '有未保存的修改；点击复制工程完整路径');
-    await pick(null, { pause: 'choose-project' });
+    await pick(null, { pause: 'choose-project', palette: true });
     await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Keep this unsaved edit');
     expect(dialogs).toEqual([]);
+    expect(await openIsRecent()).toBe(false);
 
-    await pick(second, { pause: 'choose-media' }); // Cancel the follow-up picker.
+    await pick(second, { pause: 'choose-media', palette: true }); // Cancel the follow-up picker.
     expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
     expect(dialogs).toEqual([]);
-    await pick(join(root, 'source.wav'), { status: 400 });
+    expect(await openIsRecent()).toBe(false);
+    await pick(join(root, 'source.wav'), { status: 400, palette: true });
     await expect(page.locator('.hint-warning').filter({ hasText: '打开工程失败' })).toBeVisible();
+    expect(await openIsRecent()).toBe(false);
     selectedMedia = join(root, 'source.wav');
-    await pick(second);
+    await pick(second, { palette: true });
     await expect.poll(() => dialogs).toEqual(['confirm']);
     await expect(projectName).toHaveText('first.mosp');
     expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
+    expect(await openIsRecent()).toBe(false);
 
     acceptDiscard = true;
-    await pick(second, { reload: true });
+    await pick(second, { reload: true, palette: true });
     await expect(projectName).toHaveText('second.mosp');
+    expect(await openIsRecent()).toBe(true);
     await expect(projectName).toHaveAttribute('data-title', '点击复制工程完整路径');
     await projectName.click();
     await expect.poll(() => page.evaluate(() => window.__copiedProjectValues)).toEqual([realpathSync(second)]);

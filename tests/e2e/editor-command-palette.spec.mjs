@@ -1,8 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, makeTempDir, startBlankServer } from './helpers.mjs';
 
 let directory, server;
+const projectFile = {
+  name: 'palette-open.mosp', mimeType: 'application/json',
+  buffer: Buffer.from(JSON.stringify({ media: '', segments: [] })),
+};
 test.beforeAll(async () => {
   directory = makeTempDir('editor-command-palette');
   server = await startBlankServer(await findFreePort(), join(directory, 'settings'));
@@ -67,6 +71,8 @@ test('command palette searches and executes, persists recents, and isolates edit
   await entry.click();
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.keyboard.press('Enter')]);
   expect(chooser.isMultiple()).toBe(false);
+  await chooser.setFiles(projectFile);
+  await expect(page.locator('#json-name')).toHaveText(projectFile.name);
 
   await entry.click();
   await search.fill('shortcuts');
@@ -108,6 +114,201 @@ test('command palette searches and executes, persists recents, and isolates edit
   await expect(palette).not.toBeVisible();
   await expect(page.locator('#blocking-dialog')).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('New Project is not recent after cancelling the save picker, only after saving', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    window.newProjectPickerCalls = 0;
+    window.showSaveFilePicker = async () => {
+      window.newProjectPickerCalls++;
+      throw new DOMException('Save picker cancelled', 'AbortError');
+    };
+  });
+
+  const entry = page.locator('#command-palette-open');
+  const palette = page.locator('#command-palette');
+  const newProject = palette.getByRole('option', { name: /新建工程/ });
+  await entry.click();
+  await newProject.click();
+  await expect(palette).not.toBeVisible();
+  expect(await page.evaluate(() => window.newProjectPickerCalls)).toBe(1);
+  await entry.click();
+  await expect(newProject).toBeVisible();
+  const recent = newProject.getByText('最近使用', { exact: true });
+  await expect(recent).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async () => ({
+      name: 'palette-new.mosp',
+      createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+    });
+  });
+  await newProject.click();
+  await expect(page.locator('#json-name')).toHaveText('palette-new.mosp');
+  await entry.click();
+  await expect(recent).toBeVisible();
+});
+
+async function chooseFromPalette(page, title) {
+  await page.locator('#command-palette-open').click();
+  const palette = page.locator('#command-palette');
+  await palette.getByRole('combobox').fill(title);
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    palette.getByRole('option', { name: new RegExp(title) }).click(),
+  ]);
+  return chooser;
+}
+
+function commandRecent(page, id) {
+  return page.evaluate(id => window.MaweCommandPalette.list().find(row => row.command.id === id).recent >= 0, id);
+}
+
+test('File picker commands are not recent while waiting or after cancellation', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  for (const [id, title] of [
+    ['file.open', '打开工程'],
+    ['file.import-media', '导入媒体'],
+    ['file.import-subtitles', '导入字幕'],
+    ['file.import-lyrics', '导入歌词'],
+  ]) {
+    const chooser = await chooseFromPalette(page, title);
+    expect(await commandRecent(page, id)).toBe(false);
+    // Playwright intercepts the native chooser; deliver the browser's cancel event.
+    await chooser.element().dispatchEvent('cancel', { bubbles: true });
+    expect(await commandRecent(page, id)).toBe(false);
+  }
+  // The same input can be used by the palette again after cancel.
+  const chooser = await chooseFromPalette(page, '打开工程');
+  await chooser.setFiles(projectFile);
+  await expect(page.locator('#json-name')).toHaveText(projectFile.name);
+  await expect.poll(() => commandRecent(page, 'file.open')).toBe(true);
+});
+
+test('Failed Open Project and subsequent toolbar open do not record a command recent', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  const recent = () => commandRecent(page, 'file.open');
+  const chooser = await chooseFromPalette(page, '打开工程');
+  await chooser.setFiles({ ...projectFile, buffer: Buffer.from('invalid JSON') });
+  await expect(page.locator('.hint-warning').filter({ hasText: '打开了错误的文件' })).toBeVisible();
+  expect(await recent()).toBe(false);
+
+  const [toolbarChooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#open-project').click()]);
+  await toolbarChooser.setFiles({ ...projectFile, name: 'toolbar-open.mosp' });
+  await expect(page.locator('#json-name')).toHaveText('toolbar-open.mosp');
+  expect(await recent()).toBe(false);
+});
+
+test('A refused palette picker leaves the real Open Project toolbar button usable', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const input = document.getElementById('open-project-file');
+    const click = input.click.bind(input);
+    window.refuseProjectPicker = true;
+    window.projectPickerCalls = { showPicker: 0, click: 0 };
+    input.click = () => {
+      window.projectPickerCalls.click++;
+      if (!window.refuseProjectPicker) click();
+    };
+    input.showPicker = () => {
+      window.projectPickerCalls.showPicker++;
+      throw new DOMException('Picker refused', 'NotAllowedError');
+    };
+  });
+
+  await page.locator('#command-palette-open').click();
+  await page.locator('#command-palette').getByRole('option', { name: /打开工程/ }).click();
+  expect(await commandRecent(page, 'file.open')).toBe(false);
+  await page.evaluate(() => { window.refuseProjectPicker = false; });
+
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 4_000 }),
+    page.locator('#open-project').click(),
+  ]);
+  await chooser.setFiles(projectFile);
+  await expect(page.locator('#json-name')).toHaveText(projectFile.name);
+  expect(await commandRecent(page, 'file.open')).toBe(false);
+  expect(await page.evaluate(() => window.projectPickerCalls)).toEqual({ showPicker: 1, click: 1 });
+});
+
+test('Palette checks transient activation after confirming project replacement', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    window.confirmedReplacement = false;
+    window.showPickerCalls = 0;
+    MaweServerSave.projectImportDirty = true;
+    window.confirm = () => {
+      window.confirmedReplacement = true;
+      Object.defineProperty(navigator, 'userActivation', { value: { isActive: false } });
+      return true;
+    };
+    document.getElementById('open-project-file').showPicker = () => { window.showPickerCalls++; };
+  });
+
+  await page.locator('#command-palette-open').click();
+  await page.locator('#command-palette').getByRole('option', { name: /打开工程/ }).click();
+  expect(await page.evaluate(() => [window.confirmedReplacement, window.showPickerCalls])).toEqual([true, 0]);
+  expect(await commandRecent(page, 'file.open')).toBe(false);
+});
+
+test('Media and lyrics can be imported from the palette after cancelling their pickers', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+  await page.goto(server.url);
+  const audio = join(directory, 'palette-audio.wav');
+  generateWav(audio, 2);
+
+  const mediaChooser = await chooseFromPalette(page, '导入媒体');
+  await mediaChooser.element().dispatchEvent('cancel', { bubbles: true });
+  const mediaRetry = await chooseFromPalette(page, '导入媒体');
+  await mediaRetry.setFiles(audio);
+  await expect(page.locator('#media-name')).toHaveText('palette-audio.wav');
+  await expect.poll(() => commandRecent(page, 'file.import-media')).toBe(true);
+
+  // Exercise the click fallback when neither modern picker nor activation API is available.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'userActivation', { value: undefined });
+    document.getElementById('load-lrc-file').showPicker = undefined;
+    window.confirm = () => true;
+  });
+  const lyricsChooser = await chooseFromPalette(page, '导入歌词');
+  await lyricsChooser.element().dispatchEvent('cancel', { bubbles: true });
+  const lyricsRetry = await chooseFromPalette(page, '导入歌词');
+  await lyricsRetry.setFiles({
+    name: 'palette.lrc', mimeType: 'text/plain', buffer: Buffer.from('[00:00.10]Palette lyric\n[00:01.00]Second line\n'),
+  });
+  await expect(page.locator('.cue').first()).toContainText('Palette lyric');
+  await expect.poll(() => commandRecent(page, 'file.import-lyrics')).toBe(true);
+});
+
+test('Subtitle import becomes recent after applying the selected file', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const read = File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer = async function () {
+      if (this.name === 'palette.srt') await new Promise(resolve => { window.releasePaletteRead = resolve; });
+      return read.call(this);
+    };
+  });
+  const chooser = await chooseFromPalette(page, '导入字幕');
+  await chooser.setFiles({
+    name: 'palette.srt', mimeType: 'text/plain', buffer: Buffer.from('1\n00:00:00,000 --> 00:00:01,000\nPalette subtitle\n'),
+  });
+  await expect.poll(() => page.evaluate(() => Boolean(window.releasePaletteRead))).toBe(true);
+  expect(await commandRecent(page, 'file.import-subtitles')).toBe(false);
+  expect(await page.evaluate(() => window.MaweCommandPalette.list()
+    .find(row => row.command.id === 'file.import-subtitles').command.run() === false)).toBe(true);
+  await page.evaluate(() => window.releasePaletteRead());
+  await expect(page.locator('.cue').first()).toContainText('Palette subtitle');
+  await expect.poll(() => commandRecent(page, 'file.import-subtitles')).toBe(true);
 });
 
 test('Save As is recent only after a successful write, not after cancelling', async ({ page }) => {
