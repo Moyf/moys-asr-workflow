@@ -247,7 +247,7 @@ function bindEditorEvents() {
   initMaweDomPanelsWiring();
   initAssManagerWiring();
   initAssStyleTransfer();
-  initMaweSettingsInitWiring();
+  initMaweSettingsInitWiring(() => pickExtensionSubtitle());
   initMaweSettingsHelpWiring();
   initMaweThemeSplitSettingsWiring();
   initMaweDisplayBehaviorWiring();
@@ -274,8 +274,8 @@ function bindEditorEvents() {
   initMaweStickerBurnPlan();
   initMaweBurnVideoWiring();
   initMaweToolbarMenusWiring();
-  initMaweProjectInputsWiring();
-  initMaweMediaInputsWiring();
+  const projectFileActions = initMaweProjectInputsWiring();
+  const { pickExtensionSubtitle, ...mediaFileActions } = initMaweMediaInputsWiring();
   initMaweStickerRootWiring();
   initMaweTextToolsWiring();
   initOverlayActionsWiring();
@@ -283,11 +283,12 @@ function bindEditorEvents() {
   initMaweWaveformHintsWiring();
   initMaweServerEventsWiring();
   initMaweFileDropWiring();
+  return { ...projectFileActions, ...mediaFileActions };
 }
 
 initializeEditorRuntime();
 initializeEditorServices();
-bindEditorEvents();
+const fileActions = bindEditorEvents();
 initMaweStartup();
-initMaweCommandPalette();
+initMaweCommandPalette(fileActions);
 initMaweOnboarding();

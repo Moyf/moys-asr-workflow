@@ -1,3 +1,5 @@
+import { bindFileInputAction } from './editor-file-input-action.js';
+
 export function initMaweProjectInputsWiring() {
 // === 打开工程 ===
 
@@ -9,12 +11,6 @@ export function initMaweProjectInputsWiring() {
 
 
 
-
-MaweDom.projectMediaSelectButton.addEventListener('click', () => {
-  MaweProjectMediaInputs.closeProjectMediaModal(false);
-  MaweProjectMediaInputs.loadMediaFileInput.value = '';
-  MaweProjectMediaInputs.loadMediaFileInput.click();
-});
 
 MaweDom.projectMediaLaterButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(true);
@@ -96,26 +92,24 @@ document.addEventListener('keydown', (event) => {
 
 
 
-document.getElementById('new-project')?.addEventListener('click', async () => {
+function newProject() {
   if (MaweServerSave.hasUnsavedProjectChanges()
-      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
-  await MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
-});
+      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return false;
+  return MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
+}
 
-document.getElementById('open-project')?.addEventListener('click', () => {
-  if (MaweServerSave.hasUnsavedProjectChanges()) {
-    if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
-  }
-  MaweProjectMediaInputs.openProjectFileInput.value = '';
-  MaweProjectMediaInputs.openProjectFileInput.click();
-});
-
-MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e) => {
+const pickProjectFile = bindFileInputAction(MaweProjectMediaInputs.openProjectFileInput, e => {
   const file = e.target.files?.[0];
   if (!file || !MaweDragDrop.isJsonFile(file)) {
     MaweHint.flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
-    return;
+    return false;
   }
-  await MaweMultiImport.openProjectFile(file);
+  return MaweMultiImport.openProjectFile(file);
 });
+
+const openProject = waitForResult => pickProjectFile(waitForResult, () => !MaweServerSave.hasUnsavedProjectChanges()
+  || confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。'));
+document.getElementById('new-project')?.addEventListener('click', newProject);
+document.getElementById('open-project')?.addEventListener('click', () => openProject(false));
+return { newProject, openProject: () => openProject(true) };
 }

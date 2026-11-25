@@ -4,8 +4,10 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUtilsModule } from '../../web/shared/utils/project-tracks.js';
 import {
   cleanupTempDir,
+  disableOnboarding,
   DURATION_MS,
   findFreePort,
   generateWaveformPayload,
@@ -114,4 +116,34 @@ test('dropping a legacy project lets the blank server take over after ID normali
   expect(migrated.schema).toBe('moy.asr.project.v2');
   expect(getMainTrack(migrated).segments[0]).toMatchObject({ id: 'main-cue-1', text: 'AttachedSave' });
   expect(readFileSync(projectPath)).toEqual(original);
+});
+
+test('opening a v2 project from the palette preserves its recent after server attach', async ({ page }) => {
+  const attachedPath = join(tempDir, 'palette-attach.mosp');
+  const project = createUtilsModule().makeProject([{ start: 0, end: 1000, text: 'Attached from palette' }], {
+    projectFields: { media: mediaPath, speakers: [] },
+  });
+  writeFileSync(attachedPath, JSON.stringify(project), 'utf-8');
+  // The earlier attach test leaves its server bound to a legacy project.
+  const paletteServer = await startBlankServer(await findFreePort(), join(tempDir, 'palette-settings'));
+  try {
+    await disableOnboarding(page);
+    await page.goto(paletteServer.url);
+    await page.locator('#command-palette-open').click();
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.locator('#command-palette').getByRole('option', { name: /打开工程/ }).click(),
+    ]);
+    await Promise.all([page.waitForEvent('load'), chooser.setFiles(attachedPath)]);
+
+    await expect(page.locator('#json-name')).toHaveText('palette-attach.mosp');
+    await expect(page.locator('#media-name')).toHaveText('synthetic.wav');
+    await expect(page.locator('#save-project')).toBeEnabled();
+    expect(await page.evaluate(() => ({
+      attached: window.MaweServerSave.serverProjectSavingEnabled(),
+      recent: window.MaweCommandPalette.list().find(row => row.command.id === 'file.open').recent >= 0,
+    }))).toEqual({ attached: true, recent: true });
+  } finally {
+    await paletteServer.stop();
+  }
 });
