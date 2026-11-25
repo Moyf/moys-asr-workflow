@@ -10,12 +10,6 @@
 
 
 
-MaweDom.projectMediaSelectButton.addEventListener('click', () => {
-  MaweProjectMediaInputs.closeProjectMediaModal(false);
-  MaweProjectMediaInputs.loadMediaFileInput.value = '';
-  MaweProjectMediaInputs.loadMediaFileInput.click();
-});
-
 MaweDom.projectMediaLaterButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(true);
   MaweHint.flashHint('可稍后点击“导入媒体”选择关联媒体', 'invalid');
@@ -96,29 +90,83 @@ document.addEventListener('keydown', (event) => {
 
 
 
-document.getElementById('new-project')?.addEventListener('click', async () => {
+// Keep the picker synchronous for user activation. Only a palette invocation
+// waits for the choice and for the existing change handler to finish.
+function bindFileInputAction(input, handleChange) {
+  let pending = null;
+  input.addEventListener('change', async event => {
+    if (!pending || pending.processing) {
+      await handleChange(event);
+      return;
+    }
+    const request = pending;
+    request.processing = true;
+    try {
+      request.resolve(await handleChange(event) === true);
+    } catch (error) {
+      request.reject(error);
+    } finally {
+      pending = null;
+    }
+  });
+  function cancelPendingChoice() {
+    if (!pending || pending.processing) return;
+    const { resolve } = pending;
+    pending = null;
+    resolve(false);
+  }
+  input.addEventListener('cancel', cancelPendingChoice);
+
+  return (waitForResult, prepare) => {
+    if ((waitForResult && pending?.processing) || prepare?.() === false) return false;
+    if (waitForResult && navigator.userActivation?.isActive === false) return false;
+    // A new explicit choice supersedes an unanswered one; older browsers can
+    // silently ignore click() without firing cancel.
+    cancelPendingChoice();
+    input.value = '';
+    if (!waitForResult) {
+      input.click();
+      return;
+    }
+    return new Promise((resolve, reject) => {
+      pending = { resolve, reject, processing: false };
+      try {
+        if (typeof input.showPicker === 'function') input.showPicker();
+        else input.click();
+      } catch (error) {
+        pending = null;
+        reject(error);
+      }
+    });
+  };
+}
+
+async function newProjectAction() {
   if (MaweServerSave.hasUnsavedProjectChanges()
-      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
-  await MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
-});
+      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return false;
+  return MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
+}
 
-document.getElementById('open-project')?.addEventListener('click', () => {
-  if (launcherSessionConnection && !launcherSessionRejected) {
-    void MaweServerSave.openNativeProject(launcherSessionConnection);
-    return;
-  }
-  if (MaweServerSave.hasUnsavedProjectChanges()) {
-    if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
-  }
-  MaweProjectMediaInputs.openProjectFileInput.value = '';
-  MaweProjectMediaInputs.openProjectFileInput.click();
-});
-
-MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e) => {
+const pickProjectFile = bindFileInputAction(MaweProjectMediaInputs.openProjectFileInput, e => {
   const file = e.target.files?.[0];
   if (!file || !MaweDragDrop.isJsonFile(file)) {
     MaweHint.flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
-    return;
+    return false;
   }
-  await MaweMultiImport.openProjectFile(file);
+  return MaweMultiImport.openProjectFile(file);
+});
+
+function openProjectAction(waitForResult) {
+  if (launcherSessionConnection && !launcherSessionRejected) {
+    return MaweServerSave.openNativeProject(launcherSessionConnection);
+  }
+  return pickProjectFile(waitForResult, () => !MaweServerSave.hasUnsavedProjectChanges()
+    || confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。'));
+}
+
+document.getElementById('new-project')?.addEventListener('click', newProjectAction);
+document.getElementById('open-project')?.addEventListener('click', () => { void openProjectAction(false); });
+window.MaweProjectFileActions = Object.freeze({
+  newProject: newProjectAction,
+  openProject: () => openProjectAction(true),
 });
