@@ -1,9 +1,17 @@
 // 字幕外观：字体/颜色/背景规范化、本机字体扫描与主副字幕外观应用。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweAppearance 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweAssManagerWiring } from './editor-wiring-ass-manager.js';
+import { MaweAssStorageWiring } from './editor-wiring-ass-storage.js';
+import { MaweFontGeometryWiring } from './editor-wiring-font-geometry.js';
 import { syncSpeakerLabelControls, getSpeakerLabelSettings } from './editor-speaker-labels.js';
+export let MaweAppearance;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { syncSubtitleColorPaletteControls } from './editor-colors.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweAppearance() {
 (function initMaweAppearanceFacade(global) {
@@ -14,9 +22,9 @@ export function initMaweAppearance() {
   // === 字幕预览几何（preview.subtitle）===
   // 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
   // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
-  const GEO_UTILS = window.AsrEditorUtils;
-  const subtitleFontFamilyInput = document.getElementById('subtitle-font-family');
-  const assColorStyleSelect = document.getElementById('ass-color-style');
+  const GEO_UTILS = AsrEditorUtils;
+  const subtitleFontFamilyInput = /** @type {HTMLInputElement} */ (document.getElementById('subtitle-font-family'));
+  const assColorStyleSelect = /** @type {HTMLSelectElement} */ (document.getElementById('ass-color-style'));
 
   // The appearance service must own this validation: the classic font-control
   // wiring runs later and is no longer in this module's lexical scope.
@@ -114,7 +122,7 @@ export function initMaweAppearance() {
 
   function renderSubtitleFontFamilyStatus() {
     if (!MaweDom.subtitleFontFamilyStatus) return;
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     const text = SUBTITLE_FONT_FAMILY_STATUS_TEXT[language][subtitleFontFamilyScanState];
     MaweDom.subtitleFontFamilyStatus.textContent = typeof text === 'function'
       ? text(subtitleFontFamilyScanCount) : text;
@@ -134,18 +142,18 @@ export function initMaweAppearance() {
 
 
   function subtitleFontFamilyDisplayName(family) {
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     // 启动早期 applySubtitleAppearance() 会先生成自定义字体选项，此时
     // GEO_UTILS 别名（文件后部才初始化）尚处于暂时性死区；直接读共享工具层，
     // 不可用时先用原始字体名占位，别名就绪后由 relabelSubtitleFontFamilyOptions 统一本地化。
-    return window.AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
+    return AsrEditorUtils?.subtitleFontFamilyDisplayName(family, language) ?? family;
   }
 
   // 本机扫描到的字体族（延迟填充；由 initializeSubtitleFontFamilyScanner 写入）。
   let subtitleLocalFontFamilies = [];
 
   function subtitleFontFamilyPresetLabel(preset) {
-    return window.MAWE_I18N?.translateText?.(preset.label) || preset.label;
+    return MAWE_I18N?.translateText?.(preset.label) || preset.label;
   }
   function subtitleFontFamilyMappingOptions() {
     return {
@@ -154,11 +162,11 @@ export function initMaweAppearance() {
     };
   }
   function subtitleFontFamilyStoredToInput(family) {
-    return window.AsrEditorUtils.subtitleFontFamilyStoredToInput(family, subtitleFontFamilyMappingOptions());
+    return AsrEditorUtils.subtitleFontFamilyStoredToInput(family, subtitleFontFamilyMappingOptions());
   }
   function subtitleFontFamilyInputToStored(text) {
     // 本地化显示名（如「微软雅黑」）要还原成真实字体族名，浏览器才能解析。
-    return window.AsrEditorUtils.subtitleFontFamilyInputToStored(text, {
+    return AsrEditorUtils.subtitleFontFamilyInputToStored(text, {
       ...subtitleFontFamilyMappingOptions(),
       localFamilies: subtitleLocalFontFamilies,
     });
@@ -171,8 +179,8 @@ export function initMaweAppearance() {
       option.textContent = subtitleFontFamilyDisplayName(option.value);
     });
   });
-  window.MaweFontGeometryWiring.rebuildSubtitleFontFamilyOptions();
-  window.MaweFontGeometryWiring.rebuildAssFontNameOptions();
+  MaweFontGeometryWiring.rebuildSubtitleFontFamilyOptions();
+  MaweFontGeometryWiring.rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
 }
 
@@ -222,7 +230,7 @@ export function initMaweAppearance() {
     color: result.color || MaweSettings.DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
     color_style: result.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE,
-    ass_color_style: result.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE,
+    ass_color_style: result.ass_color_style || MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE,
   };
 }
 
@@ -271,10 +279,10 @@ export function initMaweAppearance() {
     MaweDom.subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
   if (assColorStyleSelect) {
-    assColorStyleSelect.value = appearance.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE;
+    assColorStyleSelect.value = appearance.ass_color_style || MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE;
   }
   // 「预览颜色样式」的显隐由 syncAssModeDependentControls 统一处理（含 ASS 开关切换）。
-  window.MaweAssManagerWiring.syncAssModeDependentControls();
+  MaweAssManagerWiring.syncAssModeDependentControls();
   if (MaweDom.subtitleColorStyleSelect) {
     MaweDom.subtitleColorStyleSelect.value = appearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
   }
@@ -459,8 +467,8 @@ export function initMaweAppearance() {
     });
     select.append(fragment);
   }
-  window.MaweFontGeometryWiring.rebuildSubtitleFontFamilyOptions();
-  window.MaweFontGeometryWiring.rebuildAssFontNameOptions();
+  MaweFontGeometryWiring.rebuildSubtitleFontFamilyOptions();
+  MaweFontGeometryWiring.rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
 }
@@ -568,7 +576,7 @@ export function initMaweAppearance() {
       ? value : null;
   }
 
-  global.MaweAppearance = Object.freeze({
+  MaweAppearance = Object.freeze({
     normalizeSubtitleColorStyle,
     GEO_UTILS,
     get previewGeometryDirty() { return MaweState.changes.previewGeometryDirty; },
@@ -618,11 +626,12 @@ export function initMaweAppearance() {
     subtitleFontFamilyInputToStored,
     subtitleFontFamilyPresetLabel
 });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function getPreviewGeometry(...args) { return window.MaweAppearance.getPreviewGeometry(...args); }
-export function getSubtitleAppearance(...args) { return window.MaweAppearance.getSubtitleAppearance(...args); }
-export function applySubtitleAppearance(...args) { return window.MaweAppearance.applySubtitleAppearance(...args); }
-export function setSubtitleAppearance(...args) { return window.MaweAppearance.setSubtitleAppearance(...args); }
-export function setExtensionSubtitleAppearance(...args) { return window.MaweAppearance.setExtensionSubtitleAppearance(...args); }
+export function getPreviewGeometry(...args) { return MaweAppearance.getPreviewGeometry(...args); }
+export function getSubtitleAppearance(...args) { return MaweAppearance.getSubtitleAppearance(...args); }
+export function applySubtitleAppearance(...args) { return MaweAppearance.applySubtitleAppearance(...args); }
+export function setSubtitleAppearance(...args) { return MaweAppearance.setSubtitleAppearance(...args); }
+export function setExtensionSubtitleAppearance(...args) { return MaweAppearance.setExtensionSubtitleAppearance(...args); }

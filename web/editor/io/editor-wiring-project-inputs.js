@@ -1,3 +1,11 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweDragDrop } from './editor-drag-drop.js';
+import { MaweMultiImport } from './editor-multi-import.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweProjectMediaInputs } from './editor-project-media-inputs.js';
+import { MaweServerSave } from './editor-server-save.js';
 export function initMaweProjectInputsWiring() {
 // === 打开工程 ===
 
@@ -98,13 +106,13 @@ document.addEventListener('keydown', (event) => {
 
 document.getElementById('new-project')?.addEventListener('click', async () => {
   if (MaweServerSave.hasUnsavedProjectChanges()
-      && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
+      && !editorDialogs.confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
   await MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
 });
 
 document.getElementById('open-project')?.addEventListener('click', () => {
   if (MaweServerSave.hasUnsavedProjectChanges()) {
-    if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
+    if (!editorDialogs.confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
   }
   MaweProjectMediaInputs.openProjectFileInput.value = '';
   MaweProjectMediaInputs.openProjectFileInput.click();

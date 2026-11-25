@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
+import { compileEditorFixture } from './helpers/editor-entry.mjs';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import { createWaveformModule as createWaveformPlayback } from '../web/editor/media/waveform/playback.js';
 import { createWaveformModule as createWaveformMedia } from '../web/editor/media/waveform/media.js';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 function waveformContext() {
   const utilities = { window: {} };
@@ -32,15 +36,14 @@ test('split helpers share live trim state while separately created factories rem
   assert.equal(utils.applySplitEdgeTrim('#hello#'), '#hello');
 });
 
-test('utility consumers preserve a custom runtime method receiver and observe its current navigator', () => {
-  const context = { window: {} };
+test('utility consumers preserve a custom runtime method receiver and observe its current navigator', async () => {
   const runtime = {
     navigator: { platform: 'Win32' },
     getNavigator() { return this.navigator; },
   };
-  loadEditorModule(context, 'shared/editor-utils.js', browser => {
-    browser.MaweHost = { runtime };
-  });
+  const context = { window: { MaweHost: { runtime } } };
+  const fixture = await compileEditorFixture(['shared/gap-remove-core.js', 'shared/editor-utils.js']);
+  vm.runInNewContext(fixture, context);
   const utils = context.window.AsrEditorUtils;
   assert.equal(utils.ASS_DEFAULT_ASS_STYLE.fontName, 'Microsoft YaHei');
   assert.equal(utils.isMacPlatform(), false);

@@ -1,3 +1,17 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { MaweSplitCore } from '../cues/editor-split-core.js';
+import { MaweLoadingProgress } from '../io/editor-loading-progress.js';
+import { MaweMultiImport } from '../io/editor-multi-import.js';
+import { MaweProjectLoad } from '../io/editor-project-load.js';
+import { MaweProjectMediaInputs } from '../io/editor-project-media-inputs.js';
+import { MaweProjectSave } from '../io/editor-project-save.js';
+import { MaweServerSave } from '../io/editor-server-save.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweMediaLoad } from './editor-media-load.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 
 export function initMaweMediaInputsWiring() {
@@ -13,7 +27,7 @@ document.getElementById('load-media')?.addEventListener('click', () => {
 function openSubtitleImportInput(input, confirmMessage) {
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
   if (MaweServerSave.hasUnsavedProjectChanges()
-      && !confirm(confirmMessage)) return;
+      && !editorDialogs.confirm(confirmMessage)) return;
   input.value = '';
   input.click();
 }

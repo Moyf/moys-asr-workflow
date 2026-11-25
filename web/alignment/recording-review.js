@@ -1,5 +1,5 @@
 /* Recording review extension; existing take UI remains the only selection surface. */
-window.MAWRecordingReview = (() => {
+export const recordingReview = (() => {
   let context, serial = 0, busy = false, confirmed = {}, enabled = false;
   let ready = false, sourceValid = false, polling = null, terminalMessage = "", lastDigest = "";
   const el = id => document.getElementById(id);
@@ -152,5 +152,5 @@ window.MAWRecordingReview = (() => {
     } catch (_) {}
     return restored;
   }
-  return {mount, refresh, resume, snapshot:request};
+  return {mount, refresh, resume};
 })();

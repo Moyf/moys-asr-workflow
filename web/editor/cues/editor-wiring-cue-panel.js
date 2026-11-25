@@ -1,3 +1,17 @@
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweCueElements } from './editor-cue-elements.js';
+import { MaweCueEvents } from './editor-cue-events.js';
+import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
+import { MaweCuePanel } from './editor-cue-panel.js';
+import { MaweStickerPicker } from './editor-sticker-picker.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweCuePanelWiring() {
 'use strict';
 
@@ -149,7 +163,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   const splitMode = target.kind === 'extension'
     ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(target.track, seg)
     : MaweMultiSubtitleCore.getMainSubtitleSplitMode(seg);
-  const metrics = window.AsrEditorUtils.cueMetrics(
+  const metrics = AsrEditorUtils.cueMetrics(
     seg.text, seg.start, seg.end, splitMode,
   );
   MaweDom.cuePanelTotalLength.textContent = String(metrics.totalLength);

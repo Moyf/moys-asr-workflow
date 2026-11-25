@@ -1,8 +1,29 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweSearch } from '../cues/editor-search.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweTextCleanup } from '../cues/editor-text-cleanup.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweStickerOtioExport } from './editor-sticker-otio-export.js';
+import { MaweExportContext } from './editor-wiring-export-context.js';
 import { selectOverlayCueRow } from '../cues/editor-overlay-cue-selection.js';
+export let MaweServerSave;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 服务器保存：保存目标、校验预览、自动保存调度。
-// ESM init 模块：initMaweServerSave 在原清单位次执行原 IIFE 体（挂
-// window.MaweServerSave 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
 export function initMaweServerSave() {
 (function initMaweServerSave(global) {
   'use strict';
@@ -113,14 +134,14 @@ export function initMaweServerSave() {
       MaweHint.flashHint('无法准备时间范围修复，请先关闭提示后手动调整字幕边界', 'warning');
       return false;
     }
-    const preview = window.AsrEditorUtils.repairSegmentOverlap(previewSegments, currentIndex, mode);
+    const preview = AsrEditorUtils.repairSegmentOverlap(previewSegments, currentIndex, mode);
     if (!preview?.changed) {
       MaweHint.flashHint('当前字幕边界已经发生变化，请重新保存并查看最新的校验提示', 'warning');
       return false;
     }
 
     return MaweCommands.run('修复字幕时间重叠', (command) => {
-      const result = window.AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
+      const result = AsrEditorUtils.repairSegmentOverlap(segments, currentIndex, mode);
       if (!result?.changed) {
         MaweHint.flashHint('当前字幕边界已经发生变化，修复未应用', 'warning');
         return false;
@@ -151,7 +172,7 @@ export function initMaweServerSave() {
 
   function focusProjectValidationTarget(target) {
     const { segmentIndex, segment } = target || {};
-    const segments = target?.segments || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const segments = target?.segments || AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     if (!segment || !segments[segmentIndex]) return;
 
     // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
@@ -313,7 +334,7 @@ export function initMaweServerSave() {
       MaweDom.saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
     }
     MaweStickerOtioExport.syncStickerOtioExportMode();
-    window.MaweExportContext.syncProjectBackupControls();
+    MaweExportContext.syncProjectBackupControls();
   }
 
 
@@ -487,7 +508,7 @@ export function initMaweServerSave() {
   async function openRecentProject(project) {
     if (!MaweBoot.SERVER_CONFIG?.recentProjectsUrl) return;
     if (hasUnsavedProjectChanges()
-        && !confirm('当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。')) {
+        && !editorDialogs.confirm('当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。')) {
       return;
     }
     const generation = MaweState.beginProjectLoad();
@@ -498,9 +519,7 @@ export function initMaweServerSave() {
       if (!outcome || !current()) return;
       const { response, result } = outcome;
       if (!response.ok || !result.ok) {
-        const error = new Error(result.error || `服务器返回 ${response.status}`);
-        error.missing = result.missing === true;
-        throw error;
+        throw Object.assign(new Error(result.error || `服务器返回 ${response.status}`), { missing: result.missing === true });
       }
       MaweProjectLoad.detachServerProjectSaving();
       window.location.reload();
@@ -522,7 +541,9 @@ export function initMaweServerSave() {
   // 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
   // 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
   // 任何失败都静默回退为「手动选择媒体」的便携流程。
-  async function attachProjectToServer(fileName, projectData, { isCurrent } = {}) {
+  /** @param {{isCurrent?: () => boolean}} [options] */
+  async function attachProjectToServer(fileName, projectData, options = {}) {
+    const { isCurrent } = options;
     const epoch = MaweProjectLoad.projectBindingEpoch;
     const generation = MaweState.projectLoadGeneration;
     const current = isCurrent || (() => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration);
@@ -653,7 +674,7 @@ export function initMaweServerSave() {
     }
   }
 
-  global.MaweServerSave = Object.freeze({
+  MaweServerSave = Object.freeze({
     get projectImportDirty() { return MaweState.changes.projectImportDirty; },
     set projectImportDirty(v) { MaweState.changes.projectImportDirty = v; },
     get projectCheckpointed() { return projectCheckpointed; },
@@ -691,11 +712,12 @@ export function initMaweServerSave() {
     configureRecentProjects,
     configureServerProjectSettings
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function configureServerSaveControls(...args) { return window.MaweServerSave.configureServerSaveControls(...args); }
-export function scheduleAutoSave(...args) { return window.MaweServerSave.scheduleAutoSave(...args); }
-export function projectSaveInFlight(...args) { return window.MaweServerSave.projectSaveInFlight(...args); }
-export function hasUnsavedProjectChanges(...args) { return window.MaweServerSave.hasUnsavedProjectChanges(...args); }
-export function scheduleAutoSaveFlush(...args) { return window.MaweServerSave.scheduleAutoSaveFlush(...args); }
+export function configureServerSaveControls(...args) { return MaweServerSave.configureServerSaveControls(...args); }
+export function scheduleAutoSave(...args) { return MaweServerSave.scheduleAutoSave(...args); }
+export function projectSaveInFlight(...args) { return MaweServerSave.projectSaveInFlight(...args); }
+export function hasUnsavedProjectChanges(...args) { return MaweServerSave.hasUnsavedProjectChanges(...args); }
+export function scheduleAutoSaveFlush(...args) { return MaweServerSave.scheduleAutoSaveFlush(...args); }

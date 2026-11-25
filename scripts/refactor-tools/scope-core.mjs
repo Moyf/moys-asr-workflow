@@ -25,6 +25,13 @@ function analyze(source) {
   });
 }
 
+export function analyzeModule(source) {
+  const options = { ecmaVersion: ECMA_VERSION, sourceType: "module" };
+  const ast = acorn.parse(source, { ...options, ranges: true, locations: true });
+  const scopes = eslintScope.analyze(ast, { ...options, ignoreEval: true });
+  return { ast, scopes };
+}
+
 // node -> parent 映射，用于 shorthand 属性判定
 function buildParentMap(ast) {
   const parents = new Map();

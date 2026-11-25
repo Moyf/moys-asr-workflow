@@ -1,8 +1,13 @@
+import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweSpeakerManager } from '../styles/editor-speaker-manager.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweFloatingPanel } from './editor-floating-panel.js';
 import { isEditingEnabled } from '../markers/editor-marker-editing.js';
+export let MaweSettingsPanels;
 // 设置面板群：各设置面板的定位/开关、编辑器设置窗口（main 新增）与面板归属管理。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSettingsPanels 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 export function initMaweSettingsPanels() {
   'use strict';
 
@@ -30,14 +35,14 @@ export function initMaweSettingsPanels() {
     onOpen: () => {
       let saved = '';
       try { saved = localStorage.getItem(projectTabKey) || ''; } catch (_) {}
-      setEditorSettingsActiveTab(projectTabs.find(tab => tab.dataset.settingsTab === saved) || projectTabs[0]);
+      setEditorSettingsActiveTab(projectTabs.find(tab => /** @type {HTMLElement} */ (tab).dataset.settingsTab === saved) || projectTabs[0]);
       // 打开时同步两个镜像开关的当前状态。
-      const wordMirror = document.getElementById('project-word-timing-toggle');
-      if (wordMirror) wordMirror.checked = window.MaweWordTiming?.enabled === true;
-      const markerMirror = document.getElementById('project-marker-track-toggle');
+      const wordMirror = /** @type {HTMLInputElement} */ (document.getElementById('project-word-timing-toggle'));
+      if (wordMirror) wordMirror.checked = MaweWordTiming?.enabled === true;
+      const markerMirror = /** @type {HTMLInputElement} */ (document.getElementById('project-marker-track-toggle'));
       if (markerMirror) markerMirror.checked = isEditingEnabled()
         ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
-      window.MaweSpeakerManager?.sync?.();
+      MaweSpeakerManager?.sync?.();
     },
   });
   document.getElementById('project-settings-close')?.addEventListener('click', () => projectFloatingPanel.close());
@@ -258,12 +263,12 @@ export function initMaweSettingsPanels() {
   }
 
   function updateRegionalSettingsAvailability() {
-    const workspaceButton = document.querySelector('[data-settings-region="workspace"]');
+    const workspaceButton = /** @type {HTMLButtonElement} */ (document.querySelector('[data-settings-region="workspace"]'));
     if (workspaceButton) workspaceButton.disabled = Boolean(document.getElementById('workspace-transfer-dropdown')?.hidden);
     document.querySelectorAll('[data-settings-export]').forEach((button) => {
-      const command = document.getElementById(button.dataset.settingsExport);
-      button.disabled = !command || command.getAttribute('aria-disabled') === 'true';
-      if (command) button.title = command.title;
+      const command = document.getElementById(/** @type {HTMLElement} */ (button).dataset.settingsExport);
+      /** @type {HTMLButtonElement} */ (button).disabled = !command || command.getAttribute('aria-disabled') === 'true';
+      if (command) /** @type {HTMLElement} */ (button).title = command.title;
     });
   }
 
@@ -301,7 +306,7 @@ export function initMaweSettingsPanels() {
     settingsFlashTimer = setTimeout(() => scope.classList.remove('settings-flash'), 1600);
   }
 
-  global.MaweSettingsPanels = Object.freeze({
+  MaweSettingsPanels = Object.freeze({
     openRegionalSettings,
     closeRegionalSettings,
     updateRegionalSettingsAvailability,
@@ -326,4 +331,5 @@ export function initMaweSettingsPanels() {
     positionWaveformSettingsPanel,
     setWaveformSettingsPanelOpen
   });
+
 }

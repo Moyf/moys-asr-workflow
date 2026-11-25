@@ -282,7 +282,7 @@ test('non-connection errors do not trigger the recovery-download branch', async 
 
 test('all pending-load save entrances refuse before writing or opening a picker', async () => {
   const {context, calls} = fixture({failure: null});
-  context.MaweState.projectLoadPending = true;
+  Object.defineProperty(context.MaweState, 'projectLoadPending', { get: () => true, configurable: true });
   context.MaweServerSave.projectFileHandle = {name: 'old.mosp'};
   for (const method of ['saveProjectToServer', 'saveProjectToHandle', 'saveCurrentProject', 'saveProjectAsToFile']) {
     assert.equal(await context.MaweProjectSave[method](), false);

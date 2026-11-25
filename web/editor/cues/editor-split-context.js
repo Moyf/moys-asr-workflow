@@ -1,19 +1,22 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweNinja } from '../ui/editor-ninja.js';
+import { MaweSplitCore } from './editor-split-core.js';
 import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
+export let MaweSplitContext;
 import { caretInfoFromPoint, finishEdit, setEditingCaretOffset, startEdit } from './editor-inline-edit.js';
 import { linkedSplitState, notifyMainSplitTimestampFallback, openMainWaveformSplitModal, renderLinkedSplitText, shouldUseMainSplitTimestamps, splitAtCursor, splitOffsetNearTime } from './editor-split-core.js';
 import { timelineFrameAlignedMilliseconds } from './editor-timeline.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 右键拆分入口：从右键菜单/波形位置安全拆分。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSplitContext 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 右键拆分入口：从右键菜单/波形位置安全拆分。 ESM init 模块：initMaweSplitContext 在原清单位次执行原 IIFE 体（挂
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSplitContext 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 右键拆分入口：从右键菜单/波形位置安全拆分。
+// 由 split-cluster codemod 自 editor.js 拆出。
 
-// window.MaweSplitContext 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweSplitContext() {
 (function initMaweSplitContext(global) {
   'use strict';
@@ -52,7 +55,7 @@ export function initMaweSplitContext() {
     const listCaretInfo = Number.isFinite(waveformTimeMs)
       ? null : caretInfoFromPoint(el.querySelector('.text'), x, y);
     if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      notifyMainSplitTimestampFallback(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]);
+      notifyMainSplitTimestampFallback(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]);
       const initial = Number.isFinite(waveformTimeMs)
         ? { timeMs: waveformTimeMs }
         : Number.isFinite(listCaretInfo?.offset)
@@ -70,12 +73,12 @@ export function initMaweSplitContext() {
       return false;
     }
     if (Number.isFinite(waveformTimeMs)) {
-      if (!shouldUseMainSplitTimestamps(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx])) {
-        notifyMainSplitTimestampFallback(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]);
+      if (!shouldUseMainSplitTimestamps(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx])) {
+        notifyMainSplitTimestampFallback(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]);
         openMainWaveformSplitModal(idx, waveformTimeMs, { splitTextMode });
         return false;
       }
-      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
+      const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
       const cursorOffset = splitOffsetNearTime(
         segment,
         waveformTimeMs,
@@ -92,7 +95,7 @@ export function initMaweSplitContext() {
       const forcedArmed = Boolean(armed
         && armed.idx === idx
         && armed.segment
-        && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] === armed.segment);
+        && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] === armed.segment);
       const didSplit = splitAtCursor(waveformFeedbackPoint, {
         listFeedback: false,
         splitTextMode,
@@ -121,10 +124,11 @@ export function initMaweSplitContext() {
     );
   }
 
-  global.MaweSplitContext = Object.freeze({
+  MaweSplitContext = Object.freeze({
     splitFromContextMenu
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function splitFromContextMenu(...args) { return window.MaweSplitContext.splitFromContextMenu(...args); }
+export function splitFromContextMenu(...args) { return MaweSplitContext.splitFromContextMenu(...args); }

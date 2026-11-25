@@ -1,4 +1,20 @@
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { MaweSearch } from '../cues/editor-search.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweJklPlayback } from '../media/editor-jkl.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweMediaStep } from '../media/editor-media-step.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweBehaviorHints } from './editor-behavior-hints.js';
+import { MaweDisplaySettings } from './editor-display-settings.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweNinja } from './editor-ninja.js';
 import { getMaweDomPanels } from './editor-dom-panels.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweDisplayBehaviorWiring() {
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowIndexToggle, 'cueListShowIndex');
@@ -132,7 +148,7 @@ MaweDom.mediaSeekStepInput?.addEventListener('change', () => {
 MaweDom.cueMoveStepInput?.addEventListener('change', () => {
   const frameMode = MaweTimeline.timelineIsFrameMode();
   const value = frameMode
-    ? window.AsrEditorUtils.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
+    ? AsrEditorUtils.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
     : MaweSettings.clampCueMoveStepMs(MaweDom.cueMoveStepInput.value);
   MaweDom.cueMoveStepInput.value = String(value);
   MaweSettings.updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });

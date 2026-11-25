@@ -1,20 +1,20 @@
 // Keep Phase 1 on the same paths as the editor's existing controls.
-export function registerBuiltinCommands(palette, win, doc) {
+export function registerBuiltinCommands(palette, editor, doc) {
   const byId = id => () => doc.getElementById(id);
   const usable = el => !!el && !el.matches(':disabled, [aria-disabled="true"], [hidden]');
   const click = (id, when) => control(byId(id), when);
   function control(get, when = () => true) {
     return { when: () => usable(get()) && when(), run: () => get().click() };
   }
-  const seekable = () => win.MaweCoreState.player?.duration > 0
-    && Number.isFinite(win.MaweCoreState.player.duration);
-  const waveform = () => win.MaweCoreState.waveformEditor;
+  const seekable = () => editor.MaweCoreState.player?.duration > 0
+    && Number.isFinite(editor.MaweCoreState.player.duration);
+  const waveform = () => editor.MaweCoreState.waveformEditor;
   const hasWaveform = () => !!waveform();
-  const canSaveAs = () => !win.MaweState.projectLoadPending && !win.MaweServerSave.projectSaveInFlight
-    && !win.MaweServerSave.projectCheckpointInFlight;
-  const canSave = () => canSaveAs() && (win.MaweServerSave.requiresMigrationSaveAs
-    || win.MaweServerSave.projectSaveTargetEnabled());
-  const settings = tab => () => win.MaweSettingsPanels.openEditorSettingsAtTab(`editor-settings-tab-${tab}`);
+  const canSaveAs = () => !editor.MaweState.projectLoadPending && !editor.MaweServerSave.projectSaveInFlight
+    && !editor.MaweServerSave.projectCheckpointInFlight;
+  const canSave = () => canSaveAs() && (editor.MaweServerSave.requiresMigrationSaveAs
+    || editor.MaweServerSave.projectSaveTargetEnabled());
+  const settings = tab => () => editor.MaweSettingsPanels.openEditorSettingsAtTab(`editor-settings-tab-${tab}`);
   const add = (category, rows) => {
     for (const [id, title, action, shortcut, keywords = []] of rows) {
       palette.register({ id, category, title, shortcut, keywords,
@@ -25,19 +25,19 @@ export function registerBuiltinCommands(palette, win, doc) {
   add('文件与工程', [
     ['file.new', '新建工程', click('new-project')],
     ['file.open', '打开工程', click('open-project')],
-    ['file.save', '保存工程', { when: canSave, run: () => win.MaweProjectSave.saveCurrentProject() }, 'Ctrl+S'],
-    ['file.save-as', '另存为', { when: canSaveAs, run: () => win.MaweProjectSave.saveProjectAsToFile() }, 'Ctrl+Shift+S'],
+    ['file.save', '保存工程', { when: canSave, run: () => editor.MaweProjectSave.saveCurrentProject() }, 'Ctrl+S'],
+    ['file.save-as', '另存为', { when: canSaveAs, run: () => editor.MaweProjectSave.saveProjectAsToFile() }, 'Ctrl+Shift+S'],
     ['file.import-media', '导入媒体', click('load-media')],
     ['file.import-subtitles', '导入字幕', click('load-srt'), null, ['SRT']],
     ['file.import-lyrics', '导入歌词', click('load-lrc'), null, ['LRC']],
-    ['file.export', '导出工程', { when: () => usable(byId('download-json')()), run: () => win.MaweProjectSave.exportProjectToFile() }, null, ['JSON', 'MOSP']],
+    ['file.export', '导出工程', { when: () => usable(byId('download-json')()), run: () => editor.MaweProjectSave.exportProjectToFile() }, null, ['JSON', 'MOSP']],
   ]);
   add('播放与导航', [
     ['playback.toggle', '播放/暂停', click('media-play-toggle', seekable), 'Space'],
     ['playback.back', '后退', click('media-step-back', seekable)],
     ['playback.forward', '前进', click('media-step-forward', seekable)],
-    ['playback.start', '跳到开头', { when: seekable, run: () => win.MaweMediaPlayback.seekMediaTo(0) }],
-    ['playback.end', '跳到结尾', { when: seekable, run: () => win.MaweMediaPlayback.seekMediaTo(win.MaweCoreState.player.duration) }],
+    ['playback.start', '跳到开头', { when: seekable, run: () => editor.MaweMediaPlayback.seekMediaTo(0) }],
+    ['playback.end', '跳到结尾', { when: seekable, run: () => editor.MaweMediaPlayback.seekMediaTo(editor.MaweCoreState.player.duration) }],
     ['playback.fullscreen', '全屏', click('media-fullscreen')],
   ]);
   add('视图与工具', [
@@ -73,7 +73,7 @@ export function registerBuiltinCommands(palette, win, doc) {
     ['settings.split-merge', '拆分与合并', settings('split-merge')],
     ['settings.preview', '播放预览', settings('subtitle-preview')],
     ['help.open', '帮助', click('help-toggle')],
-    ['help.shortcuts', '快捷操作', () => win.MaweHelpPanel.openHelpAtTab('shortcuts')],
+    ['help.shortcuts', '快捷操作', () => editor.MaweHelpPanel.openHelpAtTab('shortcuts')],
     ['help.onboarding', '快速上手', click('help-onboarding')],
     ['settings.edit', '编辑设置', click('cue-editor-settings-toggle')],
   ]);

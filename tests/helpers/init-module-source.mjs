@@ -8,6 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'acorn';
 import { editorInitializers } from './editor-entry.mjs';
+import { fixtureImports } from './editor-fixture-imports.mjs';
+import { publishFixtureBindings } from './editor-fixture-bindings.mjs';
 
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web');
 
@@ -32,16 +34,16 @@ export function initModuleSource(relativeWebPath) {
       const [name, localName = name] = raw.trim().split(/\s+as\s+/);
       if (!name) continue;
       // 转发导出行格式固定（脚本生成），用行前缀 + 回读门面名的字符串比对。
-      const prefix = `export function ${name}(...args) { return window.`;
+      const prefix = `export function ${name}(...args) { return `;
       const line = targetSrc.split('\n').find(l => l.startsWith(prefix));
       // prefix 里的正则元字符（括号、点）先转义再拼接。
       const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const facadeMatch = line ? line.match(new RegExp('^' + esc + '(Mawe\\w+)\\.')) : null;
+      const facadeMatch = line ? line.match(new RegExp('^' + esc + '(?:window\\.)?(Mawe\\w+)\\.')) : null;
       if (facadeMatch) shims.push(`var ${localName} = (...args) => (globalThis.${facadeMatch[1]} ?? window.${facadeMatch[1]}).${name}(...args);`);
       else if (target === 'editor-ass-preview-refresh') {
         shims.push(`var ${localName} = (...args) => window.MaweAssPreviewRefresh.${name}(...args);`);
       }
-      else if (target !== 'overlay-track') {
+      else if (target !== 'overlay-track' && !/^Mawe[A-Z]/.test(name)) {
         shims.push(`var ${localName} = () => { throw new Error('No facade shim for ${name} (from ${target}.js)'); };`);
       }
       // 纯模块（overlay-track）不生成垫片：测试桩环境按 classic 时代语义
@@ -54,9 +56,18 @@ export function initModuleSource(relativeWebPath) {
   if (source.includes('import { getMaweDomPanels }')) {
     shims.push('var getMaweDomPanels = () => globalThis.MaweDomPanelsWiring ?? window.MaweDomPanelsWiring;');
   }
-  const constants = ast.body.filter(node => node.type === 'VariableDeclaration' && node.kind === 'const')
-    .map(node => source.slice(node.start, node.end));
-  const body = source.slice(init.body.start + 1, init.body.end - 1);
+  // 将顶层常量和模块级门面绑定带入 VM classic 体。
+  const constants = ast.body.filter(node =>
+    (node.type === 'VariableDeclaration' && (node.kind === 'const'
+      || node.declarations.every(entry => /^(activeBurnVideoTask|activeGapRemovedVideoTask)$/.test(entry.id.name))))
+    || (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+      && (node.declaration.kind === 'const' || node.declaration.declarations.every(
+        entry => /^(Mawe\w+|MAWE_I18N|AsrEditorUtils)$/.test(entry.id.name)
+          && !entry.init))))
+    .map(node => source.slice(node.start, node.end).replace(/^export\s+/m, '')
+      // vm 无脚本级词法隔离：const 会与后续脚本的同名 var 冲突，统一降为 var。
+      .replace(/^(?:const|let)\s+/m, 'var '));
+  const body = publishFixtureBindings(source, fixtureImports(source)).slice(init.body.start + 1, init.body.end - 1);
   return [...shims, ...constants, body].join('\n');
 }
 
@@ -65,10 +76,14 @@ export function initModuleSource(relativeWebPath) {
 // 其函数闭包里的自由变量（Mawe* 门面）与 classic 时代一样从 context 解析。
 export function plainModuleSource(relativeWebPath) {
   const source = fs.readFileSync(path.join(webDir, relativeWebPath), 'utf8');
-  const withoutImports = source.replace(/^import[^\n]*\n/gm, '');
+  const withoutImports = publishFixtureBindings(source, fixtureImports(source)).toString().replace(/^import[^\n]*\n/gm, '');
   const withoutExportBlock = withoutImports.replace(/^export \{[\s\S]*?\n\};?\s*$/gm, '');
+  // 与 initModuleSource 同因：vm 无脚本级词法隔离，顶层 const
+  // 与后续脚本的同名 var 冲突；统一降为 var。
   return withoutExportBlock
-    .replace(/^export (?=(?:function|const|let|var)\b)/gm, '');
+    .replace(/^export let (Mawe\w+|MAWE_I18N|AsrEditorUtils);$/gm, 'var $1;')
+    .replace(/^export (?=(?:function|const|let|var)\b)/gm, '')
+    .replace(/^const\s+/gm, 'var ');
 }
 
 // Run an ESM init module inside a fixture's VM context while retaining its

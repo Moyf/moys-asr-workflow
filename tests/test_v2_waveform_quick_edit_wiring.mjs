@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const source = fs.readFileSync(new URL('../web/editor/media/editor-waveform-init.js', import.meta.url), 'utf8');
 const callbacks = new Map();
@@ -35,7 +36,7 @@ function fixture() {
     getOverlayTrack: () => overlay,
   };
   c.window = c;
-  vm.createContext(c);
+  vm.createContext(exposeWindowGlobals(c));
   const get = name => vm.runInContext(`(${callbacks.get(name)})`, c);
   return { main, secondary, overlay, calls, get, context: c };
 }

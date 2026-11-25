@@ -5,6 +5,8 @@ import {resolve, dirname} from 'node:path';
 import {runInNewContext} from 'node:vm';
 import {createHash} from 'node:crypto';
 import {buildToolDocs, collectDocuments, documentationAsset, vendors, projectRoot} from '../scripts/build-tool-docs.mjs';
+import {createToolMarkdown} from '../tools/shared/markdown.js';
+import {createToolDocData} from '../tools/shared/doc-data.js';
 
 const baseUrl = 'file:///repo/tools/example/README.md';
 async function rendererHarness() {
@@ -13,8 +15,10 @@ async function rendererHarness() {
   // Node checks Marked output and sanitizer delegation only. Actual DOMPurify safety is browser-tested.
   let lastOptions;
   window.DOMPurify = {sanitize(html, options) {lastOptions = options; return html;}};
-  runInNewContext(await readFile('tools/shared/markdown.js', 'utf8'), {window, URL, document:{baseURI:baseUrl}});
-  return {api:window.MAWMarkdown, options:() => lastOptions};
+  const api = createToolMarkdown({
+    getMarked:() => window.marked, getSanitizer:() => window.DOMPurify, documentUrl:baseUrl,
+  });
+  return {api, options:() => lastOptions};
 }
 
 test('Marked parses Chinese GFM, nesting, fenced languages and collision-safe heading IDs', async () => {
@@ -58,10 +62,9 @@ test('unsafe URLs and raw HTML never become active Marked output, including insi
   assert.match(html, /rel="nofollow noopener noreferrer"/);
 });
 
-test('renderer fails clearly when local security libraries are missing', async () => {
-  const window = {};
-  runInNewContext(await readFile('tools/shared/markdown.js', 'utf8'), {window, URL, document:{baseURI:baseUrl}});
-  assert.throws(() => window.MAWMarkdown.render('text'), /Local Marked and DOMPurify/);
+test('renderer fails clearly when local security libraries are missing', () => {
+  const api = createToolMarkdown({getMarked:() => undefined, getSanitizer:() => undefined, documentUrl:baseUrl});
+  assert.throws(() => api.render('text'), /Local Marked and DOMPurify/);
 });
 
 test('strict consumers can require absolute URLs and disable even explicit image-opening links', async () => {
@@ -111,10 +114,8 @@ test('file URL policy rejects rooted, drive, UNC and encoded variants; ordinary 
   assert.equal(api.resolveUrl('/path', 'https://example.com/docs/README.md').href, 'https://example.com/path');
 });
 
-test('offline resolver only returns bundled documents and never fetches', async () => {
-  const window = {};
-  runInNewContext(await readFile('tools/shared/doc-data.js', 'utf8'), {window, URL});
-  const store = window.MAWToolDocData.create({baseUrl:'file:///repo/tools/index.html', data:{documents:{'shared/README.md':{text:'说明',format:'markdown'}}}});
+test('offline resolver only returns bundled documents and never fetches', () => {
+  const store = createToolDocData({baseUrl:'file:///repo/tools/index.html', data:{documents:{'shared/README.md':{text:'说明',format:'markdown'}}}});
   assert.equal(store.resolve('shared/README.md#标题').hash, '#%E6%A0%87%E9%A2%98');
   assert.equal(store.resolve('../docs/README.md'), null);
   assert.equal(store.resolve('https://example.com/shared/README.md'), null);
@@ -125,16 +126,17 @@ test('offline resolver only returns bundled documents and never fetches', async 
 
 test('generated text is frozen data; document edits fail freshness and --write restores it', async () => {
   const text = await documentationAsset();
-  const window = {};
-  runInNewContext(text, {window});
-  assert.ok(Object.isFrozen(window.MAWToolDocs.documents));
-  assert.equal(window.MAWToolDocs.documents['merge-flow.mjs'].format, 'source');
+  const data = runInNewContext(text.replace(/  const toolCatalog = [\s\S]*$/, '  return data;\n})();'));
+  assert.ok(Object.isFrozen(data.documents));
+  assert.equal(data.documents['merge-flow.mjs'].format, 'source');
   assert.ok(!text.includes('</script'));
   const documents = await collectDocuments();
   assert.ok(Object.keys(documents).every(path => !path.startsWith('../')));
   await mkdir('.artifacts/tool-markdown', {recursive:true});
   const fixture = await mkdtemp(resolve('.artifacts/tool-markdown/freshness-'));
-  for (const path of ['catalog.js', ...Object.keys(documents)]) {
+  for (const path of ['catalog.js', 'catalog-entry.mjs', 'shared/doc-data.js', 'shared/doc-viewer.js', 'shared/markdown.js',
+    'changelog-editor/cl-lib.mjs', 'changelog-editor/editor-page.mjs',
+    ...Object.keys(documents)]) {
     const destination = resolve(fixture, 'tools', path); await mkdir(dirname(destination), {recursive:true});
     await copyFile(resolve(projectRoot, 'tools', path), destination);
   }

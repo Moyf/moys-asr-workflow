@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { parse } from 'acorn';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { publishFixtureBindings } from './helpers/editor-fixture-bindings.mjs';
 
 test('secondary color follows both library editability and the active karaoke profile', () => {
   let editable = true;
@@ -24,9 +26,11 @@ test('secondary color follows both library editability and the active karaoke pr
   };
   const window = {
     AsrEditorUtils: { normalizeAssStyle: style => style },
+    MAWE_I18N: { translateText: text => text },
+    MaweAssManagerWiring: {},
     MaweFloatingPanel: { createFloatingPanel: () => ({ isOpen: () => false }) },
   };
-  const context = vm.createContext({
+  const context = vm.createContext(exposeWindowGlobals({
     window, document,
     getMaweDomPanels: () => ({ assStyleForm: form, assInlineTextToggles: [] }),
     getAssStyleLibrary: () => library,
@@ -34,11 +38,11 @@ test('secondary color follows both library editability and the active karaoke pr
     MaweState: { onProjectDirtyChange() {} },
     MaweSettings: { EDITOR_SETTINGS: {} },
     managerService: {},
-  });
+  }));
   const source = readFileSync(new URL('../web/editor/styles/editor-wiring-ass-manager.js', import.meta.url), 'utf8');
   const initializer = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }).body
     .find(node => node.type === 'ExportNamedDeclaration' && node.declaration?.id?.name === 'initAssManagerWiring').declaration;
-  vm.runInContext(source.slice(initializer.body.start + 1, initializer.body.end - 1), context);
+  vm.runInContext(publishFixtureBindings(source).slice(initializer.body.start + 1, initializer.body.end - 1), context);
   const sync = () => window.syncAssStyleForm({ id: 'ass', fontName: 'Arial', secondaryColor: '#ffffff' });
   for (const [canEdit, karaoke, disabled] of [
     [true, false, true], [true, true, false], [false, true, true],

@@ -4,6 +4,9 @@ import vm from 'node:vm';
 import { createUtilsModule as createGroups } from '../web/shared/utils/subtitle-groups.js';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 test('group range refresh derives bounds across canonical tracks without legacy heads', () => {
   const project = runtimeProject([{ id: 'main-cue', start: 0, end: 1000, text: 'main', color_group_id: 'red' }], {
@@ -21,7 +24,7 @@ test('group range refresh derives bounds across canonical tracks without legacy 
     refreshSubtitleGroupViews(data) { refreshes++; return groups.refreshSubtitleGroupViews(data); },
   } };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-text-cleanup.js', 'initMaweTextCleanup'), context);
   project.tracks.find(track => track.role === 'secondary').segments[0].end = 2500;
   const before = structuredClone(project);

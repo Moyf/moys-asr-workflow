@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
 import test from 'node:test';
+import { AsrGapRemoveCore as core } from '../web/shared/gap-remove-core.js';
 import { createUtilsModule } from '../web/shared/utils/gap-remove.js';
 import { createCleanupProjectionCache } from '../web/shared/utils/cleanup-projection-cache.js';
 
-vm.runInThisContext(fs.readFileSync(new URL('../web/shared/gap-remove-core.js', import.meta.url), 'utf8'));
-const core = globalThis.AsrGapRemoveCore;
 const utils = createUtilsModule({ gapRemoveCore: core });
 
 function fixture(id = 'cue') {

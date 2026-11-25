@@ -1,3 +1,5 @@
+import { MaweContextMenus } from './editor-context-menus.js';
+import { MaweDom } from './editor-dom.js';
 export function initMaweContextMenusWiring() {
 // 使用捕获阶段的 pointerdown：波形空白区自己的 pointerdown 可能阻止后续
 // click 事件，不能再依赖 mouseup 后才触发的 document.click 来关闭菜单。

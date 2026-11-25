@@ -2,7 +2,11 @@
 // ESM init module: the assembler calls this at the file's original manifest
 // position. All leaf algorithms and composition modules (G05+G06) come
 // from explicit imports; the registry is no longer consulted.
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
 import { createWaveformModule as createWaveformConstants } from './waveform/constants.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { createWaveformModule as createWaveformLabels } from './waveform/labels.js';
 import { createWaveformModule as createWaveformScale } from './waveform/scale.js';
 import { createWaveformModule as createWaveformLayout } from './waveform/layout.js';
@@ -30,24 +34,29 @@ import { createWaveformModule as createWaveformCueBlocks } from './waveform/cue-
 import { createWordBlocks as createWaveformWordBlocks } from './waveform/word-blocks.js';
 import { createWaveformModule as createWaveformCanvas } from './waveform/canvas.js';
 import { createWaveformModule as createWaveformInput } from './waveform/input.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+
+export let AsrWaveform;
 
 export function initWaveform() {
   'use strict';
 
   const thumbnailCore = createEditorThumbnails({
-    browser: window, getConfig: () => window.MaweBoot?.SERVER_CONFIG, storage: window.MaweHost.storage,
+    browser: window, getConfig: () => MaweBoot?.SERVER_CONFIG, storage: MaweHost.storage,
   });
   const helpers = {
     thumbnailCore,
-    storage: window.MaweHost.storage,
-    gapRemoveCore: window.AsrGapRemoveCore,
-    getSubtitleGroupValue: (segment, kind) => window.AsrEditorUtils.getSubtitleGroupValue(window.MaweBoot.DATA, segment, kind),
+    getThumbnailBinding: () => MaweBoot?.SERVER_CONFIG?.thumbnailBinding,
+    getWordTimingEntries: (segment, timing) => AsrEditorUtils?.getWordTimingEntries(segment, timing),
+    storage: MaweHost.storage,
+    gapRemoveCore: AsrGapRemoveCore,
+    getSubtitleGroupValue: (segment, kind) => AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segment, kind),
     getSegmentDisplayColor: segment => {
-      const project = window.MaweBoot.DATA;
+      const project = MaweBoot.DATA;
       const segments = project.tracks?.find(track => track.segments?.includes(segment))?.segments;
-      return window.AsrEditorUtils.effectiveSegmentColor(project, segment, segments);
+      return AsrEditorUtils.effectiveSegmentColor(project, segment, segments);
     },
-    getLanguage: () => window.MAWE_I18N?.language,
+    getLanguage: () => MAWE_I18N?.language,
   };
   Object.assign(helpers, createWaveformConstants(helpers));
   Object.assign(helpers, createWaveformLabels(helpers));
@@ -217,7 +226,8 @@ constructor(options) {
         rowTop: document.getElementById('layout-resizer-h1'),
         rowMiddle: document.getElementById('layout-resizer-h2'),
       };
-      this._onPlayerTime = () => this.updatePlayback();
+      const editor = /** @type {import('./waveform/waveform-types.js').WaveformInstance} */ (/** @type {unknown} */ (this));
+      this._onPlayerTime = () => editor.updatePlayback();
       // 尺寸通知若与刚完成的 render 快照一致，说明变化完全由我们自己的渲染
       // 引起（几何切换重设内容高度/滚动条出现/工具栏换行），跳过冗余的
       // 第二次全量 render；外部真实尺寸变化必然偏离快照，照常触发重渲染。
@@ -225,12 +235,12 @@ constructor(options) {
         const snapshot = this._renderedPaneSize;
         if (snapshot && snapshot.width === this.pane.offsetWidth
           && snapshot.height === this.pane.offsetHeight) return;
-        this.scheduleRender();
+        editor.scheduleRender();
       };
-      this.initThumbnails();
-      this.bindControls();
-      this.bindDockHandles();
-      this.applyLayout();
+      editor.initThumbnails();
+      editor.bindControls();
+      editor.bindDockHandles();
+      editor.applyLayout();
 
       if (window.ResizeObserver) {
         this.resizeObserver = new ResizeObserver(this._onResize);
@@ -270,8 +280,9 @@ constructor(options) {
   installMethods(WaveformEditor.prototype, markerDescriptors);
   installMethods(WaveformEditor.prototype, createWaveformCueDragUpdate(helpers));
   installMethods(WaveformEditor.prototype, createWaveformPlayback(helpers));
+  const prototype = /** @type {import('./waveform/waveform-types.js').WaveformInstance} */ (/** @type {unknown} */ (WaveformEditor.prototype));
 
-window.AsrWaveform = {
+AsrWaveform = {
     create(options) {
       return new WaveformEditor(options);
     },
@@ -285,7 +296,7 @@ window.AsrWaveform = {
       peaksRateOf,
       publishPeakRate,
       // 只做选取逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
-      activeWaveShape: WaveformEditor.prototype.activeWaveShape,
+      activeWaveShape: prototype.activeWaveShape,
       syncSpectralColorToggle,
       freqColor,
       resolveTiming,
@@ -311,11 +322,11 @@ window.AsrWaveform = {
       waveformScaleFromLoudness,
       loudnessSchema: LOUDNESS_SCHEMA,
       // 只做状态机逻辑的单测入口：用 stub 的 this 调用，无需构造 DOM。
-      setLoudnessStats: WaveformEditor.prototype.setLoudnessStats,
-      fitWaveformScaleToLoudness: WaveformEditor.prototype.fitWaveformScaleToLoudness,
-      renderWaveformScaleLabel: WaveformEditor.prototype.renderWaveformScaleLabel,
-      setRowHeight: WaveformEditor.prototype.setRowHeight,
-      setSecondsPerRow: WaveformEditor.prototype.setSecondsPerRow,
+      setLoudnessStats: prototype.setLoudnessStats,
+      fitWaveformScaleToLoudness: prototype.fitWaveformScaleToLoudness,
+      renderWaveformScaleLabel: prototype.renderWaveformScaleLabel,
+      setRowHeight: prototype.setRowHeight,
+      setSecondsPerRow: prototype.setSecondsPerRow,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,
@@ -341,11 +352,12 @@ window.AsrWaveform = {
       cueQuickEditLayout: cueQuickEditDescriptors.cueQuickEditLayout.value,
       cueQuickEditOriginalOffset: cueQuickEditDescriptors.cueQuickEditOriginalOffset.value,
       // 字词气泡布局纯函数（不读 this）：候选全量 / 上限 / 叠行 / 优先级。
-      computeWordChipLayout: WaveformEditor.prototype.computeWordChipLayout,
+      computeWordChipLayout: prototype.computeWordChipLayout,
       // 字词条带分层判定真源（visibility 模块）：单行 × 双语组合的一致性入口。
       wordTimingFullLane,
-      drawWordChips: WaveformEditor.prototype.drawWordChips,
+      drawWordChips: prototype.drawWordChips,
     },
   };
+
 
 }

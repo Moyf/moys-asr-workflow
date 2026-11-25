@@ -1,7 +1,8 @@
 // speakers: private helpers; dependencies are injected by editor-utils.js.
+import { ASR_EDITOR_PALETTE } from '../editor-palette.js';
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { effectiveColorName, getProject, resolveProjectSpeaker, getSubtitleGroupValue } = dependencies;
+  const { effectiveColorName, getProject, resolveProjectSpeaker, getSubtitleGroupValue, getColorByName } = dependencies;
 
 
   const SPEAKER_LABEL_COLORS = Object.freeze([
@@ -85,8 +86,8 @@ export function createUtilsModule(dependencies) {
     if (!name) return null;
     const group = project ? getSubtitleGroupValue?.(project, segment, 'color') : null;
     const direct = segment.color || segments?.[segment.color_ref?.headIdx]?.color;
-    const injected = typeof window !== 'undefined' ? window.ASR_EDITOR_PALETTE : null;
-    const configured = typeof window !== 'undefined' ? window.MaweColors?.COLOR_BY_NAME?.[name]?.value : null;
+    const injected = ASR_EDITOR_PALETTE;
+    const configured = getColorByName?.()?.[name]?.value;
     const fallback = DISPLAY_COLORS[DISPLAY_COLOR_NAMES.indexOf(name)];
     const value = configured || injected?.find(entry => entry.name === name)?.value || group?.value || direct?.value || fallback;
     return /^#[0-9a-f]{6}$/i.test(value || '') ? { name, value: value.toLowerCase() } : null;

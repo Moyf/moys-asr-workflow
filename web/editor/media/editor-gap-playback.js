@@ -1,3 +1,11 @@
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweAudioProcessing } from './editor-audio-processing.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+export let MaweGapPlayback;
 export function initEditorGapPlayback() {
 // Gap preview playback owns its boundary timer and an independent audio gate.
 // The audio clock closes the gate even while the page is busy; the timer seeks
@@ -10,7 +18,7 @@ export function initEditorGapPlayback() {
   function needsAudioGate(player = MaweCoreState.player) {
     return player === MaweCoreState.player
       && MaweGapRemoveData.getGapRemoveData(false)?.skip_playback === true
-      && !global.MaweMediaPlayback?.isAuditioning
+      && !MaweMediaPlayback?.isAuditioning
       && MaweGapRemoveData.getRemovedGapRanges().length > 0;
   }
 
@@ -25,7 +33,7 @@ export function initEditorGapPlayback() {
     clearTimer();
     skipping = null;
     waiting = false;
-    global.MaweAudioProcessing?.setGapPlaybackMuted(false);
+    MaweAudioProcessing?.setGapPlaybackMuted(false);
   }
 
   function previewed(gap) {
@@ -34,7 +42,7 @@ export function initEditorGapPlayback() {
   }
 
   function currentGap(player, playing = !player.paused) {
-    return global.AsrGapRemoveCore.getGapPlaybackSkip(
+    return AsrGapRemoveCore.getGapPlaybackSkip(
       MaweGapRemoveData.getRemovedGapRanges(), player.currentTime * 1000,
       { skipPlayback: needsAudioGate(player), isPlaying: playing,
         previewRange: MaweCuePanelState.gapPreviewRange },
@@ -78,7 +86,7 @@ export function initEditorGapPlayback() {
       promise?.catch(() => { if (skipping === pending) reset(); });
       refresh(player);
     };
-    const drained = global.MaweAudioProcessing?.waitForGapPlaybackSilence?.();
+    const drained = MaweAudioProcessing?.waitForGapPlaybackSilence?.();
     if (drained) drained.then(resume, () => { if (skipping === pending) reset(); });
     else resume();
   }
@@ -100,7 +108,7 @@ export function initEditorGapPlayback() {
     const now = Number(player.currentTime) * 1000;
     if (gap) {
       clearTimer();
-      global.MaweAudioProcessing?.setGapPlaybackMuted(true);
+      MaweAudioProcessing?.setGapPlaybackMuted(true);
       if (player.seeking) return true;
       const same = skipping && skipping.start === gap.start && skipping.end === gap.end;
       if (!same) {
@@ -117,20 +125,20 @@ export function initEditorGapPlayback() {
     skipping = null;
     if (waiting) {
       clearTimer();
-      global.MaweAudioProcessing?.setGapPlaybackMuted(false);
+      MaweAudioProcessing?.setGapPlaybackMuted(false);
       return false;
     }
     const next = MaweGapRemoveData.getRemovedGapRanges().find(range => range.start > now && !previewed(range));
     const key = next ? `${next.start}:${next.end}:${rate}` : '';
     if (scheduledKey && scheduledKey === key) {
-      if (!gateScheduled) gateScheduled = global.MaweAudioProcessing?.scheduleGapPlaybackMute((next.start - now) / 1000 / rate) === true;
+      if (!gateScheduled) gateScheduled = MaweAudioProcessing?.scheduleGapPlaybackMute((next.start - now) / 1000 / rate) === true;
       return false;
     }
     clearTimer();
-    global.MaweAudioProcessing?.setGapPlaybackMuted(false);
+    MaweAudioProcessing?.setGapPlaybackMuted(false);
     if (!next || rate <= 0) return false;
     scheduledKey = key;
-    gateScheduled = global.MaweAudioProcessing?.scheduleGapPlaybackMute((next.start - now) / 1000 / rate) === true;
+    gateScheduled = MaweAudioProcessing?.scheduleGapPlaybackMute((next.start - now) / 1000 / rate) === true;
     timer = global.setTimeout(() => {
       timer = 0;
       scheduledKey = '';
@@ -145,7 +153,7 @@ export function initEditorGapPlayback() {
     if (!gap || player.seeking) return;
     clearTimer();
     skipping = { start: gap.start, end: gap.end };
-    global.MaweAudioProcessing?.setGapPlaybackMuted(true);
+    MaweAudioProcessing?.setGapPlaybackMuted(true);
     player.currentTime = gap.end / 1000;
   }
 
@@ -168,13 +176,13 @@ export function initEditorGapPlayback() {
       if (player !== MaweCoreState.player) return;
       waiting = true;
       clearTimer();
-      if (!skipping) global.MaweAudioProcessing?.setGapPlaybackMuted(false);
+      if (!skipping) MaweAudioProcessing?.setGapPlaybackMuted(false);
     });
     player.addEventListener('seeking', () => {
       if (player !== MaweCoreState.player) return;
       if (skipping?.finishing) retargetPendingSeek(player);
       clearTimer();
-      if (!skipping) global.MaweAudioProcessing?.setGapPlaybackMuted(false);
+      if (!skipping) MaweAudioProcessing?.setGapPlaybackMuted(false);
       refresh(player);
     });
     for (const name of ['pause', 'ended', 'emptied', 'loadstart']) {
@@ -186,8 +194,9 @@ export function initEditorGapPlayback() {
     }
   }
 
-  global.MaweState?.observeProjectLoad(reset);
-  global.MaweGapPlayback = Object.freeze({ needsAudioGate, beforePlay, bindPlayer, update, refresh, reset, cancelPendingPlayback, retargetPendingSeek,
+  MaweState?.observeProjectLoad(reset);
+  MaweGapPlayback = Object.freeze({ needsAudioGate, beforePlay, bindPlayer, update, refresh, reset, cancelPendingPlayback, retargetPendingSeek,
     get pendingPlayback() { return skipping?.resumePending === true; } });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

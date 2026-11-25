@@ -1,4 +1,13 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweColors } from '../styles/editor-colors.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweSelection } from './editor-selection.js';
 import { selectOverlayCueRow } from './editor-overlay-cue-selection.js';
+export let MaweCueElements;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { bindCueEvents } from './editor-cue-events.js';
 import { scrollCueToCenter, setCueListIdentity } from './editor-cue-list-anchor.js';
 import { bindExtensionCueEvents } from './editor-inline-edit.js';
@@ -6,18 +15,13 @@ import { applySearch } from './editor-search.js';
 import { selectOnly, selectOnlyExtension, stickerUrl } from './editor-selection.js';
 import { openStickerPreview } from './editor-sticker-picker.js';
 import { formatTimelineTimecode, projectTimebase, timelineIsFrameMode } from './editor-timeline.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 字幕行元素构建：单列/双列 DOM、颜色与表情包呈现。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweCueElements 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 字幕行元素构建：单列/双列 DOM、颜色与表情包呈现。 ESM init 模块：initMaweCueElements 在原清单位次执行原 IIFE 体（挂
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweCueElements 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 字幕行元素构建：单列/双列 DOM、颜色与表情包呈现。
+// 由 split-cluster codemod 自 editor.js 拆出。
 
-// window.MaweCueElements 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweCueElements() {
 (function initMaweCueElements(global) {
   'use strict';
@@ -59,7 +63,7 @@ export function initMaweCueElements() {
   el.style.removeProperty('--color-bar');
 
   if (MaweBoot.DATA.annotation_mode === 'speaker') {
-    const speaker = window.AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, originalSegment);
+    const speaker = AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, originalSegment);
     colorBar.dataset.speakerProjectContent = '';
     if (speaker) {
       colorBar.classList.add('has-color');
@@ -142,7 +146,7 @@ export function initMaweCueElements() {
 
 
 
-  function speakerUi(zh, en) { return window.MAWE_I18N?.language === 'en' ? en : zh; }
+  function speakerUi(zh, en) { return MAWE_I18N?.language === 'en' ? en : zh; }
 
   function speakerName(speaker) {
     return speaker ? (speaker.name || speakerUi('未命名说话人', 'Unnamed speaker'))
@@ -165,7 +169,7 @@ export function initMaweCueElements() {
   }
 
   function buildSpeakerBadge(segment) {
-    const speaker = window.AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, segment);
+    const speaker = AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, segment);
     const badge = document.createElement('span');
     badge.className = 'cue-speaker-badge';
     badge.dataset.speakerProjectContent = '';
@@ -176,11 +180,11 @@ export function initMaweCueElements() {
 
   document.addEventListener('mawe:languagechange', () => {
     document.querySelectorAll('.cue-speaker-badge').forEach(badge => {
-      const speaker = (MaweBoot.DATA.speakers || []).find(entry => entry.id === badge.dataset.speakerId) || null;
+      const speaker = (MaweBoot.DATA.speakers || []).find(entry => entry.id === /** @type {HTMLElement} */ (badge).dataset.speakerId) || null;
       refreshSpeakerBadge(badge, speaker);
       if (MaweBoot.DATA.annotation_mode === 'speaker') {
         const bar = badge.parentElement?.querySelector(':scope > .color-bar');
-        if (bar) bar.title = speakerDescription(speaker);
+        if (bar) /** @type {HTMLElement} */ (bar).title = speakerDescription(speaker);
       }
     });
   });
@@ -298,7 +302,7 @@ export function initMaweCueElements() {
     setTextHtml(text, segment.text || '', MaweDom.searchEl.value);
     column.append(header, text);
     if (kind === 'extension') {
-      const id = boundExtensionIds ? window.AsrEditorUtils.stableId(segment.id) : null;
+      const id = boundExtensionIds ? AsrEditorUtils.stableId(segment.id) : null;
       const bound = boundExtensionIds
         ? Boolean(id && boundExtensionIds.has(id))
         : Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(index, track));
@@ -321,7 +325,7 @@ export function initMaweCueElements() {
 
 
   function buildDualCueEl(mainIndex, extensionIndex, track, boundExtensionIds = null) {
-    const main = mainIndex == null ? null : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
+    const main = mainIndex == null ? null : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
     const extension = extensionIndex == null ? null : track.segments[extensionIndex];
     const el = document.createElement('div');
     el.className = 'cue multi-cue multi-dual-cue';
@@ -411,8 +415,8 @@ export function initMaweCueElements() {
   // === 字数 ===
   function calcCharWidth(text, mode = null) {
     return mode
-      ? window.AsrEditorUtils.countSubtitleUnits(text, mode)
-      : window.AsrEditorUtils.countTextUnits(text);
+      ? AsrEditorUtils.countSubtitleUnits(text, mode)
+      : AsrEditorUtils.countTextUnits(text);
   }
 
 
@@ -483,7 +487,7 @@ export function initMaweCueElements() {
       : (element.dataset.idx != null ? Number(element.dataset.idx) : -1);
     const extensionIndex = element.dataset.extIdx != null ? Number(element.dataset.extIdx) : -1;
     if (Number.isInteger(mainIndex) && mainIndex >= 0) {
-      const key = splitCueVisibilityKey('main', window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]);
+      const key = splitCueVisibilityKey('main', AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]);
       if (key) keys.push(key);
     }
     const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -534,7 +538,7 @@ export function initMaweCueElements() {
     if (!MaweSelection.temporaryVisibleSplitCueKeys.size) return;
     const segments = kind === 'extension'
       ? (track?.segments || MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+      : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     const segment = segments[index];
     const key = splitCueVisibilityKey(kind, segment, kind === 'extension' ? track?.id : null);
     if (key && MaweSelection.temporaryVisibleSplitCueKeys.has(key)) return;
@@ -552,7 +556,7 @@ export function initMaweCueElements() {
       const cntEl = el.querySelector('.charcount');
       const segment = Number.isInteger(extensionIdx) && extensionTrack
         ? extensionTrack.segments[extensionIdx]
-        : (Number.isInteger(idx) ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null);
+        : (Number.isInteger(idx) ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null);
       const mode = Number.isInteger(extensionIdx) && extensionTrack
         ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, segment)
         : MaweMultiSubtitleCore.getMainSubtitleSplitMode(segment);
@@ -560,7 +564,7 @@ export function initMaweCueElements() {
     });
   }
 
-  global.MaweCueElements = Object.freeze({
+  MaweCueElements = Object.freeze({
     updateCueColorPresentation,
     updateCueStickerPresentation,
     speakerUi,
@@ -591,33 +595,34 @@ export function initMaweCueElements() {
     releaseTemporaryVisibleSplitCuesUnless,
     refreshAllCharCounts
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function updateCueColorPresentation(...args) { return window.MaweCueElements.updateCueColorPresentation(...args); }
-export function speakerName(...args) { return window.MaweCueElements.speakerName(...args); }
-export function updateCueStickerPresentation(...args) { return window.MaweCueElements.updateCueStickerPresentation(...args); }
-export function buildCueEl(...args) { return window.MaweCueElements.buildCueEl(...args); }
-export function buildMultiTimeEl(...args) { return window.MaweCueElements.buildMultiTimeEl(...args); }
-export function buildMultiCueColumn(...args) { return window.MaweCueElements.buildMultiCueColumn(...args); }
-export function buildExtensionCueEl(...args) { return window.MaweCueElements.buildExtensionCueEl(...args); }
-export function buildBoundExtensionIds(...args) { return window.MaweCueElements.buildBoundExtensionIds(...args); }
-export function buildDualCueEl(...args) { return window.MaweCueElements.buildDualCueEl(...args); }
-export function fmtShort(...args) { return window.MaweCueElements.fmtShort(...args); }
-export function fmtSrtTime(...args) { return window.MaweCueElements.fmtSrtTime(...args); }
-export function escapeHtml(...args) { return window.MaweCueElements.escapeHtml(...args); }
-export function setTextHtml(...args) { return window.MaweCueElements.setTextHtml(...args); }
-export function buildSearchRegex(...args) { return window.MaweCueElements.buildSearchRegex(...args); }
-export function calcCharWidth(...args) { return window.MaweCueElements.calcCharWidth(...args); }
-export function getCharCountThreshold(...args) { return window.MaweCueElements.getCharCountThreshold(...args); }
-export function syncCharCountThresholdInputs(...args) { return window.MaweCueElements.syncCharCountThresholdInputs(...args); }
-export function handleCharCountThresholdInput(...args) { return window.MaweCueElements.handleCharCountThresholdInput(...args); }
-export function updateTimedTextEditSingleGuide(...args) { return window.MaweCueElements.updateTimedTextEditSingleGuide(...args); }
-export function applyCharCount(...args) { return window.MaweCueElements.applyCharCount(...args); }
-export function splitCueVisibilityKey(...args) { return window.MaweCueElements.splitCueVisibilityKey(...args); }
-export function temporaryVisibleSplitCueKeysForElement(...args) { return window.MaweCueElements.temporaryVisibleSplitCueKeysForElement(...args); }
-export function cueElementHasTemporarySplitVisibility(...args) { return window.MaweCueElements.cueElementHasTemporarySplitVisibility(...args); }
-export function clearTemporaryVisibleSplitCues(...args) { return window.MaweCueElements.clearTemporaryVisibleSplitCues(...args); }
-export function rememberTemporaryVisibleSplitCues(...args) { return window.MaweCueElements.rememberTemporaryVisibleSplitCues(...args); }
-export function releaseTemporaryVisibleSplitCuesUnless(...args) { return window.MaweCueElements.releaseTemporaryVisibleSplitCuesUnless(...args); }
-export function refreshAllCharCounts(...args) { return window.MaweCueElements.refreshAllCharCounts(...args); }
+export function updateCueColorPresentation(...args) { return MaweCueElements.updateCueColorPresentation(...args); }
+export function speakerName(...args) { return MaweCueElements.speakerName(...args); }
+export function updateCueStickerPresentation(...args) { return MaweCueElements.updateCueStickerPresentation(...args); }
+export function buildCueEl(...args) { return MaweCueElements.buildCueEl(...args); }
+export function buildMultiTimeEl(...args) { return MaweCueElements.buildMultiTimeEl(...args); }
+export function buildMultiCueColumn(...args) { return MaweCueElements.buildMultiCueColumn(...args); }
+export function buildExtensionCueEl(...args) { return MaweCueElements.buildExtensionCueEl(...args); }
+export function buildBoundExtensionIds(...args) { return MaweCueElements.buildBoundExtensionIds(...args); }
+export function buildDualCueEl(...args) { return MaweCueElements.buildDualCueEl(...args); }
+export function fmtShort(...args) { return MaweCueElements.fmtShort(...args); }
+export function fmtSrtTime(...args) { return MaweCueElements.fmtSrtTime(...args); }
+export function escapeHtml(...args) { return MaweCueElements.escapeHtml(...args); }
+export function setTextHtml(...args) { return MaweCueElements.setTextHtml(...args); }
+export function buildSearchRegex(...args) { return MaweCueElements.buildSearchRegex(...args); }
+export function calcCharWidth(...args) { return MaweCueElements.calcCharWidth(...args); }
+export function getCharCountThreshold(...args) { return MaweCueElements.getCharCountThreshold(...args); }
+export function syncCharCountThresholdInputs(...args) { return MaweCueElements.syncCharCountThresholdInputs(...args); }
+export function handleCharCountThresholdInput(...args) { return MaweCueElements.handleCharCountThresholdInput(...args); }
+export function updateTimedTextEditSingleGuide(...args) { return MaweCueElements.updateTimedTextEditSingleGuide(...args); }
+export function applyCharCount(...args) { return MaweCueElements.applyCharCount(...args); }
+export function splitCueVisibilityKey(...args) { return MaweCueElements.splitCueVisibilityKey(...args); }
+export function temporaryVisibleSplitCueKeysForElement(...args) { return MaweCueElements.temporaryVisibleSplitCueKeysForElement(...args); }
+export function cueElementHasTemporarySplitVisibility(...args) { return MaweCueElements.cueElementHasTemporarySplitVisibility(...args); }
+export function clearTemporaryVisibleSplitCues(...args) { return MaweCueElements.clearTemporaryVisibleSplitCues(...args); }
+export function rememberTemporaryVisibleSplitCues(...args) { return MaweCueElements.rememberTemporaryVisibleSplitCues(...args); }
+export function releaseTemporaryVisibleSplitCuesUnless(...args) { return MaweCueElements.releaseTemporaryVisibleSplitCuesUnless(...args); }
+export function refreshAllCharCounts(...args) { return MaweCueElements.refreshAllCharCounts(...args); }

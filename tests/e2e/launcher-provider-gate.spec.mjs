@@ -1,11 +1,11 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
 async function openLauncher(page) {
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#autoPostprocessEnabled').check();
 }

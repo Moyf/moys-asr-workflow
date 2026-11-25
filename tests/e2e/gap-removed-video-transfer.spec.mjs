@@ -1,15 +1,10 @@
+import { handler } from './gap-export-handler.mjs';
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
 import http from 'node:http';
 
 // Exercise the production event handler with Chromium's real Fetch stream.
 // The small page avoids ASR/media setup; the HTTP fixture holds the same export
 // lease until its response closes, making missing body cancellation observable.
-const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
-const handlerStart = source.indexOf("document.getElementById('download-gap-removed-video')");
-const handlerEnd = source.indexOf("document.getElementById('download-gap-removed-regions-json')", handlerStart);
-if (handlerStart < 0 || handlerEnd <= handlerStart) throw new Error('Video export handler not found');
-const handler = source.slice(handlerStart, handlerEnd);
 
 async function withVideoServer(mode, run) {
   let active = false;

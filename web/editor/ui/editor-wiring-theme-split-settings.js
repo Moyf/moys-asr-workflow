@@ -1,7 +1,20 @@
+import { MaweSegmentOps } from '../cues/editor-segment-ops.js';
+import { MaweSplitMode } from '../cues/editor-split-mode.js';
+import { MaweSplitTrim } from '../cues/editor-split-trim.js';
+import { MaweProcessing } from '../cues/editor-text-presets.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweFloatingPanel } from './editor-floating-panel.js';
+import { MaweHint } from './editor-hint.js';
+import { MaweTheme } from './editor-theme.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweSubtitleJoinSettings;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initMaweThemeSplitSettingsWiring() {
 MaweTheme.applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
-const toastPositionSelect = document.getElementById('editor-toast-position');
+const toastPositionSelect = /** @type {HTMLSelectElement} */ (document.getElementById('editor-toast-position'));
 const toastPosition = MaweHint.applyHintPosition(MaweSettings.EDITOR_SETTINGS.toastPosition);
 if (toastPositionSelect) {
   toastPositionSelect.value = toastPosition;
@@ -50,7 +63,7 @@ MaweDom.splitUseWordTimestampsToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitUseWordTimestamps: MaweDom.splitUseWordTimestampsToggle.checked });
 });
 document.getElementById('quick-edit-split-focus-next')?.addEventListener('change', (event) => {
-  MaweSettings.updateEditorSettings({ quickEditSplitFocusNext: event.currentTarget.checked });
+  MaweSettings.updateEditorSettings({ quickEditSplitFocusNext: /** @type {HTMLInputElement} */ (event.currentTarget).checked });
 });
 MaweDom.multiSubtitleSplitAutoSubmit?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitAutoSubmit: MaweDom.multiSubtitleSplitAutoSubmit.checked });
@@ -76,13 +89,13 @@ if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.addEventListe
 MaweSplitTrim.renderSplitTrimSymbolGrid();
 MaweSplitTrim.refreshSplitTrimExtraInput();
 MaweSplitTrim.splitTrimExtraInput?.addEventListener('change', () => {
-  const extras = window.AsrEditorUtils.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
+  const extras = AsrEditorUtils.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
   MaweSplitTrim.persistSplitTrimSymbols([...MaweSplitTrim.splitTrimPrimaryCheckedSet(), ...extras]);
   MaweSplitTrim.refreshSplitTrimExtraInput();
 });
 MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
-  const defaults = window.AsrEditorUtils.setSplitTrimSymbols(
-    [...window.AsrEditorUtils.DEFAULT_SPLIT_TRIM_SYMBOLS],
+  const defaults = AsrEditorUtils.setSplitTrimSymbols(
+    [...AsrEditorUtils.DEFAULT_SPLIT_TRIM_SYMBOLS],
   );
   MaweSettings.updateEditorSettings({ splitTrimSymbols: defaults });
   MaweSplitTrim.renderSplitTrimSymbolGrid();
@@ -92,9 +105,9 @@ MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
 (() => {
   const panel = MaweDom.autoMergePanel;
   const status = document.getElementById('auto-merge-settings-status');
-  const saveUser = document.getElementById('auto-merge-user-save');
-  const saveProject = document.getElementById('auto-merge-project-save');
-  const inherit = document.getElementById('auto-merge-project-reset');
+  const saveUser = /** @type {HTMLButtonElement} */ (document.getElementById('auto-merge-user-save'));
+  const saveProject = /** @type {HTMLButtonElement} */ (document.getElementById('auto-merge-project-save'));
+  const inherit = /** @type {HTMLButtonElement} */ (document.getElementById('auto-merge-project-reset'));
   let session = 0;
   let reading = false;
   let writing = false;
@@ -103,7 +116,7 @@ MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
   function showStatus(message = '') {
     const scope = MaweProcessing.projectOverride('join') ? '此工程使用自己的拼合默认' : '此工程继承用户默认';
     const storage = MaweProcessing.portable ? '拼合默认仅存于当前浏览器' : '';
-    const translate = window.MAWE_I18N?.translateText ?? ((value) => value);
+    const translate = MAWE_I18N?.translateText ?? ((value) => value);
     status.textContent = [scope, storage, message].filter(Boolean).map((part) => translate(part)).join(' · ');
     inherit.disabled = reading || writing || !MaweProcessing.projectOverride('join');
     saveUser.disabled = reading || writing;
@@ -161,7 +174,9 @@ MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
   document.addEventListener('mawe:languagechange', () => {
     if (MaweFloatingPanel.autoMergeFloatingPanel.isOpen()) showStatus();
   });
-  window.MaweSubtitleJoinSettings = Object.freeze({ open });
+  MaweSubtitleJoinSettings = Object.freeze({ open });
+
+
 })();
 
 MaweDom.autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
@@ -193,10 +208,5 @@ MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((i
       return;
     }
   }, { passive: false });
-});
-// G07：init 化的 UI 模块经 window 延迟取用本文件的
-// 运行时入口；classic 调用方不受影响。
-window.MaweThemeSplitWiring = window.MaweThemeSplitWiring || Object.freeze({
-  toastPosition,
 });
 }

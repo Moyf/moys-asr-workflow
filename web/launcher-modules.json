@@ -3,6 +3,12 @@
   "externalBridges": [],
   "modules": [
     {
+      "file": "shared/tooltip.js",
+      "kind": "init",
+      "name": "tooltip",
+      "exportName": "initMaweTooltip"
+    },
+    {
       "file": "launcher/theme/launcher-theme-keys.js",
       "kind": "transition",
       "name": "theme_keys",
@@ -15,6 +21,20 @@
       "name": "console_mirror",
       "exportName": "createUtilsModule",
       "binding": "createConsoleMirror"
+    },
+    {
+      "file": "launcher/batch.js",
+      "kind": "transition",
+      "name": "batch",
+      "exportName": "initLauncherBatch",
+      "binding": "initLauncherBatch"
+    },
+    {
+      "file": "launcher/postprocess.js",
+      "kind": "transition",
+      "name": "postprocess",
+      "exportName": "initLauncherPostprocess",
+      "binding": "initLauncherPostprocess"
     }
   ]
 }

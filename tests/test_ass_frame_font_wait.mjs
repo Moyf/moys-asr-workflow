@@ -3,6 +3,9 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createUtilsModule as createProjectTracks } from '../web/shared/utils/project-tracks.js';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 function fixture() {
   const elements = new Map();
@@ -40,7 +43,7 @@ function fixture() {
     Image: class { naturalWidth = 640; naturalHeight = 360; async decode() {} },
   };
   context.window = context;
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-frame.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-frame.js'), exposeWindowGlobals(context));
   return { release, requests: () => requests,
     open() { open = true; panelOptions.onOpen(); },
     close() { panelOptions.onClose?.(); open = false; },

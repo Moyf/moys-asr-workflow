@@ -1,13 +1,13 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
 async function gotoLauncher(page, { reload = false, realTimeStartup = false } = {}) {
   if (reload) await page.reload();
-  else await page.goto(`file://${launcherPath}`);
+  else await page.goto(launcherFixtureUrl());
   if (!realTimeStartup) {
     // Complete absent-host discovery through the real listener; keep native clocks.
     await completeStaticLauncherDiscovery(page);
@@ -2343,7 +2343,9 @@ async function prepareDeferredAiLauncher(page, entry) {
 async function sendAiLifecycleEvents(page, index, events) {
   await page.evaluate(({ index, events }) => {
     const operationId = window.__aiLifecycleRuns[index].payload.operationId;
-    window.MAWLauncher.onBackendEvents(events.map(event => ({ operationId, ...event })));
+    document.dispatchEvent(new CustomEvent('maw:backend-events', {
+      detail: events.map(event => ({ operationId, ...event })),
+    }));
   }, { index, events });
 }
 

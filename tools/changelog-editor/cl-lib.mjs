@@ -2,9 +2,8 @@
  * 与 scripts/prepare_release_notes.py 保持契约一致：
  * - extractSection / buildArchive 与 extract_release_section / build_release_document 逐字节等价
  * - parseChangelog + serializeChangelog 对未编辑内容必须往返无损
- * 经典脚本（file:// 下 ES module 会被 CORS 拦截），浏览器挂 window.CLLib，Node 走 module.exports。 */
-(function () {
-  'use strict';
+ */
+export function createChangelogLibrary() {
 
   const REPO = 'Moyf/moys-asr-workflow';
   const VERSION_RE = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -324,13 +323,9 @@
     return ops;
   }
 
-  const CLScratch = {
+  return {
     REPO, VERSION_RE, parseTag, isStable, extractSection, pinnedLink, pinRepoLinks,
     sha256Hex, buildArchive, documentParts, splitSections, parseSection,
     serializeSection, entryCardToLines, wordDiff,
   };
-
-  if (typeof module !== 'undefined' && module.exports) module.exports = CLScratch;
-  if (typeof window !== 'undefined') window.CLLib = CLScratch;
-  return CLScratch;
-})();
+}

@@ -1,8 +1,27 @@
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweColors } from '../styles/editor-colors.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweDisplaySettings } from '../ui/editor-display-settings.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweWorkspaces } from '../ui/editor-workspaces.js';
+import { MaweExportSrt } from './editor-export-srt.js';
+import { MaweProjectMediaInputs } from './editor-project-media-inputs.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweExportContext } from './editor-wiring-export-context.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweExportTimeline;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initExportTimelineModule() {
 // 时间线导出：工作区 JSON、Resolve/OTIO/otioz 与下载拷贝工具。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweExportTimeline 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweExportTimeline(global) {
   'use strict';
 
@@ -30,29 +49,29 @@ export function initExportTimelineModule() {
 
 
   function buildResolveJson() {
-    const groupStickers = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
+    const groupStickers = AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
       .filter(range => range.enabled).map(range => ({
-        ...window.AsrEditorUtils.cloneJsonValue(range.source),
+        ...AsrEditorUtils.cloneJsonValue(range.source),
         group_id: range.id, start_ms: range.start, end_ms: range.end,
         abs_path: MaweSelection.stickerAbsPath(range.source),
       }));
-    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
-    const segments = (window.AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : []).map((seg, idx) => {
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segments = (AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : []).map((seg, idx) => {
       const groupSticker = !seg.disabled
-        ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'sticker') : null;
+        ? AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'sticker') : null;
       const sticker = groupSticker ? { ...groupSticker, start: seg.start, end: seg.end } : null;
       if (sticker) {
         const absPath = MaweSelection.stickerAbsPath(sticker);
         if (absPath) sticker.abs_path = absPath;
       }
-      const groupColor = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'color');
-      const displayColor = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+      const groupColor = AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'color');
+      const displayColor = AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       const colorName = displayColor?.name || null;
       return {
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
-        text: MaweSpeakerLabels.subtitleExportText(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
+        text: MaweSpeakerLabels.subtitleExportText(seg, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
         color: MaweBoot.DATA.annotation_mode === 'speaker' ? displayColor : groupColor || null,
         color_ref: null,
         resolve_color: colorName,
@@ -161,7 +180,7 @@ export function initExportTimelineModule() {
 
 
 
-  function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, colorContext = segments) {
+  function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, colorContext = segments) {
   const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
   const intervalEndMs = Math.max(
     intervalStartMs,
@@ -171,8 +190,8 @@ export function initExportTimelineModule() {
   const clipEndFrame = msToOtioFrames(intervalEndMs);
   if (clipEndFrame <= clipStartFrame) return [];
 
-  if (segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
-      && !window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'export')) return [];
+  if (segments === AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
+      && !AsrEditorUtils.TrackPolicy.isTrackEnabled(AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'export')) return [];
   return segments.flatMap((segment) => {
     if (!segment || segment.disabled) return [];
     const segmentStartMs = Number(segment.start);
@@ -181,8 +200,8 @@ export function initExportTimelineModule() {
         || segmentEndMs <= segmentStartMs) {
       return [];
     }
-    const projected = segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
-      ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([segment], MaweBoot.DATA.gap_remove)[0]
+    const projected = segments === AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
+      ? AsrGapRemoveCore.projectCleanupRetainedSegments([segment], MaweBoot.DATA.gap_remove)[0]
       : segment;
     if (projected.disabled) return [];
     const startMs = Math.max(intervalStartMs, Number(projected.start));
@@ -193,7 +212,7 @@ export function initExportTimelineModule() {
     const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
     if (markerEndFrame <= markerStartFrame) return [];
 
-    const displayColor = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, colorContext);
+    const displayColor = AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, colorContext);
     const colorName = displayColor?.name;
     return [{
       OTIO_SCHEMA: 'Marker.2',
@@ -227,7 +246,7 @@ export function initExportTimelineModule() {
       if (!marker) return [];
       const startMs = Number(marker.start);
       if (!Number.isFinite(startMs)) return [];
-      const isRegion = window.AsrEditorUtils.markerKind(marker) === 'region';
+      const isRegion = AsrEditorUtils.markerKind(marker) === 'region';
       const entry = (rangeStartFrame, durationFrames) => ({
         OTIO_SCHEMA: 'Marker.2',
         metadata: {},
@@ -371,7 +390,7 @@ export function initExportTimelineModule() {
     return null;
   }
   const intervals = gapRemoved
-    ? window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed)
+    ? AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed)
     : [{ start: 0, end: durationMs }];
   if (!intervals.length) {
     MaweHint.flashHint(
@@ -455,11 +474,11 @@ export function initExportTimelineModule() {
   }
   // 叠加轨独立导出：字幕以「叠加字幕」标记轨写入（与主轨 clip 标记分开），
   // 表情包在「叠加表情」视频轨（与主轨表情包轨分开）；轨道为空时静默跳过。
-  const overlaySegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export')
-    ? (window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || []) : [];
+  const overlaySegments = AsrEditorUtils.TrackPolicy.isTrackEnabled(AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export')
+    ? (AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || []) : [];
   if (overlaySegments.length) {
     if (includeSubtitleMarkers) {
-      const overlayMarkerTrack = window.MaweExportContext.buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
+      const overlayMarkerTrack = MaweExportContext.buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
       if (overlayMarkerTrack.children.length) tracks.push(overlayMarkerTrack);
     }
     if (includeStickers) {
@@ -571,11 +590,11 @@ export function initExportTimelineModule() {
   // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
   // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
-  function collectStickerOtioEntries(removed, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { allGroups = false } = {}) {
-  const role = segments === window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments ? 'overlay' : 'main';
-  const selectedTrack = role === 'overlay' ? window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
-  if (!allGroups && !window.AsrEditorUtils.TrackPolicy.isTrackEnabled(selectedTrack, 'export')) return { entries: [] };
-  segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
+  function collectStickerOtioEntries(removed, segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { allGroups = false } = {}) {
+  const role = segments === AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments ? 'overlay' : 'main';
+  const selectedTrack = role === 'overlay' ? AsrEditorUtils.getOverlayTrack(MaweBoot.DATA) : AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  if (!allGroups && !AsrEditorUtils.TrackPolicy.isTrackEnabled(selectedTrack, 'export')) return { entries: [] };
+  segments = AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
     .filter(range => range.enabled && (allGroups || range.track === role))
     .map(range => ({ start: range.start, end: range.end, sticker: range.source }));
   const entries = [];
@@ -593,10 +612,10 @@ export function initExportTimelineModule() {
     const origEnd = seg.end;
     if (origEnd <= origStart) continue;
     const startMs = removed.length
-      ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)
+      ? AsrEditorUtils.mapGapRemovedTime(origStart, removed)
       : origStart;
     const endMs = removed.length
-      ? window.AsrEditorUtils.mapGapRemovedTime(origEnd, removed)
+      ? AsrEditorUtils.mapGapRemovedTime(origEnd, removed)
       : origEnd;
     // 映射后归零说明整张表情包都在被移除的空隙内，丢弃
     if (endMs <= startMs) continue;
@@ -668,7 +687,7 @@ export function initExportTimelineModule() {
   // OTIOZ 打包：前端把 timeline 交给服务器，服务器读盘打包 zip（content.otio + version.txt + media/*）。
   // 需要 server-editor 模式 + 已绑定工程 + 已校验的表情包根目录（与便携文件夹导出同源）。
   async function exportStickerOtoz(kind, buildTimeline, filename, description) {
-    const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
+    const tr = (s) => MAWE_I18N?.translateText?.(s) || s;
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return;
@@ -704,7 +723,7 @@ export function initExportTimelineModule() {
 
 
   async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
-    const tr = (s) => window.MAWE_I18N?.translateText?.(s) || s;
+    const tr = (s) => MAWE_I18N?.translateText?.(s) || s;
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const payload = buildTimeline();
     if (!payload) return false;
@@ -795,7 +814,7 @@ export function initExportTimelineModule() {
     const el = document.getElementById(id);
     if (el && el.classList.contains('sticker-disabled')) {
       const msg = `当前模式不可用：${el.dataset.title || el.title || '请使用另一种导出格式'}`;
-      MaweHint.flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
+      MaweHint.flashHint(MAWE_I18N?.translateText?.(msg) || msg);
       return true;
     }
     return false;
@@ -1029,12 +1048,12 @@ export function initExportTimelineModule() {
 
   function syncOtioExportOptionInputs() {
     otioExportOptionInputs.forEach((input) => {
-      const key = OTIO_EXPORT_OPTION_KEYS[input.dataset.otioExportOption];
-      if (key) input.checked = Boolean(MaweSettings.EDITOR_SETTINGS[key]);
+      const key = OTIO_EXPORT_OPTION_KEYS[/** @type {HTMLElement} */ (input).dataset.otioExportOption];
+      if (key) /** @type {HTMLInputElement} */ (input).checked = Boolean(MaweSettings.EDITOR_SETTINGS[key]);
     });
   }
 
-  global.MaweExportTimeline = Object.freeze({
+  MaweExportTimeline = Object.freeze({
     otioAudioTrackMetadata,
     otioAudioTrackIndex,
     otioAudioTrackName,
@@ -1081,5 +1100,6 @@ export function initExportTimelineModule() {
     downloadFile,
     copyText
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function fixture() {
   const project = { schema: 'moy.asr.project.v2', speakers: [{ id: 's', name: 'A' }],
@@ -16,7 +17,7 @@ function fixture() {
     applySubtitleAppearance: value => calls.push(value),
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/styles/editor-speaker-labels.js', 'initMaweSpeakerLabels'), context);
   return { context, project, calls };
 }

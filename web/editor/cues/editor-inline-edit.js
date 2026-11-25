@@ -1,4 +1,17 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweContextMenus } from '../ui/editor-context-menus.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweNavPreview } from './editor-nav-preview.js';
+import { MaweSelection } from './editor-selection.js';
 import { applyCharCount, setTextHtml } from './editor-cue-elements.js';
+export let MaweInlineEdit;
 import { scrollCueToCenter } from './editor-cue-list-anchor.js';
 import { getCurrentCuePanelTarget, setCurrentCuePanelExtensionIndex } from './editor-cue-panel.js';
 import { hideCueSplitPreview, scheduleCueSplitPreview } from './editor-nav-preview.js';
@@ -6,18 +19,10 @@ import { selectExtensionRange, selectOnlyExtension, toggleExtensionSelection } f
 import { toggleDisabled } from './editor-sticker-picker.js';
 import { seekFromWaveform } from './editor-text-cleanup.js';
 import { syncTextChange } from './editor-word-timing.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 行内编辑：主/副字幕就地编辑状态机与光标定位。
-// 状态由 MaweState 持有；保留旧接口供尚未迁移的消费者使用，外部仅经
-// window.MaweInlineEdit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 行内编辑：主/副字幕就地编辑状态机与光标定位。 ESM init 模块：initMaweInlineEdit 在原清单位次执行原 IIFE 体（挂
-// 状态由 MaweState 持有；保留旧接口供尚未迁移的消费者使用，外部仅经
-// window.MaweInlineEdit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
 
-// window.MaweInlineEdit 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweInlineEdit() {
 (function initMaweInlineEdit(global) {
   'use strict';
@@ -225,7 +230,7 @@ export function initMaweInlineEdit() {
     hideCueSplitPreview();
     const textEl = el.querySelector('.text');
     if (!textEl) return;
-    const seg = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
+    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
     let caretCharOffset = null;
     if (typeof clickX === 'number' && typeof clickY === 'number') {
       caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
@@ -325,7 +330,7 @@ export function initMaweInlineEdit() {
       const newText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
       if (newText !== original) {
         MaweCommands.run('编辑文本', () => {
-          const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
+          const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
           const previousText = segment.text;
           segment.text = newText;
           segment._dirty = true;
@@ -335,10 +340,10 @@ export function initMaweInlineEdit() {
         });
       }
     }
-    setTextHtml(textEl, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].text, MaweDom.searchEl.value);
+    setTextHtml(textEl, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].text, MaweDom.searchEl.value);
     const cntEl = el.querySelector('.charcount');
     if (cntEl) applyCharCount(
-      cntEl, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]),
+      cntEl, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]),
     );
     MaweCoreState.waveformEditor?.refreshCueLabel(idx);
     syncCuePanelAfterInlineEdit('main', idx);
@@ -346,7 +351,7 @@ export function initMaweInlineEdit() {
     MaweViewUpdates.invalidate({ preview: 'refresh' });
   }
 
-  global.MaweInlineEdit = Object.freeze({
+  MaweInlineEdit = Object.freeze({
     get editingState() { return MaweState.editing.editingState; },
     set editingState(v) { MaweState.editing.editingState = v; },
     get extensionEditingState() { return MaweState.editing.extensionEditingState; },
@@ -362,16 +367,17 @@ export function initMaweInlineEdit() {
     caretCharFromPoint,
     finishEdit
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function startExtensionEdit(...args) { return window.MaweInlineEdit.startExtensionEdit(...args); }
-export function syncCuePanelAfterInlineEdit(...args) { return window.MaweInlineEdit.syncCuePanelAfterInlineEdit(...args); }
-export function finishExtensionEdit(...args) { return window.MaweInlineEdit.finishExtensionEdit(...args); }
-export function bindExtensionCueEvents(...args) { return window.MaweInlineEdit.bindExtensionCueEvents(...args); }
-export function startEdit(...args) { return window.MaweInlineEdit.startEdit(...args); }
-export function setEditingCaretOffset(...args) { return window.MaweInlineEdit.setEditingCaretOffset(...args); }
-export function caretOffsetInText(...args) { return window.MaweInlineEdit.caretOffsetInText(...args); }
-export function caretInfoFromPoint(...args) { return window.MaweInlineEdit.caretInfoFromPoint(...args); }
-export function caretCharFromPoint(...args) { return window.MaweInlineEdit.caretCharFromPoint(...args); }
-export function finishEdit(...args) { return window.MaweInlineEdit.finishEdit(...args); }
+export function startExtensionEdit(...args) { return MaweInlineEdit.startExtensionEdit(...args); }
+export function syncCuePanelAfterInlineEdit(...args) { return MaweInlineEdit.syncCuePanelAfterInlineEdit(...args); }
+export function finishExtensionEdit(...args) { return MaweInlineEdit.finishExtensionEdit(...args); }
+export function bindExtensionCueEvents(...args) { return MaweInlineEdit.bindExtensionCueEvents(...args); }
+export function startEdit(...args) { return MaweInlineEdit.startEdit(...args); }
+export function setEditingCaretOffset(...args) { return MaweInlineEdit.setEditingCaretOffset(...args); }
+export function caretOffsetInText(...args) { return MaweInlineEdit.caretOffsetInText(...args); }
+export function caretInfoFromPoint(...args) { return MaweInlineEdit.caretInfoFromPoint(...args); }
+export function caretCharFromPoint(...args) { return MaweInlineEdit.caretCharFromPoint(...args); }
+export function finishEdit(...args) { return MaweInlineEdit.finishEdit(...args); }

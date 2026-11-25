@@ -1,3 +1,12 @@
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { MaweSearch } from '../cues/editor-search.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweGapRemoveUi } from './editor-gap-remove-ui.js';
+import { MaweHelpPanel } from './editor-help-panel.js';
+import { MaweSettingsPanels } from './editor-settings-panels.js';
+import { MaweDomPanelsWiring } from './editor-wiring-dom-panels.js';
 export function initMaweSettingsHelpWiring() {
 // 设置搜索：侧栏列出设置项，路径放在提示行，仅在用户选择后跳转。
 (function initSettingsSearch() {
@@ -355,7 +364,7 @@ MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
   });
 });
 // 帮助中的「全局设置」入口：定位到对应分区（波形操作/按键/空隙设置所在）。
-window.MaweDomPanelsWiring.helpOpenEditorSettingsButtons.forEach((button) => {
+MaweDomPanelsWiring.helpOpenEditorSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
     MaweSettingsPanels.openEditorSettingsAtTab(button.id === 'help-open-gap-settings' || button.id === 'help-open-keyboard-settings'

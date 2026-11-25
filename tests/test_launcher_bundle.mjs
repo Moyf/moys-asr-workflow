@@ -24,12 +24,13 @@ test('launcher bundle is the fresh classic artifact of the manifest sources', as
   }
 });
 
-test('launcher bundle boots without a backend and exposes the bridge', async ({ }) => {
+test('launcher bundle keeps its runtime and initialization trace private', () => {
   // 产物要求 pywebview / DOM，无法在 Node 里整跑；这里只断言启动块的结构性标记，
   // 真实启动行为由 e2e launcher-*.spec.mjs 在浏览器里覆盖。
   const code = fs.readFileSync(artifact, 'utf8');
   assert.match(code, /^\/\* MAW Launcher artifact: [0-9a-f]{64} \*\//);
-  assert.ok(code.includes('__mawEsmInitializationTrace'), 'trace 钩子缺失');
+  assert.doesNotMatch(code, /window\.(?:MAWLauncher|__mawEsmInitializationTrace)\b/);
+  assert.match(code, /maw:backend-events/);
 });
 
 // L01 过渡接入：ESM 导出以词法绑定进入 classic 作用域，

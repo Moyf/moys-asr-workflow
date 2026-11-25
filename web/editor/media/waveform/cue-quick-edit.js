@@ -7,6 +7,9 @@
 //   onWordQuickEditText 走既有字词文本同步（时间不变，仍由手柄拖动调整）。
 // 跨行字幕在每一行都有自己的可见片段，双击命中的是点击行的那个片段，
 // 锚点即取该片段与指针 X：弹窗自然跟随鼠标点击的位置显示。
+import { MaweHelpPanel } from '../../ui/editor-help-panel.js';
+import { MaweHint } from '../../ui/editor-hint.js';
+import { AsrEditorUtils } from '../../../shared/editor-utils.js';
 export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, formatCompact, localizedWaveformMessage } = dependencies;
@@ -116,7 +119,7 @@ export function createWaveformModule(dependencies) {
       help.className = 'waveform-cue-quick-edit-help';
       help.textContent = localizedWaveformMessage('操作说明', 'Help');
       help.addEventListener('click', () => {
-        if (isCurrent()) /** @type {any} */ (window).MaweHelpPanel?.openHelpAtTab('quick-edit');
+        if (isCurrent()) /** @type {any} */ MaweHelpPanel?.openHelpAtTab('quick-edit');
       });
       header.append(captionEl, help);
 
@@ -322,7 +325,7 @@ export function createWaveformModule(dependencies) {
       }
       if (!segment || !anchorElement?.isConnected) return;
       const timing = this.cueTiming();
-      const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
+      const entries = AsrEditorUtils.getWordTimingEntries(segment, timing);
       const entry = entries.find((candidate) => candidate.index === itemIndex);
       if (!entry) return;
       this._openQuickEditPopup({
@@ -346,7 +349,7 @@ export function createWaveformModule(dependencies) {
           const current = this.options.getSegments('main') || [];
           const target = segment.id ? current.find(candidate => candidate?.id === segment.id) : current[actualIndex];
           if (!target) return false;
-          const currentEntry = window.AsrEditorUtils.getWordTimingEntries(target, this.cueTiming())
+          const currentEntry = AsrEditorUtils.getWordTimingEntries(target, this.cueTiming())
             .find(candidate => candidate.index === itemIndex);
           const text = state.textarea.value.replace(/\r\n?/g, '\n').replace(/\n+/g, ' ');
           return Boolean(currentEntry && text !== String(currentEntry.text ?? ''));
@@ -514,12 +517,12 @@ export function createWaveformModule(dependencies) {
       const segment = this.options.getSegments('main')?.[segmentIndex];
       if (!segment) return;
       const timing = this.cueTiming();
-      const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
+      const entries = AsrEditorUtils.getWordTimingEntries(segment, timing);
       const position = entries.findIndex((candidate) => candidate.index === itemIndex);
       if (position < 0) return;
       const next = position + direction;
       if (next < 0 || next >= entries.length) {
-        window.MaweHint?.flashHint(localizedWaveformMessage(
+        MaweHint?.flashHint(localizedWaveformMessage(
           direction < 0
             ? '当前已经是第一个字词码，无法跳转'
             : '当前已经是最后一个字词码，无法跳转',

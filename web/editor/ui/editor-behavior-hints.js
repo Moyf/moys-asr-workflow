@@ -1,7 +1,9 @@
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from './editor-dom.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+export let MaweBehaviorHints;
 // 行为提示：点击行为与键盘操作参考的文案刷新。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweBehaviorHints 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 export function initMaweBehaviorHints() {
   'use strict';
 
@@ -25,7 +27,7 @@ export function initMaweBehaviorHints() {
 
   function refreshClickBehaviorHint() {
     const hint = document.getElementById('click-behavior-hint');
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     if (hint) {
       hint.textContent = CLICK_BEHAVIOR_HINTS[language][MaweSettings.EDITOR_SETTINGS.clickBehavior];
       hint.hidden = false;
@@ -50,7 +52,7 @@ export function initMaweBehaviorHints() {
 
 
   function refreshKeyboardOperationReferenceHint() {
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     const mode = MaweSettings.normalizeKeyboardOperationReferenceMode(MaweSettings.EDITOR_SETTINGS.keyboardOperationReference);
     if (MaweDom.keyboardOperationReferenceSelect) MaweDom.keyboardOperationReferenceSelect.value = mode;
     if (MaweDom.keyboardOperationReferenceHint) {
@@ -58,10 +60,11 @@ export function initMaweBehaviorHints() {
     }
   }
 
-  global.MaweBehaviorHints = Object.freeze({
+  MaweBehaviorHints = Object.freeze({
     CLICK_BEHAVIOR_HINTS,
     refreshClickBehaviorHint,
     KEYBOARD_OPERATION_REFERENCE_HINTS,
     refreshKeyboardOperationReferenceHint
   });
+
 }

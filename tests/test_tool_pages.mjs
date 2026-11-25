@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { parse } from 'acorn';
+import { toolCatalog as catalog } from '../tools/catalog.js';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const pages = [
@@ -16,8 +17,8 @@ const pages = [
 test('tool pages and shared bootstrap have valid JavaScript syntax', () => {
   for (const file of pages) {
     for (const match of read(file).matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
-      if (/\bsrc=/.test(match[1])) continue;
-      parse(match[2], {ecmaVersion:'latest'});
+      if (/\bsrc=|\btype="application\/json"/.test(match[1])) continue;
+      parse(match[2], {ecmaVersion:'latest', sourceType:/\btype="module"/.test(match[1])?'module':'script'});
     }
   }
   for (const file of ['tools/shared/tool-page.js', 'tools/dev-dashboard/app.js']) parse(read(file), {ecmaVersion:'latest'});
@@ -35,8 +36,7 @@ test('active tool styles never declare font sizes below 11 pixels', () => {
 });
 
 test('tool catalog entries and maintenance states are accurate and resolvable', () => {
-  const context={window:{}};vm.runInNewContext(read('tools/catalog.js'),context);
-  const catalog=context.window.MAWToolCatalog,ids=new Set();
+  const ids=new Set();
   for(const entry of catalog){
     assert.ok(!ids.has(entry.id));ids.add(entry.id);
     assert.ok(['maintained','experimental','paused','retired','deferred','cli'].includes(entry.status));

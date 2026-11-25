@@ -7,11 +7,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson, generateWav, makeTempDir } from './helpers.mjs';
 import { spawnServerProcess, stopServerProcess } from './server-process.mjs';
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 
 test('Launcher keeps the local editor while retiring standalone actions', async ({ page }, info) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(pathToFileURL(path.resolve('web/launcher/index.html')).href);
+  await page.goto(launcherFixtureUrl());
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await expect(page.locator('#openMawe')).toBeVisible();
   const config = await page.evaluate(() => window.MAWLauncher.config);
@@ -40,6 +41,20 @@ test('Launcher keeps the local editor while retiring standalone actions', async 
   });
   await expect(page.locator('#openMenu')).toBeVisible();
   await expect(page.locator('#generateHtml')).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('production Launcher initializes batch mode without a browser runtime global', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(pathToFileURL(path.resolve('web/launcher/index.html')).href);
+  await expect(page.locator('#openMawe')).toBeVisible();
+  await page.locator('#batchMode').click();
+  await expect(page.locator('#batchMediaFields')).toBeVisible();
+  await expect(page.locator('#batchMode')).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => ['MAWLauncher', '__mawEsmInitializationTrace',
+    '__mockNotifications', '__openedRuntimeFolder', '__openedStickerFolder']
+    .filter(name => Object.hasOwn(window, name)))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -115,7 +130,10 @@ test('actual 2.0 source Server opens saves backs up and exports without a standa
       } catch { return 'starting'; }
     }, { timeout: 45000 }).toBe('ready');
     await disableOnboarding(page);
-    await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
+    await page.addInitScript(() => {
+      localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false }));
+      window.showSaveFilePicker = undefined;
+    });
     await page.goto(`${url}?lang=en`);
     expect(await page.content()).toContain('v2.0.0-beta.1');
     await page.locator('.cue .text').first().click();
@@ -128,7 +146,11 @@ test('actual 2.0 source Server opens saves backs up and exports without a standa
     expect(content.tracks.find(track => track.role === 'main').segments[0].text).toBe('Version two saved');
     expect(content.extension_review).toEqual({ preserved: true });
     expect(existsSync(`${project}.bak`)).toBe(true);
-    expect(await page.evaluate(() => window.MaweExportSrt.buildSrt())).toContain('Version two saved');
+    await page.locator('#subtitle-export-btn').click();
+    const downloading = page.waitForEvent('download');
+    await page.locator('#download-full-srt').click();
+    const subtitles = await downloading;
+    expect(readFileSync(await subtitles.path(), 'utf8')).toContain('Version two saved');
     const beforeFailure = readFileSync(project, 'utf8');
     const rejected = await page.request.post(`${url}api/project`, { data: { schema: 'unknown.future.schema', segments: 'invalid' } });
     expect(rejected.status()).toBeGreaterThanOrEqual(400);

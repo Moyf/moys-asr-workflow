@@ -1,26 +1,11 @@
-// editor-globals.d.ts：编辑器脚本体系的共享类型契约（仅类型检查用，绝不进
-// 生产依赖图只加载运行时代码，类型声明供静态检查使用。
-//
-// 为什么放 d.ts 而不是各模块 JSDoc：清单组装的脚本是经典脚本（无
-// import/export），JSDoc typedef 不跨文件传播；d.ts 的声明天然是全局的，
-// 所有被 typecheck 编译的模块共享同一契约。工程 JSON 形状与 JSON_SCHEMA.md
-// 对应，修改 schema 时两处必须同步。
-//
-// 模板占位符由 edit.py / server-editor 在装配时注入真实 JSON。
+// Types shared by Editor modules and browser capabilities used by the host.
+// Template placeholders are replaced by the Server renderer before boot.
+// Keep project data types in sync with docs/engineering/JSON_SCHEMA.md.
 
 declare const __DATA_JSON__: ProjectData;
 
-interface Window {
-  MaweAssCanvas: {
-    measureRun(style: any, nativeFontSize: number, run: any, text: string): { width: number; ascent: number; descent: number };
-    clearCaches(): void;
-    render(payload: any): void;
-    hide(): void;
-    renderSample(element: any, style: any, text: string): void;
-    readonly lastRender: any;
-  };
-}
 declare const __FILENAME_BASE_JSON__: string;
+declare const __UI_LANGUAGE_JSON__: string | null;
 declare const __STICKERS_JSON__: any[];
 declare const __STICKER_ROOT_JSON__: string;
 declare const __STICKER_URL_PREFIX_JSON__: string;
@@ -176,88 +161,7 @@ interface MaweExportSrtApi {
   buildGapRemovedRegionsJson: any;
 }
 
-// 裸名访问（经典脚本里 window.X 与裸名 X 同源）：已标注门面给出真实契约。
-// 用 var 而非 const：var 声明会并入 typeof globalThis，IIFE 参数的
-// Window & typeof globalThis 交叉类型两侧行都能拿到属性。
-declare var MaweBoot: MaweBootApi;
-declare var MaweExportSrt: MaweExportSrtApi;
-
-// 浏览器与 Node/便携环境共用的全局挂载点。
-interface Window {
-  MaweBoot: MaweBootApi;
-  MaweExportSrt: MaweExportSrtApi;
-}
-
-// === 未标注门面/跨模块符号的占位（any） ===
-// 这些符号由其他模块或入口声明；本试点只为 MaweBoot / MaweExportSrt 建立真实
-// 契约，其余以 any 占位消除跨文件噪音。升级方式：为对应模块写 xxxApi 接口 +
-// declare const Xxx: XxxApi，随后从本占位区移除。
 declare const __NINJA_SFX_BASE_URL_JSON__: string;
-declare const exportColorContextResolver: any;
-declare const MaweSettings: any;
-declare const MaweHint: any;
-declare const MaweSpeakerLabels: any;
-declare const MaweSpeakerManager: any;
-declare const MaweCueElements: any;
-declare const MaweInlineEdit: any;
-declare const MaweGapRemoveData: any;
-declare const MaweCoreState: any;
-declare const MaweExportTimeline: any;
-declare const MaweAppearance: any;
-declare const MaweTimeline: any;
-declare const MaweColors: any;
-declare const MaweDom: any;
-declare const MaweMultiSubtitleCore: any;
-declare const MaweSegmentOps: any;
-declare const MaweSelection: any;
-declare const MaweContextMenus: any;
-declare const MaweColorFilter: any;
-declare const MaweCuePanelState: any;
-declare const ASS_STYLE_LIBRARY: any;
-declare const mergedExportSegments: any;
-declare const aiCleanupExportSegments: any;
-declare const activeExtensionSegments: any;
-
-// G07 领域门面（init 化接线文件挂载，window 与裸名同源）；契约仍以 any
-// 占位，升级方式同上。
-interface Window {
-  MaweExportContext: any;
-  MaweSpeakerLabels: any;
-  MaweSpeakerManager: any;
-  MaweColors: any;
-  MaweOverlaySplitMerge: any;
-  MaweAssStorageWiring: any;
-  MaweAssManagerWiring: any;
-  MaweStickerPreviewWiring: any;
-  MaweInitialConfigWiring: any;
-  MaweAssPreview: any;
-  MaweGapRemovedMediaExport: any;
-  MaweDomPanelsWiring: any;
-  MaweFloatingPanel: any;
-  MawePreviewGeometry: any;
-  MaweSettingsPanels: any;
-  MaweFontGeometryWiring: any;
-  MaweBurnVideoExport?: any;
-  MaweDisplaySettings: any;
-  MaweContextMenus: any;
-}
-
-interface Window {
-  AsrEditorUtils: any;
-  MAWE_I18N: any;
-  MaweMarkersPanel?: {
-    createAiCleanupReviewMuteButton?: (markerId: string) => HTMLButtonElement;
-    updateAiCleanupReviewMuteButton?: (button: HTMLElement, markerId: string) => void;
-    updateAiCleanupReviewStatusButton?: (button: HTMLElement, marker: any) => void;
-    refreshAiCleanupReviewMuteButtons?: () => void;
-  };
-  ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
-  // 服务端 ASS 字体别名表门面（editor-wiring-ass-font-aliases.js 注入）；
-  // 便携模式/旧服务器下不存在，消费点按可选访问降级。
-  MaweAssFontAliases?: any;
-  MaweProjectFontCheck?: { schedule(): void };
-  showSaveFilePicker?: any;
-}
 
 // Replaceable browser/desktop capabilities used by editor I/O.
 interface MaweHostApi {
@@ -271,8 +175,6 @@ interface MaweHostApi {
   server: { fetch(url: string | URL, options?: RequestInit): Promise<Response> };
   runtime: { getNavigator(): Navigator | undefined; hasUserActivation(): boolean };
 }
-declare var MaweHost: MaweHostApi;
-interface Window { MaweHost: MaweHostApi; }
 
 type SelectionTrack = 'main' | 'extension' | 'overlay';
 interface CueRef { track_id: string; segment_id: string; }
@@ -336,11 +238,6 @@ interface MaweStateApi {
   getProjectDirtyEpoch(): number;
   onProjectDirtyChange(listener: (epoch: number) => void): () => void;
 }
-declare var MaweState: MaweStateApi;
-interface Window {
-  MaweState: MaweStateApi;
-  MaweProjectSettings?: { syncTrackControls(): void; syncControls(): void };
-}
 
 interface ViewInvalidation {
   cueList?: boolean; waveform?: 'none' | 'overlay' | 'full'; preserveCueListScroll?: boolean; cueListAnchor?: unknown;
@@ -358,24 +255,13 @@ interface MaweCommandsApi {
     options?: { captureView?: boolean; invalidate?: ViewInvalidation }): T;
   onBeforeBegin(listener: (label: string, options: { captureView?: boolean }) => void): () => boolean;
 }
-declare var MaweCommands: MaweCommandsApi;
-declare var MaweViewUpdates: { invalidate(options?: ViewInvalidation): void };
-declare const MaweHistory: any;
-declare const MaweCuePanel: any;
-declare const MaweCueListAnchor: any;
-declare const MawePlaybackLoop: any;
-declare const MaweServerSave: any;
+
 interface Window {
-  MaweCommands: MaweCommandsApi;
-  MaweViewUpdates: typeof MaweViewUpdates;
-  MaweMarkerEditing?: { isEditingEnabled(): boolean };
-  MaweHint?: { flashHint(message: string, type?: string): void };
-  MaweAssFrame?: { notifyProjectChanged?(): void; syncAssFrameControls?(): void };
+  showSaveFilePicker?: (options?: object) => Promise<FileSystemFileHandle>;
+  queryLocalFonts?: () => Promise<Array<{ family: string; postscriptName: string; fullName: string; style: string }>>;
   webkitAudioContext?: typeof AudioContext;
-  AsrGapRemoveCore: {
-    createCleanupRetainedProjector(gapRemove: unknown): (segments: ProjectSegment[]) => ProjectSegment[];
-    projectCleanupRetainedSegments(segments: ProjectSegment[], gapRemove: unknown): ProjectSegment[];
-    getCleanupScopeItems(segment: ProjectSegment, gap: unknown): ProjectSegmentItem[];
-    isGapRemoveDisplayProtected(gap: import('../media/waveform/waveform-types.js').Gap): boolean;
-  };
+}
+
+interface Permissions {
+  query(descriptor: { name: 'local-fonts' }): Promise<PermissionStatus>;
 }

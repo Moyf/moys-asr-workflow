@@ -1,4 +1,15 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweContextMenus } from '../ui/editor-context-menus.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweInlineEdit } from './editor-inline-edit.js';
+import { MaweNavPreview } from './editor-nav-preview.js';
+import { MaweSelection } from './editor-selection.js';
 import { beginRealSplit } from '../boot/editor-onboarding.js';
+export let MaweCueEvents;
 import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { selectCueByClick } from './editor-binding-align.js';
 import { restoreCueListVisualAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
@@ -8,18 +19,13 @@ import { hideCueSplitPreview, scheduleCueSplitPreview } from './editor-nav-previ
 import { selectOnly, selectRange, toggleSel } from './editor-selection.js';
 import { toggleDisabled } from './editor-sticker-picker.js';
 import { seekFromWaveform } from './editor-text-cleanup.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 字幕行事件：行级监听绑定与拆分键配置。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweCueEvents 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 字幕行事件：行级监听绑定与拆分键配置。 ESM init 模块：initMaweCueEvents 在原清单位次执行原 IIFE 体（挂
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweCueEvents 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 字幕行事件：行级监听绑定与拆分键配置。
+// 由 split-cluster codemod 自 editor.js 拆出。
 
-// window.MaweCueEvents 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweCueEvents() {
 (function initMaweCueEvents(global) {
   'use strict';
@@ -130,7 +136,7 @@ export function initMaweCueEvents() {
     if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll) {
       scrollCueToCenter(el);
     }
-    MaweCoreState.waveformEditor?.revealTime(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start, true);
+    MaweCoreState.waveformEditor?.revealTime(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start, true);
     const wasPlaying = isPlaybackActive();
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
@@ -138,7 +144,7 @@ export function initMaweCueEvents() {
       MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
         ? true : !MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
-        seekFromWaveform(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000, { mouseClick: true });
+        seekFromWaveform(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000, { mouseClick: true });
       } finally {
         MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
           ? true : previousSuppress;
@@ -177,17 +183,18 @@ export function initMaweCueEvents() {
     // 'enter' or 'ctrl-enter'
 
   function getConfiguredEnterAction(event) {
-    return window.AsrEditorUtils.configuredEnterAction(event, getSplitKey());
+    return AsrEditorUtils.configuredEnterAction(event, getSplitKey());
   }
 
-  global.MaweCueEvents = Object.freeze({
+  MaweCueEvents = Object.freeze({
     bindCueEvents,
     getSplitKey,
     getConfiguredEnterAction
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function bindCueEvents(...args) { return window.MaweCueEvents.bindCueEvents(...args); }
-export function getSplitKey(...args) { return window.MaweCueEvents.getSplitKey(...args); }
-export function getConfiguredEnterAction(...args) { return window.MaweCueEvents.getConfiguredEnterAction(...args); }
+export function bindCueEvents(...args) { return MaweCueEvents.bindCueEvents(...args); }
+export function getSplitKey(...args) { return MaweCueEvents.getSplitKey(...args); }
+export function getConfiguredEnterAction(...args) { return MaweCueEvents.getConfiguredEnterAction(...args); }

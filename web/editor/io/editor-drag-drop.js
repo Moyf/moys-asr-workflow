@@ -1,8 +1,19 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweMediaLoad } from '../media/editor-media-load.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweLoadingProgress } from './editor-loading-progress.js';
+import { MaweMultiImport } from './editor-multi-import.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweServerSave } from './editor-server-save.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweDragDrop;
 export function initDragDropModule() {
 // 拖放：文件拖入分流与拖拽遮罩。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweDragDrop 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweDragDrop(global) {
   'use strict';
 
@@ -47,9 +58,9 @@ export function initDragDropModule() {
     return;
   }
   if (jsonFile) {
-    if (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0) {
+    if (AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0) {
       if (MaweServerSave.hasUnsavedProjectChanges()
-          && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
+          && !editorDialogs.confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
       try {
         const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
         if (!current()) return;
@@ -71,7 +82,7 @@ export function initDragDropModule() {
     await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
     return;
   }
-  if (subtitleFile && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0) {
+  if (subtitleFile && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0) {
     try {
       stagedSubtitleSegments = await parseDroppedSubtitleFile(subtitleFile);
       if (!current()) return;
@@ -102,7 +113,7 @@ export function initDragDropModule() {
     if (!await loading || !current()) return;
   }
   if (subtitleFile) {
-    if (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0) {
+    if (AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0) {
       try {
         const segments = await MaweLoadingProgress.parseSubtitleImportFile(subtitleFile);
         if (!current()) return;
@@ -125,13 +136,13 @@ export function initDragDropModule() {
   // SRT 与 LRC 都按文本读取（内部自动处理 BOM/GBK），仅解析器不同。
   async function parseDroppedSubtitleFile(file) {
     const text = await MaweLoadingProgress.readFileTextWithProgress(file);
-    return isLrcFile(file) ? window.AsrEditorUtils.parseLrcSegments(text) : MaweProjectLoad.parseSrtSegments(text);
+    return isLrcFile(file) ? AsrEditorUtils.parseLrcSegments(text) : MaweProjectLoad.parseSrtSegments(text);
   }
 
 
   let dragCounter = 0;
 
-  global.MaweDragDrop = Object.freeze({
+  MaweDragDrop = Object.freeze({
     dragOverlay,
     isJsonFile,
     isSrtFile,
@@ -140,5 +151,6 @@ export function initDragDropModule() {
     get dragCounter() { return dragCounter; },
     set dragCounter(v) { dragCounter = v; }
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

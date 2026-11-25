@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function fixture(clickBehavior, { pauseOnSeek = false } = {}) {
   const handlers = {};
@@ -17,7 +18,9 @@ function fixture(clickBehavior, { pauseOnSeek = false } = {}) {
     MaweCoreState: { waveformEditor: { revealTime: (...args) => calls.reveal.push(args) }, player: { paused: true } },
     MawePlaybackLoop: { suppressCueListAutoScroll: false },
     MaweJklPlayback: { jklReversePlaying: false },
-    MaweMediaPlayback: { togglePlayback() { calls.play++; } },
+    // 媒体播放模块以模块级门面直读（Batch C）：夹具在模块脚本运行后
+    // 就地填充该门面，click 经同一对象计数。
+    MaweMediaPlayback: {},
     selectCueByClick: index => calls.select.push(index),
     seekFromWaveform(time, options) {
       calls.seek.push({ time, mouseClick: options.mouseClick });
@@ -25,8 +28,9 @@ function fixture(clickBehavior, { pauseOnSeek = false } = {}) {
     },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(plainModuleSource('editor/media/editor-media-playback.js'), context);
+  Object.assign(context.MaweMediaPlayback, { togglePlayback() { calls.play++; } });
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-cue-events.js', 'initMaweCueEvents'), context);
   context.MaweCueEvents.bindCueEvents(element, 0);
   return { context, handlers, calls };

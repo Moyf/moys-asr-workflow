@@ -1,7 +1,8 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import {test, expect} from '@playwright/test';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-const launcherUrl = pathToFileURL(fileURLToPath(new URL('../../web/launcher/index.html', import.meta.url))).href;
+const launcherUrl = launcherFixtureUrl();
 const projects = [
   {path: 'D:/Demo/current.mosp', name: '当前工程.mosp'},
   {path: 'D:/Demo/missing.mosp', name: '已移动工程.mosp', exists: false},

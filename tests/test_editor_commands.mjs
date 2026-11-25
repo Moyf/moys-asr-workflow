@@ -12,7 +12,7 @@ function moduleExports(source, names) {
   const context = { window: {} };
   const stripped = source
     .replace(/^import .*$/gm, '')
-    .replace(/^export function/gm, 'function');
+    .replace(/^export (?=(?:function|const|let)\b)/gm, '');
   return vm.runInNewContext(`(function () { ${stripped}\nreturn { ${names} }; })()`, context);
 }
 

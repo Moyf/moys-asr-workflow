@@ -1,3 +1,13 @@
+import { MaweCueEvents } from '../cues/editor-cue-events.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweSplitCore } from '../cues/editor-split-core.js';
+import { MaweTimedTextEdit } from '../cues/editor-timed-text-edit.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweHint } from '../ui/editor-hint.js';
 export function bindMaweKeyboardGuards() {
 
 

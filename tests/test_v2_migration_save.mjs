@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function deferred() {
   let resolve;
@@ -29,7 +30,7 @@ function fixture() {
         writeBlob: async (handle, makeBlob) => { calls.writes.push({ handle, project: JSON.parse(await makeBlob().text()) }); } } },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   context.MaweState.beginProjectSession();

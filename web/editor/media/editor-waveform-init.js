@@ -1,17 +1,48 @@
+import { AsrWaveform } from './waveform.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweAddCue } from '../cues/editor-add-cue.js';
+import { MaweBindingAlign } from '../cues/editor-binding-align.js';
+import { MaweBoundDrag } from '../cues/editor-bound-drag.js';
+import { MaweCueEvents } from '../cues/editor-cue-events.js';
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweSplitContext } from '../cues/editor-split-context.js';
+import { MaweSplitCore } from '../cues/editor-split-core.js';
+import { MaweStickerPicker } from '../cues/editor-sticker-picker.js';
+import { MaweTextCleanup } from '../cues/editor-text-cleanup.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweContextMenus } from '../ui/editor-context-menus.js';
+import { MaweDisplaySettings } from '../ui/editor-display-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweGapRemoveUi } from '../ui/editor-gap-remove-ui.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 import { openOverlaySplitModal } from '../cues/editor-split-core.js';
+export let MaweWaveformInit;
 import { showOverlayContextMenu } from '../ui/editor-context-menus.js';
 import { selectOverlayCueRow, selectOverlayRange, toggleOverlaySelection } from '../cues/editor-overlay-cue-selection.js';
 import { isPlaybackActive } from './editor-media-playback.js';
 import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
 import * as markerEditing from '../markers/editor-marker-editing.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweWaveformInit() {
 'use strict';
 
 // 波形初始化：WaveformEditor 装配与 reapeaks 懒加载。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweWaveformInit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweWaveformInit(global) {
   'use strict';
 
@@ -20,11 +51,11 @@ export function initMaweWaveformInit() {
   function initWaveformEditor() {
   let timingCommand = null;
   let boundDrag = null;
-  if (!window.AsrWaveform) {
+  if (!AsrWaveform) {
     MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
     return;
   }
-  MaweCoreState.waveformEditor = window.AsrWaveform.create({
+  MaweCoreState.waveformEditor = AsrWaveform.create({
     // A failed/cancelled load intent must not invalidate edits in the project
     // that remains installed. projectEpoch advances on actual replacement.
     getProjectSession: () => MaweState.projectEpoch,
@@ -38,7 +69,7 @@ export function initMaweWaveformInit() {
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
       : track === 'overlay'
         ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
-        : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+        : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
     getCrossTrackSnapTargets: (track = 'main', excludedSegments = new Set()) => {
       if (!MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
@@ -49,7 +80,7 @@ export function initMaweWaveformInit() {
         .map((timeMs) => Number(timeMs));
       // 叠加轨与主轨互为吸附参照；多重字幕开启时副轨边界同样参与。
       if (track === 'overlay') {
-        const targets = collectEdges(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+        const targets = collectEdges(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (MaweMultiSubtitleCore.multiSubtitleVisible()) targets.push(...collectEdges(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments));
         return targets;
       }
@@ -59,7 +90,7 @@ export function initMaweWaveformInit() {
           : [];
       }
       const otherSegments = track === 'extension'
-        ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
+        ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
       const targets = collectEdges(otherSegments);
       if (track === 'main' && overlayTrackVisible()) targets.push(...collectEdges(getOverlayTrack()?.segments));
       return targets;
@@ -100,7 +131,7 @@ export function initMaweWaveformInit() {
         && trackTree === MaweBoot.DATA.tracks;
       if (popupState.isCurrent && !popupState.isCurrent()) return false;
       const segments = track === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
-        : track === 'overlay' ? getOverlayTrack()?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+        : track === 'overlay' ? getOverlayTrack()?.segments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       const segment = segments?.[index];
       if (!segment || offset <= 0 || offset >= String(segment.text || '').length) {
         MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
@@ -154,7 +185,7 @@ export function initMaweWaveformInit() {
         ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
         : track === 'overlay'
           ? (getOverlayTrack()?.segments || [])
-          : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+          : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       const segment = segments[index];
       if (!segment || segment.text === text) return;
       const label = track === 'extension'
@@ -181,10 +212,10 @@ export function initMaweWaveformInit() {
     // 变更落在单字词区间内同样支持）。打开期间句文本变了则重新解析区间，
     // 解析失败提示改从字幕列表编辑。
     onWordQuickEditText: (segmentIndex, itemIndex, text) => {
-      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[segmentIndex];
+      const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[segmentIndex];
       if (!segment) return;
       const previousText = String(segment.text ?? '');
-      const ranges = window.AsrEditorUtils.wordCharRanges(previousText, segment.items || []);
+      const ranges = AsrEditorUtils.wordCharRanges(previousText, segment.items || []);
       const range = ranges?.[itemIndex];
       if (!range) {
         MaweHint.flashHint('字词与句文本暂无法对应，请从字幕列表编辑该句', 'warning');
@@ -194,7 +225,7 @@ export function initMaweWaveformInit() {
       const previousWord = sourceChars.slice(range.start, range.end).join('');
       if (text === previousWord) return;
       // 字词至少保留一个发音字符：清空/仅剩中性符号会让句↔字词映射失效。
-      if (!Array.from(text).some((ch) => !window.AsrEditorUtils.isTimedTextNeutralToken(ch, true))) {
+      if (!Array.from(text).some((ch) => !AsrEditorUtils.isTimedTextNeutralToken(ch, true))) {
         MaweHint.flashHint('字词需要保留至少一个发音字符', 'warning');
         return;
       }
@@ -339,7 +370,7 @@ export function initMaweWaveformInit() {
       boundDrag = null;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
-        const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
+        const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
         const original = details?.original;
         if (main && original) {
           const patch = {
@@ -358,7 +389,7 @@ export function initMaweWaveformInit() {
       if (MaweMultiSubtitleCore.multiSubtitleVisible() && editedTracks.some((entry) => entry.track !== 'overlay')) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweMultiSubtitleCore.syncBindingOffsets();
       const mainIndices = editedTracks.find((entry) => entry.track === 'main')?.indices || [];
-      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]).filter(Boolean));
+      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]).filter(Boolean));
       const overlayIndices = editedTracks.find((entry) => entry.track === 'overlay')?.indices;
       if (overlayIndices) {
         const overlay = getOverlayTrack();
@@ -463,11 +494,12 @@ export function initMaweWaveformInit() {
     }
   }
 
-  global.MaweWaveformInit = Object.freeze({
+  MaweWaveformInit = Object.freeze({
     initWaveformEditor,
     loadDeferredReapeaks,
     get deferredReapeaksEpoch() { return deferredReapeaksEpoch; },
     set deferredReapeaksEpoch(v) { deferredReapeaksEpoch = v; }
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

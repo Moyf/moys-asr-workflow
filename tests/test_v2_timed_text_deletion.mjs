@@ -4,6 +4,9 @@ import vm from 'node:vm';
 import { createUtilsModule as createGroups } from '../web/shared/utils/subtitle-groups.js';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 function fixture() {
   const cue = (prefix, index, color) => ({ id: `${prefix}${index}`, text: `${prefix}${index}`,
@@ -39,7 +42,7 @@ function fixture() {
     clearSelection() {},
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-timed-text-edit.js', 'initMaweTimedTextEdit'), context);
   return { context, project, main, extension };
 }

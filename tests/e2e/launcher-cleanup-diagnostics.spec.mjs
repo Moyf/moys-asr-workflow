@@ -1,7 +1,8 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 
-const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
+const launcherUrl = launcherFixtureUrl();
 
 test('automatic processing reports skipped AI steps at the end', async ({ page }, testInfo) => {
   await page.goto(launcherUrl);

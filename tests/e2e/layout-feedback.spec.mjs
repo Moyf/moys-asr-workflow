@@ -1,3 +1,4 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -8,7 +9,7 @@ import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayloa
 
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const launcherUrl = pathToFileURL(path.join(repoRoot, 'web', 'launcher', 'index.html')).href;
+const launcherUrl = launcherFixtureUrl();
 
 
 async function openLauncher(page) {

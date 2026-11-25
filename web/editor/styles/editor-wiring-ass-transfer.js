@@ -1,4 +1,9 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweExportTimeline } from '../io/editor-export-timeline.js';
+import { MaweHint } from '../ui/editor-hint.js';
 import { getAssStyleLibrary, getAssStyleTransferState, persistAssStyleLibrary, importAssStyleLibrary, reloadAssStyleLibrary, readAssStyleLibraryBackup, waitForAssStyleLibraryLoad } from './editor-wiring-ass-storage.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function translateAssTransferMessage(value) {
   const text = String(value);
@@ -174,7 +179,7 @@ export function createAssStyleTransfer(utils) {
 }
 
 export function initAssStyleTransfer() {
-  const MaweAssTransfer = createAssStyleTransfer(window.AsrEditorUtils);
+  const MaweAssTransfer = createAssStyleTransfer(AsrEditorUtils);
   const dialog = document.getElementById('ass-style-import-dialog');
   const input = document.getElementById('ass-style-import-file');
   const preview = document.getElementById('ass-style-import-preview');
@@ -184,7 +189,7 @@ export function initAssStyleTransfer() {
   const modeControls = [...dialog.querySelectorAll('input[name="ass-style-import-mode"]')];
   let imported = null, baseRevision = 0, proposed = null;
   let importing = false;
-  const english = () => window.MAWE_I18N?.language === 'en';
+  const english = () => MAWE_I18N?.language === 'en';
   const translated = text => english() ? translateAssTransferMessage(text) : text;
   const message = text => MaweHint.flashHint(text, 'warning');
   const mode = () => dialog.querySelector('input[name="ass-style-import-mode"]:checked')?.value || 'merge';
@@ -225,7 +230,7 @@ export function initAssStyleTransfer() {
   }
   document.getElementById('ass-style-export-library')?.addEventListener('click', async () => {
     await waitForAssStyleLibraryLoad();
-    const payload = { schema: MaweAssTransfer.schema, version: 1, kind: 'library', library: window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()) };
+    const payload = { schema: MaweAssTransfer.schema, version: 1, kind: 'library', library: AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()) };
     try { await MaweExportTimeline.downloadFile(JSON.stringify(payload, null, 2), 'MAW-ASS样式库.json', 'application/json',
       { desc: 'MAW ASS 样式库', types: { 'application/json': ['.json'] } }); }
     catch (error) { message(`${english() ? 'Export failed: ' : '导出失败：'}${translated(error.message || error)}`); }
@@ -280,7 +285,7 @@ export function initAssStyleTransfer() {
   });
   document.getElementById('ass-style-reload-library')?.addEventListener('click', async () => {
     document.querySelector('.ass-style-more-actions')?.removeAttribute('open');
-    if (getAssStyleTransferState().dirty && !confirm(english() ? 'Reloading will discard unsaved changes. You can export the library as a backup first. Continue?' : '重新加载会放弃当前未保存的修改。可以先导出样式库作为备份。继续吗？')) return;
+    if (getAssStyleTransferState().dirty && !editorDialogs.confirm(english() ? 'Reloading will discard unsaved changes. You can export the library as a backup first. Continue?' : '重新加载会放弃当前未保存的修改。可以先导出样式库作为备份。继续吗？')) return;
     await reloadAssStyleLibrary();
   });
 }

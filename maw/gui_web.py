@@ -396,7 +396,8 @@ class EventPump:
         window = self.window_getter()
         if window is None:
             return
-        script = f"window.MAWLauncher && window.MAWLauncher.onBackendEvents({json.dumps(batch, ensure_ascii=False)})"
+        payload = json.dumps(batch, ensure_ascii=False)
+        script = f"document.dispatchEvent(new CustomEvent('maw:backend-events', {{detail: {payload}}}))"
         if not self.stop_event.is_set():
             window.evaluate_js(script)
 

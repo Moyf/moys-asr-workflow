@@ -473,7 +473,7 @@ function renderOcrRuntime() {
   progress.classList.toggle("hidden", !installing);
   $("ocrRuntimeProgressBar").style.width = `${Math.max(0, Math.min(100, state.ocrRuntimeProgress))}%`;
   $("ocrRuntimeProgressMessage").textContent = state.ocrRuntimeProgressMessage || "";
-  window.MAWLauncher?.onOcrRuntimeChanged?.();
+  launcherRuntime?.onOcrRuntimeChanged?.();
 }
 async function refreshOcrRuntime() {
   const requestId = ++ocrRuntimeRequest;
@@ -818,7 +818,7 @@ async function refreshAlignmentModels() {
   if (result.modelCacheRoot) state.config.modelCacheRoot = result.modelCacheRoot;
   if (result.runtime && typeof result.runtime === "object") state.config.localRuntime = result.runtime;
   renderLocalAlignmentModel();
-  window.MAWLauncher?.onAlignmentModelsChanged?.();
+  launcherRuntime?.onAlignmentModelsChanged?.();
   return result;
 }
 function syncLocalModelPath(model) {

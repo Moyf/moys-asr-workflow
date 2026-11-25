@@ -893,7 +893,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             source,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
-        self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
+        self.assertIn('AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
         self.assertRegex(
             edit.read_web_asset("editor/io/editor-json-repair.js"),
             r'function buildJson\(\{ forFileExport = false \} = \{\}\) \{\s+'
@@ -1130,7 +1130,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('跳过静音空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', source)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", source)
-        self.assertIn('const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)', source)
+        self.assertIn('const projectHasStickers = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)', source)
         self.assertIn('const overlaySegments = getOverlayTrack()?.segments || [];', source)
         self.assertIn('overlaySegments.some((segment) => segment.sticker_group_id)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)

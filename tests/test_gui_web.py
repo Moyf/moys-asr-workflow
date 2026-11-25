@@ -1848,7 +1848,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('setResult(postprocessErrorText(result), "error")', script)
         self.assertNotIn("t(result.code)", script)
         self.assertIn("if (openEditor) {", script)
-        self.assertIn("await window.MAWLauncher.openServerEditor()", script)
+        self.assertIn("await launcherRuntime.openServerEditor()", script)
 
     def test_launcher_toolbox_uses_primary_tabs_for_postprocessing_and_utilities(self) -> None:
         """Given Launcher assets, When rendering Toolbox, Then primary tabs split subtitle and media workflows."""
@@ -2023,10 +2023,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "launcher.js": [
                 "function renderProviderNote(providerItem)",
                 'link.dataset.i18n = "toolbox_llm";',
-                "window.MAWLauncher?.openToolboxAiProcessing?.()",
+                "launcherRuntime?.openToolboxAiProcessing?.()",
             ],
             "postprocess.js": [
-                "window.MAWLauncher.openToolboxAiProcessing = () => {",
+                "launcherRuntime.openToolboxAiProcessing = () => {",
                 'selectTool("llm");',
             ],
         }
@@ -5315,7 +5315,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         pump.flush()
 
         self.assertEqual(len(self.window.scripts), 1)
-        self.assertIn("onBackendEvents", self.window.scripts[0])
+        self.assertIn("dispatchEvent(new CustomEvent('maw:backend-events'", self.window.scripts[0])
         self.assertLess(self.window.scripts[0].index("one"), self.window.scripts[0].index("two"))
 
     def test_ffprobe_start_failure_is_recognised_from_child_output(self) -> None:
@@ -6161,7 +6161,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('field.value = result.apiKey || "";', script)
         self.assertIn('void loadPostprocessApiKey(item.id, item.maskedApiKey || "");', script)
         self.assertIn('function postprocessErrorText(result)', script)
-        self.assertIn('window.MAWLauncher.errorText(result?.code || "", detail, result)', script)
+        self.assertIn('launcherRuntime.errorText(result?.code || "", detail, result)', script)
         self.assertIn('function postprocessFieldId(field)', script)
         self.assertIn('function renderSettingsError(result)', script)
         self.assertIn('setFieldError(field, message);\n      setSettingsSaveStatus("", "", 0);', script)
@@ -6275,7 +6275,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertIn('if (target === "serverMedia")', script)
         self.assertIn('setServerMedia(value)', script)
-        self.assertIn('!state.dropTarget && window.MAWLauncher?.onBatchDrop', script)
+        self.assertIn('!state.dropTarget && launcherRuntime?.onBatchDrop', script)
         self.assertIn("#serverMediaPath.drag-over", stylesheet)
 
     def test_launcher_exposes_segmentation_controls_and_payload_fields(self) -> None:
@@ -6399,13 +6399,13 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="batchSrtOnly" type="checkbox"', page)
         self.assertIn('bridge("cancel_transcription")', script)
         self.assertIn('batchSrtOnly', batch_script)
-        self.assertIn('window.MAWLauncher.confirm(t("batch_skip_completed_confirm"))', batch_script)
+        self.assertIn('launcherRuntime.confirm(t("batch_skip_completed_confirm"))', batch_script)
         self.assertIn('data-i18n="batch_confirm_yes">是', page)
         self.assertIn('data-i18n="batch_confirm_no">否', page)
         self.assertIn('batchDropNotice', page)
-        self.assertIn('window.MAWLauncher.appendLog?.(`[${message}]`, { inline: true })', batch_script)
-        self.assertIn('window.MAWLauncher.backend === "real"', batch_script)
-        self.assertLess(batch_script.index('if (window.MAWLauncher.backend === "real") return;'), batch_script.index('event.stopImmediatePropagation();'))
+        self.assertIn('launcherRuntime.appendLog?.(`[${message}]`, { inline: true })', batch_script)
+        self.assertIn('launcherRuntime.backend === "real"', batch_script)
+        self.assertLess(batch_script.index('if (launcherRuntime.backend === "real") return;'), batch_script.index('event.stopImmediatePropagation();'))
 
     def test_server_status_uses_clickable_link_and_independent_stop_control(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -6507,7 +6507,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         ])
 
         self.assertNotIn('layoutPresetSelect', waveform)
-        self.assertIn('const workspacePresetSelect = document.getElementById(\'workspace-preset\');', script)
+        self.assertRegex(script, r"const workspacePresetSelect = [^\n]*document\.getElementById\('workspace-preset'\)")
         self.assertIn("workspacePresetSelect?.addEventListener('change', () => applyWorkspaceSelection(workspacePresetSelect.value));", script)
 
     def test_builtin_workspace_save_uses_its_visible_name(self) -> None:
@@ -7156,7 +7156,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_refreshes_auto_postprocess_state_after_ocr_install(self) -> None:
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        self.assertIn('window.MAWLauncher.onOcrRuntimeChanged = () => {', script)
+        self.assertIn('launcherRuntime.onOcrRuntimeChanged = () => {', script)
         self.assertIn('renderAutoPostprocessState();', script)
         self.assertIn('maybeEnablePendingAutoStep();', script)
 

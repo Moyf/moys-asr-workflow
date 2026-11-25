@@ -1,3 +1,15 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweProjectSave } from '../io/editor-project-save.js';
+import { MaweServerSave } from '../io/editor-server-save.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweAssCanvas } from './editor-wiring-ass-canvas.js';
+import { MaweAssFontAliases } from './editor-wiring-ass-font-aliases.js';
+import { MaweAssFrame } from './editor-wiring-ass-frame.js';
+import { MaweAssManagerWiring } from './editor-wiring-ass-manager.js';
+export let MaweProjectFontCheck;
 export function initMaweProjectFontCheck() {
 // 检查工程明确保存的字体；自动建立的默认轨道样式不要求用户安装字体。
 (function initProjectFontCheck(global) {
@@ -56,9 +68,9 @@ export function initMaweProjectFontCheck() {
     if (nextExtension) MaweAppearance.setExtensionSubtitleAppearance({ font_family: nextExtension });
     MaweHistory.commitRecord(history);
     MaweState.markProjectDirty();
-    window.MaweAssManagerWiring?.syncAssStyleManager?.();
-    window.MaweAssCanvas?.clearCaches?.();
-    window.MaweAssFrame?.notifyProjectChanged?.();
+    MaweAssManagerWiring?.syncAssStyleManager?.();
+    MaweAssCanvas?.clearCaches?.();
+    MaweAssFrame?.notifyProjectChanged?.();
     MawePlaybackLoop.update();
     MaweProjectSave.updateProjectDirtyIndicator();
     MaweServerSave.scheduleAutoSave();
@@ -66,7 +78,7 @@ export function initMaweProjectFontCheck() {
 
   function show(result, generation) {
     close();
-    const aliases = global.MaweAssFontAliases;
+    const aliases = MaweAssFontAliases;
     panel = document.createElement('section');
     panel.className = 'project-font-check';
     panel.setAttribute('role', 'region');
@@ -154,7 +166,7 @@ export function initMaweProjectFontCheck() {
   async function check({ generation = MaweState.projectLoadGeneration, refresh = false } = {}) {
     const ticket = ++serial;
     if (!projectNames().length) { close(); return; }
-    const aliases = global.MaweAssFontAliases;
+    const aliases = MaweAssFontAliases;
     const available = await aliases.reload({ refresh });
     if (ticket !== serial || generation !== MaweState.projectLoadGeneration) return;
     const names = projectNames();
@@ -185,6 +197,7 @@ export function initMaweProjectFontCheck() {
     }, 0);
   }
   MaweState.observeProjectLoad(() => { serial += 1; close(); });
-  global.MaweProjectFontCheck = Object.freeze({ schedule });
+  MaweProjectFontCheck = Object.freeze({ schedule });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -1,4 +1,22 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweExportSrt } from '../io/editor-export-srt.js';
+import { MaweGapPlayback } from '../media/editor-gap-playback.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweAssCanvas } from './editor-wiring-ass-canvas.js';
+import { MaweAssPreview } from './editor-wiring-ass-preview.js';
 import { selectOverlayCueRow } from '../cues/editor-overlay-cue-selection.js';
+export let MaweAssCuePosition;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initWiringAssCuePositionModule() {
 // Per-cue ASS positioning and scaling for every subtitle track.
 (function initAssCuePosition(global) {
@@ -6,9 +24,9 @@ export function initWiringAssCuePositionModule() {
   const panel = document.getElementById('ass-cue-position');
   const scaleControls = document.getElementById('ass-cue-scale-controls');
   const positionControls = document.getElementById('ass-cue-coordinate-controls');
-  const scaleInput = document.getElementById('ass-cue-scale');
-  const xInput = document.getElementById('ass-cue-x');
-  const yInput = document.getElementById('ass-cue-y');
+  const scaleInput = /** @type {HTMLInputElement} */ (document.getElementById('ass-cue-scale'));
+  const xInput = /** @type {HTMLInputElement} */ (document.getElementById('ass-cue-x'));
+  const yInput = /** @type {HTMLInputElement} */ (document.getElementById('ass-cue-y'));
   const boxes = new Map();
   const handles = new Map();
   const idleAnchors = new WeakMap();
@@ -16,13 +34,13 @@ export function initWiringAssCuePositionModule() {
   let scaleDrag = null;
   let scaleWheel = null;
   const target = () => {
-    const current = global.MaweCuePanel.getCurrentCuePanelTarget();
+    const current = MaweCuePanel.getCurrentCuePanelTarget();
     return ['main', 'extension', 'overlay'].includes(current?.kind) ? current : null;
   };
   const trackSegments = kind => kind === 'overlay'
-    ? (global.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || [])
-    : kind === 'extension' ? (global.MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-      : global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    ? (AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || [])
+    : kind === 'extension' ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
+      : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   // 同一 id 命中两条轨在正常工程里不可能（main-/overlay- 前缀），仍按当前
   // 面板目标轨优先，避免异常数据时拖错轨。
   function locateSegment(id) {
@@ -35,19 +53,19 @@ export function initWiringAssCuePositionModule() {
     return null;
   }
   const trackLabel = kind => kind === 'overlay' ? '叠加字幕' : kind === 'extension' ? '副字幕' : '主字幕';
-  const enabled = () => global.MaweSettings.EDITOR_SETTINGS.assMode === true;
+  const enabled = () => MaweSettings.EDITOR_SETTINGS.assMode === true;
   const roundPosition = value => Math.floor(Number(value) + 0.5);
   const roundScale = value => Number(Number(value).toFixed(2));
   const clampScale = value => Math.min(5, Math.max(0.1, value));
   const currentScale = segment => segment.assOverride?.scale || 1;
-  const translated = value => global.MAWE_I18N?.translateText?.(value) || value;
+  const translated = value => MAWE_I18N?.translateText?.(value) || value;
   function singleSelected(id) {
     const current = target();
-    const selected = global.MaweState.selection.indices(current?.kind || 'main');
+    const selected = MaweState.selection.indices(current?.kind || 'main');
     return selected.size === 1 && current?.segment.id === id;
   }
   function recordFor(segment, kind = target()?.kind || 'main') {
-    return global.MaweAssCanvas.lastRender?.tracks.find(item => item.role === kind && item.cueId === segment.id && !item.skipped);
+    return MaweAssCanvas.lastRender?.tracks.find(item => item.role === kind && item.cueId === segment.id && !item.skipped);
   }
   function anchorFor(segment) {
     if (segment.assOverride?.pos) return { ...segment.assOverride.pos };
@@ -55,28 +73,28 @@ export function initWiringAssCuePositionModule() {
     if (record) return { ...(record.positionAnchor || record.anchor) };
     // A selected cue need not be on screen. Obtain its automatic anchor from
     // the same export plan, without changing the playback cursor or data.
-    let plan = global.MaweAssPreview.stackPlan;
+    let plan = MaweAssPreview.stackPlan;
     const cached = idleAnchors.get(segment);
     if (plan && cached?.plan === plan) return { ...cached.anchor };
-    if (!plan) global.MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true, onAssPlan: value => { plan = value; } });
+    if (!plan) MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true, onAssPlan: value => { plan = value; } });
     const slice = plan?.slices.find(slice => slice.items.some(item => item.segment.id === segment.id));
-    const item = slice && global.AsrEditorUtils.assStackFrame(plan, slice.start + Math.min(10, (slice.end - slice.start) / 2)).items
+    const item = slice && AsrEditorUtils.assStackFrame(plan, slice.start + Math.min(10, (slice.end - slice.start) / 2)).items
       .find(item => item.segment.id === segment.id);
-    const resolution = global.MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
-    const style = item?.style || global.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE;
-    const anchor = item?.anchor || global.AsrEditorUtils.assCanvasAnchorPoint({
+    const resolution = MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
+    const style = item?.style || AsrEditorUtils.ASS_DEFAULT_ASS_STYLE;
+    const anchor = item?.anchor || AsrEditorUtils.assCanvasAnchorPoint({
       alignment: style.alignment,
       margins: { left: style.marginL, right: style.marginR, vertical: style.marginV },
       playResX: resolution.width, playResY: resolution.height,
       move: item?.legacy && plan?.profile.animations.move.enabled
-        ? (() => { const state = global.AsrEditorUtils.assPreviewAnimationState(plan.profile, slice.start - item.start, item.end - item.start);
+        ? (() => { const state = AsrEditorUtils.assPreviewAnimationState(plan.profile, slice.start - item.start, item.end - item.start);
           return { x: state.moveX, y: state.moveY }; })() : null,
     });
     idleAnchors.set(segment, { plan, anchor });
     return { ...anchor };
   }
   function write(segment, value) {
-    const override = global.AsrEditorUtils.normalizeAssOverride(value);
+    const override = AsrEditorUtils.normalizeAssOverride(value);
     if (override) segment.assOverride = override;
     else delete segment.assOverride;
     segment._dirty = true;
@@ -95,15 +113,15 @@ export function initWiringAssCuePositionModule() {
     global.clearTimeout(previous.timer);
     if (cancel) previous.command.cancel();
     else previous.command.commit({ preview: 'refresh' });
-    global.MawePlaybackLoop.refreshSubtitlePreview();
+    MawePlaybackLoop.refreshSubtitlePreview();
     sync();
   }
   function edit(label, mutate) {
     const current = target();
     if (!enabled() || !current || drag || scaleDrag) return;
     if (scaleWheel) finishScaleWheel();
-    global.MaweCuePanel.commitCuePanelEdit();
-    global.MaweCommands.run(label, () => mutate(current.segment), { invalidate: { preview: 'refresh' } });
+    MaweCuePanel.commitCuePanelEdit();
+    MaweCommands.run(label, () => mutate(current.segment), { invalidate: { preview: 'refresh' } });
     sync();
   }
   function nudge(dx, dy, element) {
@@ -117,8 +135,8 @@ export function initWiringAssCuePositionModule() {
     });
   }
   function point(event, rect = null) {
-    const bounds = rect || drag?.rect || scaleDrag?.rect || global.MaweDom.overlayEl.getBoundingClientRect();
-    const frame = global.MaweAssCanvas.lastRender;
+    const bounds = rect || drag?.rect || scaleDrag?.rect || MaweDom.overlayEl.getBoundingClientRect();
+    const frame = MaweAssCanvas.lastRender;
     return { x: (event.clientX - bounds.left) * frame.playResX / bounds.width,
       y: (event.clientY - bounds.top) * frame.playResY / bounds.height };
   }
@@ -130,7 +148,7 @@ export function initWiringAssCuePositionModule() {
     if (previous.box.hasPointerCapture(previous.pointerId)) previous.box.releasePointerCapture(previous.pointerId);
     if (cancel) previous.command?.cancel();
     else previous.command?.commit({ preview: 'refresh' });
-    global.MawePlaybackLoop.refreshSubtitlePreview();
+    MawePlaybackLoop.refreshSubtitlePreview();
     sync();
   }
   function finishScaleDrag(cancel = false) {
@@ -141,7 +159,7 @@ export function initWiringAssCuePositionModule() {
     if (previous.handle.hasPointerCapture(previous.pointerId)) previous.handle.releasePointerCapture(previous.pointerId);
     if (cancel) previous.command?.cancel();
     else previous.command?.commit({ preview: 'refresh' });
-    global.MawePlaybackLoop.refreshSubtitlePreview();
+    MawePlaybackLoop.refreshSubtitlePreview();
     sync();
   }
   function start(event, id, box) {
@@ -149,14 +167,14 @@ export function initWiringAssCuePositionModule() {
     if (scaleWheel) finishScaleWheel();
     const located = locateSegment(id);
     if (!located) return;
-    global.MaweCuePanel.commitCuePanelEdit();
-    global.MaweGapPlayback?.cancelPendingPlayback();
-    global.MaweCoreState.player?.pause();
+    MaweCuePanel.commitCuePanelEdit();
+    MaweGapPlayback?.cancelPendingPlayback();
+    MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
       if (located.kind === 'overlay') selectOverlayCueRow(located.index);
-      else if (located.kind === 'extension') global.MaweSelection.selectOnlyExtension(located.index, global.MaweMultiSubtitleCore.getActiveExtensionTrack());
-      else global.MaweSelection.selectOnly(located.index);
+      else if (located.kind === 'extension') MaweSelection.selectOnlyExtension(located.index, MaweMultiSubtitleCore.getActiveExtensionTrack());
+      else MaweSelection.selectOnly(located.index);
       event.preventDefault(); event.stopPropagation();
       return;
     }
@@ -166,8 +184,8 @@ export function initWiringAssCuePositionModule() {
     event.preventDefault(); event.stopPropagation();
     box.focus({ preventScroll: true });
     drag = { segment, id, kind: located.kind, box, pointerId: event.pointerId, start: point(event), anchor: { ...(record.positionAnchor || record.anchor) },
-      original: global.AsrEditorUtils.normalizeAssOverride(segment.assOverride),
-      rect: global.MaweDom.overlayEl.getBoundingClientRect(), command: null };
+      original: AsrEditorUtils.normalizeAssOverride(segment.assOverride),
+      rect: MaweDom.overlayEl.getBoundingClientRect(), command: null };
     box.setPointerCapture(event.pointerId);
   }
   function move(event) {
@@ -175,14 +193,14 @@ export function initWiringAssCuePositionModule() {
     const here = point(event);
     const dx = here.x - drag.start.x, dy = here.y - drag.start.y;
     if (Math.abs(dx) < 0.00005 && Math.abs(dy) < 0.00005) {
-      if (drag.original) drag.segment.assOverride = global.AsrEditorUtils.normalizeAssOverride(drag.original);
+      if (drag.original) drag.segment.assOverride = AsrEditorUtils.normalizeAssOverride(drag.original);
       else delete drag.segment.assOverride;
     } else {
-      if (!drag.command) drag.command = global.MaweCommands.begin('拖动 ASS 字幕位置');
+      if (!drag.command) drag.command = MaweCommands.begin('拖动 ASS 字幕位置');
       drag.box.classList.add('dragging');
       write(drag.segment, { ...drag.original, pos: { x: roundPosition(drag.anchor.x + dx), y: roundPosition(drag.anchor.y + dy) } });
     }
-    global.MawePlaybackLoop.refreshSubtitlePreview();
+    MawePlaybackLoop.refreshSubtitlePreview();
     event.preventDefault(); event.stopPropagation();
   }
   function startScale(event, id, handle) {
@@ -192,9 +210,9 @@ export function initWiringAssCuePositionModule() {
     const segment = located?.segment;
     const record = segment && recordFor(segment, located.kind);
     if (!segment || !record?.bounds) return;
-    global.MaweCuePanel.commitCuePanelEdit();
-    global.MaweGapPlayback?.cancelPendingPlayback();
-    global.MaweCoreState.player?.pause();
+    MaweCuePanel.commitCuePanelEdit();
+    MaweGapPlayback?.cancelPendingPlayback();
+    MaweCoreState.player?.pause();
     event.preventDefault(); event.stopPropagation();
     handle.focus({ preventScroll: true });
     const bounds = record.bounds;
@@ -208,10 +226,10 @@ export function initWiringAssCuePositionModule() {
       const corner = handle.dataset.corner;
       dx = corner.includes('w') ? -1 : 1; dy = corner.includes('n') ? -1 : 1; length = Math.SQRT2;
     }
-    scaleDrag = { segment, id, kind: located.kind, handle, pointerId: event.pointerId, rect: global.MaweDom.overlayEl.getBoundingClientRect(),
+    scaleDrag = { segment, id, kind: located.kind, handle, pointerId: event.pointerId, rect: MaweDom.overlayEl.getBoundingClientRect(),
       start: stableStart, direction: { x: dx / length, y: dy / length },
       sensitivity: Math.max(24, Math.hypot(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2),
-      initialScale: currentScale(segment), original: global.AsrEditorUtils.normalizeAssOverride(segment.assOverride), command: null };
+      initialScale: currentScale(segment), original: AsrEditorUtils.normalizeAssOverride(segment.assOverride), command: null };
     handle.setPointerCapture(event.pointerId);
   }
   function moveScale(event) {
@@ -224,10 +242,10 @@ export function initWiringAssCuePositionModule() {
       + (stable.y - scaleDrag.start.y) * scaleDrag.direction.y;
     const scale = roundScale(clampScale(scaleDrag.initialScale * (1 + delta / scaleDrag.sensitivity)));
     if (scale !== currentScale(scaleDrag.segment)) {
-      if (!scaleDrag.command) scaleDrag.command = global.MaweCommands.begin('调整 ASS 字幕大小');
+      if (!scaleDrag.command) scaleDrag.command = MaweCommands.begin('调整 ASS 字幕大小');
       scaleDrag.handle.classList.add('dragging');
       writeScale(scaleDrag.segment, scale);
-      global.MawePlaybackLoop.refreshSubtitlePreview();
+      MawePlaybackLoop.refreshSubtitlePreview();
     }
     event.preventDefault(); event.stopPropagation();
   }
@@ -235,7 +253,7 @@ export function initWiringAssCuePositionModule() {
     if (!enabled() || drag || scaleDrag || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
     const current = target();
     if (!current || !singleSelected(current.segment.id)) return;
-    const overlay = global.MaweDom.overlayEl;
+    const overlay = MaweDom.overlayEl;
     const record = recordFor(current.segment);
     if (overlay.dataset.assMode !== 'true'
         || overlay.classList.contains('hidden') || !record || !(record.opacity > 0)) return;
@@ -252,9 +270,9 @@ export function initWiringAssCuePositionModule() {
     if (next === currentValue) return;
     event.preventDefault();
     if (scaleWheel && scaleWheel.segment !== current.segment) finishScaleWheel();
-    if (!scaleWheel) scaleWheel = { segment: current.segment, command: global.MaweCommands.begin('滚轮调整 ASS 字幕大小'), timer: null };
+    if (!scaleWheel) scaleWheel = { segment: current.segment, command: MaweCommands.begin('滚轮调整 ASS 字幕大小'), timer: null };
     writeScale(current.segment, next);
-    global.MawePlaybackLoop.refreshSubtitlePreview();
+    MawePlaybackLoop.refreshSubtitlePreview();
     global.clearTimeout(scaleWheel.timer);
     scaleWheel.timer = global.setTimeout(() => finishScaleWheel(), 240);
   }
@@ -280,10 +298,10 @@ export function initWiringAssCuePositionModule() {
         if (document.activeElement !== yInput) yInput.value = String(roundPosition(anchor.y));
       }
       if (document.activeElement !== scaleInput) scaleInput.value = currentScale(current.segment).toFixed(2);
-      document.getElementById('ass-cue-reset').disabled = !override?.pos;
-      document.getElementById('ass-cue-scale-reset').disabled = !override?.scale;
+      /** @type {HTMLButtonElement} */ (document.getElementById('ass-cue-reset')).disabled = !override?.pos;
+      /** @type {HTMLButtonElement} */ (document.getElementById('ass-cue-scale-reset')).disabled = !override?.scale;
     }
-    const frame = global.MaweAssCanvas.lastRender;
+    const frame = MaweAssCanvas.lastRender;
     const visible = new Set();
     if (enabled()) for (const [layerIndex, record] of (frame?.tracks || []).entries()) {
       if (!['main', 'extension', 'overlay'].includes(record.role) || record.skipped || !record.bounds) continue;
@@ -302,7 +320,7 @@ export function initWiringAssCuePositionModule() {
         box.addEventListener('pointerup', event => { if (event.pointerId === drag?.pointerId) { move(event); finish(); } });
         box.addEventListener('pointercancel', () => finish(true));
         box.addEventListener('lostpointercapture', () => { if (drag?.box === box) finish(true); });
-        boxes.set(key, box); global.MaweDom.overlayEl.append(box);
+        boxes.set(key, box); MaweDom.overlayEl.append(box);
       }
       box.hidden = false;
       const selected = current?.segment.id === id && current?.kind === kind;
@@ -325,7 +343,7 @@ export function initWiringAssCuePositionModule() {
           handle.addEventListener('pointerup', event => { if (event.pointerId === scaleDrag?.pointerId) { moveScale(event); finishScaleDrag(); } });
           handle.addEventListener('pointercancel', () => finishScaleDrag(true));
           handle.addEventListener('lostpointercapture', () => { if (scaleDrag?.handle === handle) finishScaleDrag(true); });
-          global.MaweDom.overlayEl.append(handle);
+          MaweDom.overlayEl.append(handle);
           return handle;
         });
         handles.set(key, cueHandles);
@@ -348,7 +366,9 @@ export function initWiringAssCuePositionModule() {
       handles.delete(key);
     }
   }
-  for (const [input, axis] of [[xInput, 'x'], [yInput, 'y']]) input.addEventListener('change', () => {
+  /** @type {Array<[HTMLInputElement, 'x' | 'y']>} */
+  const axisInputs = [[xInput, 'x'], [yInput, 'y']];
+  for (const [input, axis] of axisInputs) input.addEventListener('change', () => {
     const rawValue = input.valueAsNumber;
     if (!Number.isFinite(rawValue)) { input.setCustomValidity('请输入有限坐标'); input.reportValidity(); return; }
     input.setCustomValidity('');
@@ -383,9 +403,9 @@ export function initWiringAssCuePositionModule() {
       else if ((event.ctrlKey || event.metaKey) && !event.altKey) {
         const key = event.key.toLowerCase();
         if (key === 'z') {
-          if (event.shiftKey) global.MaweHistory.performRedo();
-          else global.MaweHistory.performUndo();
-        } else if (key === 'y' && !event.shiftKey) global.MaweHistory.performRedo();
+          if (event.shiftKey) MaweHistory.performRedo();
+          else MaweHistory.performUndo();
+        } else if (key === 'y' && !event.shiftKey) MaweHistory.performRedo();
       }
       return;
     }
@@ -395,7 +415,7 @@ export function initWiringAssCuePositionModule() {
   }, true);
   document.addEventListener('keydown', event => {
     if (!enabled() || event.ctrlKey || event.metaKey || event.altKey || event.target === scaleInput) return;
-    const element = event.target;
+    const element = /** @type {Element} */ (event.target);
     if (!element?.closest?.('#ass-cue-position, .ass-cue-drag-target')) return;
     const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
     if (!delta) return;
@@ -407,8 +427,8 @@ export function initWiringAssCuePositionModule() {
       const index = trackSegments(kind).findIndex(segment => segment?.id === id);
       if (index >= 0 && currentTargetId() !== id) {
         if (kind === 'overlay') selectOverlayCueRow(index);
-        else if (kind === 'extension') global.MaweSelection.selectOnlyExtension(index, global.MaweMultiSubtitleCore.getActiveExtensionTrack());
-        else global.MaweSelection.selectOnly(index);
+        else if (kind === 'extension') MaweSelection.selectOnlyExtension(index, MaweMultiSubtitleCore.getActiveExtensionTrack());
+        else MaweSelection.selectOnly(index);
       }
     }
     if (!target()?.segment.assOverride?.pos) return;
@@ -419,10 +439,10 @@ export function initWiringAssCuePositionModule() {
   global.addEventListener('blur', () => {
     finish(true); finishScaleDrag(true); finishScaleWheel();
   });
-  global.MaweCommands.onBeforeBegin(() => {
+  MaweCommands.onBeforeBegin(() => {
     if (scaleWheel) finishScaleWheel();
   });
-  global.MaweAssCuePosition = Object.freeze({ sync,
+  MaweAssCuePosition = Object.freeze({ sync,
     get dragging() { return Boolean(drag || scaleDrag || scaleWheel); },
     cancelDrag() {
       if (drag) { finish(true); return true; }
@@ -437,6 +457,7 @@ export function initWiringAssCuePositionModule() {
       return false;
     },
   });
+
   sync();
 })(typeof window !== 'undefined' ? window : globalThis);
 }

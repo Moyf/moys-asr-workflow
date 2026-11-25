@@ -1,7 +1,9 @@
 // 导出菜单：工具栏导出下拉的开关、键盘导航与子菜单交互。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweExportMenus 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { MaweFloatingPanel } from './editor-floating-panel.js';
+
+export let MaweExportMenus;
+
 export function initMaweExportMenus() {
   'use strict';
 
@@ -290,13 +292,14 @@ export function initMaweExportMenus() {
   }
 
 
-  global.MaweExportMenus = Object.freeze({
+  MaweExportMenus = Object.freeze({
     SUBMENU_CLOSE_DELAY_MS,
     SUBMENU_AIM_TOLERANCE_PX,
     bindToolbarExportDropdown
   });
+
 }
 
 export function bindToolbarExportDropdown(...args) {
-  return window.MaweExportMenus.bindToolbarExportDropdown(...args);
+  return MaweExportMenus.bindToolbarExportDropdown(...args);
 }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 test('v2 split preserves left identity and avoids IDs reserved on another track', () => {
   const segment = { id: 'main-1', start: 0, end: 2000, text: 'hello',
@@ -29,7 +30,7 @@ test('v2 split preserves left identity and avoids IDs reserved on another track'
     },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-split-core.js', 'initMaweSplitCore'), context);
   const pair = context.MaweSplitCore.buildSplitPair(segment, 2, 1000, 'main-1', false, 'continuous', { duplicateText: true });
   assert.equal(pair.left.id, 'main-1');

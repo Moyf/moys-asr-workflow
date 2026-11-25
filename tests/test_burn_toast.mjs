@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { fixtureImports } from './helpers/editor-fixture-imports.mjs';
+import { publishFixtureBindings } from './helpers/editor-fixture-bindings.mjs';
 
 function fixture() {
   let now = 0, next = 0;
@@ -31,8 +33,9 @@ function fixture() {
     setTimeout(fn, ms) { const id = ++next; timers.set(id, { fn, at: now + ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
   });
-  const source = fs.readFileSync(process.env.MAW_TEST_HINT_SOURCE || 'web/editor/ui/editor-hint.js', 'utf8')
-    .replace(/^import .*;\n/m, '').replace('export function initMaweHint()', 'function initMaweHint()');
+  const original = fs.readFileSync(process.env.MAW_TEST_HINT_SOURCE || 'web/editor/ui/editor-hint.js', 'utf8');
+  const source = publishFixtureBindings(original, fixtureImports(original)).toString()
+    .replace(/^import .*;\n/gm, '').replace('export function initMaweHint()', 'function initMaweHint()').replace(/^export /gm, '');
   vm.runInContext(`${source}\ninitMaweHint();`, context);
   function advance(ms) { const target = now + ms; while (true) { const due = [...timers].filter(([, v]) => v.at <= target).sort((a, b) => a[1].at - b[1].at)[0]; if (!due) break; now = due[1].at; timers.delete(due[0]); due[1].fn(); } now = target; }
   return { hint: window.MaweHint, advance, body, window, context, document };

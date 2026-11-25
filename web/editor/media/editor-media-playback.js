@@ -1,23 +1,36 @@
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweShortcuts } from '../cues/editor-shortcuts.js';
+import { MaweTextCleanup } from '../cues/editor-text-cleanup.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAudioProcessing } from './editor-audio-processing.js';
+import { MaweGapPlayback } from './editor-gap-playback.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 import { observeAssSubtitlePreviewPlayer, scheduleAssSubtitlePreviewRefresh } from './editor-ass-preview-refresh.js';
+export let MaweMediaPlayback;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 
 export function isPlaybackActive() {
   const player = MaweCoreState.player;
-  return Boolean(MaweJklPlayback.jklReversePlaying || (player && !player.paused) || window.MaweGapPlayback?.pendingPlayback);
+  return Boolean(MaweJklPlayback.jklReversePlaying || (player && !player.paused) || MaweGapPlayback?.pendingPlayback);
 }
 
 export function pausePlaybackAfterMouseClick() {
   if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
   if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
-  window.MaweGapPlayback?.cancelPendingPlayback();
+  MaweGapPlayback?.cancelPendingPlayback();
   MaweCoreState.player?.pause();
   MaweMediaPlayback.syncMediaControls();
 }
 
 export function initMediaPlaybackModule() {
 // 媒体播放：播放器事件、占位符、速率与 seek 控制。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMediaPlayback 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweMediaPlayback(global) {
   'use strict';
 
@@ -42,7 +55,7 @@ export function initMediaPlaybackModule() {
       MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
       return;
     }
-    if (window.MaweGapPlayback?.cancelPendingPlayback()) {
+    if (MaweGapPlayback?.cancelPendingPlayback()) {
       syncMediaControls();
       return;
     }
@@ -55,8 +68,8 @@ export function initMediaPlaybackModule() {
       return;
     }
     if (MaweCoreState.player.paused) {
-      window.MaweGapPlayback?.beforePlay(MaweCoreState.player);
-      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
+      MaweGapPlayback?.beforePlay(MaweCoreState.player);
+      void MaweAudioProcessing?.applyPreview({ gesture: true });
       if (MaweJklPlayback.isJklDirectionMode()) MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(MaweJklPlayback.jklPlaybackRate));
       const promise = MaweCoreState.player.play();
       if (promise && promise.catch) promise.catch(() => {});
@@ -111,7 +124,7 @@ export function initMediaPlaybackModule() {
   function refreshMediaSeekControlLabels() {
     const value = MaweTimeline.timelineMediaSeekStepValue();
     const unit = MaweTimeline.timelineIsFrameMode() ? 'F' : 'ms';
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
     const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
     if (MaweDom.mediaStepBack) {
@@ -144,7 +157,7 @@ export function initMediaPlaybackModule() {
 
 
   function syncMediaControls() {
-  window.MaweAudioProcessing?.render();
+  MaweAudioProcessing?.render();
   const fullscreenPreview = Boolean(MaweDom.playerWrap && document.fullscreenElement === MaweDom.playerWrap);
   const wasFullscreenPreview = MaweDom.playerWrap?.classList.contains('fullscreen-preview') === true;
   MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
@@ -222,9 +235,9 @@ export function initMediaPlaybackModule() {
 
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
-    window.MaweAudioProcessing?.bindPlayer(mediaElement);
-    window.MaweGapPlayback?.bindPlayer(mediaElement);
-    window.MaweAssFrame?.bindPlayer(mediaElement);
+    MaweAudioProcessing?.bindPlayer(mediaElement);
+    MaweGapPlayback?.bindPlayer(mediaElement);
+    MaweAssFrame?.bindPlayer(mediaElement);
     observeAssSubtitlePreviewPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
@@ -300,7 +313,7 @@ MawePlaybackLoop.update();
     }
     const player = MaweCoreState.player;
     player.currentTime = seconds;
-    window.MaweGapPlayback?.retargetPendingSeek(player);
+    MaweGapPlayback?.retargetPendingSeek(player);
   }
 
   function seekMediaBy(deltaSeconds) {
@@ -350,7 +363,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     const start = Math.max(0, (Number(startMs) || 0) / 1000);
     const stop = (Number(endMs) || 0) / 1000;
     if (!(stop > start)) return false;
-    window.MaweGapPlayback?.cancelPendingPlayback();
+    MaweGapPlayback?.cancelPendingPlayback();
     // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
     auditionStopSeconds = stop;
     auditionSeekPending = true;
@@ -383,7 +396,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
   }
 
-  global.MaweMediaPlayback = Object.freeze({
+  MaweMediaPlayback = Object.freeze({
     syncPlayerPlaceholder,
     togglePlayback,
     hasLoadedMedia,
@@ -402,5 +415,6 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     get isAuditioning() { return auditionStopSeconds !== null; },
     auditionRange
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

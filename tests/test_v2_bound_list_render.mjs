@@ -4,6 +4,9 @@ import vm from 'node:vm';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 import { createUtilsModule as createData } from '../web/shared/utils/data.js';
 import { createUtilsModule as createMulti } from '../web/shared/utils/multi-subtitle.js';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const { stableId } = createData({});
 const { bindingForSegment } = createMulti({ stableId });
@@ -49,7 +52,7 @@ function fixture() {
     } },
   };
   context.window = { AsrEditorUtils: { stableId, getMainTrack: () => main, resolveProjectSpeaker: () => null } };
-  vm.runInNewContext(initModuleSource('editor/cues/editor-cue-elements.js'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-cue-elements.js'), exposeWindowGlobals(context));
   return { api: context.window.MaweCueElements, project, track, getLookups: () => lookups };
 }
 

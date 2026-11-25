@@ -1,4 +1,8 @@
 // Stop only this export's wait; the font inventory is shared with other consumers.
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweExportSrt } from './editor-export-srt.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export async function waitForFcp7Fonts(fonts, signal) {
   const stoppedError = () => new DOMException('图片字幕导出已停止', 'AbortError');
   const checkStopped = () => { if (signal.aborted) throw stoppedError(); };
@@ -27,13 +31,13 @@ export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png',
   const jobsUrl = config.fcp7PngJobsUrl;
   const binding = { requestToken: config.requestToken, bindingGeneration: config.bindingGeneration,
     sourceMediaId: config.sourceMediaId };
-  const epoch = window.MaweProjectLoad?.projectBindingEpoch;
+  const epoch = MaweProjectLoad?.projectBindingEpoch;
   const admissionToken = Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join('');
   let jobId = null;
   let published = false;
   const current = () => MaweBoot.SERVER_CONFIG === config
     && config.bindingGeneration === binding.bindingGeneration && config.sourceMediaId === binding.sourceMediaId
-    && window.MaweProjectLoad?.projectBindingEpoch === epoch;
+    && MaweProjectLoad?.projectBindingEpoch === epoch;
   const post = async (url, data, keepalive = false) => {
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...binding, ...data }), keepalive });
@@ -68,7 +72,7 @@ export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png',
     }
     aborted();
     const sourcePlan = { ...plan, media: { ...plan.media, type: state.manifest.sourceKind } };
-    const xml = window.AsrEditorUtils.serializeFcp7PngXml(sourcePlan, state.manifest, { includeMedia });
+    const xml = AsrEditorUtils.serializeFcp7PngXml(sourcePlan, state.manifest, { includeMedia });
     onProgress('正在保存 XML 与图片素材…');
     const result = await post(`${jobsUrl}/${jobId}/publish`, { xml });
     published = true;

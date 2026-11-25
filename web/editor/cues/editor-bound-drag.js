@@ -1,9 +1,11 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweState } from '../state/editor-state.js';
 import { remapPanelItems } from './editor-cue-panel.js';
+export let MaweBoundDrag;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 绑定拖拽：主副字幕联动调整的范围解析与快照恢复。
-// ESM init 模块：initMaweBoundDrag 在原清单位次执行原 IIFE 体（挂
-// window.MaweBoundDrag 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
 export function initMaweBoundDrag() {
 (function initMaweBoundDrag(global) {
   'use strict';
@@ -161,7 +163,7 @@ export function initMaweBoundDrag() {
     // resize-boundary-independent，也仍需带着绑定副字幕一起调整。
     if (!drag || drag.track !== 'main' || !MaweMultiSubtitleCore.multiSubtitleVisible()) return;
     if (!drag.selectedMoveSegments) prepareBoundCueDrag(drag);
-    const sourceSegments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const sourceSegments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     if (!drag.boundOriginals) drag.boundOriginals = new Map();
 
     const boundEntries = drag.indices.map((index) => ({
@@ -241,7 +243,7 @@ export function initMaweBoundDrag() {
     // 无需每帧恢复整个副轨。已有预览快照仍须恢复，保证反向拖回可逆。
     if (drag.selectedMoveSegments && !drag.boundDragTimelineOriginals
         && !drag.indices.some((index) => {
-          const bound = getBoundDragTarget(index, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+          const bound = getBoundDragTarget(index, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
           return bound && !drag.selectedMoveSegments.has(bound.target);
         })) return;
     ensureBoundDragTimelineOriginals(drag);
@@ -250,13 +252,13 @@ export function initMaweBoundDrag() {
     // 跟随字幕，避免在同步绑定时把已经调整过的时间当成拖动起点。
     if (drag.selectedMoveSegments) {
       drag.indices.forEach((index) => {
-        const bound = getBoundDragTarget(index, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+        const bound = getBoundDragTarget(index, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (bound && !drag.selectedMoveSegments.has(bound.target)) ensureBoundDragOriginal(drag, index, bound.target);
       });
     }
   }
 
-  global.MaweBoundDrag = Object.freeze({
+  MaweBoundDrag = Object.freeze({
     getBoundDragTarget,
     ensureBoundDragOriginal,
     snapshotBoundDragTrack,
@@ -267,14 +269,15 @@ export function initMaweBoundDrag() {
     syncBoundCueDrag,
     prepareBoundCueDrag
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function getBoundDragTarget(...args) { return window.MaweBoundDrag.getBoundDragTarget(...args); }
-export function ensureBoundDragOriginal(...args) { return window.MaweBoundDrag.ensureBoundDragOriginal(...args); }
-export function snapshotBoundDragTrack(...args) { return window.MaweBoundDrag.snapshotBoundDragTrack(...args); }
-export function ensureBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.ensureBoundDragTimelineOriginals(...args); }
-export function restoreBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.restoreBoundDragTimelineOriginals(...args); }
-export function getBoundDragEdge(...args) { return window.MaweBoundDrag.getBoundDragEdge(...args); }
-export function syncBoundCueDrag(...args) { return window.MaweBoundDrag.syncBoundCueDrag(...args); }
-export function prepareBoundCueDrag(...args) { return window.MaweBoundDrag.prepareBoundCueDrag(...args); }
+export function getBoundDragTarget(...args) { return MaweBoundDrag.getBoundDragTarget(...args); }
+export function ensureBoundDragOriginal(...args) { return MaweBoundDrag.ensureBoundDragOriginal(...args); }
+export function snapshotBoundDragTrack(...args) { return MaweBoundDrag.snapshotBoundDragTrack(...args); }
+export function ensureBoundDragTimelineOriginals(...args) { return MaweBoundDrag.ensureBoundDragTimelineOriginals(...args); }
+export function restoreBoundDragTimelineOriginals(...args) { return MaweBoundDrag.restoreBoundDragTimelineOriginals(...args); }
+export function getBoundDragEdge(...args) { return MaweBoundDrag.getBoundDragEdge(...args); }
+export function syncBoundCueDrag(...args) { return MaweBoundDrag.syncBoundCueDrag(...args); }
+export function prepareBoundCueDrag(...args) { return MaweBoundDrag.prepareBoundCueDrag(...args); }

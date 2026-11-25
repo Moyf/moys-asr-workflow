@@ -1,3 +1,4 @@
+import { MaweServerConnection } from './editor-server-connection.js';
 export function initMaweServerEventsWiring() {
 // Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
 // startup-status 这个轻量 JSON 接口：断联时保留页面里的编辑内容，并显示

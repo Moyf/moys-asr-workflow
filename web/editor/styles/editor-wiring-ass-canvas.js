@@ -1,3 +1,10 @@
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweAssCuePosition } from './editor-wiring-ass-cue-position.js';
+import { MaweAssFontAliases } from './editor-wiring-ass-font-aliases.js';
+import { MaweAssPreview } from './editor-wiring-ass-preview.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweAssCanvas;
 export function initWiringAssCanvasModule() {
 // ASS 预览的 Canvas 合成层。
 //
@@ -31,7 +38,7 @@ export function initWiringAssCanvasModule() {
 
   function ensureCanvas() {
     if (canvasEl) return canvasEl;
-    const host = global.MaweDom?.overlayEl;
+    const host = MaweDom?.overlayEl;
     if (!host) return null;
     canvasEl = document.createElement('canvas');
     canvasEl.className = 'ass-preview-canvas';
@@ -61,8 +68,8 @@ export function initWiringAssCanvasModule() {
   // 字体别名仍优先匹配同一字体；缺字时恢复编辑器原有系统字体顺序，
   // 不能直接跳到浏览器的 generic sans-serif。
   function fontFamilyCss(fontName) {
-    let family = global.MaweAssFontAliases?.chainCssFor?.(fontName, { fallback: 'var(--font-sans)' })
-      || global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
+    let family = MaweAssFontAliases?.chainCssFor?.(fontName, { fallback: 'var(--font-sans)' })
+      || MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
     if (family.includes('var(--font-sans)')) {
       if (!resolvedSansFamily) {
         resolvedSansFamily = (getComputedStyle(document.documentElement)
@@ -101,7 +108,7 @@ export function initWiringAssCanvasModule() {
       ratio = 0;
     }
     if (!Number.isFinite(ratio) || ratio <= 0) {
-      ratio = global.MaweAssPreview?.fontScale?.(style) || 1;
+      ratio = MaweAssPreview?.fontScale?.(style) || 1;
     }
     fontRatioCache.set(key, ratio);
     return ratio;
@@ -148,7 +155,7 @@ export function initWiringAssCanvasModule() {
       nativeSize,
       spacingCss,
       perChar: spacingCss !== 0 && !supportsLetterSpacing()
-        && global.AsrEditorUtils?.assManagedFontText?.(run?.text || ''),
+        && AsrEditorUtils?.assManagedFontText?.(run?.text || ''),
     };
   }
 
@@ -164,7 +171,7 @@ export function initWiringAssCanvasModule() {
   // 逐字符模式：前进量 = 字符宽 + 间距；宽度与绘制用同一测量，保证
   // measurer 与 rasterize 不漂移。
   function graphemes(text) {
-    return global.MaweAssFontAliases?.graphemes?.(text)
+    return MaweAssFontAliases?.graphemes?.(text)
       || (typeof Intl.Segmenter === 'function'
         ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), item => item.segment)
         : [text]);
@@ -308,6 +315,7 @@ export function initWiringAssCanvasModule() {
     const g = bitmap.getContext('2d');
     const baseline = pad + line.ascent;
 
+    /** @returns {[HTMLCanvasElement, CanvasRenderingContext2D]} */
     const makeLayer = () => {
       const layer = document.createElement('canvas');
       layer.width = bitmap.width;
@@ -432,7 +440,7 @@ export function initWiringAssCanvasModule() {
 
 
   function drawTrack(track, playResX, playResY) {
-    const u = global.AsrEditorUtils;
+    const u = AsrEditorUtils;
     const style = track.style || {};
     const animation = track.animation || {};
     const fade = Number.isFinite(Number(animation.opacity)) ? Number(animation.opacity) : 1;
@@ -445,7 +453,7 @@ export function initWiringAssCanvasModule() {
       ? [{ text: String(track.speaker.text), emphasized: false, underlined: false,
         struck: false, size: null, speakerColor: track.speaker.color }, ...runs]
       : runs;
-    const resolvedSpeaker = global.MaweAssFontAliases?.resolveRuns?.(speaker, style) || speaker;
+    const resolvedSpeaker = MaweAssFontAliases?.resolveRuns?.(speaker, style) || speaker;
     // Never write display variation selectors into the shared export plan.
     const displayRuns = resolvedSpeaker.map(run => ({ ...run,
       text: u.assCanvasPreviewText?.(run.text) ?? run.text }));
@@ -592,7 +600,7 @@ export function initWiringAssCanvasModule() {
       records.push(drawTrack(track, width, height));
     });
     lastRender = { playResX: width, playResY: height, tracks: records };
-    global.MaweAssCuePosition?.sync();
+    MaweAssCuePosition?.sync();
   }
 
 
@@ -608,8 +616,8 @@ export function initWiringAssCanvasModule() {
     const track = { style: safeStyle, nativeFontSize: Math.max(1, Number(safeStyle.fontSize) || 24) };
     const sourceRuns = [{ text: String(text ?? ''), emphasized: false, underlined: false,
       struck: false, size: null }];
-    const runs = global.MaweAssFontAliases?.resolveRuns?.(sourceRuns, safeStyle) || sourceRuns;
-    const u = global.AsrEditorUtils;
+    const runs = MaweAssFontAliases?.resolveRuns?.(sourceRuns, safeStyle) || sourceRuns;
+    const u = AsrEditorUtils;
     const displayRuns = runs.map(run => ({ ...run,
       text: u.assCanvasPreviewText?.(run.text) ?? run.text }));
     const layout = u.assCanvasLayoutLines(displayRuns, measurerFor(track, ratio));
@@ -659,7 +667,7 @@ export function initWiringAssCanvasModule() {
     if (stackMetricsCache.has(key)) return stackMetricsCache.get(key);
     // Stack collision probes use alternate bold/italic styles. Re-resolve the
     // face here instead of trusting a ratio captured for the cue's old style.
-    const runs = global.MaweAssFontAliases?.resolveRuns?.([{ ...run, text }], style) || [{ ...run, text }];
+    const runs = MaweAssFontAliases?.resolveRuns?.([{ ...run, text }], style) || [{ ...run, text }];
     const measure = measurerFor({ style, nativeFontSize, fractionalFontSize: true }, fontBoxRatio(style));
     const parts = runs.map(part => measure(part, part.text));
     const measured = {
@@ -682,7 +690,7 @@ export function initWiringAssCanvasModule() {
 
   document.fonts?.addEventListener?.('loadingdone', clearCaches);
 
-  global.MaweAssCanvas = Object.freeze({
+  MaweAssCanvas = Object.freeze({
     render,
     renderSample,
     measureRun,
@@ -691,5 +699,6 @@ export function initWiringAssCanvasModule() {
     // 渲染参数快照：e2e 迁移断言用（测试看到的就是画布实际消费的值）。
     get lastRender() { return lastRender; },
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -1,3 +1,7 @@
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweMarkerEditing } from './editor-marker-editing.js';
+import { MaweMarkersPanel } from './editor-markers-panel.js';
 export function initMaweMarkersWiring() {
 // 「标记与区段」工具窗接线：面板控制器由 editor-markers-panel.js 在装载时
 // 通过 createFloatingPanel 创建（这里只补关闭按钮）；开关的启用/禁用逻辑

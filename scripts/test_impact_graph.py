@@ -749,7 +749,8 @@ def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]
         except (OSError, UnicodeError):
             continue
         ids = set(re.findall(r'''(?:const|let|var)\s+\w+\s*=\s*document\.getElementById\(\s*["']([\w-]+)["']''', source))
-        facades = set(re.findall(r'\b(?:global|window)\.(Mawe\w+)\s*=\s*Object\.freeze', source))
+        facades = set(re.findall(r'\b(?:global|window)\.(Mawe\w+)\s*=\s*(?:Object\.freeze\(|\1\b)', source))
+        facades.update(re.findall(r'^export\s+(?:const|let)\s+(Mawe\w+)\b', source, flags=re.M))
         # Shared ESM factories publish their returned methods through an
         # aggregate facade. Match actual calls, not every test loading it.
         exposed = set()

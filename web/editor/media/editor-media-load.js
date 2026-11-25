@@ -1,8 +1,27 @@
+import { AsrWaveform } from './waveform.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweNavPreview } from '../cues/editor-nav-preview.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweExportTimeline } from '../io/editor-export-timeline.js';
+import { MaweLoadingProgress } from '../io/editor-loading-progress.js';
+import { MaweProjectLoad } from '../io/editor-project-load.js';
+import { MaweProjectMediaInputs } from '../io/editor-project-media-inputs.js';
+import { MaweProjectSave } from '../io/editor-project-save.js';
+import { MaweServerSave } from '../io/editor-server-save.js';
+import { MaweBurnVideoExport } from '../io/editor-wiring-burn-video.js';
+import { MaweGapRemovedMediaExport } from '../io/editor-wiring-export-actions.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweGapRemoveUi } from '../ui/editor-gap-remove-ui.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweMediaLoad;
 export function initMediaLoadModule() {
 // 媒体加载：媒体与 reapeaks 文件加载、元数据等待。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMediaLoad 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweMediaLoad(global) {
   'use strict';
 
@@ -75,7 +94,7 @@ export function initMediaLoadModule() {
 
     let mediaTimeReference = null;
     try {
-      mediaTimeReference = await whileCurrent(window.AsrEditorUtils.readBwfTimeReferenceFromFile(file), request.signal);
+      mediaTimeReference = await whileCurrent(AsrEditorUtils.readBwfTimeReferenceFromFile(file), request.signal);
     } catch (_) {
       // BWF metadata is optional; an unreadable header must not block playback.
     }
@@ -123,8 +142,8 @@ export function initMediaLoadModule() {
     const stem = file.name.replace(/\.[^.]+$/, '');
     MaweBoot.FILENAME_BASE = stem;
     MaweBoot.DATA.media = file.name;
-    window.MaweBurnVideoExport?.invalidateBinding();
-    window.MaweGapRemovedMediaExport?.updateButton();
+    MaweBurnVideoExport?.invalidateBinding();
+    MaweGapRemovedMediaExport?.updateButton();
     MaweBoot.DATA.media_time_reference = mediaTimeReference;
     // The media is now project truth; waveform generation is optional and may
     // be superseded by a separate cache import before this function returns.
@@ -183,7 +202,7 @@ export function initMediaLoadModule() {
     try {
       const bytes = await whileCurrent(file.arrayBuffer(), request.signal);
       if (!current()) return false;
-      const parsed = window.AsrWaveform.testing.decodeReapeaksFile(
+      const parsed = AsrWaveform.testing.decodeReapeaksFile(
         bytes,
         { name: file.name, size: file.size, modified_ms: file.lastModified },
       );
@@ -243,12 +262,13 @@ export function initMediaLoadModule() {
     return `无法播放 ${name}：浏览器不支持该媒体格式或编码。`;
   }
 
-  global.MaweMediaLoad = Object.freeze({
+  MaweMediaLoad = Object.freeze({
     get mediaLoadGeneration() { return mediaLoadGeneration; },
     loadMediaFile,
     loadReapeaksFile,
     waitForMediaMetadata,
     mediaLoadErrorMessage
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

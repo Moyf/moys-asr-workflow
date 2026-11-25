@@ -1,6 +1,7 @@
 import {expect, test} from '@playwright/test';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {exposeChangelogFixture} from '../helpers/changelog-browser-fixture.mjs';
 
 // An alternate local page permits a frozen, file-backed negative control without
 // replacing the working tree. All repository handles and writes remain in memory.
@@ -14,6 +15,7 @@ async function openFixture(page, options = {}) {
   page.on('pageerror', error => evidence.errors.push(error.message));
   page.on('request', request => {if (/^https?:/.test(request.url())) evidence.remote.push(request.url());});
   await page.route(/^https?:/, route => route.abort());
+  if (!process.env.MAW_CHANGELOG_TEST_PAGE) await exposeChangelogFixture(page, editorUrl);
   await page.goto(editorUrl);
   await page.evaluate(async ({text, options}) => {
     localStorage.clear();

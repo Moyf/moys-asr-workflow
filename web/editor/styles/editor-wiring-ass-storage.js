@@ -1,5 +1,13 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweProjectFontCheck } from './editor-project-font-check.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MaweAssStorageWiring;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager, initializeProjectStyles } from './editor-wiring-ass-manager.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 const storageService = {};
 
@@ -75,7 +83,7 @@ const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
 
 
 const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
-let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+let ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();
 let ASS_STYLE_LIBRARY_READY = false;
 let assStyleLibraryHasLoaded = false;
 let assStyleProjectInitScheduled = false;
@@ -90,21 +98,21 @@ let assStyleImportInFlight = false;
 
 function readLocalAssStyleLibrary() {
   try {
-    return window.AsrEditorUtils.normalizeAssStyleLibrary(
+    return AsrEditorUtils.normalizeAssStyleLibrary(
       JSON.parse(localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY) || 'null'),
     );
   } catch (_) {
-    return window.AsrEditorUtils.defaultAssStyleLibrary();
+    return AsrEditorUtils.defaultAssStyleLibrary();
   }
 }
 
 function writeLocalAssStyleLibrary(library) {
   localStorage.setItem(ASS_STYLE_LIBRARY_STORAGE_KEY,
-    JSON.stringify(window.AsrEditorUtils.normalizeAssStyleLibrary(library)));
+    JSON.stringify(AsrEditorUtils.normalizeAssStyleLibrary(library)));
 }
 
 function setAssStyleLibrary(value, { persistLocal = false } = {}) {
-  ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(value);
+  ASS_STYLE_LIBRARY = AsrEditorUtils.normalizeAssStyleLibrary(value);
   // The portable copy is written only under the compare-and-save operation.
   if (persistLocal && assStyleLibraryUsesServerStorage()) {
     try { writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY); } catch (_) { /* optional cache */ }
@@ -131,7 +139,7 @@ function scheduleCurrentProjectStyleInit() {
         MaweState.markProjectDirty();
         syncAssStyleManager?.();
         MawePlaybackLoop.refreshSubtitlePreview?.();
-        window.MaweProjectFontCheck?.schedule();
+        MaweProjectFontCheck?.schedule();
       }
     });
   };
@@ -145,7 +153,7 @@ function assStyleLibrarySummary() {
 function updateAssStyleLibrarySummary() {
   if (getMaweDomPanels().assStyleSummary) {
     const summary = assStyleLibrarySummary();
-    getMaweDomPanels().assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+    getMaweDomPanels().assStyleSummary.textContent = MAWE_I18N?.translateText?.(summary) || summary;
   }
 }
 
@@ -219,7 +227,7 @@ async function commitAssStyleLibrary(normalized, { backup = false, keepalive = f
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     assStyleStorageRevision = payload._revision;
-    return window.AsrEditorUtils.normalizeAssStyleLibrary(payload);
+    return AsrEditorUtils.normalizeAssStyleLibrary(payload);
   }
   const write = () => {
     const current = localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY);
@@ -250,7 +258,7 @@ async function persistAssStyleLibrary({ keepalive = false } = {}) {
   clearTimeout(assStyleLibrarySaveTimer);
   assStyleLibrarySaveTimer = 0;
   const revision = assStyleLibraryRevision;
-  const normalized = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const normalized = AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
   assStyleSavePromise = (async () => { try {
     const payload = await commitAssStyleLibrary(normalized, { keepalive });
     if (revision === assStyleLibraryRevision) {
@@ -281,7 +289,7 @@ async function persistAssStyleLibrary({ keepalive = false } = {}) {
 
 function refreshLinkedProjectStyles(previous) {
   const record = MaweHistory.captureSegmentsRecord('更新联动样式');
-  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, ASS_STYLE_LIBRARY)) {
+  if (AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, ASS_STYLE_LIBRARY)) {
     MaweHistory.commitRecord(record);
     MaweState.markProjectDirty();
   }
@@ -310,7 +318,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
     if (hadLoaded) refreshLinkedProjectStyles(previous);
     if (initializeProjectStyles({ includeInCheckpoint: true })) {
       MaweState.markProjectDirty();
-      if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
+      if (!MaweState.projectLoadPending) MaweProjectFontCheck?.schedule();
     }
   };
   if (discard) {
@@ -333,7 +341,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
     if (!assStyleLibraryUsesServerStorage()) {
       try {
         const raw = localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY);
-        const loaded = raw ? JSON.parse(raw) : window.AsrEditorUtils.defaultAssStyleLibrary();
+        const loaded = raw ? JSON.parse(raw) : AsrEditorUtils.defaultAssStyleLibrary();
         if (startedAtRevision === assStyleLibraryRevision && (!assStyleLibraryDirty || discard)) {
           assStyleStorageRevision = raw;
           setAssStyleLibrary(loaded);
@@ -393,7 +401,6 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
   return assStyleLibraryLoadPromise;
 }
 
-// G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
 storageService.getLibrary = () => ASS_STYLE_LIBRARY;
 storageService.isReady = () => ASS_STYLE_LIBRARY_READY;
 storageService.hasLoaded = () => assStyleLibraryHasLoaded;
@@ -454,20 +461,12 @@ storageService.readBackup = async () => {
   if (!raw) throw new Error('没有找到导入前的样式库副本');
   return JSON.parse(raw);
 };
-Object.defineProperty(window, 'ASS_STYLE_LIBRARY', {
-  configurable: true,
-  get: () => ASS_STYLE_LIBRARY,
-  set: value => { ASS_STYLE_LIBRARY = value; },
-});
-Object.defineProperty(window, 'loadAssStyleLibrary', {
-  configurable: true,
-  writable: true,
-  value: loadAssStyleLibrary,
-});
-window.MaweAssStorageWiring = window.MaweAssStorageWiring || Object.freeze({
+MaweAssStorageWiring = Object.freeze({
   DEFAULT_ASS_COLOR_STYLE,
   updateAssStyleLibrarySummary,
   loadAssStyleLibrary,
   styles: () => ASS_STYLE_LIBRARY.styles || [],
 });
+
+
 }

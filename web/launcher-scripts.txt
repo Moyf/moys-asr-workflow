@@ -2,6 +2,7 @@
 # Keep runtime/bootstrap modules before the modules that consume their exports.
 # 由 scripts/refactor-tools/split-launcher.mjs 自 launcher.js 机械切割而来；
 # 簇边界与等价性说明见 docs/logs/unversioned/2026-10-10/REFACTOR_LAUNCHER_SPLIT.md。
+shared/tooltip.js
 launcher/i18n/launcher-strings.js
 launcher/theme/launcher-theme-keys.js
 launcher/boot/launcher-state.js
@@ -21,4 +22,6 @@ launcher/forms/launcher-media-form.js
 launcher/server/launcher-media-server.js
 launcher/boot/launcher-settings-startup.js
 launcher/boot/launcher-notify-backend.js
+launcher/batch.js
+launcher/postprocess.js
 launcher/boot/launcher-wiring.js

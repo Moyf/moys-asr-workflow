@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import '../web/shared/gap-remove-core.js';
+import { AsrGapRemoveCore as core } from '../web/shared/gap-remove-core.js';
 import { upgradeProjectSpeakers } from '../web/shared/utils/speaker-identity.js';
 import { createUtilsModule } from '../web/shared/utils/project-tracks.js';
 import { createUtilsModule as cleanupUtils } from '../web/shared/utils/gap-remove.js';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
-const core = globalThis.AsrGapRemoveCore;
 const cleanup = cleanupUtils({ gapRemoveCore: core });
 function project(first = 1, last = 2) {
   const items = ['A', ' B', '，C'].map((text, i) => ({ text, start: i * 600, end: i * 600 + 500, speaker: i ? 'b' : 'a' }));

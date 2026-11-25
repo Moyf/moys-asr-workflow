@@ -1,8 +1,17 @@
-// 调色板：颜色标签、窗口注入的 ASR_EDITOR_PALETTE、内置/自定义五色与应用控件同步。
+// 调色板：颜色标签、内置和自定义五色，以及应用控件同步。
 // 由 split-cluster codemod 自 editor.js 拆出；main #135（ASS 样式库）引入自定义
 // 五色后，调色板变为可变状态（let），随设置联动重建并同步给波形运行时。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+import { ASR_EDITOR_PALETTE } from '../../shared/editor-palette.js';
+import { AsrWaveform } from '../media/waveform.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweColorFilter } from '../cues/editor-color-filter.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweSpeakerLabels } from './editor-speaker-labels.js';
 import { syncSpeakerLabelControls } from './editor-speaker-labels.js';
+export let MaweColors;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweColors() {
 (function initMaweColorsFacade(global) {
@@ -12,24 +21,24 @@ export function initMaweColors() {
 
   // 标记颜色：5 种基础色，用于给字幕分组着色。
   // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
-  // 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
+  // 内置色值由 maw/colors.py 提供，渲染器嵌入页面。
   // 这里只补充编辑器 UI 用的中文标签。
   const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', blue: '蓝', orange: '橙', cyan: '青', magenta: '紫红', gray: '灰' };
 
   // 调色板注入守卫（原 editor.js 加载期校验，随调色板初始化一同迁移）。
-  if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
-    throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
+  if (!Array.isArray(ASR_EDITOR_PALETTE) || !ASR_EDITOR_PALETTE.length) {
+    throw new Error('调色板未注入：缺少编辑器调色板数据（检查 edit.py / serve.py 渲染管线）');
   }
   const COLOR_PALETTE_DEFAULTS = Object.fromEntries(
-    window.ASR_EDITOR_PALETTE.map((color) => [color.name, color.value]),
+    ASR_EDITOR_PALETTE.map((color) => [color.name, color.value]),
   );
 
   function currentSubtitleColorPalette() {
     // 开关关闭时不读取自定义值，统一回落到内置五色。
     if (MaweSettings.EDITOR_SETTINGS.subtitleColorPaletteEnabled !== true) {
-      return window.AsrEditorUtils.normalizeSubtitleColorPalette(null, COLOR_PALETTE_DEFAULTS);
+      return AsrEditorUtils.normalizeSubtitleColorPalette(null, COLOR_PALETTE_DEFAULTS);
     }
-    return window.AsrEditorUtils.normalizeSubtitleColorPalette(
+    return AsrEditorUtils.normalizeSubtitleColorPalette(
       MaweSettings.EDITOR_SETTINGS.subtitleColorPalette,
       COLOR_PALETTE_DEFAULTS,
     );
@@ -38,7 +47,7 @@ export function initMaweColors() {
   function buildEditorColorPalette() {
     // 自定义五色关闭时（subtitleColorPaletteEnabled ≠ true）一律使用内置色值。
     const configured = currentSubtitleColorPalette();
-    return window.ASR_EDITOR_PALETTE.map((c) => ({
+    return ASR_EDITOR_PALETTE.map((c) => ({
       name: c.name,
       label: COLOR_LABELS[c.name] || c.name,
       value: configured[c.name] || c.value,
@@ -55,17 +64,17 @@ export function initMaweColors() {
     }
   }
   function rebuildEditorColorPalette() {
-    MaweSettings.EDITOR_SETTINGS.subtitleColorPalette = window.AsrEditorUtils.normalizeSubtitleColorPalette(
+    MaweSettings.EDITOR_SETTINGS.subtitleColorPalette = AsrEditorUtils.normalizeSubtitleColorPalette(
       MaweSettings.EDITOR_SETTINGS.subtitleColorPalette,
       COLOR_PALETTE_DEFAULTS,
     );
     COLOR_PALETTE = buildEditorColorPalette();
     COLOR_BY_NAME = Object.fromEntries(COLOR_PALETTE.map(c => [c.name, c]));
     syncSubtitleColorCssVars();
-    window.AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
+    AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
   }
   syncSubtitleColorCssVars();
-  window.AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
+  AsrWaveform?.setColorPalette?.(COLOR_PALETTE);
   function colorValue(name) { return COLOR_BY_NAME[name]?.value || '#777'; }
   // 供 DOM 内联样式使用：命名色返回变量引用（随调色板联动），未知名字回退实际值。
   function colorCssValue(name) {
@@ -74,9 +83,9 @@ export function initMaweColors() {
   }
 
   // 自定义五色设置控件（main #135）：纯 DOM 引用表与取值/重建/同步逻辑。
-  const subtitleColorPaletteEnabledInput = document.getElementById('subtitle-color-palette-enabled');
+  const subtitleColorPaletteEnabledInput = /** @type {HTMLInputElement} */ (document.getElementById('subtitle-color-palette-enabled'));
   const subtitleColorPaletteGrid = document.getElementById('subtitle-color-palette-grid');
-  const subtitleColorPaletteNames = window.AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
+  const subtitleColorPaletteNames = AsrEditorUtils.EDITOR_SUBTITLE_COLOR_NAMES || [
     'yellow', 'green', 'red', 'purple', 'blue',
   ];
   const subtitleColorPaletteColorInputs = Object.fromEntries(
@@ -121,14 +130,14 @@ export function initMaweColors() {
     // 以及把调色板值写进自身样式的过滤菜单色块。
     MaweCoreState.waveformEditor?.renderSegments?.();
     MawePlaybackLoop.refreshSubtitlePreview();
-    window.MaweColorFilter?.renderColorFilterMenu?.();
-    if (window.MaweSpeakerLabels?.syncSpeakerLabelControls) syncSpeakerLabelControls();
+    MaweColorFilter?.renderColorFilterMenu?.();
+    if (MaweSpeakerLabels?.syncSpeakerLabelControls) syncSpeakerLabelControls();
   }
 
   function setSubtitleColorPaletteValue(name, value) {
     if (!subtitleColorPaletteNames.includes(name)) return;
     const current = currentSubtitleColorPalette();
-    const next = window.AsrEditorUtils.normalizeSubtitleColorPalette(
+    const next = AsrEditorUtils.normalizeSubtitleColorPalette(
       { ...current, [name]: value },
       COLOR_PALETTE_DEFAULTS,
     );
@@ -141,11 +150,11 @@ export function initMaweColors() {
     refreshSubtitleColorPalettePresentation();
   }
 
-  global.MaweColors = Object.freeze({
+  MaweColors = Object.freeze({
     COLOR_LABELS,
     get COLOR_PALETTE() { return COLOR_PALETTE; },
     set COLOR_PALETTE(v) { COLOR_PALETTE = v; },
-    get ACTIVE_COLOR_PALETTE() { return COLOR_PALETTE.slice(0, window.MaweBoot?.DATA?.palette_size === 9 ? 9 : 5); },
+    get ACTIVE_COLOR_PALETTE() { return COLOR_PALETTE.slice(0, MaweBoot?.DATA?.palette_size === 9 ? 9 : 5); },
     get COLOR_BY_NAME() { return COLOR_BY_NAME; },
     set COLOR_BY_NAME(v) { COLOR_BY_NAME = v; },
     COLOR_PALETTE_DEFAULTS,
@@ -165,8 +174,9 @@ export function initMaweColors() {
     refreshSubtitleColorPalettePresentation,
     setSubtitleColorPaletteValue,
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function syncSubtitleColorPaletteControls(...args) { return window.MaweColors.syncSubtitleColorPaletteControls(...args); }
-export function rebuildEditorColorPalette(...args) { return window.MaweColors.rebuildEditorColorPalette(...args); }
+export function syncSubtitleColorPaletteControls(...args) { return MaweColors.syncSubtitleColorPaletteControls(...args); }
+export function rebuildEditorColorPalette(...args) { return MaweColors.rebuildEditorColorPalette(...args); }

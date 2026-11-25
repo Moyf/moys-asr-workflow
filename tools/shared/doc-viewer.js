@@ -1,6 +1,5 @@
 /* Read-only dialog UI. Supply a renderer and optional loader/resolver; no Markdown library dependency. */
-(function () {
-  'use strict';
+export function createDocViewerFactory() {
   let nextId = 0;
   // One session owns background inert state, scroll locking and focus for every viewer.
   // Only the top native dialog remains in the browser top layer: a fallback viewer can
@@ -244,5 +243,5 @@
     }
     return Object.freeze({open, close, dialog});
   }
-  window.MAWDocViewer = Object.freeze({create});
-})();
+  return Object.freeze({create});
+}

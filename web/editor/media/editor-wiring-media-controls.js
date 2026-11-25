@@ -1,5 +1,20 @@
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { MaweNavPreview } from '../cues/editor-nav-preview.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAudioProcessing } from './editor-audio-processing.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 export function initMaweMediaControlsWiring() {
-window.MaweAudioProcessing?.init();
+MaweAudioProcessing?.init();
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
 MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
 MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));

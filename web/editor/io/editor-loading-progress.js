@@ -1,8 +1,12 @@
+import { MaweProjectValidation } from '../../shared/utils/project-validation.js';
+import { MaweDragDrop } from './editor-drag-drop.js';
+import { MaweJsonRepair } from './editor-json-repair.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweLoadingProgress;
 export function initLoadingProgressModule() {
 // 加载进度：进度条状态机与带进度的文件读取。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweLoadingProgress 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweLoadingProgress(global) {
   'use strict';
 
@@ -49,7 +53,7 @@ export function initLoadingProgressModule() {
 
   async function readFileTextWithProgress(file) {
     updateEditorLoading(20, `正在读取 ${file?.name || '文件'}…`);
-    return window.AsrEditorUtils.decodeSubtitleText(await file.arrayBuffer());
+    return AsrEditorUtils.decodeSubtitleText(await file.arrayBuffer());
   }
 
 
@@ -58,22 +62,22 @@ export function initLoadingProgressModule() {
     const finishLoading = beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
     try {
       if (MaweDragDrop.isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
-      if (MaweDragDrop.isLrcFile(file)) return window.AsrEditorUtils.parseLrcSegments(await readFileTextWithProgress(file));
-      const imported = window.MaweProjectValidation.prepareProject(JSON.parse(await readFileTextWithProgress(file)));
+      if (MaweDragDrop.isLrcFile(file)) return AsrEditorUtils.parseLrcSegments(await readFileTextWithProgress(file));
+      const imported = MaweProjectValidation.prepareProject(JSON.parse(await readFileTextWithProgress(file)));
       if (!imported.ok) throw new Error(imported.errors.map(error => `${error.path}: ${error.message}`).join('; '));
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
-      const sourceTrack = window.AsrEditorUtils.getMainTrack(data);
-      const sourceSegments = window.AsrEditorUtils.cloneJsonValue(sourceTrack.segments);
+      const sourceTrack = AsrEditorUtils.getMainTrack(data);
+      const sourceSegments = AsrEditorUtils.cloneJsonValue(sourceTrack.segments);
       const validSegments = sourceSegments.filter((segment) => segment.text.trim());
       if (!validSegments.length) {
         throw new Error('副字幕没有可导入的有效文本或时间码');
       }
       Object.defineProperties(validSegments, {
-        subtitle_groups: { value: window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
-        speakers: { value: window.AsrEditorUtils.cloneJsonValue(data.speakers) },
-        sourceTrack: { value: window.AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
-        sourceStyle: { value: window.AsrEditorUtils.cloneJsonValue((data.styles || []).find(style => style.id === sourceTrack.style?.style_id) || null) },
+        subtitle_groups: { value: AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
+        speakers: { value: AsrEditorUtils.cloneJsonValue(data.speakers) },
+        sourceTrack: { value: AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
+        sourceStyle: { value: AsrEditorUtils.cloneJsonValue((data.styles || []).find(style => style.id === sourceTrack.style?.style_id) || null) },
       });
       return validSegments;
     } finally {
@@ -81,7 +85,7 @@ export function initLoadingProgressModule() {
     }
   }
 
-  global.MaweLoadingProgress = Object.freeze({
+  MaweLoadingProgress = Object.freeze({
     editorLoading,
     editorLoadingLabel,
     editorLoadingProgress,
@@ -93,5 +97,6 @@ export function initLoadingProgressModule() {
     readFileTextWithProgress,
     parseSubtitleImportFile
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function canvasFixture() {
   const paint = [];
@@ -23,7 +24,7 @@ function canvasFixture() {
     createElement() { const ctx = makeContext(); return { getContext: () => ctx }; },
     fonts: { addEventListener() {} },
   };
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-canvas.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-canvas.js'), exposeWindowGlobals(context));
   const style = context.window.AsrEditorUtils.normalizeAssStyle({ commentColor: '#111111', outline: 2, shadow: 0 });
   const track = { style, nativeFontSize: 72, runs: [{ text: 'comment', comment: true }] };
   const render = () => context.window.MaweAssCanvas.render({ playResX: 1920, playResY: 1080, tracks: [track] });

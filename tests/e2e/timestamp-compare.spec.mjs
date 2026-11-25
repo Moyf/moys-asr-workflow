@@ -1,8 +1,20 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const compareUrl = pathToFileURL(resolve('tools/timestamp-compare.html')).href;
+
+async function openEmbedded(page, testInfo, files) {
+  const source = readFileSync('tools/timestamp-compare.html', 'utf8');
+  const marker = '<script id="timestamp-compare-data" type="application/json">';
+  const json = JSON.stringify({ files }).replace(/</g, '\\u003c');
+  const output = testInfo.outputPath('embedded-timestamps.html');
+  writeFileSync(output, source
+    .replace('<head>', () => `<head><base href="${new URL('.', compareUrl).href}">`)
+    .replace(marker + '</script>', () => marker + json + '</script>'));
+  await page.goto(pathToFileURL(output).href);
+}
 
 const projectA = {
   timestamp_granularity: 'char',
@@ -69,16 +81,11 @@ const projectB = {
   ],
 };
 
-test('renders embedded projects, classifies differences, and expands item details', async ({ page }) => {
-  await page.addInitScript(({ first, second }) => {
-    window.__MAW_TS_EMBED__ = {
-      files: [
-        { name: 'before.mosp', project: first },
-        { name: 'after.mosp', project: second },
-      ],
-    };
-  }, { first: projectA, second: projectB });
-  await page.goto(compareUrl);
+test('renders embedded projects, classifies differences, and expands item details', async ({ page }, testInfo) => {
+  await openEmbedded(page, testInfo, [
+    { name: 'before.mosp', project: projectA },
+    { name: 'after.mosp', project: projectB },
+  ]);
 
   await expect(page.locator('#heading')).toContainText('时间码对比');
   await expect(page.locator('.file-card')).toHaveCount(2);
@@ -111,22 +118,10 @@ test('renders embedded projects, classifies differences, and expands item detail
   await expect(page.locator('.row-grid')).toHaveCount(4);
   await expect(page.locator('#status')).toContainText('显示 4/5 组');
 
-  const exposedState = await page.evaluate(() => ({
-    fileCount: window.MAWTsCompare.state.files.length,
-    names: window.MAWTsCompare.state.files.map((entry) => entry.name),
-    activeCounts: window.MAWTsCompare.state.files.map((entry) => entry.stats.count),
-    showItemText: window.MAWTsCompare.state.showItemText,
-  }));
-  expect(exposedState).toEqual({
-    fileCount: 2,
-    names: ['before.mosp', 'after.mosp'],
-    activeCounts: [4, 5],
-    showItemText: true,
-  });
-
-  await page.evaluate((project) => {
-    window.MAWTsCompare.loadProjectObjects([{ name: 'single.mosp', project }]);
-  }, projectA);
+  await expect(page.locator('.card-name')).toHaveText(['before.mosp', 'after.mosp']);
+  await expect(page.locator('.card-grid > :first-child .stat-value')).toHaveText(['4', '5']);
+  await expect(page.locator('#showItemText')).toBeChecked();
+  await page.getByRole('button', { name: '移除 after.mosp' }).click();
   await expect(page.locator('.file-card')).toHaveCount(1);
   await expect(page.locator('#summary')).toBeHidden();
   await expect(page.locator('#heading')).toContainText('时间码查看');
@@ -172,7 +167,7 @@ test('loads SRT and project files from the picker with the correct source labels
   await expect(page.locator('.subtitle-text mark').first()).toContainText('世界');
 });
 
-test('shows durations, marks item range problems, and filters item quality', async ({ page }) => {
+test('shows durations, marks item range problems, and filters item quality', async ({ page }, testInfo) => {
   const project = {
     timestamp_granularity: 'char',
     segments: [
@@ -197,10 +192,7 @@ test('shows durations, marks item range problems, and filters item quality', asy
       },
     ],
   };
-  await page.addInitScript((value) => {
-    window.__MAW_TS_EMBED__ = { files: [{ name: 'quality.mosp', project: value }] };
-  }, project);
-  await page.goto(compareUrl);
+  await openEmbedded(page, testInfo, [{ name: 'quality.mosp', project }]);
 
   await expect(page.locator('.subtitle-duration').first()).toHaveText('时长 1.00');
   await expect(page.locator('.cell-range-overflow')).toHaveCount(1);

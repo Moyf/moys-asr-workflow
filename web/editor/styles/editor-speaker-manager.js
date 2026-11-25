@@ -1,7 +1,13 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSettingsPanels } from '../ui/editor-settings-panels.js';
+import { MaweSpeakerLabels } from './editor-speaker-labels.js';
 import { SPEAKER_SHORTCUT_COLORS } from '../../shared/utils/speaker-experience.js';
+export let MaweSpeakerManager;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 
 export function initMaweSpeakerManager() {
-  const ui = (zh, en) => window.MAWE_I18N?.language === 'en' ? en : zh;
+  const ui = (zh, en) => MAWE_I18N?.language === 'en' ? en : zh;
   const colorsZh = ['黄', '绿', '红', '紫', '蓝', '橙', '青', '紫红', '灰'];
   let controls, panel, list, empty, toggle, extended, newName, newColor, slotList;
   const rows = new Map();
@@ -49,7 +55,7 @@ export function initMaweSpeakerManager() {
     return `${(position >= 0 ? position : index) + 1} · ${speaker.name || ui('未命名', 'Unnamed')}`;
   }
   function fillPeople(select, people, placeholder, selected) {
-    const signature = JSON.stringify([people.map(s => [s.id, s.name]), placeholder, window.MAWE_I18N?.language]);
+    const signature = JSON.stringify([people.map(s => [s.id, s.name]), placeholder, MAWE_I18N?.language]);
     if (select.dataset.options !== signature) {
       const previous = select.value;
       select.replaceChildren(option('', placeholder), ...people.map((speaker, index) => option(speaker.id, personLabel(speaker, index))));
@@ -136,7 +142,7 @@ export function initMaweSpeakerManager() {
     const people = project.speakers || [];
     extended.checked = project.palette_size === 9;
     extended.setAttribute('aria-label', ui('扩展为 9 色', 'Expand to 9 colors'));
-    const mode = document.getElementById('subtitle-speaker-mapping-enabled');
+    const mode = /** @type {HTMLInputElement} */ (document.getElementById('subtitle-speaker-mapping-enabled'));
     mode.checked = project.annotation_mode === 'speaker';
     mode.setAttribute('aria-label', ui('用颜色分配说话人', 'Use colors to assign speakers'));
     mode.closest('label').title = ui('开启后，色块和数字键分配说话人；关闭后用于普通颜色标记。',
@@ -170,13 +176,13 @@ export function initMaweSpeakerManager() {
     }
     const settings = document.getElementById('subtitle-speaker-settings');
     settings.querySelectorAll('[data-speaker-i18n-zh]').forEach(node => {
-      node.textContent = ui(node.dataset.speakerI18nZh, node.dataset.speakerI18nEn);
+      node.textContent = ui(/** @type {HTMLElement} */ (node).dataset.speakerI18nZh, /** @type {HTMLElement} */ (node).dataset.speakerI18nEn);
     });
   }
   function open() {
     sync();
     if (!panel) return false;
-    window.MaweSettingsPanels?.openEditorSettingsAtTab?.('editor-settings-tab-project-color', { focus: false });
+    MaweSettingsPanels?.openEditorSettingsAtTab?.('editor-settings-tab-project-color', { focus: false });
     panel.hidden = false; toggle.setAttribute('aria-expanded', 'true'); newName.focus();
     return true;
   }
@@ -184,7 +190,9 @@ export function initMaweSpeakerManager() {
     if (!panel) return;
     panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); toggle.focus();
   }
-  window.MaweSpeakerManager = Object.freeze({ sync, open, close });
+  MaweSpeakerManager = Object.freeze({ sync, open, close });
+
+
   document.addEventListener('mawe:languagechange', sync);
   sync();
 }

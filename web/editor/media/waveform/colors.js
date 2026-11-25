@@ -1,11 +1,12 @@
 // colors: waveform helpers with explicit dependencies.
+import { ASR_EDITOR_PALETTE } from '../../../shared/editor-palette.js';
 export function createWaveformModule(dependencies) {
   'use strict';
 
-  // 调色板数值唯一来源于 maw/speaker.py，渲染时注入 window.ASR_EDITOR_PALETTE；
+  // 调色板数值唯一来源于 maw/colors.py。
   // Node 测试等无注入环境回退为空表（colorForSegment 走存储值兜底）。
   let PALETTE = Object.fromEntries(
-    ((typeof window !== 'undefined' && window.ASR_EDITOR_PALETTE) || []).map((c) => [c.name, c.value]),
+    (ASR_EDITOR_PALETTE || []).map((c) => [c.name, c.value]),
   );
 
 

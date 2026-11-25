@@ -1,12 +1,26 @@
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweAudioProcessing } from '../media/editor-audio-processing.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweProjectMediaInputs } from './editor-project-media-inputs.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
+export let MaweJsonRepair;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweJsonRepair() {
 'use strict';
 
 // 工程 JSON 构建、时间码修复与分组重建。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweJsonRepair 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweJsonRepair(global) {
   'use strict';
 
@@ -16,7 +30,7 @@ export function initMaweJsonRepair() {
   let markerContainer = null;
   function setMarkerContainer(value) {
     markerContainer = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.items)
-      ? window.AsrEditorUtils.cloneMarkerValue(Object.fromEntries(
+      ? AsrEditorUtils.cloneMarkerValue(Object.fromEntries(
         Object.entries(value).filter(([key]) => key !== 'schema' && key !== 'items'),
       )) : null;
   }
@@ -26,7 +40,7 @@ export function initMaweJsonRepair() {
     if (bindingChange) {
       const retained = new Set(bindingChange.after.map(binding => binding.id));
       const released = bindingChange.before.filter(binding => !retained.has(binding.id)).length;
-      if (released) global.MaweHint?.flashHint(
+      if (released) MaweHint?.flashHint(
         `说话人拆段后解除了 ${released} 组无法保持一对一的绑定；字幕和分组已保留，请另存升级后的工程。`, 'warning',
       );
     }
@@ -47,15 +61,15 @@ export function initMaweJsonRepair() {
         && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
       out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
     }
-    const validation = window.AsrEditorUtils.validateTracksProject(out);
-    if (!validation.ok) throw new window.AsrEditorUtils.ProjectTracksError(validation.errors);
+    const validation = AsrEditorUtils.validateTracksProject(out);
+    if (!validation.ok) throw new AsrEditorUtils.ProjectTracksError(validation.errors);
     return JSON.stringify(out, null, 2);
   }
 
   // One pure projection drives both save and content checkpoints. Preserve all
   // source metadata and extension fields on every role; runtime views stay out.
   function projectSnapshot() {
-    const out = window.AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
+    const out = AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
     // rows is the legacy default view; omit it so switching the timed-text
     // view back to rows leaves the project byte-identical (and not dirty),
     // exactly like the pre-v2 serializer did.
@@ -64,10 +78,10 @@ export function initMaweJsonRepair() {
     // The reader is pure; retain extension fields beside the known gain settings.
     out.audio_processing = {
       ...out.audio_processing,
-      ...(window.MaweAudioProcessing?.settings()
+      ...(MaweAudioProcessing?.settings()
         || { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 }),
     };
-    const markers = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers, markerContainer);
+    const markers = AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers, markerContainer);
     if (markers) out.markers = markers;
     else delete out.markers;
     if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
@@ -83,7 +97,7 @@ export function initMaweJsonRepair() {
         speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
       },
     };
-    if (window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length
+    if (AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length
         || out.preview?.extension_subtitle) {
       preview.extension_subtitle = { ...out.preview?.extension_subtitle, ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
     }
@@ -94,7 +108,7 @@ export function initMaweJsonRepair() {
   function captureCleanupNormalization(segments, project) {
     const gapRemove = project?.gap_remove;
     const ranges = gapRemove?.provenance?.sources?.ai_cleanup;
-    const verify = window.AsrGapRemoveCore?.getCleanupScopeItems;
+    const verify = AsrGapRemoveCore?.getCleanupScopeItems;
     if (!Array.isArray(segments) || !Array.isArray(ranges) || typeof verify !== 'function') return [];
     // A stale index may accidentally become valid after a neutral item merges.
     // Remove that authority before changing any items; keep the audio range.
@@ -116,11 +130,11 @@ export function initMaweJsonRepair() {
     const project = snapshots[0].project;
     const scopes = snapshots.flatMap((before) => before.scopes);
     const gap = project.gap_remove;
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const provenance = core.replaceGapRemoveProvenanceSource(gap.provenance, 'ai_cleanup',
       gap.provenance.sources.ai_cleanup.filter((range) => !scopes.includes(range)), gap.gaps);
     project.gap_remove = { ...gap, provenance, gaps: core.gapRangesFromProvenance(provenance) };
-    const utils = window.AsrEditorUtils;
+    const utils = AsrEditorUtils;
     const markers = utils.normalizeMarkers(project.markers);
     const reason = '局部删除的字词映射在时间规整后无法安全核验';
     for (const range of scopes) {
@@ -215,7 +229,7 @@ export function initMaweJsonRepair() {
       }
       const candidateSegment = { ...segment, items: candidateItems };
       if (candidates.length !== scopes.length || !candidates.every(({ range, scope }) => (
-        window.AsrGapRemoveCore.getCleanupScopeItems(candidateSegment, { ...range, cleanup_scope: scope }).length
+        AsrGapRemoveCore.getCleanupScopeItems(candidateSegment, { ...range, cleanup_scope: scope }).length
       ))) { failed.push(before); continue; }
       segment.items = candidateItems;
       restoredAnchors += candidateItems.length - current.length;
@@ -250,8 +264,8 @@ export function initMaweJsonRepair() {
   if (!project || typeof project !== 'object') return 0;
   if (preserveValid && (project.tracks || []).every(track => hasValidTimingRanges(track.segments))) return 0;
   const normalize = (segments) => (repairSegmentRanges
-    ? window.AsrEditorUtils.normalizeSegmentTimings
-    : window.AsrEditorUtils.normalizeItemTimingRanges)(segments, 100, { preserveZero: preserveValid });
+    ? AsrEditorUtils.normalizeSegmentTimings
+    : AsrEditorUtils.normalizeItemTimingRanges)(segments, 100, { preserveZero: preserveValid });
   const cleanup = captureCleanupNormalization((project.tracks || []).flatMap(track => track.segments || []), project);
   let fixed = 0;
   for (const track of project.tracks || []) fixed += normalize(track.segments);
@@ -287,7 +301,7 @@ export function initMaweJsonRepair() {
     const project = MaweBoot.DATA;
     const cleanup = captureCleanupNormalization(source,
       project.tracks.some((track) => track.segments === source) ? project : null);
-    const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source, 100, { preserveZero: preserveValid })
+    const fixed = Math.max(0, AsrEditorUtils.normalizeItemTimingRanges(source, 100, { preserveZero: preserveValid })
       - migrateCleanupNormalization(cleanup));
     const changed = source.filter((segment, index) => (
       timingRepairSignature(segment) !== before[index]
@@ -298,8 +312,8 @@ export function initMaweJsonRepair() {
 
 
   function repairCurrentProjectTimings() {
-  const main = repairTimingGroup(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { preserveValid: true });
-  const extension = window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').reduce((result, track) => {
+  const main = repairTimingGroup(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { preserveValid: true });
+  const extension = AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').reduce((result, track) => {
     const repaired = repairTimingGroup(track?.segments, { preserveValid: true });
     result.fixed += repaired.fixed;
     result.changed.push(...repaired.changed);
@@ -321,7 +335,7 @@ export function initMaweJsonRepair() {
   return fixed;
 }
 
-  global.MaweJsonRepair = Object.freeze({
+  MaweJsonRepair = Object.freeze({
     buildJson,
     noteImportReport,
     importRequiresSave,
@@ -334,5 +348,6 @@ export function initMaweJsonRepair() {
     repairTimingGroup,
     repairCurrentProjectTimings
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

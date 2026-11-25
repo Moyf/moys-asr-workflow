@@ -1,7 +1,11 @@
 // 叠加轨动作接线：表情包分配/预览 modal 的 DOM 绑定。颜色组、叠加轨
 // 颜色/合并/清除与波形新增等领域逻辑已收入 ESM 纯模块 overlay-track.js
 // （含 stickerTargetTrack / previewTrack 可变状态，经 overlaySticker 访问器
-// 读写）。classic 时代的 overlay 动作门面由静态 import 取代。
+// 读写）。
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweCuePanel } from './editor-cue-panel.js';
+import { MaweStickerPicker } from './editor-sticker-picker.js';
 import { overlaySticker } from './overlay-track.js';
 
 export function initOverlayActionsWiring() {

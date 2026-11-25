@@ -1,11 +1,11 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
 async function openScriptMode(page) {
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#toolboxFab').click();
   await page.locator('#openScriptAlignmentTool').click();
@@ -159,7 +159,7 @@ test('script controls have measured spacing and bilingual labels', async ({ page
 });
 
 test('script matching guidance is bilingual, spaced and opens the standalone tool settings', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#toolboxFab').click();
   await page.locator('#toolboxInputPath').fill('/tmp/existing.mosp');

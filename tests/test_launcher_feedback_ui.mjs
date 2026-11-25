@@ -305,7 +305,7 @@ function providerOwnershipHarness({ remembered = {} } = {}) {
   const noop = () => {};
   const storage = new Map([["maw.launcher.llm.provider_by_task", JSON.stringify(remembered)]]);
   const context = vm.createContext({
-    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } }, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
+    $: element, launcherRuntime: { config: { postprocessProviders: providers } }, window: { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
     Option: function Option(text, value) { this.textContent = text; this.value = value; },
     t: key => key, postprocessApiKeyRequest: 0, llmProviderByTask: remembered,
     LLM_PROVIDER_TASK_GROUPS: { proofread: "proofread", ai_cleanup: "cleanup" },
@@ -412,7 +412,7 @@ test("legacy cleanup provider memory migrates before an older plan is applied", 
     const ui = providerOwnershipHarness({ remembered });
     ui.element("postprocessOperation").value = "ai_cleanup";
     ui.context.loadLlmProviderByTask();
-    ui.context.window.MAWLauncher.config.postprocessAutoPlan = { enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "custom" }] };
+    ui.context.launcherRuntime.config.postprocessAutoPlan = { enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "custom" }] };
     ui.context.initializeAutoPostprocess();
     assert.equal(ui.context.stepProviderId("cleanup"), expected);
     assert.equal(ui.element("postprocessProvider").value, expected);
@@ -528,7 +528,8 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
   const openedSettings = [];
   const context = vm.createContext({
     console,
-    window: { MAWLauncher: { config: { postprocessProviders: providers }, openSettings: (section, focus) => openedSettings.push({ section, focus }) }, localStorage: localStorageStub },
+    launcherRuntime: { config: { postprocessProviders: providers }, openSettings: (section, focus) => openedSettings.push({ section, focus }) },
+    window: { localStorage: localStorageStub },
     document: { querySelector: () => null },
     $: (id) => fields[id] || { value: "", textContent: "" },
     localStorage: localStorageStub,
@@ -578,7 +579,7 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
     var getPendingAutoStep = () => pendingAutoStep;
     var setPendingAutoStep = (value) => { pendingAutoStep = value; pendingAutoStepRequest = {}; };
   `, context);
-  context.window.MAWLauncher.onSettingsClosed = context.cancelPendingAutoStep;
+  context.launcherRuntime.onSettingsClosed = context.cancelPendingAutoStep;
   const settingsSource = readFileSync(new URL("boot/launcher-settings-startup.js", launcherDir), "utf8");
   vm.runInContext(settingsSource.match(/function closeSettings\(\) \{[\s\S]*?\n\}/u)[0], context);
   return {

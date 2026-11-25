@@ -5,6 +5,7 @@ import { buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreeP
 
 let dir;
 let server;
+const runtimeErrors = new WeakMap();
 test.beforeAll(async () => {
   dir = makeTempDir('speaker-keyboard');
   server = await startStaticServer(buildBrowserEditorFixture(join(dir, 'editor.html')), await findFreePort());
@@ -20,11 +21,14 @@ async function dropProject(page, project) {
   }, project);
   await page.dispatchEvent('body', 'drop', { dataTransfer: transfer });
   await transfer.dispose();
-  await expect.poll(() => page.evaluate(() => ({ text: MaweBoot.DATA.tracks[0]?.segments[0]?.text,
-    errors: window.MAWE_DEBUG_ERRORS || [] }))).toEqual({ text: '主字幕', errors: [] });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.tracks[0]?.segments[0]?.text)).toBe('主字幕');
+  expect(runtimeErrors.get(page)).toEqual([]);
 }
 
 test.beforeEach(async ({ page }) => {
+  const errors = [];
+  runtimeErrors.set(page, errors);
+  page.on('pageerror', error => errors.push(error.message));
   await disableOnboarding(page);
   await page.goto(server.url);
   await dropProject(page, {

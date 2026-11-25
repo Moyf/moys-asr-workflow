@@ -4,16 +4,20 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const wave = createWaveformModule({ clamp, MAX_WAVEFORM_SCALE: 10, MIN_WAVEFORM_SCALE: 0.25 });
 const $ = (id) => document.getElementById(id);
 const player = $('player'), decoder = $('decoder'), cache = new FrameCache();
-const sprites = new Map(), portable = window.FILMSTRIP_PORTABLE;
+const sprites = new Map();
+const portableData = $('filmstrip-portable-data');
+const portable = portableData ? JSON.parse(portableData.textContent) : null;
 let config, media, waveform, controller, objectUrl, serial = Promise.resolve(), generation = 0;
 let loadGeneration = 0;
 let cancellation = Promise.resolve();
 let zoom = 1, timelineRows = [], measurement = {}, pending = 0;
 let mainSeeks = 0; player.addEventListener('seeking', () => mainSeeks++);
 const gaps = () => $('gap').checked ? [{ start: Math.round(media.duration * 250), end: Math.round(media.duration * 350), removed: true }] : [];
-const intervals = () => window.AsrGapRemoveCore.buildGapRemovedIntervals(Math.round(media.duration * 1000), gaps());
+import { AsrGapRemoveCore } from '/gap.js';
+
+const intervals = () => AsrGapRemoveCore.buildGapRemovedIntervals(Math.round(media.duration * 1000), gaps());
 const duration = () => intervals().reduce((n, x) => n + x.end - x.start, 0);
-const sourceToDisplay = (ms) => window.AsrGapRemoveCore.mapGapRemovedTime(ms, gaps());
+const sourceToDisplay = (ms) => AsrGapRemoveCore.mapGapRemovedTime(ms, gaps());
 function cancelServer() {
   if (config?.token && !portable) cancellation = cancellation.catch(() => {}).then(() =>
     fetch('/api/cancel', { method: 'POST', headers: { 'X-Lab-Token': config.token },
@@ -304,16 +308,17 @@ $('export').addEventListener('click', async () => {
     const sprite = sprites.get(spriteKey()) || timelineRows[0]?.localSprite;
     if (!sprite) throw new Error('先完成一条 A 路线，再导出便携页');
     const dataUrl = await new Promise(resolve => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(sprite.blob); });
-    const [html, css, js, gap] = await Promise.all(['/','/lab.css','/lab-inline.js','/gap.js'].map(p => fetch(p).then(r => {
+    const [html, css, js] = await Promise.all(['/','/lab.css','/lab-inline.js'].map(p => fetch(p).then(r => {
       if (!r.ok) throw new Error('先运行 build.mjs'); return r.text();
     })));
     const { image, blob, ...meta } = sprite;
     const payload = { media: [{ ...media, id: 'portable' }], waveform: waveform ? { ...waveform, peaks: undefined } : null,
       sprite: { ...meta, dataUrl } };
     const safe = s => s.replace(/<\/script/gi, '<\\/script');
-    const output = html.replace('<link rel="stylesheet" href="/lab.css">', '<style>' + css + '</style>')
-      .replace('<script src="/gap.js"></script><script type="module" src="/lab.mjs"></script>',
-        '<script>window.FILMSTRIP_PORTABLE=' + safe(JSON.stringify(payload)) + ';</script><script>' + safe(gap) + '</script><script>' + safe(js) + '</script>');
+    const output = html.replace('<link rel="stylesheet" href="/lab.css">', () => '<style>' + css + '</style>')
+      .replace('<script type="module" src="/lab.mjs"></script>', () =>
+        '<script id="filmstrip-portable-data" type="application/json">' + safe(JSON.stringify(payload)) +
+        '</script><script type="module">' + safe(js) + '</script>');
     measurement.portableBytes = new Blob([output]).size; updateMetrics();
     download(output, 'filmstrip-portable.html', 'text/html');
   } catch (error) { $('status').textContent = error.message; }

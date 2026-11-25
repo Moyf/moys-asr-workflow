@@ -1,3 +1,14 @@
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSettingsPanels } from '../ui/editor-settings-panels.js';
+import { MaweAppearanceInputs } from './editor-appearance-inputs.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweColors } from './editor-colors.js';
+import { MaweSpeakerLabels } from './editor-speaker-labels.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 export function initAppearanceSettingsWiring() {
 const { assColorSpeakerExportLink, assColorStyleSelect, subtitleColorAssModeHintLink, subtitleFontFamilyInput } = getMaweDomPanels();

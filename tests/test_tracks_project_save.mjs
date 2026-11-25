@@ -6,6 +6,9 @@ const projectTracks = createProjectTracks();
 const mainSegments = data => projectTracks.getMainTrack(data).segments;
 import { readFileSync } from 'node:fs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const deferred = () => {
   let resolve, reject;
@@ -25,7 +28,7 @@ function fixture() {
     MaweHost: { server: {}, files: { hasSavePicker: () => true } },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   for (const file of ['state/editor-state', 'io/editor-project-save']) {
     const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-save': 'initMaweProjectSave' };
     const source = initializers[file] ? invokedInitModuleSource(`editor/${file}.js`, initializers[file]) : readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8');

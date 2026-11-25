@@ -96,12 +96,12 @@ function handleBackendEvent(event) {
   if (event.type === "done") notifySingleComplete(event.result);
   if (event.type === "batch_done" || event.type === "batchDone") notifyBatchComplete(event);
   if (event.type === "error") notifySingleFailure(event);
-  if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
+  if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) launcherRuntime?.onBatchEvent?.(event);
   if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling || state.alignmentPreparing) });
-  if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
-  if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
-  if (event.type === "postprocess_pipeline") window.MAWLauncher?.onPostprocessPipeline?.(event);
-  if (event.type === "media_tool_log") window.MAWLauncher?.onMediaToolLog?.(event);
+  if (event.type === "postprocess_status") launcherRuntime?.onPostprocessStatus?.(event);
+  if (event.type === "postprocess_stream") launcherRuntime?.onPostprocessStream?.(event);
+  if (event.type === "postprocess_pipeline") launcherRuntime?.onPostprocessPipeline?.(event);
+  if (event.type === "media_tool_log") launcherRuntime?.onMediaToolLog?.(event);
   if (event.type === "modelProgress") {
     state.localProgressMessage = event.message || "";
     state.localProgress = event;
@@ -299,11 +299,14 @@ function handleBackendEvent(event) {
     if (event.result?.videoPath) appendLog(`${t("toolbox_burn_done")}\n${event.result.videoPath}`);
     void checkExistingServer(t("done"));
   }
-  if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
-  if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
+  if (event.type === "dropMedia" && !state.dropTarget && launcherRuntime?.onBatchDrop?.(event.path || "")) return;
+  if (event.type === "dropReject" && !state.dropTarget && launcherRuntime?.onBatchDropReject?.(event.path || "")) return;
   if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
 }
-window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+const launcherRuntime = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+document.addEventListener("maw:backend-events", event => {
+  if (Array.isArray(event.detail)) event.detail.forEach(handleBackendEvent);
+});
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));

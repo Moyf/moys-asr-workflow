@@ -1,5 +1,32 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweBindingAlign } from '../cues/editor-binding-align.js';
+import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { MaweSegmentOps } from '../cues/editor-segment-ops.js';
+import { MaweSplitMode } from '../cues/editor-split-mode.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweMultiImport } from '../io/editor-multi-import.js';
+import { MaweProjectMediaInputs } from '../io/editor-project-media-inputs.js';
+import { MaweJklPlayback } from '../media/editor-jkl.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweMediaStep } from '../media/editor-media-step.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweProjectSettings } from '../state/editor-project-settings.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
+import { MaweAssStorageWiring } from '../styles/editor-wiring-ass-storage.js';
+import { MaweDisplaySettings } from './editor-display-settings.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweHint } from './editor-hint.js';
+import { MaweNinja } from './editor-ninja.js';
+import { MaweSettingsPanels } from './editor-settings-panels.js';
 import { getMaweDomPanels } from './editor-dom-panels.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweSettingsInitWiring() {
 'use strict';
@@ -69,9 +96,9 @@ if (MaweDom.editorSettingsPanel) {
 getMaweDomPanels().overlayTrackToggle?.addEventListener('change', () => {
   const next = getMaweDomPanels().overlayTrackToggle.checked;
   MaweCommands.run('切换叠加字幕', command => {
-    const overlay = next ? window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA) : getOverlayTrack();
+    const overlay = next ? AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA) : getOverlayTrack();
     if (!overlay) return;
-    if (next) window.MaweAssManagerWiring?.initializeProjectStyles?.();
+    if (next) MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.enabled = next;
     overlay._dirty = true;
     command.commit({ cueList: true, waveform: 'full' });
@@ -90,7 +117,7 @@ document.querySelector('.track-visibility-settings')?.addEventListener('change',
   if (input.dataset.trackField === 'enabled') {
     const existing = role === 'secondary' ? MaweDom.multiSubtitleToggle : getMaweDomPanels().overlayTrackToggle;
     if (existing && existing.checked !== input.checked) existing.click();
-    window.MaweProjectSettings.syncTrackControls();
+    MaweProjectSettings.syncTrackControls();
     return;
   }
   const track = MaweBoot.DATA.tracks.find(item => item.role === role);
@@ -135,9 +162,9 @@ document.addEventListener('mawe:languagechange', () => {
   MaweTimeline.refreshTimelineSettingsUi();
   MaweMediaPlayback.refreshMediaSeekStepHelp();
   MaweMediaPlayback.refreshMediaSeekControlLabels();
-  window.MaweAssStorageWiring.updateAssStyleLibrarySummary();
-  window.MaweAssManagerWiring.updateAssStyleLibraryStatus();
-  window.MaweAssManagerWiring.updateAssStylePreviewModeHints();
+  MaweAssStorageWiring.updateAssStyleLibrarySummary();
+  MaweAssManagerWiring.updateAssStyleLibraryStatus();
+  MaweAssManagerWiring.updateAssStylePreviewModeHints();
 });
 
 MaweDom.splitKeySel.value = MaweSettings.EDITOR_SETTINGS.splitKey;
@@ -230,7 +257,7 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
     // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
     command.commit({ cueList: true, waveform: 'full', preview: 'refresh' });
     // 先启用空副轨；快速导入询问只决定是否立即选择 SRT。
-    if (!promptImportSecondSrt || !confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
+    if (!promptImportSecondSrt || !editorDialogs.confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
     MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
     MaweProjectMediaInputs.loadSrtFileInput.value = '';
     MaweProjectMediaInputs.loadSrtFileInput.click();
@@ -247,7 +274,7 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const previous = multi.bilingual.display_mode;
   multi.bilingual.display_mode = previous;
   return MaweCommands.run('切换双语字幕列表', (command) => {
-    multi.bilingual.display_mode = window.AsrEditorUtils.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
+    multi.bilingual.display_mode = AsrEditorUtils.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
     multi._dirty = true;
     // 三种显示模式的行 DOM 结构互不相同，列表只能全量重建（长工程会明显卡顿）。
     // 这里不同步重建：先提交变更并让下拉框状态上屏，下一帧再重建列表，
@@ -260,10 +287,10 @@ MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(MaweDom.multiSubtitleMainLanguageMode.value)
     ? MaweDom.multiSubtitleMainLanguageMode.value : 'word';
-  if (window.AsrEditorUtils.getMainTrack(multi).split_mode_override === next
+  if (AsrEditorUtils.getMainTrack(multi).split_mode_override === next
       && MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride === next) return;
   return MaweCommands.run('切换主字幕语言', (command) => {
-    window.AsrEditorUtils.getMainTrack(multi).split_mode_override = next;
+    AsrEditorUtils.getMainTrack(multi).split_mode_override = next;
     // 与设置面板的类型提示共用同一个手动指定偏好，两个入口互为镜像。
     MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
@@ -298,7 +325,7 @@ MaweDom.wordTimingSecondsPerRow?.addEventListener('change', () => {
   const next = Number(MaweDom.wordTimingSecondsPerRow.value);
   const before = MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow;
   MaweSettings.updateEditorSettings({ wordTimingSecondsPerRow: next });
-  if (window.MaweWordTiming?.enabled === true) MaweDisplaySettings.applyWordTimingSecondsPerRow();
+  if (MaweWordTiming?.enabled === true) MaweDisplaySettings.applyWordTimingSecondsPerRow();
 });
 // 波形工具栏的「双语 / 重叠」快捷开关：复用工程设置开关的 change 逻辑。
 document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click', () => {
@@ -328,8 +355,8 @@ MaweDom.multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 MaweAppearance.applySubtitleAppearance();
 MaweAppearance.applyExtensionSubtitleAppearance();
-window.MaweAssManagerWiring.syncAssModeControl();
-window.MaweAssManagerWiring.syncAssStyleManager();
-void window.MaweAssStorageWiring.loadAssStyleLibrary();
+MaweAssManagerWiring.syncAssModeControl();
+MaweAssManagerWiring.syncAssStyleManager();
+void MaweAssStorageWiring.loadAssStyleLibrary();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
 }

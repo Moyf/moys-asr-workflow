@@ -1,8 +1,7 @@
 // 工程身份、选择集、偏好与瞬态运行态的唯一持有者。
 // project 是原始模板对象，不存在第二份字幕源。
-// ESM 模块：createEditorState 为纯工厂具名导出（测试直调、按项目实例化），
-// initMaweState 在原清单位次以 window.MaweBoot.DATA 组装单例并挂
-// window.MaweState（register/resolve 注册表随之退役）。
+import { MaweBoot } from '../boot/editor-boot.js';
+export let MaweState;
 export function createEditorState(project) {
   'use strict';
 
@@ -337,6 +336,8 @@ export function initMaweState() {
   'use strict';
   // 注册表 resolve 时代的返回值即 any；与原装配语义一致，经局部
   // 中转赋窗口单例，类型断言由 editor-globals.d.ts 的接口描述承担。
-  const state = /** @type {any} */ (createEditorState(window.MaweBoot.DATA));
-  window.MaweState = state;
+  const state = /** @type {any} */ (createEditorState(MaweBoot.DATA));
+  MaweState = state;
+
+
 }

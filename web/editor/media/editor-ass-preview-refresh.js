@@ -1,3 +1,7 @@
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 const refreshService = {};
 
 export function scheduleAssSubtitlePreviewRefresh() {
@@ -7,6 +11,8 @@ export function scheduleAssSubtitlePreviewRefresh() {
 export function observeAssSubtitlePreviewPlayer(player) {
   return refreshService.observePlayer(player);
 }
+
+export let MaweAssPreviewRefresh;
 
 export function initMaweAssPreviewRefresh() {
   if (refreshService.schedule) return;
@@ -50,7 +56,7 @@ export function initMaweAssPreviewRefresh() {
   window.addEventListener('resize', schedule);
   refreshService.schedule = schedule;
   refreshService.observePlayer = observePlayer;
-  window.MaweAssPreviewRefresh = Object.freeze({
+  MaweAssPreviewRefresh = Object.freeze({
     scheduleAssSubtitlePreviewRefresh,
     observeAssSubtitlePreviewPlayer,
   });

@@ -1,4 +1,12 @@
 // 已选计数涵盖主轨/副轨/叠加轨三个选区集。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
+import { MaweCuePanel } from './editor-cue-panel.js';
+import { MaweSelection } from './editor-selection.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function updateSelectionCountText() {
   MaweDom.selCountEl.textContent = String(
     MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
@@ -33,7 +41,7 @@ export function selectOverlayCueRow(index, { focusEditor = false } = {}) {
 }
 
 export function selectOverlayRange(fromIndex, toIndex) {
-  const track = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+  const track = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
   const segments = track?.segments || [];
   const from = Math.max(0, Math.min(fromIndex, toIndex));
   const to = Math.min(segments.length - 1, Math.max(fromIndex, toIndex));
@@ -50,7 +58,7 @@ export function selectOverlayRange(fromIndex, toIndex) {
 }
 
 export function toggleOverlaySelection(index) {
-  const track = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+  const track = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
   if (MaweSelection.isHiddenDisabled(index, track)) return;  // 隐藏禁用项不参与选择
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
   if (MaweState.selection.indices('overlay').has(index)) {

@@ -72,9 +72,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 `web/editor/boot/editor-entry.mjs` 是生产入口。它用静态 import 连接源码，按运行时、领域服务、事件接线和最终启动的顺序调用初始化。新增功能沿所属域接入。Editor 入口覆盖由实际 import 图检查。旧清单仅存在于历史 Git 修订，重演使用对应历史检出。Server 和 Electron 注入同一个 `web/editor/boot/editor-bundle.js`。发布包自带 bundle，运行无需 Node。
 
-Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的 `pnpm run build:editor` 或 `pnpm run build:launcher`，再运行同端的 `check:editor` 或 `check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。Launcher 按 `web/launcher-scripts.txt` 装配，`batch.js` 与 `postprocess.js` 经 `window.MAWLauncher` 访问主脚本。开发命令见[开发入口与 bundle](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
+Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的 `pnpm run build:editor` 或 `pnpm run build:launcher`，再运行同端的 `check:editor` 或 `check:launcher`。产物及 `.meta.json` 由构建器生成并留在 Git 之外。源码启动可重建过期产物，CSS 和模板仍在渲染时读取。Launcher 按 `web/launcher-scripts.txt` 装配，主脚本将同一个运行时实例传给 `batch.js` 与 `postprocess.js` 的模块初始化函数，保留桌面端的本地文件入口。原生后端经 `maw:backend-events` 文档事件传递事件批次。开发命令见[开发入口与 bundle](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md#开发入口与-bundle)。实施与实验沿革见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
-字幕域同域函数通过静态 import 接通；现阶段具名函数仍在调用时转发既有浏览器单例门面，不代表这些模块已能独立实例化。Editor 入口调用初始化一次，模块定义经 import 加载。可变状态、常量与 DOM 句柄继续由既有门面按值访问，不应包装成可调用的函数导出。
+Editor 跨模块通信使用静态 import 与工厂注入。共享工具、i18n 和领域服务在各自初始化位置建立实例，通过模块绑定向调用方提供访问。调色板作为页面 JSON 数据装载。生产入口已移除 Editor 服务及状态的浏览器全局别名。需要检查内部状态的浏览器用例通过测试专用 bundle 注入探针，生产入口用例独立检查真实产物及全局对象。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -91,7 +91,7 @@ Editor 或 Launcher 的 JS、清单或构建配置变化后，先运行对应的
 | `web/editor/ui/` | DOM、浮窗、帮助、菜单、工作区布局、提示与设置面板 |
 | `web/launcher/`、`web/sfx/` | 独立 Launcher 与原位静态音效 |
 
-领域模块主要发布已有命名空间。入口调用 `editor-wiring-*.js` 的 init 时创建事件监听和会话状态。旧浏览器门面继续服务尚未迁移的调用方。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块。
+领域模块可发布模块级门面绑定供具名 import。入口调用 `editor-wiring-*.js` 的 init 时创建事件监听和会话状态。非连续的同领域接线仍为独立文件，保持监听器顺序。新业务代码进入所属领域模块。
 
 `shared/editor-utils.js` 与 `media/waveform.js` 只初始化领域工厂并重建原有 `AsrEditorUtils` / `AsrWaveform` 出口。跨领域依赖由装配门面显式传入，工厂内部不去查其他领域的命名空间。工厂的可变状态只属于该次实例，应用只装配一次；拆分符号与调色板的后续更新通过同一实例的函数共享。
 

@@ -17,7 +17,7 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
     };
   }
   const context = { window: { AsrEditorUtils: utilsContext.window.AsrEditorUtils,
-    AsrGapRemoveCore: utilsContext.window.AsrGapRemoveCore },
+    AsrGapRemoveCore: utilsContext.window.AsrGapRemoveCore }, AsrEditorUtils: utilsContext.window.AsrEditorUtils,
   MaweHost: { storage: { getItem: name => storage.get(name), setItem: (name, value) => storage.set(name, value) } },
   MaweState: { preferences: { editor: {} }, changes: {} },
   MaweCoreState: { waveformEditor: { refreshMarkerOverlay() {} } },

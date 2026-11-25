@@ -1,3 +1,4 @@
+import { MaweDragDrop } from './editor-drag-drop.js';
 export function initMaweFileDropWiring() {
 // === Drag & Drop：拖入视频/音频/JSON/SRT/LRC 自动加载 ===
 

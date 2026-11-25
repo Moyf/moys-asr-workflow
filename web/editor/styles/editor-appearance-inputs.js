@@ -1,8 +1,9 @@
 // 外观输入：主/副字幕背景色与不透明度输入应用。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweAppearanceInputs 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweDom } from '../ui/editor-dom.js';
 import { setSubtitleAppearance, setExtensionSubtitleAppearance } from './editor-appearance.js';
+export let MaweAppearanceInputs;
 
 export function initMaweAppearanceInputs() {
 (function initMaweAppearanceInputsFacade(global) {
@@ -58,7 +59,7 @@ export function initMaweAppearanceInputs() {
     if (finalize) extensionSubtitleBackgroundAlphaUndoPushed = false;
   }
 
-  global.MaweAppearanceInputs = Object.freeze({
+  MaweAppearanceInputs = Object.freeze({
     get subtitleBackgroundColorUndoPushed() { return subtitleBackgroundColorUndoPushed; },
     set subtitleBackgroundColorUndoPushed(v) { subtitleBackgroundColorUndoPushed = v; },
     applySubtitleBackgroundColorInput,
@@ -69,5 +70,6 @@ export function initMaweAppearanceInputs() {
     set extensionSubtitleBackgroundAlphaUndoPushed(v) { extensionSubtitleBackgroundAlphaUndoPushed = v; },
     applyExtensionSubtitleBackgroundAlphaInput
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

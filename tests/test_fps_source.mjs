@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function harness(timebase, acceptRemap = true) {
   const data = runtimeProject([{
@@ -21,7 +22,7 @@ function harness(timebase, acceptRemap = true) {
     MaweCuePanel: { renderAll() {} }, MaweHint: { flashHint() {} },
   };
   loadEditorModule(context, 'shared/editor-utils.js');
-  vm.runInNewContext(initModuleSource('editor/cues/editor-timeline.js'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-timeline.js'), exposeWindowGlobals(context));
   return { data, api: context.window.MaweTimeline, utils: context.window.AsrEditorUtils,
     state: context.MaweServerSave, saves: () => saves, confirms: () => confirms };
 }

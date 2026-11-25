@@ -1,5 +1,39 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweGapPlayback } from '../media/editor-gap-playback.js';
+import { MaweJklPlayback } from '../media/editor-jkl.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweColors } from '../styles/editor-colors.js';
+import { MaweContextMenus } from '../ui/editor-context-menus.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweNinja } from '../ui/editor-ninja.js';
+import { MaweAddCue } from './editor-add-cue.js';
+import { MaweBindingAlign } from './editor-binding-align.js';
+import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
+import { MaweCuePanel } from './editor-cue-panel.js';
+import { MaweInlineEdit } from './editor-inline-edit.js';
+import { MaweKeyboardTargets } from './editor-keyboard-targets.js';
+import { MaweMergeAdjacent } from './editor-merge-adjacent.js';
+import { MaweNavPreview } from './editor-nav-preview.js';
+import { MaweSegmentOps } from './editor-segment-ops.js';
+import { MaweSelection } from './editor-selection.js';
+import { MaweShortcuts } from './editor-shortcuts.js';
+import { MaweSplitContext } from './editor-split-context.js';
+import { MaweSplitCore } from './editor-split-core.js';
+import { MaweStickerPicker } from './editor-sticker-picker.js';
+import { MaweTextCleanup } from './editor-text-cleanup.js';
+import { MaweTimeline } from './editor-timeline.js';
 import { openOverlaySplitModal } from './editor-split-core.js';
 import { deleteOverlayCues, getOverlayTrack, assignOverlayColor, clearOverlayColorOnTargets, mergeOverlayCues } from './overlay-track.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweEditShortcutsWiring() {
 'use strict';
@@ -62,7 +96,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (MaweJklPlayback.isJklDirectionMode()) {
     if (k === 'k') {
-      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || window.MaweGapPlayback?.pendingPlayback;
+      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || MaweGapPlayback?.pendingPlayback;
       if (!wasPlaying) {
         MaweJklPlayback.jklPlaybackRate = 1;
         MaweCoreState.player.playbackRate = 1;
@@ -72,7 +106,7 @@ document.addEventListener('keydown', (e) => {
       MaweJklPlayback.stopJklReversePlayback({ render: false });
       MaweJklPlayback.jklPlaybackRate = 1;
       MaweCoreState.player.playbackRate = 1;
-      window.MaweGapPlayback?.cancelPendingPlayback();
+      MaweGapPlayback?.cancelPendingPlayback();
       MaweCoreState.player.pause();
       MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
@@ -125,7 +159,7 @@ document.addEventListener('keydown', (e) => {
   const panelTarget = MaweCuePanel.getCurrentCuePanelTarget();
   const extensionTarget = panelTarget?.kind === 'extension';
   const extensionTrack = extensionTarget ? panelTarget.track : null;
-  const segments = extensionTarget ? extensionTrack.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+  const segments = extensionTarget ? extensionTrack.segments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   const wasPlaying = !MaweCoreState.player.paused;
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && MaweCoreState.waveformEditor?.handleHeldCueKey?.(
@@ -143,7 +177,7 @@ document.addEventListener('keydown', (e) => {
     ? -1
     : (extensionTarget ? panelTarget?.index ?? -1 : MaweCuePanelState.currentCuePanelIdx);
   let next = e.shiftKey
-    ? window.AsrEditorUtils.findCueSelectionExtensionTarget(
+    ? AsrEditorUtils.findCueSelectionExtensionTarget(
       segments,
       extensionTarget ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs,
       navigationIndex,
@@ -151,7 +185,7 @@ document.addEventListener('keydown', (e) => {
       direction,
       MaweDom.hideDisabled,
     )
-    : window.AsrEditorUtils.findCueNavigationTarget(
+    : AsrEditorUtils.findCueNavigationTarget(
       segments,
       navigationIndex,
       Math.round(MaweCoreState.player.currentTime * 1000),
@@ -317,7 +351,7 @@ document.addEventListener('keydown', (e) => {
   const kind = kinds.find(value => MaweState.selection.indices(value).size);
   if (!kind) return;
   const track = kind === 'overlay' ? getOverlayTrack() : kind === 'extension'
-    ? MaweMultiSubtitleCore.getActiveExtensionTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    ? MaweMultiSubtitleCore.getActiveExtensionTrack() : AsrEditorUtils.getMainTrack(MaweBoot.DATA);
   const indices = [...MaweState.selection.indices(kind)].sort((a, b) => a - b);
   if (!track) return;
   e.preventDefault();
@@ -511,7 +545,7 @@ document.addEventListener('keydown', (e) => {
   const target = MaweCuePanel.getCurrentCuePanelTarget();
   const extensionTarget = target?.kind === 'extension';
   const selected = extensionTarget ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs;
-  const segments = extensionTarget ? target.track.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+  const segments = extensionTarget ? target.track.segments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   if (!selected.size) return;
   const first = Math.min(...selected);
   const segment = segments[first];
@@ -729,7 +763,7 @@ document.addEventListener('keydown', (e) => {
   const activeCuePanel = MaweCuePanel.getCurrentCuePanelTarget();
   const operationReference = MaweNavPreview.keyboardOperationReference();
   const pointerMainIndex = operationReference
-    ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : -1;
+    ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : -1;
   const activeExtensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const pointerExtensionIndex = operationReference?.track === 'extension'
     ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweMultiSubtitleCore.getExtensionTrack(operationReference.trackId)?.segments) : -1;
@@ -826,14 +860,14 @@ document.addEventListener('keydown', (e) => {
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
   if (MaweSelection.selectedIdxs.size === 1) {
     const context = MaweNavPreview.hoveredSelectedCueContext();
-    if (context && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[context.idx]) {
+    if (context && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[context.idx]) {
       splitAt(context.idx, context.x, context.y, null);
       return;
     }
   }
   // 2) 波形：指针音频位置
   if (operationReference?.source === 'pointer' || operationReference?.track === 'extension') {
-    const idx = MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+    const idx = MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     if (idx >= 0) {
       splitAt(idx, 0, 0, operationReference.timeMs);
       return;
@@ -852,7 +886,7 @@ document.addEventListener('keydown', (e) => {
   }
   // 3) 播放头位置
   const timeMs = operationReference?.timeMs ?? Math.round(MaweCoreState.player.currentTime * 1000);
-  const idx = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  const idx = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx >= 0) {
     splitAt(idx, 0, 0, timeMs);
     return;

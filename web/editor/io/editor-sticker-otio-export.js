@@ -1,16 +1,21 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+export let MaweStickerOtioExport;
 export function initStickerOtioExportModule() {
 // 表情包 OTIO 导出：便携模式同步与导出入口。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweStickerOtioExport 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweStickerOtioExport(global) {
   'use strict';
 
 
-  const stickerOtioExportMode = document.getElementById('sticker-otio-export-mode');
+  const stickerOtioExportMode = /** @type {HTMLSelectElement} */ (document.getElementById('sticker-otio-export-mode'));
 
 
-  const portableStickerExportOption = stickerOtioExportMode?.querySelector('option[value="portable"]');
+  const portableStickerExportOption = /** @type {HTMLOptionElement} */ (stickerOtioExportMode?.querySelector('option[value="portable"]'));
 
 
 
@@ -62,11 +67,12 @@ export function initStickerOtioExportModule() {
     }
   }
 
-  global.MaweStickerOtioExport = Object.freeze({
+  MaweStickerOtioExport = Object.freeze({
     stickerOtioExportMode,
     portableStickerExportOption,
     syncStickerOtioExportMode,
     exportStickerOtio
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

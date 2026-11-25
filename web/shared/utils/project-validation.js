@@ -1,13 +1,11 @@
-export function initProjectValidation() {
-// Project import/validation facade. The canonical model owns format rules;
-// repair remains an explicit, observable input-boundary operation.
-(function (global) {
-  'use strict';
+export let MaweProjectValidation;
+// The canonical model owns format rules. Repair remains an explicit input-boundary operation.
+export function initProjectValidation(importProject) {
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
   function validateProject(input) {
     try {
-      const imported = global.AsrEditorUtils.importProject(input);
+      const imported = importProject(input);
       return { ok: true, errors: [], project: imported.project, preview: null };
     } catch (error) {
       if (!Array.isArray(error.errors)) throw error;
@@ -69,6 +67,5 @@ export function initProjectValidation() {
     return { ...result, changes: result.ok ? changes(input, result.project) : [] };
   }
 
-  global.MaweProjectValidation = Object.freeze({ validateProject, prepareProject, changes });
-})(typeof window !== 'undefined' ? window : globalThis);
+  MaweProjectValidation = Object.freeze({ validateProject, prepareProject, changes });
 }

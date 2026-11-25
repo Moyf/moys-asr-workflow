@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {initModuleSource} from './helpers/init-module-source.mjs';
 import test from 'node:test';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 // Exercise the real inline-edit entry points with a controlled DOM/scheduler.
 // Native focus has its own browser timing; this isolates the deferred repair
@@ -22,11 +23,11 @@ function fixture(kind) {
   }) };
   const state = { editing: { editingState: null, extensionEditingState: null } };
   const project = runtimeProject([{ text: 'Original' }], { extensions: [{ id: 'extension', segments: [{ text: 'Original' }] }] });
-  const context = { window: { getSelection: () => selection, AsrEditorUtils: projectModel }, document,
+  const context = { window: { getSelection: () => selection, AsrEditorUtils: projectModel }, AsrEditorUtils: projectModel, document,
     setTimeout: callback => timers.push(callback), MaweState: state,
     MaweNavPreview: { hideCueSplitPreview() {} }, MaweBoot: { DATA: project },
     MaweCuePanel: { setCurrentCuePanelExtensionIndex() {} } };
-  vm.runInNewContext(initModuleSource('editor/cues/editor-inline-edit.js'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-inline-edit.js'), exposeWindowGlobals(context));
   const api = context.window.MaweInlineEdit;
   if (kind === 'main') api.startEdit(el, 0, undefined, undefined, { deferCaret: true });
   else api.startExtensionEdit(el, 0, projectModel.getExtensionTrack(project), undefined, undefined, { deferCaret: true });

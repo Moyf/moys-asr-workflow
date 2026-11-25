@@ -3,7 +3,7 @@
 export function createWaveformModule(dependencies) {
   'use strict';
   const THUMBNAIL_FADE_MS = 200;
-  const { thumbnailCore, ROW_GAP, localizedWaveformMessage } = dependencies;
+  const { thumbnailCore, ROW_GAP, localizedWaveformMessage, getThumbnailBinding } = dependencies;
   class WaveformMethods {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     initThumbnails() {
@@ -47,7 +47,7 @@ export function createWaveformModule(dependencies) {
       document.addEventListener('mawe:languagechange', () => this.updateThumbnailStatus());
       window.addEventListener('online', () => this.thumbnailController.retry());
       window.addEventListener('pagehide', () => this.thumbnailController.close());
-      this.setThumbnailBinding(window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding || '');
+      this.setThumbnailBinding(getThumbnailBinding?.() || '');
     }
     /** @this {import('./waveform-types.js').WaveformInstance} */
     thumbnailStatusText() {
@@ -84,7 +84,7 @@ export function createWaveformModule(dependencies) {
       const decodeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-thumbnail-decode'));
       const status = document.getElementById('waveform-thumbnail-status');
       const decodeSetting = document.getElementById('waveform-thumbnail-decode-setting');
-      const hasBinding = !!window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
+      const hasBinding = !!getThumbnailBinding?.();
       const mode = this.thumbnailController.mode;
       const text = !hasBinding
         ? localizedWaveformMessage('从本机 Server 加载视频后可用', 'Available after loading video through the local Server')

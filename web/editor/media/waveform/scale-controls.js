@@ -1,4 +1,5 @@
 // scale-controls: waveform class methods with explicit dependencies.
+import { MaweDisplaySettings } from '../../ui/editor-display-settings.js';
 export function createWaveformModule(dependencies) {
   'use strict';
   const { LOUDNESS_SCHEMA, ROW_GAP, ROW_HEIGHT_PRESETS, WAVEFORM_ADJUST_DEBOUNCE_MS, ZOOM_PRESETS, clamp, isMultiRowInComfortZone, localizedWaveformMessage, saveSettings, syncSpectralColorToggle, waveformScaleAfterStep, waveformScaleFromLoudness } = dependencies;
@@ -138,7 +139,7 @@ export function createWaveformModule(dependencies) {
     // 不存在双重捕获/还原。门面缺失（单测沙箱）时退化为无锚定的旧行为。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     applyRowGeometryWithViewportAnchor(apply) {
-      const displaySettings = globalThis.MaweDisplaySettings;
+      const displaySettings = MaweDisplaySettings;
       const capture = displaySettings?.captureWaveformViewportCenterTimeMs;
       const restore = displaySettings?.restoreWaveformViewportAfterGeometryChange;
       const anchorTimeMs = typeof capture === 'function' ? capture.call(displaySettings, this) : null;

@@ -1,18 +1,28 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweGapPlayback } from '../media/editor-gap-playback.js';
+import { MaweJklPlayback } from '../media/editor-jkl.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweContextMenus } from '../ui/editor-context-menus.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweInlineEdit } from './editor-inline-edit.js';
+import { MaweSelection } from './editor-selection.js';
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
+export let MaweNavPreview;
 import { caretInfoFromPoint } from './editor-inline-edit.js';
 import { isTextEditingTarget } from './editor-keyboard-targets.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 导航与预览：导航归属、拆分预览与 seek 状态。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweNavPreview 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 导航与预览：导航归属、拆分预览与 seek 状态。 ESM init 模块：initMaweNavPreview 在原清单位次执行原 IIFE 体（挂
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweNavPreview 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 导航与预览：导航归属、拆分预览与 seek 状态。
+// 由 split-cluster codemod 自 editor.js 拆出。
 
-// window.MaweNavPreview 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweNavPreview() {
 (function initMaweNavPreview(global) {
   'use strict';
@@ -102,7 +112,7 @@ export function initMaweNavPreview() {
             + `.multi-extension-cue[data-ext-idx="${request.idx}"]`,
         )
         : MaweCoreState.container.querySelector(`.cue[data-idx="${request.idx}"]`);
-      const segment = isExtension ? track?.segments?.[request.idx] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[request.idx];
+      const segment = isExtension ? track?.segments?.[request.idx] : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[request.idx];
       const textEl = cue?.querySelector('.text');
       const text = String(segment?.text || '');
       if (!cue || !segment || !textEl || text.length < 2 || segment.end - segment.start < 200) {
@@ -203,7 +213,7 @@ export function initMaweNavPreview() {
     if (event.key !== (edge === 'start' ? 'z' : 'x')
         && event.key !== (edge === 'start' ? 'Z' : 'X')) return;
     if (event.repeat || MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || isTextEditingTarget(event)) return;
-    const active = document.activeElement;
+    const active = /** @type {HTMLElement} */ (document.activeElement);
     if (active && (
       active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
         || active.tagName === 'SELECT' || active.isContentEditable
@@ -255,12 +265,12 @@ export function initMaweNavPreview() {
     if (!target || !Number.isFinite(timeMs) || !MaweMediaPlayback.hasLoadedMedia()
         || !Number.isFinite(duration) || duration <= 0) return false;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
-    window.MaweGapPlayback?.cancelPendingPlayback();
+    MaweGapPlayback?.cancelPendingPlayback();
     MaweCoreState.player.pause();
     return MaweMediaPlayback.seekMediaTo(timeMs / 1000);
   }
 
-  global.MaweNavPreview = Object.freeze({
+  MaweNavPreview = Object.freeze({
     seekCurrentCueBoundary,
     get seekWarned() { return seekWarned; },
     set seekWarned(v) { seekWarned = v; },
@@ -292,16 +302,17 @@ export function initMaweNavPreview() {
     handlePointerBoundaryShortcut,
     hoveredSelectedCueContext
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function seekCurrentCueBoundary(...args) { return window.MaweNavPreview.seekCurrentCueBoundary(...args); }
-export function navigationOwnerForTarget(...args) { return window.MaweNavPreview.navigationOwnerForTarget(...args); }
-export function updateNavigationOwner(...args) { return window.MaweNavPreview.updateNavigationOwner(...args); }
-export function hideCueSplitPreview(...args) { return window.MaweNavPreview.hideCueSplitPreview(...args); }
-export function scheduleCueSplitPreview(...args) { return window.MaweNavPreview.scheduleCueSplitPreview(...args); }
-export function waveformPointerContext(...args) { return window.MaweNavPreview.waveformPointerContext(...args); }
-export function keyboardOperationReference(...args) { return window.MaweNavPreview.keyboardOperationReference(...args); }
-export function getPointerBoundaryEditTarget(...args) { return window.MaweNavPreview.getPointerBoundaryEditTarget(...args); }
-export function handlePointerBoundaryShortcut(...args) { return window.MaweNavPreview.handlePointerBoundaryShortcut(...args); }
-export function hoveredSelectedCueContext(...args) { return window.MaweNavPreview.hoveredSelectedCueContext(...args); }
+export function seekCurrentCueBoundary(...args) { return MaweNavPreview.seekCurrentCueBoundary(...args); }
+export function navigationOwnerForTarget(...args) { return MaweNavPreview.navigationOwnerForTarget(...args); }
+export function updateNavigationOwner(...args) { return MaweNavPreview.updateNavigationOwner(...args); }
+export function hideCueSplitPreview(...args) { return MaweNavPreview.hideCueSplitPreview(...args); }
+export function scheduleCueSplitPreview(...args) { return MaweNavPreview.scheduleCueSplitPreview(...args); }
+export function waveformPointerContext(...args) { return MaweNavPreview.waveformPointerContext(...args); }
+export function keyboardOperationReference(...args) { return MaweNavPreview.keyboardOperationReference(...args); }
+export function getPointerBoundaryEditTarget(...args) { return MaweNavPreview.getPointerBoundaryEditTarget(...args); }
+export function handlePointerBoundaryShortcut(...args) { return MaweNavPreview.handlePointerBoundaryShortcut(...args); }
+export function hoveredSelectedCueContext(...args) { return MaweNavPreview.hoveredSelectedCueContext(...args); }

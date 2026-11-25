@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { AsrGapRemoveCore } from '../web/shared/gap-remove-core.js';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture({ mediaControls = false } = {}) {
@@ -24,7 +24,7 @@ function fixture({ mediaControls = false } = {}) {
     setTimeout(fn, delay) { timers.set(++nextTimer, { fn, delay }); return nextTimer; },
     clearTimeout(id) { timers.delete(id); } };
   context.window = context;
-  vm.runInNewContext(readFileSync(new URL('../web/shared/gap-remove-core.js', import.meta.url), 'utf8'), context);
+  context.AsrGapRemoveCore = AsrGapRemoveCore;
   vm.runInNewContext(initModuleSource('editor/media/editor-gap-playback.js'), context);
   const api = context.MaweGapPlayback;
   if (mediaControls) {

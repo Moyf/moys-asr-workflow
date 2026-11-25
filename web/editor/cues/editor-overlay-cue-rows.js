@@ -1,3 +1,11 @@
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweCueElements } from './editor-cue-elements.js';
+import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
+import { MaweTextCleanup } from './editor-text-cleanup.js';
 import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { showOverlayContextMenu } from '../ui/editor-context-menus.js';
 import { getOverlayTrack } from './overlay-track.js';

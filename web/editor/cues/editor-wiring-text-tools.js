@@ -1,3 +1,15 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweTextProcess } from './editor-text-process.js';
+import { MaweTimedTextEdit } from './editor-timed-text-edit.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweTextToolsWiring() {
 // 「左右添加字符」自定义弹窗：左右两个输入框原样插入到选中字幕两端。
 document.getElementById('wrap-chars-cancel')?.addEventListener('click', MaweTextProcess.closeWrapCharsModal);
@@ -161,7 +173,7 @@ MaweDom.timedTextEditShowDisabledToggle?.addEventListener('change', () => {
   const nextShowDisabled = MaweDom.timedTextEditShowDisabledToggle.checked;
   if (nextShowDisabled === MaweDom.timedTextEditDraft.showDisabled) return;
   if (MaweTimedTextEdit.timedTextEditHasUnappliedChanges()
-      && !window.confirm('切换显示范围会丢弃当前未应用的文本修改，是否继续？')) {
+      && !editorDialogs.confirm('切换显示范围会丢弃当前未应用的文本修改，是否继续？')) {
     MaweDom.timedTextEditShowDisabledToggle.checked = MaweDom.timedTextEditDraft.showDisabled;
     return;
   }
@@ -170,7 +182,7 @@ MaweDom.timedTextEditShowDisabledToggle?.addEventListener('change', () => {
 MaweDom.timedTextEditTrack?.addEventListener('change', () => {
   if (!MaweDom.timedTextEditDraft) return;
   if (MaweTimedTextEdit.timedTextEditHasUnappliedChanges()) {
-    const confirmed = window.confirm('切换轨道会丢弃当前未应用的文本修改，是否继续？');
+    const confirmed = editorDialogs.confirm('切换轨道会丢弃当前未应用的文本修改，是否继续？');
     if (!confirmed) {
       MaweDom.timedTextEditTrack.value = MaweDom.timedTextEditDraft.kind;
       return;
@@ -222,17 +234,17 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
     return;
   }
   const effectiveTexts = MaweTimedTextEdit.timedTextEditEffectiveTexts();
-  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
+  const nextSegments = AsrEditorUtils.applyTimedTextEdit(
     draft.sourceSegments,
     effectiveTexts,
-    { reservedSegments: [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)], rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
+    { reservedSegments: [...AsrEditorUtils.iterSegments(MaweBoot.DATA)], rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
   );
   if (!nextSegments) {
     MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
     return;
   }
   return MaweCommands.run('纯文本编辑', (command) => {
-    const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
+    const dirtyFlags = AsrEditorUtils.timedTextEditDirtyFlags(
       draft.sourceSegments,
       nextSegments,
       draft.report,

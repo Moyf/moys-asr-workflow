@@ -2,6 +2,19 @@
 // 波形轨道与「标记与区段」管理窗都只调用本模块；撤销/重做（markers 历史
 // kind）、保存脏标记与视图刷新统一走 commitMarkerChange 一个入口，
 // 保证拖动、面板编辑、撤销恢复三条路径行为一致。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweGapPlayback } from '../media/editor-gap-playback.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweMarkersPanel } from './editor-markers-panel.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweMarkerEditing;
 export function initMaweMarkerEditing() {
 (function initMaweMarkerEditing(global) {
   'use strict';
@@ -21,7 +34,7 @@ export function initMaweMarkerEditing() {
 
 
   function markerUtils() {
-    return window.AsrEditorUtils;
+    return AsrEditorUtils;
   }
 
   // DATA.markers 始终是规范化数组；旧工程/异常输入也在这里兜底。
@@ -58,7 +71,7 @@ export function initMaweMarkerEditing() {
     MaweHistory.pushMarkersUndo(label, before);
     MaweState.changes.markersDirty = true;
     refreshWaveformMarkers();
-    global.MaweMarkersPanel?.render?.();
+    MaweMarkersPanel?.render?.();
     MaweViewUpdates.invalidate({ save: true });
     return getMarkers();
   }
@@ -220,7 +233,7 @@ export function initMaweMarkerEditing() {
     if (player && Number.isFinite(Number(player.currentTime))) {
       MaweMediaPlayback.setPlayerCurrentTime(marker.start / 1000);
     }
-    if (play && player?.paused && !global.MaweGapPlayback?.pendingPlayback) {
+    if (play && player?.paused && !MaweGapPlayback?.pendingPlayback) {
       const promise = player.play?.();
       promise?.catch?.(() => {});
     }
@@ -233,7 +246,7 @@ export function initMaweMarkerEditing() {
   function afterExternalMarkersChange() {
     markerList();
     refreshWaveformMarkers();
-    global.MaweMarkersPanel?.render?.();
+    MaweMarkersPanel?.render?.();
   }
 
 
@@ -247,7 +260,7 @@ export function initMaweMarkerEditing() {
       quick.setAttribute('aria-pressed', String(enabled));
     }
     if (MaweDom.markersManageButton) MaweDom.markersManageButton.hidden = !enabled;
-    const mirror = document.getElementById('project-marker-track-toggle');
+    const mirror = /** @type {HTMLInputElement} */ (document.getElementById('project-marker-track-toggle'));
     if (mirror) mirror.checked = enabled;
     MaweCoreState.waveformEditor?.refreshMarkerOverlay();
   }
@@ -269,7 +282,7 @@ export function initMaweMarkerEditing() {
 
 
 
-  global.MaweMarkerEditing = Object.freeze({
+  MaweMarkerEditing = Object.freeze({
     getMarkers,
     findMarker,
     addMarkerAt,
@@ -288,20 +301,21 @@ export function initMaweMarkerEditing() {
     enableForProjectMarkers,
     pendingReviewCount,
   });
+
 })(window);
 }
 
-export function getMarkers(...args) { return window.MaweMarkerEditing.getMarkers(...args); }
-export function findMarker(...args) { return window.MaweMarkerEditing.findMarker(...args); }
-export function addMarkerAt(...args) { return window.MaweMarkerEditing.addMarkerAt(...args); }
-export function addMarkerAtCurrentTime(...args) { return window.MaweMarkerEditing.addMarkerAtCurrentTime(...args); }
-export function createMarkerRegion(...args) { return window.MaweMarkerEditing.createMarkerRegion(...args); }
-export function moveMarker(...args) { return window.MaweMarkerEditing.moveMarker(...args); }
-export function resizeMarker(...args) { return window.MaweMarkerEditing.resizeMarker(...args); }
-export function updateMarkerFields(...args) { return window.MaweMarkerEditing.updateMarkerFields(...args); }
-export function deleteMarker(...args) { return window.MaweMarkerEditing.deleteMarker(...args); }
-export function deleteMarkers(...args) { return window.MaweMarkerEditing.deleteMarkers(...args); }
-export function locateMarker(...args) { return window.MaweMarkerEditing.locateMarker(...args); }
-export function afterExternalMarkersChange(...args) { return window.MaweMarkerEditing.afterExternalMarkersChange(...args); }
-export function isEditingEnabled(...args) { return window.MaweMarkerEditing?.isEditingEnabled?.(...args); }
-export function enableForProjectMarkers(...args) { return window.MaweMarkerEditing?.enableForProjectMarkers?.(...args); }
+export function getMarkers(...args) { return MaweMarkerEditing.getMarkers(...args); }
+export function findMarker(...args) { return MaweMarkerEditing.findMarker(...args); }
+export function addMarkerAt(...args) { return MaweMarkerEditing.addMarkerAt(...args); }
+export function addMarkerAtCurrentTime(...args) { return MaweMarkerEditing.addMarkerAtCurrentTime(...args); }
+export function createMarkerRegion(...args) { return MaweMarkerEditing.createMarkerRegion(...args); }
+export function moveMarker(...args) { return MaweMarkerEditing.moveMarker(...args); }
+export function resizeMarker(...args) { return MaweMarkerEditing.resizeMarker(...args); }
+export function updateMarkerFields(...args) { return MaweMarkerEditing.updateMarkerFields(...args); }
+export function deleteMarker(...args) { return MaweMarkerEditing.deleteMarker(...args); }
+export function deleteMarkers(...args) { return MaweMarkerEditing.deleteMarkers(...args); }
+export function locateMarker(...args) { return MaweMarkerEditing.locateMarker(...args); }
+export function afterExternalMarkersChange(...args) { return MaweMarkerEditing.afterExternalMarkersChange(...args); }
+export function isEditingEnabled(...args) { return MaweMarkerEditing?.isEditingEnabled?.(...args); }
+export function enableForProjectMarkers(...args) { return MaweMarkerEditing?.enableForProjectMarkers?.(...args); }

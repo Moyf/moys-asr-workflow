@@ -1,10 +1,15 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweStickerPreviewWiring } from './editor-wiring-sticker-preview.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweStickerOverlay;
 export function initMaweStickerOverlay() {
 'use strict';
 
 // 表情包浮层：叠加层渲染与区间缓存。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweStickerOverlay 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweStickerOverlay(global) {
   'use strict';
 
@@ -57,7 +62,7 @@ export function initMaweStickerOverlay() {
 
 
   function rebuildStickerIntervals(surface = 'preview') {
-  const selected = window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', surface)
+  const selected = AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', surface)
     .filter(track => surface !== 'preview'
       || (track.role !== 'main' || MaweDom.overlayToggle?.checked !== false)
         && (track.role !== 'secondary' || MaweDom.extensionOverlayToggle?.checked !== false));
@@ -84,7 +89,7 @@ export function initMaweStickerOverlay() {
     });
   };
   if (MaweBoot.DATA.subtitle_groups) {
-    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: selected.map(track => track.id) })) {
+    for (const range of AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: selected.map(track => track.id) })) {
       if (!range.enabled) continue;
       intervals.push({ ...range, key: range.id });
       boundaries.add(range.start); boundaries.add(range.end);
@@ -101,7 +106,7 @@ export function initMaweStickerOverlay() {
   activeStickerCacheTime = -Infinity;
   activeStickerCacheUntil = -Infinity;
   activeStickerCache = [];
-  window.MaweStickerPreviewWiring.activeStickerHasOverlay = false;
+  MaweStickerPreviewWiring.activeStickerHasOverlay = false;
   return stickerIntervals;
 }
 
@@ -122,7 +127,7 @@ export function initMaweStickerOverlay() {
   });
   // 当前时刻是否有叠加轨表情包在显示（同名素材在主轨同时显示时也算——
   // 预览层展示的就是这张图，叠加归属用于决定预览内容区是否加高）。
-  window.MaweStickerPreviewWiring.activeStickerHasOverlay = stickerIntervals.some((interval) => (
+  MaweStickerPreviewWiring.activeStickerHasOverlay = stickerIntervals.some((interval) => (
     (interval.hasOverlay || interval.track === 'overlay')
     && time >= interval.start && time < interval.end
     && found.has(interval.key)
@@ -164,10 +169,10 @@ export function initMaweStickerOverlay() {
   const stickers = activeStickersAt(tMs);
   // 签名带上叠加归属：同名素材的显示集合不变但叠加状态翻转时也要切换 class。
   const sources = stickers.map(sticker => ({ sticker, url: MaweSelection.stickerUrl(sticker) }));
-  const signature = JSON.stringify([window.MaweStickerPreviewWiring.activeStickerHasOverlay,
+  const signature = JSON.stringify([MaweStickerPreviewWiring.activeStickerHasOverlay,
     sources.map(({ sticker, url }) => [url, sticker.name])]);
   if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
-  stickerOverlayContent.classList.toggle('has-overlay-sticker', window.MaweStickerPreviewWiring.activeStickerHasOverlay);
+  stickerOverlayContent.classList.toggle('has-overlay-sticker', MaweStickerPreviewWiring.activeStickerHasOverlay);
   stickerOverlayContent.replaceChildren(...sources.map(({ sticker, url }) => {
     const img = document.createElement('img');
     img.src = url;
@@ -179,7 +184,7 @@ export function initMaweStickerOverlay() {
   renderedStickerSignature = signature;
 }
 
-  global.MaweStickerOverlay = Object.freeze({
+  MaweStickerOverlay = Object.freeze({
     get stickerAssetRevision() { return stickerAssetRevision; },
     set stickerAssetRevision(v) { stickerAssetRevision = v; },
     stickerOverlayLayer,
@@ -202,7 +207,7 @@ export function initMaweStickerOverlay() {
     set activeStickerCache(v) { activeStickerCache = v; },
     // 最近一次 activeStickersAt 计算的叠加轨显示标记；实际画面窗口复用同一
     // 判断决定内容区加高 class（与 renderStickerOverlay 相同的签名输入）。
-    get activeStickerHasOverlay() { return window.MaweStickerPreviewWiring.activeStickerHasOverlay; },
+    get activeStickerHasOverlay() { return MaweStickerPreviewWiring.activeStickerHasOverlay; },
     get renderedStickerSignature() { return renderedStickerSignature; },
     set renderedStickerSignature(v) { renderedStickerSignature = v; },
     get renderedStickerOverlayEnabled() { return renderedStickerOverlayEnabled; },
@@ -211,5 +216,6 @@ export function initMaweStickerOverlay() {
     activeStickersAt,
     renderStickerOverlay
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

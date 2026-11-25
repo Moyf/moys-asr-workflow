@@ -376,15 +376,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
-        markers = (
-            r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
-            r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
-            r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
-            r'\bwindow\.MAWE_ONBOARDING\s*=',
-        )
-        for marker in markers:
-            self.assertRegex(page, marker)
-        self.assertIn('window.AsrWaveform=', page)
+        self.assertNotRegex(page, r'\bwindow\.(?:MAWE_I18N|MAWE_EDITOR_BRIDGE|MAWE_ONBOARDING|AsrWaveform|AsrGapRemoveCore)\s*=')
 
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:

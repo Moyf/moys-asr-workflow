@@ -1,8 +1,12 @@
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweMediaStep;
 export function initMediaStepModule() {
 // 媒体步进：seek 步长输入的钳制与刷新。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMediaStep 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweMediaStep(global) {
   'use strict';
 
@@ -26,7 +30,7 @@ export function initMediaStepModule() {
   function commitMediaSeekStepInput(value, { rewriteInput = true } = {}) {
     const frameMode = MaweTimeline.timelineIsFrameMode();
     const normalized = frameMode
-      ? window.AsrEditorUtils.clampTimelineFrameStep(value, 1)
+      ? AsrEditorUtils.clampTimelineFrameStep(value, 1)
       : MaweSettings.clampMediaSeekStepMs(value);
     if (rewriteInput && MaweDom.mediaSeekStepInput) MaweDom.mediaSeekStepInput.value = String(normalized);
     MaweDom.mediaSeekInputLastValue = normalized;
@@ -43,7 +47,7 @@ export function initMediaStepModule() {
   function adjustMediaSeekStepInput(direction) {
     if (!MaweDom.mediaSeekStepInput) return;
     if (MaweTimeline.timelineIsFrameMode()) {
-      const current = window.AsrEditorUtils.clampTimelineFrameStep(MaweDom.mediaSeekStepInput.value, 1);
+      const current = AsrEditorUtils.clampTimelineFrameStep(MaweDom.mediaSeekStepInput.value, 1);
       commitMediaSeekStepInput(Math.min(240, Math.max(1, current + (direction < 0 ? -1 : 1))));
       return;
     }
@@ -51,10 +55,11 @@ export function initMediaStepModule() {
     commitMediaSeekStepInput(MaweSettings.nextMediaSeekStepValue(current, direction));
   }
 
-  global.MaweMediaStep = Object.freeze({
+  MaweMediaStep = Object.freeze({
     refreshMediaSeekInputStep,
     commitMediaSeekStepInput,
     adjustMediaSeekStepInput
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

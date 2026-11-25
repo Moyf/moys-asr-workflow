@@ -14,6 +14,8 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
   page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(`console: ${msg.text()}`); });
 
+  const {exposeChangelogFixture} = await import('../../tests/helpers/changelog-browser-fixture.mjs');
+  await exposeChangelogFixture(page, url);
   await page.goto(url);
   await page.evaluate(async (clText) => {
     await loadClText(clText, '🧪 冒烟测试');

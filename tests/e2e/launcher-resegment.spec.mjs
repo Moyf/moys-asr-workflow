@@ -1,9 +1,10 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
+const launcherUrl = launcherFixtureUrl();
 
 test('resegment exposes optional limits, persists the plan and measures field spacing', async ({ page }) => {
   await page.goto(launcherUrl);

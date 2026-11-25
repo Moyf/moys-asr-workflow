@@ -1,3 +1,14 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweProjectLoad } from '../io/editor-project-load.js';
+import { MaweServerSave } from '../io/editor-server-save.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweGapPlayback } from './editor-gap-playback.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+export let MaweAudioProcessing;
 export function initEditorAudioProcessing() {
 // Project gain is separate from the player's listening volume. Loudness results
 // belong to a live server/media binding and are deliberately never persisted.
@@ -12,7 +23,7 @@ export function initEditorAudioProcessing() {
   let expandedGain = false, customTarget = false;
   let gapPlaybackMuted = false;
   const el = id => document.getElementById(id);
-  const tr = text => global.MAWE_I18N?.translateText?.(text) || text;
+  const tr = text => MAWE_I18N?.translateText?.(text) || text;
   const finite = value => typeof value === 'number' && Number.isFinite(value);
   const clamp = value => Math.min(MAX_GAIN, Math.max(MIN_GAIN, value));
 
@@ -35,7 +46,7 @@ export function initEditorAudioProcessing() {
   function snapshot() {
     const config = MaweBoot.SERVER_CONFIG;
     return { config, player: MaweCoreState.player, source: sourceOf(MaweCoreState.player),
-      epoch: global.MaweProjectLoad?.projectBindingEpoch, generation: MaweState.projectLoadGeneration,
+      epoch: MaweProjectLoad?.projectBindingEpoch, generation: MaweState.projectLoadGeneration,
       bindingGeneration: config?.bindingGeneration, sourceMediaId: config?.sourceMediaId,
       requestToken: config?.requestToken, revision };
   }
@@ -69,7 +80,7 @@ export function initEditorAudioProcessing() {
   async function applyPreview({ gesture = false } = {}) {
     const player = MaweCoreState.player;
     if (!player || (settings().gain_db === 0 && !routes.has(player)
-        && !global.MaweGapPlayback?.needsAudioGate(player))) return;
+        && !MaweGapPlayback?.needsAudioGate(player))) return;
     try {
       const source = new URL(sourceOf(player), global.location.href);
       if (source.protocol !== 'blob:' && !(source.origin === global.location.origin && source.pathname === '/media')) {
@@ -104,7 +115,7 @@ export function initEditorAudioProcessing() {
       activePlayer = player;
       route.gain.gain.value = 10 ** (settings().gain_db / 20);
       previewError = '';
-      global.MaweGapPlayback?.refresh(player);
+      MaweGapPlayback?.refresh(player);
     } catch (error) {
       previewError = `${tr('增益预览未生效')}：${error?.message || error}`;
     }
@@ -131,13 +142,13 @@ export function initEditorAudioProcessing() {
     // Drain the old MediaElementSource queue while the element is paused and
     // the gate is closed. Waiting after resuming would trim retained speech.
     const until = context.currentTime + Math.max(.02, Number(context.baseLatency) || 0) + 256 / (Number(context.sampleRate) || 48000);
-    return new Promise(resolve => {
+    return /** @type {Promise<void>} */ (new Promise(resolve => {
       const check = () => {
         if (context.state !== 'running' || context.currentTime >= until) { resolve(); return; }
         global.setTimeout(check, Math.max(1, (until - context.currentTime) * 1000));
       };
       check();
-    });
+    }));
   }
   function bindPlayer(player) {
     if (activePlayer !== player) {
@@ -164,7 +175,7 @@ export function initEditorAudioProcessing() {
   }
   function commitGainGesture() {
     if (pendingGainUndo && JSON.stringify(pendingGainUndo) !== JSON.stringify(settings())) {
-      global.MaweHistory?.commitRecord({ kind: 'audio_processing', label: tr('工程音量'), audioProcessing: pendingGainUndo });
+      MaweHistory?.commitRecord({ kind: 'audio_processing', label: tr('工程音量'), audioProcessing: pendingGainUndo });
     }
     pendingGainUndo = null;
   }
@@ -173,12 +184,12 @@ export function initEditorAudioProcessing() {
     if (JSON.stringify(previous) !== JSON.stringify(value)) {
       if (recordHistory) {
         commitGainGesture();
-        global.MaweHistory?.commitRecord({ kind: 'audio_processing', label: tr('工程音量'), audioProcessing: previous });
+        MaweHistory?.commitRecord({ kind: 'audio_processing', label: tr('工程音量'), audioProcessing: previous });
       }
       MaweBoot.DATA.audio_processing = value;
       MaweState.changes.audioProcessingDirty = true;
-      global.MaweServerSave?.configureServerSaveControls();
-      global.MaweServerSave?.scheduleAutoSave();
+      MaweServerSave?.configureServerSaveControls();
+      MaweServerSave?.scheduleAutoSave();
     }
     if (activeRoute && activePlayer === MaweCoreState.player) activeRoute.gain.gain.value = 10 ** (value.gain_db / 20);
     void applyPreview({ gesture });
@@ -194,12 +205,12 @@ export function initEditorAudioProcessing() {
     if (gain !== null) change({ gain_db: gain }, { gesture: true });
   }
   function delay(signal) {
-    return new Promise((resolve, reject) => {
+    return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
       const abort = () => { global.clearTimeout(timer); reject(new DOMException('Cancelled', 'AbortError')); };
       const timer = global.setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, 500);
       signal.addEventListener('abort', abort, { once: true });
       if (signal.aborted) abort();
-    });
+    }));
   }
   async function measure({ force = false } = {}) {
     if (!serverSource() || controller) { render(); return; }
@@ -257,17 +268,17 @@ export function initEditorAudioProcessing() {
     const current = settings(), measured = measurementState === 'measured';
     const outsideNormalRange = current.gain_db < NORMAL_MIN_GAIN || current.gain_db > NORMAL_MAX_GAIN;
     if (outsideNormalRange) expandedGain = true;
-    el('audio-gain').min = String(expandedGain ? MIN_GAIN : NORMAL_MIN_GAIN);
-    el('audio-gain').max = String(expandedGain ? MAX_GAIN : NORMAL_MAX_GAIN);
-    el('audio-gain').value = String(current.gain_db);
+    /** @type {HTMLInputElement} */ (el('audio-gain')).min = String(expandedGain ? MIN_GAIN : NORMAL_MIN_GAIN);
+    /** @type {HTMLInputElement} */ (el('audio-gain')).max = String(expandedGain ? MAX_GAIN : NORMAL_MAX_GAIN);
+    /** @type {HTMLInputElement} */ (el('audio-gain')).value = String(current.gain_db);
     el('audio-gain-value').textContent = `${current.gain_db > 0 ? '+' : ''}${current.gain_db.toFixed(1)} dB`;
-    el('audio-gain-expanded').checked = expandedGain;
-    el('audio-gain-expanded').disabled = outsideNormalRange;
+    /** @type {HTMLInputElement} */ (el('audio-gain-expanded')).checked = expandedGain;
+    /** @type {HTMLInputElement} */ (el('audio-gain-expanded')).disabled = outsideNormalRange;
     el('audio-gain-range-note').hidden = !outsideNormalRange;
     const useCustomTarget = customTarget || !TARGET_PRESETS.includes(current.target_lufs);
-    el('audio-target').value = useCustomTarget ? 'custom' : String(current.target_lufs);
+    /** @type {HTMLSelectElement} */ (el('audio-target')).value = useCustomTarget ? 'custom' : String(current.target_lufs);
     el('audio-target-custom-control').hidden = !useCustomTarget;
-    if (document.activeElement !== el('audio-target-custom')) el('audio-target-custom').value = String(current.target_lufs);
+    if (document.activeElement !== el('audio-target-custom')) /** @type {HTMLInputElement} */ (el('audio-target-custom')).value = String(current.target_lufs);
     const volume = MaweCoreState.player?.volume;
     el('audio-listening-volume-value').textContent = `${Math.round((finite(volume) ? volume : 1) * 100)}%`;
     let status = serverSource() ? tr('尚未测量') : tr('响度测量需要从启动器打开关联媒体的工程');
@@ -281,8 +292,8 @@ export function initEditorAudioProcessing() {
     el('audio-adjusted-lufs').textContent = measured ? `${(measurement.integratedLufs + current.gain_db).toFixed(1)} LUFS` : '—';
     el('audio-target-difference').textContent = measured ? `${(measurement.integratedLufs + current.gain_db - current.target_lufs).toFixed(1)} LU` : '—';
     el('audio-true-peak').textContent = measured ? `${(measurement.truePeakDbtp + current.gain_db).toFixed(1)} dBTP` : '—';
-    el('audio-normalize').disabled = !measured;
-    el('audio-measure').disabled = !serverSource() || measurementState === 'measuring';
+    /** @type {HTMLButtonElement} */ (el('audio-normalize')).disabled = !measured;
+    /** @type {HTMLButtonElement} */ (el('audio-measure')).disabled = !serverSource() || measurementState === 'measuring';
     let warning = '';
     if (measured && measurement.truePeakDbtp + current.gain_db > PEAK_CEILING + 0.01) {
       warning = tr('预计峰值超过 -1 dBTP，可能削波；请降低增益。');
@@ -300,31 +311,31 @@ export function initEditorAudioProcessing() {
     customTarget = !TARGET_PRESETS.includes(settings().target_lufs);
     el('audio-gain').addEventListener('input', event => {
       if (!pendingGainUndo) pendingGainUndo = settings();
-      change({ gain_db: Number(event.target.value) }, { gesture: true, recordHistory: false });
+      change({ gain_db: Number(/** @type {HTMLInputElement} */ (event.target).value) }, { gesture: true, recordHistory: false });
     });
     el('audio-gain').addEventListener('change', commitGainGesture);
     el('audio-gain').addEventListener('blur', commitGainGesture);
     el('audio-gain-down').addEventListener('click', () => change({ gain_db: Math.max(expandedGain ? MIN_GAIN : NORMAL_MIN_GAIN, settings().gain_db - 1) }, { gesture: true }));
     el('audio-gain-up').addEventListener('click', () => change({ gain_db: Math.min(expandedGain ? MAX_GAIN : NORMAL_MAX_GAIN, settings().gain_db + 1) }, { gesture: true }));
-    el('audio-gain-expanded').addEventListener('change', event => { expandedGain = event.target.checked; render(); });
+    el('audio-gain-expanded').addEventListener('change', event => { expandedGain = /** @type {HTMLInputElement} */ (event.target).checked; render(); });
     el('audio-gain').addEventListener('pointerdown', () => { void applyPreview({ gesture: true }); });
     el('audio-target').addEventListener('change', event => {
-      customTarget = event.target.value === 'custom';
+      customTarget = /** @type {HTMLSelectElement} */ (event.target).value === 'custom';
       if (customTarget) {
         render();
         el('audio-target-custom').focus();
-        el('audio-target-custom').select();
-      } else change({ target_lufs: Number(event.target.value) });
+        /** @type {HTMLInputElement} */ (el('audio-target-custom')).select();
+      } else change({ target_lufs: Number(/** @type {HTMLInputElement} */ (event.target).value) });
     });
     el('audio-target-custom').addEventListener('change', event => {
-      const value = event.target.valueAsNumber;
+      const value = /** @type {HTMLInputElement} */ (event.target).valueAsNumber;
       if (finite(value) && value >= -70 && value <= 0) change({ target_lufs: value });
-      event.target.value = String(settings().target_lufs);
+      /** @type {HTMLInputElement} */ (event.target).value = String(settings().target_lufs);
     });
     el('audio-normalize').addEventListener('click', normalizeToTarget);
     el('audio-gain-reset').addEventListener('click', () => change({ gain_db: 0 }, { gesture: true }));
     el('audio-measure').addEventListener('click', () => { void measure({ force: true }); });
-    const floatingPanel = global.MaweFloatingPanel.createFloatingPanel({
+    const floatingPanel = MaweFloatingPanel.createFloatingPanel({
       panel: el('audio-processing-panel'), dragHandle: el('audio-processing-drag-handle'),
       manageButton: el('audio-processing-toggle'), anchorButton: el('audio-processing-toggle'),
       positionKey: 'mawe.audioProcessingPanelPosition',
@@ -337,9 +348,10 @@ export function initEditorAudioProcessing() {
     bindPlayer(MaweCoreState.player);
     render();
   }
-  global.MaweAudioProcessing = Object.freeze({ normalize, settings, loadProject, bindPlayer, change,
+  MaweAudioProcessing = Object.freeze({ normalize, settings, loadProject, bindPlayer, change,
     normalizationGain, normalizeToTarget, measure, invalidateMeasurement, applyPreview, render, init,
     setGapPlaybackMuted, scheduleGapPlaybackMute, waitForGapPlaybackSilence,
     get measurement() { return measurement; }, get measurementState() { return measurementState; } });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

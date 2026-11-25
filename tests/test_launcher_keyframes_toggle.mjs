@@ -28,6 +28,7 @@ function fixture() {
   const context = vm.createContext({
     document: {getElementById: control},
     window: {},
+    launcherRuntime: {},
     clearTimeout() {}, setTimeout() {},
     Option: class {
       constructor(label, value) { this.label = label; this.value = value; }

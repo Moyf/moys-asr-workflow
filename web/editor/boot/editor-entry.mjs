@@ -1,14 +1,11 @@
-// The alignment UI and Launcher also load these as classic scripts.
-// Gap data and the tooltip API expose facades; listeners start below.
-import '../../shared/gap-remove-core.js';
-import '../../shared/tooltip.js';
+import { initMaweTooltip } from '../../shared/tooltip.js';
 
-import { initMaweBoot } from './editor-boot.js';
+import { initMaweBoot, MaweBoot } from './editor-boot.js';
 import { initMaweState } from '../state/editor-state.js';
 import { initMaweViewUpdates } from '../state/editor-view-updates.js';
 import { initMaweCommands } from '../state/editor-commands.js';
-import { initEditorHost } from './editor-host.js';
-import { initEditorUtils } from '../../shared/editor-utils.js';
+import { initEditorHost, MaweHost } from './editor-host.js';
+import { initEditorUtils, AsrEditorUtils } from '../../shared/editor-utils.js';
 import { initProjectValidation } from '../../shared/utils/project-validation.js';
 import { initEditorI18n } from '../../shared/editor-i18n.js';
 import { initWaveform } from '../media/waveform.js';
@@ -18,7 +15,7 @@ import { initMaweSettings } from '../state/editor-settings.js';
 import { initMaweProjectSettings } from '../state/editor-project-settings.js';
 import { initMaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
 import { initMaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
-import { initMaweColors } from '../styles/editor-colors.js';
+import { initMaweColors, MaweColors } from '../styles/editor-colors.js';
 import { initMaweDom } from '../ui/editor-dom.js';
 import { initMaweCuePanelState } from '../state/editor-cue-panel-state.js';
 import { initMaweHistory } from '../state/editor-history.js';
@@ -92,7 +89,7 @@ import { initMaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
 import { initMaweSpeakerManager } from '../styles/editor-speaker-manager.js';
 import { initMaweBootDiagnostics } from './editor.js';
 import { initOverlayTransferWiring } from '../cues/editor-wiring-overlay-transfer.js';
-import { initMaweAssFontAliases } from '../styles/editor-wiring-ass-font-aliases.js';
+import { initMaweAssFontAliases, MaweAssFontAliases } from '../styles/editor-wiring-ass-font-aliases.js';
 import { initMaweProjectFontCheck } from '../styles/editor-project-font-check.js';
 import { initAssStorageWiring } from '../styles/editor-wiring-ass-storage.js';
 import { initMaweInitialConfigWiring } from './editor-wiring-initial-config.js';
@@ -147,10 +144,15 @@ function initializeEditorRuntime() {
   initMaweViewUpdates();
   initMaweCommands();
   initEditorHost();
-  initEditorUtils();
-  initProjectValidation();
+  initEditorUtils({
+    getNavigator: () => MaweHost.runtime.getNavigator(),
+    getProject: () => MaweBoot.DATA,
+    getColorByName: () => MaweColors?.COLOR_BY_NAME,
+    getAssFontAliases: () => MaweAssFontAliases,
+  });
+  initProjectValidation(AsrEditorUtils.importProject);
   initEditorI18n();
-  window.MaweTooltip.start();
+  initMaweTooltip();
   initWaveform();
 }
 

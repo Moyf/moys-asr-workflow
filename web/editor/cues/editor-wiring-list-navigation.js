@@ -1,3 +1,9 @@
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
+import { MaweInlineEdit } from './editor-inline-edit.js';
+import { MaweKeyboardTargets } from './editor-keyboard-targets.js';
+import { MaweNavPreview } from './editor-nav-preview.js';
+import { MaweSelection } from './editor-selection.js';
 export function initMaweListNavigationWiring() {
 // === 滚动 ===
 

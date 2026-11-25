@@ -1,7 +1,7 @@
-/* 用当前 CL 对拍 cl-lib.js：解析往返必须无损；全部正式版归档必须与 prepare_release_notes.py 产物逐字节一致。 */
+/* 用当前 CL 对拍 cl-lib.mjs：解析往返必须无损；全部正式版归档必须与 prepare_release_notes.py 产物逐字节一致。 */
 const fs = require('node:fs');
 const path = require('node:path');
-const CLScratch = require('./cl-lib.js');
+const CLScratch = require('./cl-lib.mjs').createChangelogLibrary();
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const clText = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');

@@ -1,3 +1,11 @@
+import { AsrWaveform } from '../media/waveform.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweColors } from '../styles/editor-colors.js';
+import { MaweBoot } from './editor-boot.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweInitialConfigWiring;
 export function initMaweInitialConfigWiring() {
 
 
@@ -13,9 +21,9 @@ export function initMaweInitialConfigWiring() {
 
 
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
-window.AsrEditorUtils.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
+AsrEditorUtils.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
 // 「特殊文本规则」同步给字词块归位的 MASS 成对检测（与 assSpecialSymbolRule 同源）。
-window.AsrEditorUtils.setMassSymbolRule(MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule);
+AsrEditorUtils.setMassSymbolRule(MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule);
 
 
 
@@ -57,25 +65,12 @@ window.AsrEditorUtils.setMassSymbolRule(MaweSettings.EDITOR_SETTINGS.assSpecialS
 
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 
-// 标记颜色：5 种基础色，用于给字幕分组着色。
-// 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
-// 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
-// 这里只补充编辑器 UI 用的中文标签。
-
-if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
-  throw new Error('调色板未注入：缺少 window.ASR_EDITOR_PALETTE（检查 edit.py / serve.py 渲染管线）');
-}
+AsrWaveform?.setColorPalette?.(MaweColors.COLOR_PALETTE);
 
 
 
 
-
-window.AsrWaveform?.setColorPalette?.(MaweColors.COLOR_PALETTE);
-
-
-
-
-const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_PLAY_RES_Y) || 1080;
+const ASS_PREVIEW_REFERENCE_HEIGHT = Number(AsrEditorUtils.ASS_REFERENCE_PLAY_RES_Y) || 1080;
 
 
 
@@ -158,9 +153,10 @@ if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => Maw
 if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
 MaweHistory.updateUndoRedoButtons();
 
-// G07：init 化模块经 window 延迟取用本文件的常量；classic 调用方不受影响。
-window.MaweInitialConfigWiring = window.MaweInitialConfigWiring || Object.freeze({
+MaweInitialConfigWiring = Object.freeze({
   ASS_PREVIEW_REFERENCE_HEIGHT,
 });
+
+
 
 }

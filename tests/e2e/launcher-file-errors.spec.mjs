@@ -1,14 +1,14 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
 for (const language of ['zh', 'en']) {
   test(`file failures show actionable guidance and preserve raw report (${language})`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: language === 'zh' ? 900 : 760, height: 880 });
-    await page.goto(`file://${launcherPath}`);
+    await page.goto(launcherFixtureUrl());
     await completeStaticLauncherDiscovery(page);
     await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
     if (language === 'en') {

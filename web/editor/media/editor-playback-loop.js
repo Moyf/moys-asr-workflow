@@ -1,14 +1,34 @@
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweExportSrt } from '../io/editor-export-srt.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweAssStorageWiring } from '../styles/editor-wiring-ass-storage.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweGapPlayback } from './editor-gap-playback.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MaweStickerOverlay } from './editor-sticker-overlay.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MawePlaybackLoop;
 import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
 import { applyAssSubtitlePreview, restoreCssSubtitlePreview } from '../styles/editor-wiring-ass-preview.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMawePlaybackLoop() {
 'use strict';
 
 // 播放循环：活动字幕追踪、预览刷新与统一渲染帧。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MawePlaybackLoop 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMawePlaybackLoop(global) {
   'use strict';
 
@@ -49,7 +69,7 @@ export function initMawePlaybackLoop() {
   function findActive(tMs) {
     // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
     // 前一条字幕作为当前项，和原有列表高亮语义一致。
-    return findActiveSegmentIndex(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, tMs);
+    return findActiveSegmentIndex(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, tMs);
   }
 
 
@@ -84,7 +104,7 @@ export function initMawePlaybackLoop() {
       return;
     }
     MaweCuePanelState.gapPreviewRange = { start: gap.start, end: gap.end };
-    window.MaweGapPlayback?.refresh();
+    MaweGapPlayback?.refresh();
     MaweHint.flashHint('正在预览此空隙；播放头离开后恢复跳过');
   }
 
@@ -117,7 +137,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
 
   function applyGapPlaybackSkip(skippedGap, player) {
-    return window.MaweGapPlayback?.update(player, skippedGap) === true;
+    return MaweGapPlayback?.update(player, skippedGap) === true;
   }
 
   function updatePlaybackFrame() {
@@ -126,7 +146,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
       MaweCuePanelState.gapPreviewRange = null;
     }
     const gapState = MaweGapRemoveData.getGapRemoveData(false);
-    const skippedGap = window.AsrGapRemoveCore.getGapPlaybackSkip(
+    const skippedGap = AsrGapRemoveCore.getGapPlaybackSkip(
       MaweGapRemoveData.getRemovedGapRanges(),
       tMs,
       {
@@ -148,12 +168,12 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
   function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
-  const sourceSegment = idx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null;
+  const sourceSegment = idx >= 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null;
   const seg = sourceSegment
     ? MaweExportSrt.cleanupPreviewSegment(sourceSegment)
     : null;
-  const policy = window.AsrEditorUtils.TrackPolicy;
-  const mainVisible = policy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'preview')
+  const policy = AsrEditorUtils.TrackPolicy;
+  const mainVisible = policy.isTrackEnabled(AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'preview')
     && !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
   const extensionVisible = policy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'preview')
@@ -180,11 +200,11 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const mainSubtitleColor = subtitleAppearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
   const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
   const identityLabels = Array.isArray(MaweBoot.DATA.speakers) || speakerLabels.mapping_enabled;
-  const mainColor = mainVisible ? window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : null;
+  const mainColor = mainVisible ? AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : null;
   const mainColorName = mainColor?.name;
   const speakerLabel = mainVisible && identityLabels && speakerLabels.enabled
-    ? window.AsrEditorUtils.speakerLabelForSegment(
-      seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, speakerLabels.names,
+    ? AsrEditorUtils.speakerLabelForSegment(
+      seg, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, speakerLabels.names,
     )
     : '';
   const speakerLabelVisible = Boolean(speakerLabel);
@@ -230,9 +250,9 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   }
   // 副字幕与主/叠加轨共用前缀开关，颜色引用在副字幕自己的数组中解析。
   const extensionColorContext = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
-  const extensionColor = extensionVisible ? window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, extension, extensionColorContext) : null;
+  const extensionColor = extensionVisible ? AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, extension, extensionColorContext) : null;
   const extensionSpeakerLabel = extensionVisible && identityLabels && speakerLabels.enabled
-    ? window.AsrEditorUtils.speakerLabelForSegment(extension, extensionColorContext, speakerLabels.names) : '';
+    ? AsrEditorUtils.speakerLabelForSegment(extension, extensionColorContext, speakerLabels.names) : '';
   const extensionSpeakerVisible = Boolean(extensionSpeakerLabel);
   const extensionSpeakerText = extensionSpeakerVisible ? `${extensionSpeakerLabel}${speakerLabels.separator}` : '';
   const extensionSpeakerColor = extensionSpeakerVisible
@@ -264,20 +284,20 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     }
   }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
-  window.MaweAssFrame?.syncPreview();
+  MaweAssFrame?.syncPreview();
   // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
   const overlayColorContext = getOverlayTrack()?.segments || [];
   const overlaySpeakerLabel = overlayCueVisible
     && identityLabels && speakerLabels.enabled
-    ? window.AsrEditorUtils.speakerLabelForSegment(
+    ? AsrEditorUtils.speakerLabelForSegment(
       overlayCue, overlayColorContext, speakerLabels.names,
     )
     : '';
-  const overlaySpeakerColor = overlayCueVisible ? window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, overlayCue, overlayColorContext) : null;
+  const overlaySpeakerColor = overlayCueVisible ? AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, overlayCue, overlayColorContext) : null;
   const overlaySpeakerLabelVisible = Boolean(
     overlaySpeakerLabel,
   );
-  const assColorStyle = subtitleAppearance.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE;
+  const assColorStyle = subtitleAppearance.ass_color_style || MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE;
   const overlaySpeakerLabelColor = overlaySpeakerLabelVisible
     ? assMode
       ? assColorStyle === 'text' || assColorStyle === 'speaker'
@@ -382,7 +402,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
       MaweCuePanelState.gapPreviewRange = null;
     }
     const gapState = MaweGapRemoveData.getGapRemoveData(false);
-    const skippedGap = window.AsrGapRemoveCore.getGapPlaybackSkip(
+    const skippedGap = AsrGapRemoveCore.getGapPlaybackSkip(
       MaweGapRemoveData.getRemovedGapRanges(),
       tMs,
       {
@@ -416,7 +436,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     }
   }
 
-  global.MawePlaybackLoop = Object.freeze({
+  MawePlaybackLoop = Object.freeze({
     get lastActive() { return lastActive; },
     set lastActive(v) { lastActive = v; },
     get suppressCueListAutoScroll() { return suppressCueListAutoScroll; },
@@ -434,5 +454,6 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     update,
     updateWithoutCueListAutoScroll
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -1,8 +1,15 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweStickerOverlay } from './editor-sticker-overlay.js';
+export let MawePreviewGeometry;
 export function initPreviewGeometryModule() {
 // 预览几何：字幕/表情包预览框的手势拖拽与几何读写。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MawePreviewGeometry 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMawePreviewGeometry(global) {
   'use strict';
 
@@ -72,7 +79,7 @@ export function initPreviewGeometryModule() {
     MaweStickerOverlay.stickerOverlayLayer.style.right = 'auto';
     MaweStickerOverlay.stickerOverlayLayer.style.bottom = 'auto';
     // 实际画面窗口的图层用同一份几何（拖动中实时跟随；无帧时是空操作）。
-    window.MaweAssFrame?.syncWindowStickers?.();
+    MaweAssFrame?.syncWindowStickers?.();
   }
 
 
@@ -200,7 +207,7 @@ export function initPreviewGeometryModule() {
     setTargetGeometry(target, next);
   }
 
-  global.MawePreviewGeometry = Object.freeze({
+  MawePreviewGeometry = Object.freeze({
     setPreviewGeometry,
     applyPreviewGeometryToDom,
     getStickerGeometry,
@@ -220,5 +227,6 @@ export function initPreviewGeometryModule() {
     bindPreviewBoxPointerEvents,
     handlePreviewBoxKeydown
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

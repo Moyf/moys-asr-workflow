@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const utilsContext = { window: {}, TextDecoder };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
@@ -39,7 +40,7 @@ function compositionFixture() {
     getOverlayTrack: () => null,
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   for (const file of ['state/editor-state', 'media/editor-audio-processing',
     'io/editor-json-repair', 'io/editor-project-save']) {
     const initializers = { 'media/editor-audio-processing': 'initEditorAudioProcessing', 'state/editor-state': 'initMaweState', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-project-save': 'initMaweProjectSave' };

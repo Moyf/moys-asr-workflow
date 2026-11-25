@@ -1,12 +1,32 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweAssFontAliases } from '../styles/editor-wiring-ass-font-aliases.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweExportSrt } from './editor-export-srt.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweGapRemovedMediaExport } from './editor-wiring-export-actions.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MaweDynamicExports;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { runFcp7PngExport, waitForFcp7Fonts } from './editor-fcp7-png.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweDynamicExports() {
 'use strict';
 
 // 动态导出：FCP7XML、Lottie、Ograf 模态与导出。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweDynamicExports 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweDynamicExports(global) {
   'use strict';
   let fcp7SizeProjectEpoch = null;
@@ -14,7 +34,7 @@ export function initMaweDynamicExports() {
     const original = MaweExportSrt.currentAssVideoResolution();
     let size;
     try {
-      size = window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
+      size = MaweGapRemovedMediaExport.dynamicExportCanvasSize(
         document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
         document.getElementById('fcp7-export-custom-height'), 8192, 1);
     } catch { /* Invalid inputs are reported when exporting. */ }
@@ -35,8 +55,8 @@ export function initMaweDynamicExports() {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   MaweCuePanel.commitCuePanelEdit();
-  const extensionAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
-  const overlayAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export');
+  const extensionAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
+  const overlayAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export');
   const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
   extensionOption.disabled = !extensionAvailable;
   const overlayOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="overlay"]');
@@ -51,10 +71,10 @@ export function initMaweDynamicExports() {
   const projectEpoch = MaweProjectLoad.projectBindingEpoch;
   if (projectEpoch !== fcp7SizeProjectEpoch) {
     fcp7SizeProjectEpoch = projectEpoch;
-    document.getElementById('fcp7-export-resolution').value = '1920x1080';
-    document.getElementById('fcp7-export-custom-width').value = '1920';
-    document.getElementById('fcp7-export-custom-height').value = '1080';
-    window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+    /** @type {HTMLSelectElement} */ (document.getElementById('fcp7-export-resolution')).value = '1920x1080';
+    /** @type {HTMLInputElement} */ (document.getElementById('fcp7-export-custom-width')).value = '1920';
+    /** @type {HTMLInputElement} */ (document.getElementById('fcp7-export-custom-height')).value = '1080';
+    MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
       document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-size'),
       document.getElementById('fcp7-export-custom-width'), document.getElementById('fcp7-export-custom-height'));
   }
@@ -75,31 +95,31 @@ export function initMaweDynamicExports() {
         || Math.round(Number(MaweCoreState.player?.duration) * 1000)
         || MaweBoot.DATA.waveform?.duration_ms
         || 0;
-      const options = window.AsrEditorUtils.normalizeExportOptions({
-        timelineMode: document.querySelector('input[name="fcp7-export-timeline-mode"]:checked').value,
+      const options = AsrEditorUtils.normalizeExportOptions({
+        timelineMode: /** @type {HTMLInputElement} */ (document.querySelector('input[name="fcp7-export-timeline-mode"]:checked')).value,
         fps: MaweDom.fcp7ExportFps.value,
         subtitleTracks: MaweDom.fcp7ExportSubtitleTracks.value,
         nativeTextObjects: MaweDom.fcp7ExportNativeText.checked,
         baseName: MaweBoot.FILENAME_BASE,
       });
       // FCP exports overlay stickers even when its text-track choice is main only.
-      const overlay = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+      const overlay = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
       const includesOverlayText = options.nativeTextObjects && ['overlay', 'all'].includes(options.subtitleTracks);
       const includesOverlayStickers = overlay?.segments?.some(segment => segment.sticker_group_id);
       if (includesOverlayText || includesOverlayStickers) {
-        window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'overlay');
+        AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'overlay');
       }
-      const plan = window.AsrEditorUtils.buildProjectExportPlan(MaweBoot.DATA, {
+      const plan = AsrEditorUtils.buildProjectExportPlan(MaweBoot.DATA, {
         ...options,
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
         assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         durationMs: Math.round(durationMs),
       });
-      const imageFormat = document.getElementById('fcp7-export-format').value;
+      const imageFormat = /** @type {HTMLSelectElement} */ (document.getElementById('fcp7-export-format')).value;
       if (imageFormat !== 'native') {
         const status = document.getElementById('fcp7-export-status');
-        const progress = document.getElementById('fcp7-export-progress');
-        const size = window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
+        const progress = /** @type {HTMLProgressElement} */ (document.getElementById('fcp7-export-progress'));
+        const size = MaweGapRemovedMediaExport.dynamicExportCanvasSize(
           document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
             document.getElementById('fcp7-export-custom-height'), 8192, 1);
         if (size.width * size.height > 33554432) {
@@ -123,7 +143,7 @@ export function initMaweDynamicExports() {
         MaweDom.fcp7ExportCancel.disabled = true;
         MaweDom.fcp7ExportModal.dataset.busy = 'true';
         try {
-          await waitForFcp7Fonts(window.MaweAssFontAliases, controller.signal);
+          await waitForFcp7Fonts(MaweAssFontAliases, controller.signal);
           if (controller.signal.aborted || projectGeneration !== MaweState.projectLoadGeneration
               || bindingEpoch !== MaweProjectLoad.projectBindingEpoch) {
             throw new DOMException('图片字幕导出已停止', 'AbortError');
@@ -133,7 +153,7 @@ export function initMaweDynamicExports() {
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
           const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
           const result = await runFcp7PngExport({ plan, ass, layers,
-            includeMedia: document.querySelector('input[name="fcp7-export-scope"]:checked').value === 'media',
+            includeMedia: /** @type {HTMLInputElement} */ (document.querySelector('input[name="fcp7-export-scope"]:checked')).value === 'media',
             imageFormat, size,
             config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
             onProgress: showStatus });
@@ -174,7 +194,7 @@ export function initMaweDynamicExports() {
         }
         return;
       }
-      const [artifact] = window.AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
+      const [artifact] = AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
       closeFcp7ExportModal();
       const result = await MaweExportTimeline.downloadFile(
         artifact.content,
@@ -199,7 +219,7 @@ export function initMaweDynamicExports() {
   }
 
   function updateFcp7Mode() {
-    const format = document.getElementById('fcp7-export-format').value;
+    const format = /** @type {HTMLSelectElement} */ (document.getElementById('fcp7-export-format')).value;
     const image = format !== 'native';
     document.getElementById('fcp7-export-png-options').hidden = !image;
     document.getElementById('fcp7-export-native-hint').hidden = image;
@@ -215,7 +235,7 @@ export function initMaweDynamicExports() {
 
   document.getElementById('fcp7-export-format').addEventListener('change', updateFcp7Mode);
   document.getElementById('fcp7-export-resolution').addEventListener('change', event => {
-    document.getElementById('fcp7-export-custom-size').hidden = event.target.value !== 'custom';
+    document.getElementById('fcp7-export-custom-size').hidden = /** @type {HTMLSelectElement} */ (event.target).value !== 'custom';
     updateFcp7RatioWarning();
   });
   document.getElementById('fcp7-export-custom-width').addEventListener('input', updateFcp7RatioWarning);
@@ -246,7 +266,7 @@ export function initMaweDynamicExports() {
   function lottieExportBlocked() {
     if (lottieExportAvailable()) return false;
     const message = '当前模式不可用：动态字幕 .lottie 导出需要以 server-editor 打开并绑定工程文件';
-    MaweHint.flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+    MaweHint.flashHint(MAWE_I18N?.translateText?.(message) || message, 'warning');
     return true;
   }
 
@@ -264,10 +284,10 @@ export function initMaweDynamicExports() {
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   MaweCuePanel.commitCuePanelEdit();
   const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
-  const extensionAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
+  const extensionAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
-  window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+  MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
     MaweDom.lottieExportResolution, getMaweDomPanels().lottieExportCustomSize, getMaweDomPanels().lottieExportCustomWidth, getMaweDomPanels().lottieExportCustomHeight,
   );
   MaweDom.lottieExportModal?.classList.add('show');
@@ -277,7 +297,7 @@ export function initMaweDynamicExports() {
 
 
   function lottieExportCanvasSize() {
-  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.lottieExportResolution, getMaweDomPanels().lottieExportCustomWidth, getMaweDomPanels().lottieExportCustomHeight);
+  return MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.lottieExportResolution, getMaweDomPanels().lottieExportCustomWidth, getMaweDomPanels().lottieExportCustomHeight);
 }
 
 
@@ -287,8 +307,8 @@ export function initMaweDynamicExports() {
     MaweDom.lottieExportConfirm.disabled = true;
     try {
       const extension = MaweDom.lottieExportTrack?.value === 'extension';
-      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
-      const sourceSegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : [];
+      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      const sourceSegments = AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : [];
       if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
         !segment?.disabled && String(segment?.text || '').trim()
       ))) {
@@ -307,7 +327,7 @@ export function initMaweDynamicExports() {
       }
       const size = lottieExportCanvasSize();
       const appearance = extension ? MaweAppearance.getExtensionSubtitleAppearance() : MaweAppearance.getSubtitleAppearance();
-      const animation = window.AsrEditorUtils.buildLottieAnimation(segments, {
+      const animation = AsrEditorUtils.buildLottieAnimation(segments, {
         durationMs: Math.round(durationMs),
         fps: MaweDom.lottieExportFps?.value || '30',
         renderMode: MaweDom.lottieExportRenderMode?.value || 'text',
@@ -328,7 +348,7 @@ export function initMaweDynamicExports() {
       const blob = await response.blob();
       closeLottieExportModal();
       const suffix = extension ? '_extension' : '';
-      const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+      const gapSuffix = gapRemoved ? `_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
       const saved = await MaweExportTimeline.downloadFile(
         blob,
         `${MaweBoot.FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.lottie`,
@@ -368,7 +388,7 @@ export function initMaweDynamicExports() {
   function ografExportBlocked() {
     if (ografExportAvailable()) return false;
     const message = '当前模式不可用：OGraf 动态字幕导出需要以 server-editor 打开并绑定工程文件';
-    MaweHint.flashHint(window.MAWE_I18N?.translateText?.(message) || message, 'warning');
+    MaweHint.flashHint(MAWE_I18N?.translateText?.(message) || message, 'warning');
     return true;
   }
 
@@ -386,10 +406,10 @@ export function initMaweDynamicExports() {
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   MaweCuePanel.commitCuePanelEdit();
   const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
-  const extensionAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
+  const extensionAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
-  window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+  MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
     MaweDom.ografExportResolution, getMaweDomPanels().ografExportCustomSize, getMaweDomPanels().ografExportCustomWidth, getMaweDomPanels().ografExportCustomHeight,
   );
   MaweDom.ografExportModal?.classList.add('show');
@@ -399,7 +419,7 @@ export function initMaweDynamicExports() {
 
 
   function ografExportCanvasSize() {
-  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.ografExportResolution, getMaweDomPanels().ografExportCustomWidth, getMaweDomPanels().ografExportCustomHeight);
+  return MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.ografExportResolution, getMaweDomPanels().ografExportCustomWidth, getMaweDomPanels().ografExportCustomHeight);
 }
 
 
@@ -409,8 +429,8 @@ export function initMaweDynamicExports() {
     MaweDom.ografExportConfirm.disabled = true;
     try {
       const extension = MaweDom.ografExportTrack?.value === 'extension';
-      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
-      const sourceSegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : [];
+      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      const sourceSegments = AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : [];
       if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
         !segment?.disabled && String(segment?.text || '').trim()
       ))) {
@@ -429,7 +449,7 @@ export function initMaweDynamicExports() {
       }
       const size = ografExportCanvasSize();
       const appearance = extension ? MaweAppearance.getExtensionSubtitleAppearance() : MaweAppearance.getSubtitleAppearance();
-      const graphic = window.AsrEditorUtils.buildOgrafGraphic(segments, {
+      const graphic = AsrEditorUtils.buildOgrafGraphic(segments, {
         durationMs: Math.round(durationMs),
         fps: MaweDom.ografExportFps?.value || '30',
         width: size.width,
@@ -449,7 +469,7 @@ export function initMaweDynamicExports() {
       const blob = await response.blob();
       closeOgrafExportModal();
       const suffix = extension ? '_extension' : '';
-      const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
+      const gapSuffix = gapRemoved ? `_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
       const saved = await MaweExportTimeline.downloadFile(
         blob,
         `${MaweBoot.FILENAME_BASE}${suffix}${gapSuffix}_dynamic-caption.ograf.zip`,
@@ -464,7 +484,7 @@ export function initMaweDynamicExports() {
     }
   }
 
-  global.MaweDynamicExports = Object.freeze({
+  MaweDynamicExports = Object.freeze({
     closeFcp7ExportModal,
     openFcp7ExportModal,
     exportFcp7Xml,
@@ -483,5 +503,6 @@ export function initMaweDynamicExports() {
     ografExportCanvasSize,
     exportOgrafDynamicCaptions
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

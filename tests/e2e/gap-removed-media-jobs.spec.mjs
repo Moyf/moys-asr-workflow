@@ -1,3 +1,4 @@
+import { handler } from './gap-export-handler.mjs';
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -5,10 +6,6 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { makeTempDir, cleanupTempDir, generateProjectJson, startServer, findFreePort } from './helpers.mjs';
 
-const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
-const start = source.indexOf("document.getElementById('download-gap-removed-video')");
-const end = source.indexOf("document.getElementById('download-gap-removed-regions-json')", start);
-const handler = source.slice(start, end);
 
 async function fixture(mode, run) {
   const jobs = new Map();

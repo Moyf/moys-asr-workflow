@@ -1,14 +1,18 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSelection } from './editor-selection.js';
 import { mergeExtensionSegments, mergeSegments } from './editor-segment-ops.js';
+export let MaweMergeAdjacent;
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { getOverlayTrack, mergeOverlaySegments } from './overlay-track.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweMergeAdjacent() {
 'use strict';
 
 // 相邻字幕合并。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMergeAdjacent 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweMergeAdjacent(global) {
   'use strict';
 
@@ -21,7 +25,7 @@ export function initMaweMergeAdjacent() {
   const track = extension ? target.track : null;
   const segments = extension
     ? track?.segments || []
-    : overlay ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    : overlay ? (getOverlayTrack()?.segments || []) : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   let index = Number.isInteger(target?.index) ? target.index : -1;
   if (index < 0) {
     const selected = extension ? MaweSelection.selectedExtensionIdxs
@@ -42,10 +46,11 @@ export function initMaweMergeAdjacent() {
   return true;
 }
 
-  global.MaweMergeAdjacent = Object.freeze({
+  MaweMergeAdjacent = Object.freeze({
     mergeAdjacentSubtitle
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function mergeAdjacentSubtitle(...args) { return window.MaweMergeAdjacent.mergeAdjacentSubtitle(...args); }
+export function mergeAdjacentSubtitle(...args) { return MaweMergeAdjacent.mergeAdjacentSubtitle(...args); }

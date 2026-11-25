@@ -3,6 +3,9 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { waitForFcp7Fonts } from '../web/editor/io/editor-fcp7-png.js';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 function fixture(format) {
   const project = { schema: 'moy.asr.project.v2', tracks: [
@@ -46,7 +49,7 @@ function fixture(format) {
     async runFcp7PngExport(options) { calls.png.push(options); return { imageCount: 1, packagePath: 'demo' }; },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/io/editor-dynamic-exports.js', 'initMaweDynamicExports'), context);
   return { context, project, calls };
 }

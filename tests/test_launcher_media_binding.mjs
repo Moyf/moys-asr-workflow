@@ -19,7 +19,7 @@ function fixture() {
   const context = vm.createContext({$, state: {
     lang: 'zh', serverRunning: true, serverProjectPath: 'captions.mosp',
   }, serverRestartProjectPath: null, serverStatusRequest: 0,
-  window: {}, clearTimeout() {},
+  window: {}, launcherRuntime: {}, clearTimeout() {},
   refreshServerMedia: async () => ({hasMedia: false, mediaExists: false}),
   bridge: async (method, payload) => { calls.push({method, ...payload}); return {ok: false}; },
   applyErrorResult() {}, expandServer() {}, syncFlvHints() {},

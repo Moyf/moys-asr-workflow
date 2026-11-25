@@ -1,7 +1,6 @@
 // 快捷键共用件：拦截提示、空格拦截与播放速率档位格式化。
-// ESM init 模块：initMaweShortcuts 在原清单位次执行原 IIFE 体（挂
-// window.MaweShortcuts 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
+import { MaweHint } from '../ui/editor-hint.js';
+export let MaweShortcuts;
 export function initMaweShortcuts() {
 (function initMaweShortcuts(global) {
   'use strict';
@@ -34,7 +33,7 @@ export function initMaweShortcuts() {
     return r.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + '×';
   }
 
-  global.MaweShortcuts = Object.freeze({
+  MaweShortcuts = Object.freeze({
     showShortcutBlocked,
     get interceptedSpace() { return interceptedSpace; },
     set interceptedSpace(v) { interceptedSpace = v; },
@@ -42,10 +41,11 @@ export function initMaweShortcuts() {
     PLAYBACK_RATE_MAX,
     fmtRate
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function showShortcutBlocked(...args) { return window.MaweShortcuts.showShortcutBlocked(...args); }
-export function PLAYBACK_RATE_MIN(...args) { return window.MaweShortcuts.PLAYBACK_RATE_MIN(...args); }
-export function PLAYBACK_RATE_MAX(...args) { return window.MaweShortcuts.PLAYBACK_RATE_MAX(...args); }
-export function fmtRate(...args) { return window.MaweShortcuts.fmtRate(...args); }
+export function showShortcutBlocked(...args) { return MaweShortcuts.showShortcutBlocked(...args); }
+export function PLAYBACK_RATE_MIN(...args) { return MaweShortcuts.PLAYBACK_RATE_MIN(...args); }
+export function PLAYBACK_RATE_MAX(...args) { return MaweShortcuts.PLAYBACK_RATE_MAX(...args); }
+export function fmtRate(...args) { return MaweShortcuts.fmtRate(...args); }

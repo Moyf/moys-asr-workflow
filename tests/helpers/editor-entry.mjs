@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'acorn';
 import { build } from 'esbuild';
+import { fixtureImports } from './editor-fixture-imports.mjs';
+import { publishFixtureBindings } from './editor-fixture-bindings.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const web = path.join(root, 'web');
@@ -17,7 +19,7 @@ for (const statement of tree.body.filter(node => node.type === 'ImportDeclaratio
 }
 const phases = new Map(tree.body.filter(node => node.type === 'FunctionDeclaration')
   .map(node => [node.id.name, node.body.body]));
-export const editorInitializerImports = [...imports.values()];
+export const editorInitializerImports = [...imports.values()].filter(({exportName}) => /^(?:init|bind)[A-Z]/.test(exportName));
 
 function executedInitializers(statements, active = new Set()) {
   const initializers = [];
@@ -40,6 +42,11 @@ export const editorInitializers = executedInitializers(tree.body);
 export async function compileEditorFixture(files, {beforeEntry, exposed = {}} = {}) {
   const imports = [];
   const calls = [];
+  const sources = new Map();
+  const read = file => {
+    if (!sources.has(file)) sources.set(file, fs.readFileSync(path.join(web, file), 'utf8'));
+    return sources.get(file);
+  };
   for (const [index, file] of files.entries()) {
     const initializer = editorInitializers.find(item => item.file === file);
     const specifier = JSON.stringify('./' + file);
@@ -49,7 +56,16 @@ export async function compileEditorFixture(files, {beforeEntry, exposed = {}} = 
     }
     imports.push(`import { ${initializer.exportName} as init${index} } from ${specifier};`);
     if (file === beforeEntry) calls.push('globalThis.__mawBeforeFixture?.(window);');
-    calls.push(`init${index}();`);
+    const dependencies = {
+      'shared/editor-utils.js': `{
+        getNavigator: () => window.MaweHost?.runtime?.getNavigator?.(),
+        getProject: () => window.MaweBoot?.DATA,
+        getColorByName: () => window.MaweColors?.COLOR_BY_NAME,
+        getAssFontAliases: () => window.MaweAssFontAliases,
+      }`,
+      'shared/utils/project-validation.js': 'input => window.AsrEditorUtils.importProject(input)',
+    }[file] ?? '';
+    calls.push(`init${index}(${dependencies});`);
   }
   for (const [name, file] of Object.entries(exposed)) {
     imports.push(`import * as ${name} from ${JSON.stringify('./' + file)};`);
@@ -58,6 +74,24 @@ export async function compileEditorFixture(files, {beforeEntry, exposed = {}} = 
   const result = await build({
     stdin: {contents: [...imports, ...calls].join('\n'), resolveDir: web},
     bundle: true, format: 'iife', target: 'es2022', write: false,
+    plugins: [{
+      name: 'partial-editor-fixture-dependencies',
+      setup(builder) {
+        builder.onLoad({ filter: /\.(?:m?js)$/ }, args => {
+          const file = path.relative(web, args.path).split(path.sep).join('/');
+          if (!/^(?:editor|shared)\//.test(file)) return;
+          const resolve = specifier => path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+          const edit = fixtureImports(read(file), specifier => specifier.startsWith('.') && !files.includes(resolve(specifier)),
+            (specifier, name) => {
+              const prefix = `export function ${name}(...args) { return `;
+              const line = read(resolve(specifier)).split('\n').find(text => text.startsWith(prefix));
+              return line?.slice(prefix.length).match(/^(?:window\.)?(Mawe\w+)\./)?.[1];
+            });
+          if (files.includes(file)) publishFixtureBindings(read(file), edit);
+          return { contents: edit.toString(), loader: 'js' };
+        });
+      },
+    }],
   });
   return result.outputFiles[0].text;
 }

@@ -39,7 +39,7 @@
 
 ## 契约与保证
 
-- 归档生成逻辑是 `scripts/prepare_release_notes.py` 中 `extract_release_section` / `build_release_document` 的逐字节等价实现；`selfcheck.js` 用当前仓库对拍（47 个小节往返无损、全部正式版归档与 Python 产物一致）。改动 `cl-lib.js` 后运行：
+- 归档生成逻辑是 `scripts/prepare_release_notes.py` 中 `extract_release_section` / `build_release_document` 的逐字节等价实现；`selfcheck.js` 用当前仓库对拍（47 个小节往返无损、全部正式版归档与 Python 产物一致）。改动 `cl-lib.mjs` 后运行：
 
   ```powershell
   node tools/changelog-editor/selfcheck.js
@@ -51,6 +51,7 @@
 
 ## 开发与自检
 
+- 修改 `cl-lib.mjs` 或 `editor-page.mjs` 后，运行 `node scripts/build-tool-docs.mjs --write` 重生成离线入口脚本。
 - 逻辑对拍（无需浏览器）：`node tools/changelog-editor/selfcheck.js` —— 解析往返无损 + 全部正式版归档与 `prepare_release_notes.py` 产物逐字节一致。
 - UI 冒烟（需先起静态服务）：`python -m http.server 8791 --bind 127.0.0.1` 后运行 `node tools/changelog-editor/smoke-ui.js`，脚本载入真实 CL 走一遍默认分屏 / 编辑 / 对比 / 卡片拖拽排序 / 分屏 / 对照 / 图片条（含 HTML5 拖拽排序）/ 批量完成弹窗 / beta 锁 / 归档一致性 / 仓库重连（假句柄三路径）/ 侧栏收缩展开 / 手动编辑与刷新（降级提示与假句柄重载），并检查页面无报错。
 

@@ -1,7 +1,8 @@
 // 帮助面板：浮窗、标签页切换与尺寸持久化。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweHelpPanel 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MaweDom } from './editor-dom.js';
+import { MaweFloatingPanel } from './editor-floating-panel.js';
+export let MaweHelpPanel;
 export function initMaweHelpPanel() {
   'use strict';
 
@@ -68,7 +69,7 @@ export function initMaweHelpPanel() {
 
   let helpPanelSizeSaveTimer = 0;
 
-  global.MaweHelpPanel = Object.freeze({
+  MaweHelpPanel = Object.freeze({
     helpFloatingPanel,
     visibleHelpTabButtons,
     selectHelpTab,
@@ -77,4 +78,5 @@ export function initMaweHelpPanel() {
     get helpPanelSizeSaveTimer() { return helpPanelSizeSaveTimer; },
     set helpPanelSizeSaveTimer(v) { helpPanelSizeSaveTimer = v; }
   });
+
 }

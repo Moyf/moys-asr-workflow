@@ -1,8 +1,12 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweLoadingProgress } from './editor-loading-progress.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+export let MaweServerConnection;
 export function initServerConnectionModule() {
 // 服务器连接：健康检查、断联横幅与启动进度轮询。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweServerConnection 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 (function initMaweServerConnection(global) {
   'use strict';
 
@@ -138,7 +142,7 @@ export function initServerConnectionModule() {
 
 
   function serverStartupLabel(stage) {
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     return SERVER_STARTUP_LABELS[language][stage] || SERVER_STARTUP_LABELS[language].preparing;
   }
 
@@ -190,7 +194,7 @@ export function initServerConnectionModule() {
     await poll();
   }
 
-  global.MaweServerConnection = Object.freeze({
+  MaweServerConnection = Object.freeze({
     SERVER_CONNECTION_CHECK_INTERVAL_MS,
     SERVER_CONNECTION_REQUEST_TIMEOUT_MS,
     SERVER_CONNECTION_FAILURE_THRESHOLD,
@@ -210,5 +214,6 @@ export function initServerConnectionModule() {
     serverStartupLabel,
     loadServerStartup
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }

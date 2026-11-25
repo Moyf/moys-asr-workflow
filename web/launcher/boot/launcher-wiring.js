@@ -41,7 +41,7 @@ document.addEventListener("dragleave", (event) => { if (!event.relatedTarget && 
 // 真实后端模式下 drop 由 Python 侧异步回传事件，不能在这里清理 dropTarget，否则 handleRoutedDrop 读不到目标。
 document.addEventListener("drop", (event) => {
   event.preventDefault();
-  if (window.MAWLauncher.backend === "real") return;
+  if (launcherRuntime.backend === "real") return;
   const files = Array.from(event.dataTransfer?.files || []);
   const file = files[0];
   if (state.dropTarget) {
@@ -49,7 +49,7 @@ document.addEventListener("drop", (event) => {
     return;
   }
   let handled = false;
-  if (window.MAWLauncher?.onBatchDrop) files.forEach((item) => { handled = window.MAWLauncher.onBatchDrop(item.path || item.name || "") || handled; });
+  if (launcherRuntime?.onBatchDrop) files.forEach((item) => { handled = launcherRuntime.onBatchDrop(item.path || item.name || "") || handled; });
   if (handled) return;
   handleRoutedDrop(file?.path || file?.name || "");
 });
@@ -68,3 +68,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 document.addEventListener("keydown", handleZoomKeydown);
 document.addEventListener("wheel", handleZoomWheel, { passive: false });
+
+initLauncherBatch(launcherRuntime);
+initLauncherPostprocess(launcherRuntime);

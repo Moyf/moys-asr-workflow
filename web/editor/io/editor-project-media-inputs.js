@@ -1,8 +1,7 @@
+import { MaweDom } from '../ui/editor-dom.js';
 import { scheduleOnboarding } from '../boot/editor-onboarding.js';
+export let MaweProjectMediaInputs;
 // 工程与媒体文件输入：input 元素、Blob URL 与媒体选择弹窗。
-// ESM init 模块：initMaweProjectMediaInputs 在原清单位次执行原 IIFE 体（挂
-// window.MaweProjectMediaInputs 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
 export function initMaweProjectMediaInputs() {
 (function initMaweProjectMediaInputs(global) {
   'use strict';
@@ -42,7 +41,7 @@ export function initMaweProjectMediaInputs() {
     MaweDom.projectMediaSelectButton.focus();
   }
 
-  global.MaweProjectMediaInputs = Object.freeze({
+  MaweProjectMediaInputs = Object.freeze({
     openProjectFileInput,
     loadMediaFileInput,
     loadSrtFileInput,
@@ -54,12 +53,13 @@ export function initMaweProjectMediaInputs() {
     closeProjectMediaModal,
     showProjectMediaModal
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function loadSrtFileInput(...args) { return window.MaweProjectMediaInputs.loadSrtFileInput(...args); }
-export function loadMediaFileInput(...args) { return window.MaweProjectMediaInputs.loadMediaFileInput(...args); }
-export function openProjectFileInput(...args) { return window.MaweProjectMediaInputs.openProjectFileInput(...args); }
-export function loadLrcFileInput(...args) { return window.MaweProjectMediaInputs.loadLrcFileInput(...args); }
-export function closeProjectMediaModal(...args) { return window.MaweProjectMediaInputs.closeProjectMediaModal(...args); }
-export function showProjectMediaModal(...args) { return window.MaweProjectMediaInputs.showProjectMediaModal(...args); }
+export function loadSrtFileInput(...args) { return MaweProjectMediaInputs.loadSrtFileInput(...args); }
+export function loadMediaFileInput(...args) { return MaweProjectMediaInputs.loadMediaFileInput(...args); }
+export function openProjectFileInput(...args) { return MaweProjectMediaInputs.openProjectFileInput(...args); }
+export function loadLrcFileInput(...args) { return MaweProjectMediaInputs.loadLrcFileInput(...args); }
+export function closeProjectMediaModal(...args) { return MaweProjectMediaInputs.closeProjectMediaModal(...args); }
+export function showProjectMediaModal(...args) { return MaweProjectMediaInputs.showProjectMediaModal(...args); }

@@ -1,5 +1,24 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweInitialConfigWiring } from '../boot/editor-wiring-initial-config.js';
+import { MaweExportSrt } from '../io/editor-export-srt.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweColors } from './editor-colors.js';
+import { MaweSpeakerLabels } from './editor-speaker-labels.js';
+import { MaweAssCanvas } from './editor-wiring-ass-canvas.js';
+import { MaweAssCuePosition } from './editor-wiring-ass-cue-position.js';
+import { MaweAssFontAliases } from './editor-wiring-ass-font-aliases.js';
+import { MaweAssStorageWiring } from './editor-wiring-ass-storage.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MaweAssPreview;
 import { getAssStyleLibrary } from './editor-wiring-ass-storage.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // The functions are installed at this file's manifest position. Static imports
 // can resolve earlier without running DOM or Canvas work during module evaluation.
@@ -95,12 +114,12 @@ function assPreviewMetrics() {
 
 function assPreviewStyleVariant(style, segment, segments, appearance) {
   // ASS 预览的颜色映射只跟随 ass_color_style；color_underline 只控制 CSS 预览。
-  const paletteValue = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, segments)?.value || '';
-  if (!paletteValue || typeof window.AsrEditorUtils.assStyleVariant !== 'function') return style;
-  return window.AsrEditorUtils.assStyleVariant(
+  const paletteValue = AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, segments)?.value || '';
+  if (!paletteValue || typeof AsrEditorUtils.assStyleVariant !== 'function') return style;
+  return AsrEditorUtils.assStyleVariant(
     style,
     paletteValue,
-    appearance.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE,
+    appearance.ass_color_style || MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE,
   );
 }
 
@@ -110,7 +129,7 @@ function assPreviewAnimatedStyle(style, profile, animationState, metrics) {
   // \fs targets are in native PlayRes pixels, whereas the library stores its
   // base size at 1080p. Interpolate both endpoints in native coordinates.
   const native = { ...style, fontSize: assPreviewExportFontSize(style, metrics) };
-  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress, { popScale: animationState.popScale });
+  const result = AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress, { popScale: animationState.popScale });
   return { ...result, __assNativeFontSize: result.fontSize };
 }
 
@@ -123,7 +142,7 @@ function assPreviewFontScale(style) {
   // the paused Server preview uses libass itself for exact shaping/layout.
   // 预览优先用字体别名链：浏览器对样式存储名的匹配不可预测，把 canonical
   // 与其余别名一并列入可让预览与 libass 尽量渲染同一字形。
-  const family = window.MaweAssFontAliases?.chainCssFor?.(style.fontName, { fallback: 'var(--font-sans)' })
+  const family = MaweAssFontAliases?.chainCssFor?.(style.fontName, { fallback: 'var(--font-sans)' })
     || MaweAppearance.subtitleFontFamilyCss(style.fontName);
   const key = JSON.stringify([family, style.bold, style.italic]);
   if (assPreviewFontMetrics.has(key)) return assPreviewFontMetrics.get(key);
@@ -143,15 +162,15 @@ function assPreviewFontScale(style) {
 
 function assPreviewExportFontSize(style, metrics) {
   if (Number.isFinite(style.__assNativeFontSize)) return Math.max(1, style.__assNativeFontSize);
-  return window.AsrEditorUtils.normalizeAssFontSize(
-    Number(style.fontSize) * metrics.resolution.height / window.MaweInitialConfigWiring.ASS_PREVIEW_REFERENCE_HEIGHT,
+  return AsrEditorUtils.normalizeAssFontSize(
+    Number(style.fontSize) * metrics.resolution.height / MaweInitialConfigWiring.ASS_PREVIEW_REFERENCE_HEIGHT,
   );
 }
 
 document.fonts?.addEventListener('loadingdone', () => {
   assPreviewFontMetrics.clear();
-  window.MaweAssCanvas?.clearCaches();
-  window.MawePlaybackLoop?.refreshSubtitlePreview();
+  MaweAssCanvas?.clearCaches();
+  MawePlaybackLoop?.refreshSubtitlePreview();
 });
 
 // 字体别名表异步就绪后同样失效度量缓存：别名链改变 font-family 输出，
@@ -192,8 +211,8 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
 }
 
 function restoreCssSubtitlePreviewImpl() {
-  window.MaweAssCanvas?.hide();
-  window.MaweAssCuePosition?.sync();
+  MaweAssCanvas?.hide();
+  MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
   clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
   clearAssEmphasisPreview(getMaweDomPanels().overlayTrackTextEl);
@@ -235,12 +254,12 @@ function clearAssEmphasisPreview(element) {
 // 语法切成强调/下划线/删除线/大小字号 run——与旧 DOM 预览同源，绘制交给
 // MaweAssCanvas。
 function assPreviewTrackRuns(text) {
-  const source = window.AsrEditorUtils.stripSentencePopMarkers(
-    window.AsrEditorUtils.stripSentenceFadeMarkers(
+  const source = AsrEditorUtils.stripSentencePopMarkers(
+    AsrEditorUtils.stripSentenceFadeMarkers(
       String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     ), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
-  return window.AsrEditorUtils.assInlineStyleRuns(
+  return AsrEditorUtils.assInlineStyleRuns(
     source, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS,
   );
 }
@@ -259,7 +278,7 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
     for (let index = 0; index < source.length; index += 1) {
       const cue = source[index] || {}, previous = snapshot[index];
       const identity = identityTracks[track]?.[index] || cue;
-      const color = JSON.stringify(window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, cue, 'color'));
+      const color = JSON.stringify(AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, cue, 'color'));
       // Locally projected cues are temporary objects. Keep raw identity stable,
       // but include retained item boundaries so equal repeated text cannot hide
       // a different selection or a source restoration from the cached plan.
@@ -281,15 +300,15 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
 document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
 function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
-  void window.MaweAssFontAliases?.ensureCoverage?.();
+  void MaweAssFontAliases?.ensureCoverage?.();
   const metrics = assPreviewMetrics();
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits
   // to mutable imported cue/style records also invalidate this snapshot.
-  const policy = window.AsrEditorUtils.TrackPolicy;
-  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const policy = AsrEditorUtils.TrackPolicy;
+  const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
   const extension = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const overlay = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+  const overlay = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
   const rawTracks = [policy.isTrackEnabled(main, 'preview') ? main.segments : [],
     policy.isTrackEnabled(extension, 'preview') ? extension.segments : [],
     policy.isTrackEnabled(overlay, 'preview') ? overlaySegments : []];
@@ -307,7 +326,7 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
       onAssPlan: plan => { cachedAssStackPlan = plan; } });
     cachedAssStackKey = key;
   }
-  const frame = window.AsrEditorUtils.assStackFrame(cachedAssStackPlan, Number(tMs));
+  const frame = AsrEditorUtils.assStackFrame(cachedAssStackPlan, Number(tMs));
   MaweDom.overlayEl.dataset.assStackStatus = frame.diagnostic ? 'unavailable' : 'ready';
   MaweDom.overlayEl.title = frame.diagnostic;
   if (frame.diagnostic !== lastAssStackDiagnostic) {
@@ -334,15 +353,15 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
 
   const profile = cachedAssStackPlan.profile;
   const tracks = frame.items.map(item => {
-    const animation = (item.legacy && !item.sharedStackCue ? window.AsrEditorUtils.assPreviewAnimationState : window.AsrEditorUtils.assStackAnimationState)(profile,
+    const animation = (item.legacy && !item.sharedStackCue ? AsrEditorUtils.assPreviewAnimationState : AsrEditorUtils.assStackAnimationState)(profile,
       Number(tMs) - item.start, item.end - item.start, { fad: item.fad, pop: item.pop || null });
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
-      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
+      : AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
     if (profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).
-      const targets = window.AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);
+      const targets = AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);
       const shared = !item.legacy || item.sharedStackCue;
       const inlineItalic = item.runs.some(run => run.italic);
       for (const key of ['bold', 'italic', 'underline', 'strikeOut']) {
@@ -371,7 +390,7 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
       nativeFontSize: Math.max(1, animated.fontSize * scale), alignment: item.alignment,
       anchor: item.anchor || null, margins: { left: item.style.marginL, right: item.style.marginR, vertical: item.style.marginV } };
   });
-  window.MaweAssCanvas?.render({ playResX: metrics.resolution.width, playResY: metrics.resolution.height, tracks });
+  MaweAssCanvas?.render({ playResX: metrics.resolution.width, playResY: metrics.resolution.height, tracks });
 }
 
 function restoreAssOverlayTrackPreview() {
@@ -393,13 +412,15 @@ function restoreAssOverlayTrackPreview() {
 // the Canvas layer reuses exportFontSize for native run sizes.
 previewService.apply = applyAssSubtitlePreviewImpl;
 previewService.restore = restoreCssSubtitlePreviewImpl;
-window.MaweAssPreview = window.MaweAssPreview || Object.freeze({
+MaweAssPreview = Object.freeze({
   applyAssSubtitlePreview: applyAssSubtitlePreviewImpl,
   restoreCssSubtitlePreview: restoreCssSubtitlePreviewImpl,
   fontScale: assPreviewFontScale,
   get stackPlan() { return cachedAssStackPlan; },
   exportFontSize: assPreviewExportFontSize,
 });
+
+
 
 
 

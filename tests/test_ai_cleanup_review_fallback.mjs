@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -39,7 +40,7 @@ function fixture(markerShape, typed) {
     }, manual_overrides: [{ id: 'manual-late', start: 1500, end: 1600, removed: true }] } },
   });
   context.MaweBoot = { DATA: project };
-  vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), exposeWindowGlobals(context));
   return { context, core, project };
 }
 

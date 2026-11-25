@@ -10,6 +10,8 @@ import { createUtilsModule as createHistoryUtils } from '../web/shared/utils/his
 import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.js';
 import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
 import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const source = initModuleSource('editor/media/editor-audio-processing.js');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };

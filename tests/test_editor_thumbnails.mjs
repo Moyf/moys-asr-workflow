@@ -461,10 +461,11 @@ test('thumbnail settings wire all three modes, cache-only decoding and matching 
     setPlayhead(){},setPlaying(){},setEnabled(value){calls.push(['enabled',value]);},setDecodeEnabled(value){calls.push(['decode',value]);},setMode(value){calls.push(['mode',value]);}};
   const previousDocument=globalThis.document, previousWindow=globalThis.window;
   globalThis.document={getElementById:id=>elements[id]??null,addEventListener(){}};
-  globalThis.window={addEventListener(){},MaweBoot:{SERVER_CONFIG:{thumbnailBinding:'video-a'}}};
+  globalThis.window={addEventListener(){}};
+  let thumbnailBinding = 'video-a';
   try {
     const methods=createWaveformModule({thumbnailCore:{createController:()=>controller},ROW_GAP:10,
-      localizedWaveformMessage:(zh)=>zh});
+      localizedWaveformMessage:(zh)=>zh,getThumbnailBinding:()=>thumbnailBinding});
     const context={setTransform(){},fillRect(){}};
     const canvas={title:'',getContext:()=>context};
     const row={_thumbnailCanvas:canvas,clientWidth:320,dataset:{startMs:'0',endMs:'10000'}};
@@ -511,7 +512,7 @@ test('thumbnail settings wire all three modes, cache-only decoding and matching 
     assert.equal(elements['waveform-thumbnail-mode'].parentElement.title,'视频缩略图已隐藏');
     assert.equal(canvas.title,'视频缩略图已隐藏');
     assert.equal(elements['waveform-thumbnail-decode'].disabled,true);
-    globalThis.window.MaweBoot.SERVER_CONFIG.thumbnailBinding='';
+    thumbnailBinding='';
     methods.updateThumbnailStatus.value.call(editor);
     assert.equal(elements['waveform-thumbnail-status'].textContent,'从本机 Server 加载视频后可用');
     assert.equal(elements['waveform-thumbnail-mode'].disabled,true);

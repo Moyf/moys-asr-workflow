@@ -1,18 +1,24 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSelection } from './editor-selection.js';
 import { releaseTemporaryVisibleSplitCuesUnless } from './editor-cue-elements.js';
+export let MaweBindingAlign;
 import { commitCuePanelEdit, setCurrentCuePanelIndex } from './editor-cue-panel.js';
 import { clearSelection, selectOnly, selectOnlyExtension, syncBoundSelection } from './editor-selection.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 绑定对齐：主副字幕绑定、按点击选中与对齐批处理。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweBindingAlign 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 绑定对齐：主副字幕绑定、按点击选中与对齐批处理。 ESM init 模块：initMaweBindingAlign 在原清单位次执行原 IIFE 体（挂
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweBindingAlign 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 绑定对齐：主副字幕绑定、按点击选中与对齐批处理。
+// 由 split-cluster codemod 自 editor.js 拆出。
 
-// window.MaweBindingAlign 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweBindingAlign() {
 (function initMaweBindingAlign(global) {
   'use strict';
@@ -21,10 +27,10 @@ export function initMaweBindingAlign() {
   // 返回与 idx 同属一个表情包/颜色分组的全部字幕下标（含 idx 自身）。
   // head 持有 sticker/color，成员持 sticker_ref/color_ref 指向 head。
   function groupMemberIdxs(idx) {
-    const seg = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
+    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
     if (!seg) return [idx];
     if (MaweBoot.DATA.subtitle_groups) {
-      return window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.flatMap((candidate, index) => (
+      return AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.flatMap((candidate, index) => (
         index === idx || ['color_group_id', 'sticker_group_id'].some(field => seg[field] && candidate[field] === seg[field])
           ? [index] : []
       ));
@@ -36,7 +42,7 @@ export function initMaweBindingAlign() {
     else if (seg.color_ref) heads.add(seg.color_ref.headIdx);
     if (!heads.size) return [idx];
     const members = [];
-    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((s, i) => {
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((s, i) => {
       const sHead = s.sticker ? i : (s.sticker_ref ? s.sticker_ref.headIdx : null);
       const cHead = s.color ? i : (s.color_ref ? s.color_ref.headIdx : null);
       if ((sHead !== null && heads.has(sHead)) || (cHead !== null && heads.has(cHead))) {
@@ -93,7 +99,7 @@ export function initMaweBindingAlign() {
     const start = Number(extension?.start);
     const end = Number(extension?.end);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
-    return window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((main, mainIndex) => ({ main, mainIndex }))
+    return AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((main, mainIndex) => ({ main, mainIndex }))
       .filter(({ main }) => Number(main?.start) < end && Number(main?.end) > start)
       .map(({ mainIndex }) => mainIndex);
   }
@@ -108,7 +114,7 @@ export function initMaweBindingAlign() {
     if (unbound.length) {
       // 有多个候选时仍优先选择时间最早且尚未绑定的主字幕，避免每次绑定都要手动点选。
       const mainIndex = unbound.slice().sort((left, right) => (
-        Number(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[left]?.start) - Number(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[right]?.start) || left - right
+        Number(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[left]?.start) - Number(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[right]?.start) || left - right
       ))[0];
       selectOnly(mainIndex);
       selectOnlyExtension(index, track, true, true);
@@ -139,7 +145,7 @@ export function initMaweBindingAlign() {
   const mainIndex = [...MaweSelection.selectedIdxs][0];
   const extensionIndex = [...MaweSelection.selectedExtensionIdxs][0];
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
+  const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
   const extension = track?.segments?.[extensionIndex];
   if (!main || !extension) return;
   const replacedBinding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
@@ -170,11 +176,11 @@ export function initMaweBindingAlign() {
   function unbindSelectedSubtitlePair() {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const ids = new Set();
-  MaweSelection.selectedIdxs.forEach((index) => { if (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id) ids.add(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index].id); });
+  MaweSelection.selectedIdxs.forEach((index) => { if (AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id) ids.add(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index].id); });
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweSelection.selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
   if (!ids.size) return;
-  const removed = window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
+  const removed = AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
     ids.has(binding.source?.segment_id)
       || ids.has(binding.target?.segment_id)
   ));
@@ -186,7 +192,7 @@ export function initMaweBindingAlign() {
   // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
   multi.bindings.push(...removed);
   return MaweCommands.run('解绑双语字幕', (command) => {
-    window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
+    AsrEditorUtils.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweMultiSubtitleCore.syncBindingOffsets();
     // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
@@ -294,7 +300,7 @@ export function initMaweBindingAlign() {
     });
   }
 
-  global.MaweBindingAlign = Object.freeze({
+  MaweBindingAlign = Object.freeze({
     groupMemberIdxs,
     selectCueByClick,
     overlappingMainIndexesForExtension,
@@ -305,15 +311,16 @@ export function initMaweBindingAlign() {
     alignExtensionToMainTimeRange,
     alignSelectedExtensionSubtitleRanges
   });
+
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function groupMemberIdxs(...args) { return window.MaweBindingAlign.groupMemberIdxs(...args); }
-export function selectCueByClick(...args) { return window.MaweBindingAlign.selectCueByClick(...args); }
-export function overlappingMainIndexesForExtension(...args) { return window.MaweBindingAlign.overlappingMainIndexesForExtension(...args); }
-export function beginPendingExtensionBinding(...args) { return window.MaweBindingAlign.beginPendingExtensionBinding(...args); }
-export function bindSelectedSubtitlePair(...args) { return window.MaweBindingAlign.bindSelectedSubtitlePair(...args); }
-export function unbindSelectedSubtitlePair(...args) { return window.MaweBindingAlign.unbindSelectedSubtitlePair(...args); }
-export function alignExtensionToMainTimeRanges(...args) { return window.MaweBindingAlign.alignExtensionToMainTimeRanges(...args); }
-export function alignExtensionToMainTimeRange(...args) { return window.MaweBindingAlign.alignExtensionToMainTimeRange(...args); }
-export function alignSelectedExtensionSubtitleRanges(...args) { return window.MaweBindingAlign.alignSelectedExtensionSubtitleRanges(...args); }
+export function groupMemberIdxs(...args) { return MaweBindingAlign.groupMemberIdxs(...args); }
+export function selectCueByClick(...args) { return MaweBindingAlign.selectCueByClick(...args); }
+export function overlappingMainIndexesForExtension(...args) { return MaweBindingAlign.overlappingMainIndexesForExtension(...args); }
+export function beginPendingExtensionBinding(...args) { return MaweBindingAlign.beginPendingExtensionBinding(...args); }
+export function bindSelectedSubtitlePair(...args) { return MaweBindingAlign.bindSelectedSubtitlePair(...args); }
+export function unbindSelectedSubtitlePair(...args) { return MaweBindingAlign.unbindSelectedSubtitlePair(...args); }
+export function alignExtensionToMainTimeRanges(...args) { return MaweBindingAlign.alignExtensionToMainTimeRanges(...args); }
+export function alignExtensionToMainTimeRange(...args) { return MaweBindingAlign.alignExtensionToMainTimeRange(...args); }
+export function alignSelectedExtensionSubtitleRanges(...args) { return MaweBindingAlign.alignSelectedExtensionSubtitleRanges(...args); }

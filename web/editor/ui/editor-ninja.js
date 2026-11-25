@@ -1,7 +1,10 @@
 // 忍者拆分：音效播放、拆分点几何计算与斩击反馈。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweNinja 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from './editor-dom.js';
+export let MaweNinja;
 export function initMaweNinja() {
   'use strict';
 
@@ -190,7 +193,7 @@ export function initMaweNinja() {
     if (MaweDom.ninjaRazorIcon) MaweDom.ninjaRazorIcon.hidden = !enabled;
   }
 
-  global.MaweNinja = Object.freeze({
+  MaweNinja = Object.freeze({
     NINJA_SFX_VARIANTS,
     NINJA_SFX_PLAYERS,
     NINJA_SFX_HISTORY,
@@ -206,4 +209,5 @@ export function initMaweNinja() {
     triggerNinjaSplitFeedback,
     applyNinjaSettings
   });
+
 }

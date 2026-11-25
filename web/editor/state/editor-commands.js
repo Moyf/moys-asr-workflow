@@ -1,7 +1,10 @@
 // 命令事务：暂存快照，只有真实成功变更后才发布历史。
-// ESM 模块：createEditorCommands 为纯工厂具名导出（测试直调），
-// initMaweCommands 在原清单位次组装依赖并挂 window.MaweCommands
-//（register/resolve 注册表随之退役，G16 后窗口出接口同样退役）。
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweHistory } from './editor-history.js';
+import { MaweState } from './editor-state.js';
+import { MaweViewUpdates } from './editor-view-updates.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweCommands;
 export function createEditorCommands(dependencies) {
   'use strict';
   const { capture, hasChanges, publish, restore, refresh } = dependencies;
@@ -70,18 +73,18 @@ export function initMaweCommands() {
       if (key !== '_dirty') restoreDirtyFlags(current[key], previous?.[key]);
     }
   }
-  window.MaweCommands = createEditorCommands({
+  MaweCommands = createEditorCommands({
     capture(label, options) {
       MaweCueListAnchor.rememberCueListMutation();
       const record = MaweHistory.captureSegmentsRecord(label, options);
       return { record, fingerprint: fingerprint(record.segs), selection: MaweHistory.snapshotEditorSelection() };
     },
     hasChanges: snapshot => {
-      window.AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
+      AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
       return fingerprint(projectSegments()) !== snapshot.fingerprint;
     },
     publish(snapshot) {
-      window.AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
+      AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
       MaweHistory.commitRecord(snapshot.record);
       MaweState.changes.projectImportDirty = true;
     },
@@ -95,4 +98,6 @@ export function initMaweCommands() {
     },
     refresh: invalidation => MaweViewUpdates.invalidate({ save: true, ...invalidation }),
   });
+
+
 }

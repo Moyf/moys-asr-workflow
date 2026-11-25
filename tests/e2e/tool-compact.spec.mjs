@@ -258,11 +258,14 @@ test('timestamp item-text track uses the OCR 34 by 20 geometry rather than the o
 test('native label, input change and Space toggle compact once and preserve search focus', async ({page}) => {
   await timestamp(page);
   const input = page.locator('[data-tool-compact]'); await assertNative(input);
-  await page.evaluate(project => {
-    window.MAWTsCompare.loadProjectObjects([{name:'fixture',project}]);
+  await page.locator('#fileInput').setInputFiles({
+    name:'fixture.mosp',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project)),
+  });
+  await expect(page.locator('.file-card')).toHaveCount(1);
+  await page.evaluate(() => {
     window.densityEvents = 0;
     document.addEventListener('tool-density-change', () => window.densityEvents++);
-  }, project);
+  });
   await input.locator('..').click(); await expect(input).toBeChecked();
   expect(await page.evaluate(() => window.densityEvents)).toBe(1);
   await input.focus(); await page.keyboard.press('Space'); await expect(input).not.toBeChecked();

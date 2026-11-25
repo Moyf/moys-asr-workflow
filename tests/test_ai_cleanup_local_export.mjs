@@ -5,6 +5,7 @@ import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这……我这个功能呢',
@@ -39,7 +40,7 @@ test('ASS cache retains raw identity but invalidates equal-text selections with 
   loadEditorModule(context, 'shared/editor-utils.js');
   context.MaweBoot = { DATA: runtimeProject() };
   context.window.MaweBoot = context.MaweBoot;
-  vm.runInNewContext(`${script.slice(start, end)}; globalThis.revision = assStackInputRevision;`, context);
+  vm.runInNewContext(`${script.slice(start, end)}; globalThis.revision = assStackInputRevision;`, exposeWindowGlobals(context));
   const raw = { id: 'repeated', start: 0, end: 2000, text: '正文啊正文啊正文' };
   const first = { ...raw, text: '正文正文啊正文', items: [{ text: '正文', start: 0, end: 300 }, { text: '正文啊正文', start: 500, end: 2000 }] };
   const second = { ...first, items: [{ text: '正文啊正文', start: 0, end: 1500 }, { text: '正文', start: 1700, end: 2000 }] };
@@ -90,7 +91,7 @@ function runtime() {
   context.window.MaweBoot = context.MaweBoot;
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
     const source = initModuleSource(`editor/io/${file}`);
-    vm.runInNewContext(source, context);
+    vm.runInNewContext(source, exposeWindowGlobals(context));
   }
   context.MaweExportSrt = context.window.MaweExportSrt;
   return { context, core, utils, main, extension, overlay, srt: context.window.MaweExportSrt, timeline: context.window.MaweExportTimeline };
@@ -106,8 +107,8 @@ test('ordinary SRT reuses the real merged export projection when cache is enable
   context.window.AsrEditorUtils = tracked;
   context.getOverlayTrack = () => utils.getOverlayTrack(context.MaweBoot.DATA);
   context.overlayTrackVisible = () => utils.getOverlayTrack(context.MaweBoot.DATA)?.enabled === true;
-  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), context);
-  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), exposeWindowGlobals(context));
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), exposeWindowGlobals(context));
   const srt = context.window.MaweExportSrt;
   const cold = srt.buildSrt(), afterCold = projections;
   const warm = srt.buildSrt(), afterWarm = projections;
@@ -192,7 +193,7 @@ test('opening does not expose implicit punctuation cleanup or rewrite exact and 
   const stale = { start: 0, end: 770, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: 'stale' } };
   context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup.push(stale);
   const before = JSON.stringify(context.MaweBoot.DATA);
-  vm.runInNewContext(initModuleSource('editor/cues/editor-text-cleanup.js'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-text-cleanup.js'), exposeWindowGlobals(context));
   assert.equal(context.window.MaweTextCleanup.cleanPunctuation, undefined);
   assert.doesNotMatch(fs.readFileSync(new URL('../web/editor/boot/editor-startup.js', import.meta.url), 'utf8'), /cleanPunctuation/);
   assert.equal(JSON.stringify(context.MaweBoot.DATA), before);
@@ -210,7 +211,7 @@ function neutralNormalizationRuntime() {
     { start: 0, end: 110, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 1, text: '我' } },
     { start: 810, end: 930, cleanup_scope: { segment_id: 'main-001', item_start: 4, item_end: 5, text: '嗯' } },
   ] } } };
-  vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), exposeWindowGlobals(context));
   return setup;
 }
 

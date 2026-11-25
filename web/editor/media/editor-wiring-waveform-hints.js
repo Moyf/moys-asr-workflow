@@ -1,3 +1,4 @@
+import { MaweHint } from '../ui/editor-hint.js';
 export function initMaweWaveformHintsWiring() {
 // === Hint ===
 // 右上角提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。

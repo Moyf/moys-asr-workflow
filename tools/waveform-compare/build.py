@@ -223,8 +223,9 @@ def render_page(data: dict) -> str:
                                 '<style data-tool-foundation>' + (shared / "tool-page.css").read_text(encoding="utf-8") + '</style>')
     template = template.replace('<script data-tool-bootstrap src="../shared/tool-page.js"></script>',
                                 '<script data-tool-bootstrap>' + (shared / "tool-page.js").read_text(encoding="utf-8") + '</script>')
-    injection = "window.__WAVEFORM_COMPARISON__ = " + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";"
-    return template.replace("/* COMPARISON_DATA */", injection)
+    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    data_tag = '<script id="waveform-comparison-data" type="application/json">'
+    return template.replace(data_tag + "</script>", data_tag + payload + "</script>", 1)
 
 
 def main() -> None:
