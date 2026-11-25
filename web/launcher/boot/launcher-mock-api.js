@@ -69,7 +69,7 @@ function mockApi() {
       minWords: saved.minWords || "",
       maxWords: saved.maxWords || "",
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.12.1",
+      appVersion: "1.13.0",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,
