@@ -44,6 +44,9 @@ test('fetchOpenPullRequests 一次 gh list 获取正文并保留排序', async (
   assert.equal(args[args.indexOf('--repo') + 1], 'test/repo');
   assert.equal(args[args.indexOf('--state') + 1], 'open');
   assert.ok(args[args.indexOf('--json') + 1].split(',').includes('body'), 'gh 必须随列表获取 body');
+  for (const field of ['mergeable', 'mergeStateStatus', 'statusCheckRollup']) {
+    assert.ok(args[args.indexOf('--json') + 1].split(',').includes(field), `gh 必须随列表获取 ${field}`);
+  }
   assert.equal(options.timeout, 30_000);
   assert.deepEqual(prs.map((pr) => pr.number), [42, 41]);
   assert.equal(prs[0].body, body);
@@ -113,7 +116,7 @@ test('summarizeChecks 兼容 StatusContext 的 state 字段（小写）', () => 
   assert.equal(summarizeChecks([{ state: 'failure' }]), 'failing');
   assert.equal(summarizeChecks([{ state: 'error' }]), 'failing');
   assert.equal(summarizeChecks([{ state: 'pending' }]), 'running');
-  assert.equal(summarizeChecks([{ state: 'expected' }]), 'ok');
+  assert.equal(summarizeChecks([{ state: 'expected' }]), 'running');
   assert.equal(summarizeChecks([{ state: 'success' }, { conclusion: 'FAILURE' }]), 'failing');
   // 混合形态：conclusion 优先于 state
   assert.equal(summarizeChecks([{ conclusion: 'SUCCESS', state: 'pending' }]), 'ok');

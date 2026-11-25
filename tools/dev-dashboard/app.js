@@ -470,13 +470,31 @@ function buildBadge(text, cls = '', title = '') {
   return span;
 }
 
+function mergeStatusOf(pr, checks) {
+  const { mergeable, mergeStateStatus } = pr;
+  if (checks === 'failing') return ['error', 'CI 失败'];
+  if (mergeable === 'CONFLICTING' || mergeStateStatus === 'DIRTY') {
+    return [checks === 'ok' ? 'warning' : 'error', '合并冲突'];
+  }
+  if (pr.isDraft || mergeStateStatus === 'DRAFT') return ['pending', '草稿'];
+  if (mergeStateStatus === 'BEHIND') return ['error', '分支落后'];
+  // BLOCKED 也可能只是必需的 CI 尚未完成。
+  if (checks === 'running') return ['pending', '等待 CI'];
+  if (mergeStateStatus === 'BLOCKED') return ['error', '合并受阻'];
+  if (mergeStateStatus === 'UNSTABLE') return ['error', '检查未通过'];
+  if (mergeable === 'MERGEABLE' && ['CLEAN', 'HAS_HOOKS'].includes(mergeStateStatus)
+      && Array.isArray(pr.statusCheckRollup)) return ['ready', '可合并'];
+  return ['pending', '合并状态待确认'];
+}
+
 function buildCard(pr) {
+  const checks = summarizeChecksClient(pr.statusCheckRollup);
+  const [mergeTone, mergeLabel] = mergeStatusOf(pr, checks);
   const card = document.createElement('article');
-  card.className = 'card';
+  card.className = `card merge-${mergeTone}`;
   card.draggable = true;
   card.dataset.pr = String(pr.number);
-  if (!pr.milestone) card.classList.add('no-milestone');
-  if (statusOf(pr) === 'pass') card.classList.add('is-pass');
+  card.setAttribute('aria-label', `合并状态：${mergeLabel}`);
   const ignored = isIgnored(pr);
   if (ignored) card.classList.add('is-ignored');
 
@@ -487,6 +505,14 @@ function buildCard(pr) {
   title.target = '_blank';
   title.rel = 'noreferrer';
   title.textContent = `#${pr.number} ${pr.title}`;
+  const mergeMark = { error: '✕', warning: '!', ready: '✓' }[mergeTone];
+  if (mergeMark) {
+    const mark = document.createElement('span');
+    mark.className = 'merge-mark';
+    mark.textContent = mergeMark;
+    mark.setAttribute('aria-hidden', 'true');
+    title.prepend(mark);
+  }
   title.setAttribute('aria-controls', 'pr-preview');
   title.setAttribute('aria-expanded', 'false');
   title.setAttribute('aria-describedby', 'pr-preview-hint');
@@ -509,11 +535,11 @@ function buildCard(pr) {
   card.addEventListener('focusout', scheduleHidePrPreview);
   card.append(title);
 
-  // 徽标行：CI、draft、milestone、作者
+  // 徽标行：合并状态、CI、draft、milestone、作者
   const badges = document.createElement('div');
   badges.className = 'card-badges';
+  badges.append(buildBadge(mergeLabel, `merge-badge merge-${mergeTone}`));
 
-  const checks = summarizeChecksClient(pr.statusCheckRollup);
   const ci = document.createElement('span');
   ci.className = 'pill';
   ci.append(Object.assign(document.createElement('span'), { className: `ci-dot ci-${checks}` }));
@@ -614,7 +640,7 @@ function buildCard(pr) {
 // 两处需同步修改）。CheckRun 用 conclusion，StatusContext 用 state。
 function summarizeChecksClient(rollup) {
   if (!Array.isArray(rollup) || rollup.length === 0) return 'none';
-  const GOOD = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'EXPECTED']);
+  const GOOD = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
   const BAD = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE']);
   let bad = false;
   let running = false;

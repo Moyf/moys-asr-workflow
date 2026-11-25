@@ -109,10 +109,10 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("Major update", body)
         notes = build_release_notes(source, "v2.0.2", frozenset({"linux"}), self.releases)
         headings = [line for line in notes.splitlines() if line.startswith("# ")]
-        self.assertEqual(headings, ["# 修复版本说明", "# 大版本更新特性"])
+        self.assertEqual(headings, ["# 补丁版本说明", "# 大版本更新特性"])
         self.assertLess(notes.index("## 下载哪个版本？"), notes.index("## 如何使用"))
-        self.assertLess(notes.index("## 如何使用"), notes.index("# 修复版本说明"))
-        self.assertLess(notes.index("# 修复版本说明"), notes.index("## [2.0.2]"))
+        self.assertLess(notes.index("## 如何使用"), notes.index("# 补丁版本说明"))
+        self.assertLess(notes.index("# 补丁版本说明"), notes.index("## [2.0.2]"))
         self.assertLess(notes.index("- Patch"), notes.index("# 大版本更新特性"))
         self.assertLess(notes.index("# 大版本更新特性"), notes.index("## [2.0.0]"))
         self.assertEqual(notes.count("## [2.0.0]"), 1)
@@ -145,7 +145,7 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertIn("## 下载哪个版本？", notes)
                 self.assertIn("## 如何使用", notes)
                 self.assertIn(f"## [{tag[1:]}]", notes)
-                self.assertNotIn("# 修复版本说明", notes)
+                self.assertNotIn("# 补丁版本说明", notes)
                 self.assertNotIn("# 大版本更新特性", notes)
                 self.assertNotIn("系列主要更新", notes)
 

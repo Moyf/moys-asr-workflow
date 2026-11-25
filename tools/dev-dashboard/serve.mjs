@@ -95,7 +95,7 @@ export function groupChecklistsByPr(checklists) {
  */
 export function summarizeChecks(rollup) {
   if (!Array.isArray(rollup) || rollup.length === 0) return 'none';
-  const GOOD = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'EXPECTED']);
+  const GOOD = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
   const BAD = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR', 'STALE']);
   let bad = false;
   let running = false;
@@ -202,7 +202,7 @@ export async function fetchOpenPullRequests({ repo, run = execFileAsync } = {}) 
       '--repo', repo,
       '--state', 'open',
       '--limit', '100',
-      '--json', 'number,title,body,url,author,headRefName,baseRefName,isDraft,milestone,updatedAt,statusCheckRollup,labels',
+      '--json', 'number,title,body,url,author,headRefName,baseRefName,isDraft,milestone,updatedAt,statusCheckRollup,mergeable,mergeStateStatus,labels',
     ],
     { timeout: 30_000, maxBuffer: 16 * 1024 * 1024 },
   );
