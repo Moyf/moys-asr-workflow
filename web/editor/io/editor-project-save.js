@@ -217,6 +217,13 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
 
 
 
+  async function exportProjectToFile() {
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    return MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
+      desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
+    });
+  }
+
   // 另存为：打开系统文件浏览对话框把工程文件保存到用户选择的位置。
   // 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
   // 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
@@ -232,14 +239,14 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
     // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
     MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
-    // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-    if (!MaweHost.files.hasSavePicker()) {
-      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), suggested, 'application/json', {
-        desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
-      });
-      return;
-    }
     try {
+      // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
+      if (!MaweHost.files.hasSavePicker()) {
+        const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
+        return await MaweExportTimeline.downloadFile(projectJson, suggested, 'application/json', {
+          desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
+        });
+      }
       const handle = await MaweHost.files.pickSaveFile({
         suggestedName: suggested,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
@@ -259,10 +266,12 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
       markProjectSaved(handle.name, null, { fingerprint, contentFingerprint });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
+      return true;
     } catch (error) {
       if (!current()) return false;
-      if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
+      if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning', { error });
+      return false;
     }
   }
 
@@ -344,6 +353,7 @@ saveProjectToServer,
 saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
+exportProjectToFile,
 inlineEditHasUncommittedText,
  updateProjectDirtyIndicator,
  updateMediaCopyHint,
