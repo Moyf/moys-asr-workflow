@@ -429,14 +429,18 @@ jobs:
         run: |
           set -euo pipefail
           FfmpegBranch="8.1"
-          FfmpegAsset="ffmpeg-n${FfmpegBranch}-latest-linux64-gpl-${FfmpegBranch}.tar.xz"
+          FfmpegRelease="$(curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+            https://api.github.com/repos/FFmpeg-Builds/FFmpeg-Builds/releases/latest \
+            | python3 scripts/select_btbn_ffmpeg.py "$FfmpegBranch")"
+          read -r FfmpegTag FfmpegAsset <<< "$FfmpegRelease"
+          FfmpegBase="https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/$FfmpegTag"
           mkdir -p build/ci-ffmpeg/download build/ci-ffmpeg/extracted
           curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
             -o "build/ci-ffmpeg/download/$FfmpegAsset" \
-            "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/$FfmpegAsset"
+            "$FfmpegBase/$FfmpegAsset"
           curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
             -o build/ci-ffmpeg/download/checksums.sha256 \
-            https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/checksums.sha256
+            "$FfmpegBase/checksums.sha256"
           bash scripts/verify_sha256.sh build/ci-ffmpeg/download/checksums.sha256 \
             "$FfmpegAsset" "build/ci-ffmpeg/download/$FfmpegAsset"
           tar -xf "build/ci-ffmpeg/download/$FfmpegAsset" -C build/ci-ffmpeg/extracted --strip-components=1

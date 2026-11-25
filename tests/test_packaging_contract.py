@@ -741,6 +741,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("ffmpeg squashfs-tools", workflow[linux_install:tests_at])
         self.assertIn('scripts/verify_sha256.sh', workflow[linux_media_ffmpeg:tests_at])
         self.assertIn('FfmpegBranch="8.1"', workflow[linux_media_ffmpeg:tests_at])
+        self.assertIn('scripts/select_btbn_ffmpeg.py', workflow[linux_media_ffmpeg:tests_at])
+        self.assertIn('"$FfmpegBase/checksums.sha256"', workflow[linux_media_ffmpeg:tests_at])
 
     def test_release_workflow_verifies_esm_payload_in_all_three_platform_packages(self) -> None:
         """Given release packages for Windows/macOS/Linux, When CI completes, Then each package's ESM bundle and source hashes are checked."""
@@ -770,12 +772,13 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
         self.assertIn('Archive SHA-256: $FFMPEG_TARBALL_SHA256', script)
 
-    def test_appimage_build_pins_btbn_rolling_latest_not_dated_autobuild(self) -> None:
-        """Given the AppImage build script, When it downloads BtbN ffmpeg, Then it uses the permanent latest-release asset with upstream checksum verification instead of a dated pin that upstream prunes."""
+    def test_appimage_build_resolves_latest_btbn_release_snapshot(self) -> None:
+        """Resolve the archive and checksum manifest from the same upstream release."""
         script = read_text("scripts/build-appimage.sh")
 
-        self.assertIn("releases/latest/download/$FFMPEG_ASSET", script)
-        self.assertIn("releases/latest/download/checksums.sha256", script)
+        self.assertIn("scripts/select_btbn_ffmpeg.py", script)
+        self.assertIn("releases/download/$FFMPEG_TAG", script)
+        self.assertIn('"$FFMPEG_BASE/checksums.sha256"', script)
         self.assertIn(
             'bash "$REPO_ROOT/scripts/verify_sha256.sh" "$FFMPEG_CHECKSUMS" "$FFMPEG_ASSET" "$FFMPEG_TARBALL"',
             script,
