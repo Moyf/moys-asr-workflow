@@ -5,7 +5,7 @@ import { createOutputTail } from './output-tail.mjs';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
+import { editorServerEntry, generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
 import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 
@@ -52,7 +52,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   const python = String(process.env.MAW_E2E_PYTHON || '').trim();
   const command = app || python || 'uv';
   const args = [...(app ? ['--serve']
-    : [...(python ? [] : ['run', '--no-sync', 'python']), 'server-editor/serve.py']),
+    : [...(python ? [] : ['run', '--no-sync', 'python']), ...editorServerEntry()]),
     ...(blank ? ['--blank'] : [projectPath, '--media', mediaPath]),
     '--no-open', '--no-waveform', '--port', String(port)];
   const log = createWriteStream(join(directory, 'server.log'));

@@ -63,6 +63,16 @@ for (const launcher of [false,true]) {
     try {
       await disableOnboarding(page);
       await page.addInitScript(()=>localStorage.setItem('mawe-filmstrip-decode','false'));
+      await page.addInitScript(() => {
+        const drawImage = CanvasRenderingContext2D.prototype.drawImage;
+        CanvasRenderingContext2D.prototype.drawImage = function (...args) {
+          drawImage.apply(this, args);
+          if (args[0] !== this.canvas && this.globalAlpha > 0 && this.canvas.classList.contains('waveform-filmstrip')) {
+            this.canvas.dataset.cachedFramePainted = 'true';
+          }
+        };
+      });
+      const paintedFilmstrip = page.locator('.waveform-filmstrip[data-cached-frame-painted]:visible').first();
       const states=[],assets=[],demands=[];
       page.on('request',request=>{
         if(new URL(request.url()).pathname==='/api/thumbnails/demand')demands.push(request.postDataJSON());
@@ -74,7 +84,7 @@ for (const launcher of [false,true]) {
         if(url.pathname.startsWith('/api/thumbnails/asset/'))assets.push(url.pathname);
       });
       await page.goto(server.url);
-      await page.waitForFunction(()=>MaweCoreState.waveformEditor?.thumbnailController.bytes>0,null,{timeout:30000});
+      await expect(paintedFilmstrip).toBeVisible({ timeout: 30000 });
       await expect(page.locator('#waveform-thumbnail-mode')).toHaveValue('marks');
       await expect(page.locator('#waveform-thumbnail-status')).toHaveText('显示关键帧标记');
       await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
@@ -87,7 +97,7 @@ for (const launcher of [false,true]) {
       expect(demands.every(demand=>demand.decode===false)).toBe(true);
       await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
       await page.reload();
-      await page.waitForFunction(()=>MaweCoreState.waveformEditor?.thumbnailController.bytes>0,null,{timeout:30000});
+      await expect(paintedFilmstrip).toBeVisible({ timeout: 30000 });
       await expect(page.locator('#waveform-thumbnail-mode')).toHaveValue('strip');
       await expect(page.locator('#waveform-thumbnail-decode')).not.toBeChecked();
       await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();

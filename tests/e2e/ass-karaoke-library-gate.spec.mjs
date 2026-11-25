@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
+import { publishFixtureBindings } from '../helpers/editor-fixture-bindings.mjs';
 
 test('secondary color follows karaoke and library editability in the DOM', async ({ page }) => {
   await page.setContent(`
@@ -14,7 +15,7 @@ test('secondary color follows karaoke and library editability in the DOM', async
   const source = readFileSync(new URL('../../web/editor/styles/editor-wiring-ass-manager.js', import.meta.url), 'utf8');
   const initializer = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }).body
     .find(node => node.type === 'ExportNamedDeclaration' && node.declaration?.id?.name === 'initAssManagerWiring').declaration;
-  const body = source.slice(initializer.body.start + 1, initializer.body.end - 1);
+  const body = publishFixtureBindings(source).slice(initializer.body.start + 1, initializer.body.end - 1);
   await page.addScriptTag({ content: `(() => {
     const state = window.gateFixture = {
       editable: true,
@@ -26,6 +27,7 @@ test('secondary color follows karaoke and library editability in the DOM', async
     const canEditAssStyleLibrary = () => state.editable;
     const MaweState = { onProjectDirtyChange() {} };
     const MaweSettings = { EDITOR_SETTINGS: {} };
+    const MAWE_I18N = { translateText: text => text };
     const managerService = {};
     window.AsrEditorUtils = { normalizeAssStyle: style => style };
     window.MaweFloatingPanel = { createFloatingPanel: () => ({ isOpen: () => false }) };

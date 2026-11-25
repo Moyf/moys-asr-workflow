@@ -7,7 +7,9 @@ import { buildLauncherBrowserFixture } from '../helpers/launcher-browser-fixture
 
 export default async function setupEditorFixture() {
   const fixture = await buildEditor(undefined, {
-    transform: (file, source) => /\.[cm]?js$/.test(file) ? publishFixtureBindings(source).toString() : source,
+    transform: (file, source) => /\.[cm]?js$/.test(file)
+      ? publishFixtureBindings(source, undefined, { liveFacadeBindings: true }).toString()
+      : source,
   });
   const directory = mkdtempSync(join(tmpdir(), 'maw-editor-fixture-'));
   const file = join(directory, 'editor.js');

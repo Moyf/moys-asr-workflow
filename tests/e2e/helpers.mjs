@@ -468,7 +468,7 @@ export async function startBlankServer(port, settingsRoot, { production = false 
   }));
 }
 
-function editorServerEntry(production = false) {
+export function editorServerEntry(production = false) {
   const fixture = process.env.MAW_E2E_EDITOR_FIXTURE;
   return fixture && !production ? ['tests/helpers/serve-editor-fixture.py', fixture] : ['server-editor/serve.py'];
 }

@@ -9,6 +9,7 @@ const outputDir = process.env.MAW_SCROLL_RESULTS
 
 export default defineConfig({
   testDir: '../e2e', testMatch: 'cue-scroll-stability.spec.mjs',
+  globalSetup: './editor-fixture-setup.mjs',
   workers: 1, retries: 0, timeout: 120000,
   outputDir,
   use: { headless: true, viewport: { width: 1280, height: 900 }, trace: 'retain-on-failure' },

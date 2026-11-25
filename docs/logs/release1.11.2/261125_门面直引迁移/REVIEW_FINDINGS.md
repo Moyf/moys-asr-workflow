@@ -16,3 +16,9 @@
 `521a615b` 的 Windows 打包预览在真实 exe 启动后报告 `Packaged editor has no application bundle`。用生产渲染器取出空白 Editor 页，旧检查复现失败，且页面里存在一个构建器写入的 SHA-256 产物头。
 
 `scripts/packaging/smoke_editor.py:17` 改为识别带代码的构建产物头。独立复核验证实际渲染结果、空标记和仅有旧全局名称的负例，确认启动、项目身份、资源请求与退出检查继续执行。资产与打包契约共 65 项通过，Ruff 通过。
+
+## PR #458 辅助测试复核
+
+- 浏览器测试夹具将可写门面与真实 ESM 绑定连接，让 ASS 序列化计数、渲染参数和跳空导出绑定的测试替身作用于实际调用方。独立复核对照了生产和测试 bundle，确认只有后者注入测试访问器。
+- 字幕滚动的源码用例复用 Editor Server 夹具，卡拉 OK 表单复用门面发布辅助函数。Dashboard 的长标题通过模拟 API 返回。缩略图测试监听页面画布的 `drawImage`，确认加载和重载后均收到实际图像绘制。常规及独立滚动配置的 Chromium 用例均通过。
+- 选测扫描识别 Launcher 夹具 URL 导航和 JSDoc 标注的 DOM 查询。ASR 预设测试使用自己构建的临时 bundle。影响选测和工作流回归共 51 项通过，独立复核无未处置的 blocker 或 major。
