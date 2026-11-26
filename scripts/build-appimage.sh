@@ -32,96 +32,9 @@ uv run --group build pyinstaller --noconfirm --clean scripts/packaging/MAW.spec
 # user-facing FAQ at the AppImage root as well, where users can find it easily.
 cp "docs/user/FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
 
-echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds）"
-FFMPEG_BRANCH="8.1"
-FFMPEG_CHECKSUMS="$BUILD_DIR/btbn-checksums.sha256"
-FFMPEG_TARBALL="$BUILD_DIR/ffmpeg-static.tar.xz"
-FFMPEG_URL_FILE="$BUILD_DIR/ffmpeg-static.url"
-FFMPEG_DIR="$BUILD_DIR/ffmpeg-static"
-FFMPEG_URL="unavailable (reused cached ffmpeg-static; download URL not kept)"
-# 静态版自包含 libstdc++ 依赖，不受 PyInstaller 的 _internal 旧库污染；
-# 动态版 ffmpeg 若打进包内，AppRun 污染环境下照样会 GLIBCXX 报错。
-# 从同一个上游 release 快照确定文件名和校验清单，避免 latest 在两次下载间切换。
-if [ ! -x "$FFMPEG_DIR/bin/ffmpeg" ]; then
-    FFMPEG_RELEASE="$(curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
-        https://api.github.com/repos/FFmpeg-Builds/FFmpeg-Builds/releases/latest \
-        | python3 "$REPO_ROOT/scripts/select_btbn_ffmpeg.py" "$FFMPEG_BRANCH")"
-    read -r FFMPEG_TAG FFMPEG_ASSET <<< "$FFMPEG_RELEASE"
-    FFMPEG_BASE="https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/$FFMPEG_TAG"
-    FFMPEG_URL="$FFMPEG_BASE/$FFMPEG_ASSET"
-    echo "    下载静态 ffmpeg（$FFMPEG_ASSET）..."
-    if ! curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
-            -o "$FFMPEG_TARBALL" "$FFMPEG_URL"; then
-        echo "错误：ffmpeg 下载失败（$FFMPEG_URL）。" >&2
-        rm -f "$FFMPEG_TARBALL"
-        exit 1
-    fi
-    echo "    对照上游 checksums.sha256 校验静态 ffmpeg 完整性..."
-    if ! curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
-            -o "$FFMPEG_CHECKSUMS" \
-            "$FFMPEG_BASE/checksums.sha256" \
-        || ! bash "$REPO_ROOT/scripts/verify_sha256.sh" "$FFMPEG_CHECKSUMS" "$FFMPEG_ASSET" "$FFMPEG_TARBALL"; then
-        echo "错误：ffmpeg 完整性校验失败或 checksums.sha256 不可得（$FFMPEG_TARBALL），已删除。" >&2
-        rm -f "$FFMPEG_TARBALL" "$FFMPEG_CHECKSUMS"
-        exit 1
-    fi
-    rm -f "$FFMPEG_CHECKSUMS"
-    mkdir -p "$FFMPEG_DIR"
-    tar -xf "$FFMPEG_TARBALL" -C "$FFMPEG_DIR" --strip-components=1
-    chmod +x "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe"
-    printf '%s\n' "$FFMPEG_URL" > "$FFMPEG_URL_FILE"
-elif [ -f "$FFMPEG_URL_FILE" ]; then
-    FFMPEG_URL="$(cat "$FFMPEG_URL_FILE")"
-fi
-# 资产名固定在 8.1 分支，仍校验二进制自报版本，防同名资产内容异常。
-"$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1 | grep -q "$FFMPEG_BRANCH" || {
-    echo "错误：解压出的 ffmpeg 版本异常（未包含 $FFMPEG_BRANCH）：" >&2
-    "$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1 >&2
-    exit 1
-}
-# 实际打进包的归档哈希写入 SOURCE.txt；复用缓存目录且归档已清理时如实标注。
-if [ -f "$FFMPEG_TARBALL" ]; then
-    FFMPEG_TARBALL_SHA256="$(sha256sum "$FFMPEG_TARBALL" | cut -d ' ' -f1)"
-else
-    FFMPEG_TARBALL_SHA256="unavailable (reused cached ffmpeg-static; archive not kept)"
-fi
-# 放入 PyInstaller onedir 产物：frozen 时 _bundled_ffmpeg_directory() 查
-# sys.executable.parent / ffmpeg / bin（即 dist/MAW/ffmpeg/bin）。BtbN 包内
-# 二进制位于解压根目录的 bin/ 子目录（与 johnvansickle 的根目录布局不同）。
-mkdir -p "dist/MAW/ffmpeg/bin"
-cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
-# GPL 合规：BtbN linux64-gpl 是 GPL 构建，分发须随附许可证文本与对应源码
-# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文
-# 优先从 gnu.org 拉取，失败时回退 GitHub 官方 SPDX 镜像（GitHub hosted
-# runner 上 gnu.org 偶发连接超时，curl (28) 会导致 AppImage 构建连带失败）；
-# SOURCE.txt 记录构建来源、归档地址与校验和。
-_GPL_TARGET="dist/MAW/ffmpeg/GPLv3.txt"
-_GPL_TMP="${_GPL_TARGET}.tmp"
-rm -f "$_GPL_TMP"
-if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
-    -o "$_GPL_TMP" "https://www.gnu.org/licenses/gpl-3.0.txt" \
-    || curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 --retry 1 \
-        -o "$_GPL_TMP" \
-        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"; then
-    :
-else
-    rm -f "$_GPL_TMP"
-    echo "GPL 许可证文本下载失败（gnu.org 与 SPDX 镜像均不可达）" >&2
-    exit 1
-fi
-grep -q "GNU GENERAL" "$_GPL_TMP" || { rm -f "$_GPL_TMP"; echo "GPL 许可证文本内容校验失败" >&2; exit 1; }
-mv -f "$_GPL_TMP" "$_GPL_TARGET"
-test -s "$_GPL_TARGET"
-cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
-FFmpeg ${FFMPEG_BRANCH} stable branch — BtbN FFmpeg-Builds linux64-gpl static build
-Build provider: https://github.com/BtbN/FFmpeg-Builds
-Original archive: $FFMPEG_URL
-Archive SHA-256: $FFMPEG_TARBALL_SHA256
-License: GPL-3.0 (full text in GPLv3.txt)
-Upstream FFmpeg source: https://github.com/FFmpeg/FFmpeg
-This MAW package includes only ffmpeg and ffprobe from the original build.
-EOF
-echo "    静态 ffmpeg: $("$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1)"
+echo "==> 2/6 准备已锁定的 Linux FFmpeg"
+# 保留 bin/ 与 lib/ 的相对位置，供 FFmpeg 的 $ORIGIN/../lib 查找共享库。
+bash scripts/prepare_linux_ffmpeg.sh build/linux-ffmpeg-cache dist/MAW/ffmpeg
 
 echo "==> 3/6 组装 AppDir"
 if [ -d "$APP_DIR" ]; then

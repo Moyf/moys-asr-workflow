@@ -724,13 +724,13 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("_internal/libreadline.so.*", workflow)
 
     def test_release_workflow_installs_ffmpeg_before_cross_platform_python_tests(self) -> None:
-        """Given macOS/Linux release jobs, When media tests run, Then the packaged FFmpeg 8.1 toolchain is verified and active."""
+        """Given macOS/Linux release jobs, When media tests run, Then the packaged FFmpeg is verified and active."""
         workflow = read_text(".github/workflows/release.yml")
         matrix_at = workflow.index('  build-aux:')
         tests_at = workflow.index('- name: Run Python tests', matrix_at)
         macos_install = workflow.index('- name: Install FFmpeg for macOS media tests', matrix_at)
         linux_install = workflow.index('- name: Install Linux system dependencies', matrix_at)
-        linux_media_ffmpeg = workflow.index('- name: Install verified FFmpeg 8.1 for Linux media tests', matrix_at)
+        linux_media_ffmpeg = workflow.index(' for Linux media tests\n', matrix_at)
         self.assertLess(macos_install, tests_at)
         self.assertLess(linux_install, tests_at)
         self.assertLess(linux_media_ffmpeg, tests_at)
@@ -739,10 +739,10 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('--http1.1 --retry-all-errors --retry 5', workflow[macos_install:tests_at])
         self.assertIn("if: matrix.platform == 'linux'", workflow[linux_install:tests_at])
         self.assertIn("ffmpeg squashfs-tools", workflow[linux_install:tests_at])
-        self.assertIn('scripts/verify_sha256.sh', workflow[linux_media_ffmpeg:tests_at])
-        self.assertIn('FfmpegBranch="8.1"', workflow[linux_media_ffmpeg:tests_at])
-        self.assertIn('scripts/select_btbn_ffmpeg.py', workflow[linux_media_ffmpeg:tests_at])
-        self.assertIn('"$FfmpegBase/checksums.sha256"', workflow[linux_media_ffmpeg:tests_at])
+        linux_media_setup = workflow[linux_media_ffmpeg:tests_at]
+        self.assertIn('bash scripts/prepare_linux_ffmpeg.sh build/linux-ffmpeg-cache build/linux-ffmpeg-tools', linux_media_setup)
+        self.assertIn('echo "$PWD/build/linux-ffmpeg-tools/bin" >> "$GITHUB_PATH"', linux_media_setup)
+        self.assertNotIn('/releases/latest', linux_media_setup)
 
     def test_release_workflow_verifies_esm_payload_in_all_three_platform_packages(self) -> None:
         """Given release packages for Windows/macOS/Linux, When CI completes, Then each package's ESM bundle and source hashes are checked."""
@@ -761,35 +761,29 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('name: Verify packaged ESM bundles and source hashes', workflow)
 
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
-        """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
-        script = read_text("scripts/build-appimage.sh")
+        """AppImage retains the mirrored FFmpeg archive's GPLv3 text and source notice."""
+        build = read_text("scripts/build-appimage.sh")
+        prepare = read_text("scripts/prepare_linux_ffmpeg.sh")
 
-        self.assertIn('cp "docs/user/FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"', script)
-        self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
-        self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
-        self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
-        self.assertIn('raw.githubusercontent.com/spdx/license-list-data', script)
-        self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
-        self.assertIn('Archive SHA-256: $FFMPEG_TARBALL_SHA256', script)
+        self.assertIn('cp "docs/user/FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"', build)
+        self.assertIn('bash scripts/prepare_linux_ffmpeg.sh build/linux-ffmpeg-cache dist/MAW/ffmpeg', build)
+        self.assertIn('mv "$tools/LICENSE.txt" "$tools/GPLv3.txt"', prepare)
+        self.assertIn('"$tools/SOURCE.txt"', prepare)
+        self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', prepare)
+        self.assertRegex(prepare, r'https://github\.com/FFmpeg-Builds/FFmpeg-Builds/tree/[0-9a-f]{40}')
+        self.assertIn('Archive SHA-256: $sha256', prepare)
 
-    def test_appimage_build_resolves_latest_btbn_release_snapshot(self) -> None:
-        """Resolve the archive and checksum manifest from the same upstream release."""
-        script = read_text("scripts/build-appimage.sh")
+    def test_linux_ffmpeg_is_locked_before_extracting_required_tools_and_libraries(self) -> None:
+        prepare = read_text("scripts/prepare_linux_ffmpeg.sh")
 
-        self.assertIn("scripts/select_btbn_ffmpeg.py", script)
-        self.assertIn("releases/download/$FFMPEG_TAG", script)
-        self.assertIn('"$FFMPEG_BASE/checksums.sha256"', script)
-        self.assertIn(
-            'bash "$REPO_ROOT/scripts/verify_sha256.sh" "$FFMPEG_CHECKSUMS" "$FFMPEG_ASSET" "$FFMPEG_TARBALL"',
-            script,
-        )
-        # 上游清单只写裸文件名，sha256sum -c 按当前目录解析，而归档落在 build-appimage/
-        # 子目录，必然报 No such file or directory（2026-09-10 Linux 打包即因此失败）。
-        self.assertNotIn("sha256sum -c", script)
-        self.assertIn("curl --fail --location --silent --show-error", script)
-        self.assertIn('| grep -q "$FFMPEG_BRANCH"', script)
-        self.assertNotIn("/releases/download/autobuild-", script)
-        self.assertNotIn("FFMPEG_SHA256=", script)
+        self.assertIn('mirror=https://github.com/mifi/ffmpeg-builds/releases', prepare)
+        self.assertRegex(prepare, r'(?m)^mirror_tag=[0-9]+\.[0-9]+-[0-9]+$')
+        self.assertIn('$mirror/download/$mirror_tag/$asset', prepare)
+        self.assertIn('cache="$cache/$mirror_tag"', prepare)
+        self.assertRegex(prepare, r'(?m)^sha256=[0-9a-f]{64}$')
+        self.assertLess(prepare.index('sha256sum --check --strict'), prepare.index('tar -xf "$archive"'))
+        self.assertIn("'*/bin/ffmpeg' '*/bin/ffprobe' '*/lib/lib*.so*'", prepare)
+        self.assertNotIn('/releases/latest', prepare)
 
     def test_local_build_script_invokes_uv_and_pyinstaller_for_maw_onedir(self) -> None:
         """Given a Windows developer build, When the script is read, Then it builds dist/MAW/MAW.exe."""
