@@ -1191,7 +1191,15 @@ def burn_ass_video(
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
                                 f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
-        filter_args.extend(("-fps_mode", "vfr", "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
+        duration = _burn_seconds(duration_ms)
+        # Older FFmpeg clears frame duration in setpts. Infer missing packet
+        # durations from decode spacing so MP4 retains the final visible frame.
+        # Bound the estimate by the remaining cut time, including one-frame cuts.
+        remaining = f'{duration}/TB-PTS'
+        spacing = f'if(gt(NEXT_DTS,DTS),NEXT_DTS-DTS,if(N,DTS-PREV_INDTS,{remaining}))'
+        packet_duration = f'if(gt(DURATION,0),DURATION,max(1,min({remaining},{spacing})))'
+        filter_args.extend(("-fps_mode", "vfr", "-bsf:v",
+                            f"setts=pts=PTS:dts=DTS:duration='{packet_duration}'", "-t", duration))
     elif stickers:
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
         graph_path = output_path.with_suffix(".filters")
@@ -3139,8 +3147,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
     def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
         """Opaque assets and current binding only; client paths are never accepted."""
         manager = self.editor_server.thumbnail_jobs
+        body_pending = mutate
+
         def send(status, payload):
-            self.send_json(status, payload, include_body=include_body)
+            # A rejected POST may still have unread bytes. Close rather than
+            # treating those bytes as the next request on this connection.
+            self.send_json(status, payload, include_body=include_body, close_connection=body_pending)
         try:
             host = self.headers.get("Host", "")
             port = self.editor_server.server_address[1]
@@ -3154,6 +3166,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if length > 65536:
                     raise ValueError("thumbnail request too large")
                 request = self.read_json_request(max_bytes=65536)
+                body_pending = False
                 self._check_request_token(request)
                 if "path" in request or "media_path" in request or "source_media_path" in request:
                     raise ValueError("thumbnail client paths are forbidden")

@@ -36,7 +36,7 @@ from maw.gui_workflow import (  # noqa: E402
     run_transcription,
 )
 from maw.local_debug import local_debug_manifest_path  # noqa: E402
-from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
+from maw.gui_platform import terminate_process_tree  # noqa: E402
 from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path, _write_startup_error_log  # noqa: E402
 
 
@@ -875,18 +875,26 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(fake.waited)
 
     def test_terminate_registered_windows_job_closes_handle_after_kill(self) -> None:
-        fake = mock.Mock()
-        fake._maw_job_handle = 123
-        kernel32 = mock.Mock()
-        kernel32.TerminateJobObject.return_value = 1
-
-        with mock.patch("maw.gui_platform.sys.platform", "win32"):
-            with mock.patch("ctypes.WinDLL", return_value=kernel32, create=True):
-                self.assertTrue(_terminate_registered_job(fake))
-
-        kernel32.TerminateJobObject.assert_called_once_with(123, 1)
-        kernel32.CloseHandle.assert_called_once_with(123)
-        self.assertIsNone(fake._maw_job_handle)
+        for prefer_job in (False, True):
+            with self.subTest(prefer_job=prefer_job):
+                process = mock.Mock(pid=4321, _maw_job_handle=123)
+                process.poll.return_value = None
+                calls = mock.Mock()
+                calls.taskkill.return_value = True
+                calls.kernel32.TerminateJobObject.return_value = 1
+                with (mock.patch("maw.gui_platform.sys.platform", "win32"),
+                      mock.patch("ctypes.WinDLL", return_value=calls.kernel32, create=True),
+                      mock.patch("maw.gui_platform._taskkill_process_tree", calls.taskkill)):
+                    if prefer_job:
+                        terminate_process_tree(process, prefer_registered_job=True)
+                    else:
+                        terminate_process_tree(process)
+                expected = [] if prefer_job else [mock.call.taskkill(4321)]
+                expected.extend((mock.call.kernel32.TerminateJobObject(123, 1),
+                                 mock.call.kernel32.CloseHandle(123)))
+                self.assertEqual(calls.mock_calls, expected)
+                process.wait.assert_called_once_with(timeout=5.0)
+                self.assertIsNone(process._maw_job_handle)
 
     def test_decode_process_output_accepts_utf8_and_bom(self) -> None:
         self.assertEqual(_decode_process_output("已开始\n"), "已开始\n")
