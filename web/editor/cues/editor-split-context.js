@@ -6,7 +6,7 @@ import { MaweHint } from '../ui/editor-hint.js';
 import { MaweNinja } from '../ui/editor-ninja.js';
 import { MaweSplitCore } from './editor-split-core.js';
 import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
-export let MaweSplitContext;
+let MaweSplitContext;
 import { caretInfoFromPoint, finishEdit, setEditingCaretOffset, startEdit } from './editor-inline-edit.js';
 import { linkedSplitState, notifyMainSplitTimestampFallback, openMainWaveformSplitModal, renderLinkedSplitText, shouldUseMainSplitTimestamps, splitAtCursor, splitOffsetNearTime } from './editor-split-core.js';
 import { timelineFrameAlignedMilliseconds } from './editor-timeline.js';
@@ -18,11 +18,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 由 split-cluster codemod 自 editor.js 拆出。
 
 export function initMaweSplitContext() {
-(function initMaweSplitContext(global) {
-  'use strict';
-
-
-
   // 波形来源拆分的外置强制拆分 armed：<100ms 切点首次被拒时记录
   // { idx, segment, cutMs }，同一字幕再次按 B 直接强制拆分。segment 引用
   // 用于惰性失效：撤销、合并、再次拆分都会替换该对象，armed 随之作废。
@@ -127,8 +122,6 @@ export function initMaweSplitContext() {
   MaweSplitContext = Object.freeze({
     splitFromContextMenu
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function splitFromContextMenu(...args) { return MaweSplitContext.splitFromContextMenu(...args); }

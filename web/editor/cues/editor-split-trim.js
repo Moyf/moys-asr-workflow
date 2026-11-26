@@ -1,21 +1,19 @@
 // 拆分修剪符号表：修剪字符配置、持久化与网格 UI。
 import { MaweSettings } from '../state/editor-settings.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
-export let MaweSplitTrim;
+let MaweSplitTrim;
+export let splitTrimSymbolsReset;
+export let splitTrimExtraInput;
 export function initMaweSplitTrim() {
-(function initMaweSplitTrim(global) {
-  'use strict';
-
-
   // 拆分移除符号：前 5 个高频符号用勾选 chip，其余走「其他符号」自由文本框
   // （空格分隔）；两者合并后即时持久化并同步给共享工具层。
   const splitTrimSymbolGrid = document.getElementById('split-trim-symbol-grid');
 
 
-  const splitTrimSymbolsReset = document.getElementById('split-trim-symbols-reset');
+  splitTrimSymbolsReset = document.getElementById('split-trim-symbols-reset');
 
 
-  const splitTrimExtraInput = /** @type {HTMLInputElement} */ (document.getElementById('split-trim-extra-symbols'));
+  splitTrimExtraInput = /** @type {HTMLInputElement} */ (document.getElementById('split-trim-extra-symbols'));
 
 
   function currentSplitTrimPrimaryChars() {
@@ -99,13 +97,9 @@ export function initMaweSplitTrim() {
     renderSplitTrimSymbolGrid,
     refreshSplitTrimExtraInput
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function splitTrimSymbolGrid(...args) { return MaweSplitTrim.splitTrimSymbolGrid(...args); }
-export function splitTrimSymbolsReset(...args) { return MaweSplitTrim.splitTrimSymbolsReset(...args); }
-export function splitTrimExtraInput(...args) { return MaweSplitTrim.splitTrimExtraInput(...args); }
 export function currentSplitTrimPrimaryChars(...args) { return MaweSplitTrim.currentSplitTrimPrimaryChars(...args); }
 export function splitTrimPrimaryCheckedSet(...args) { return MaweSplitTrim.splitTrimPrimaryCheckedSet(...args); }
 export function splitTrimExtraSymbols(...args) { return MaweSplitTrim.splitTrimExtraSymbols(...args); }

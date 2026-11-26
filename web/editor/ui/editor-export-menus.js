@@ -1,5 +1,5 @@
 // 导出菜单：工具栏导出下拉的开关、键盘导航与子菜单交互。
-import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { releaseClosedUiFocus } from '../cues/editor-keyboard-targets.js';
 import { MaweFloatingPanel } from './editor-floating-panel.js';
 
 export let MaweExportMenus;
@@ -157,7 +157,7 @@ export function initMaweExportMenus() {
         positioner();
         requestAnimationFrame(positioner);
       }
-      if (!open && restoreFocus) MaweKeyboardTargets.releaseClosedUiFocus(menu, btn);
+      if (!open && restoreFocus) releaseClosedUiFocus(menu, btn);
     };
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -272,7 +272,7 @@ export function initMaweExportMenus() {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         item.click();
-        if (!item.classList.contains('dropdown-submenu-toggle')) MaweKeyboardTargets.releaseClosedUiFocus(menu, btn);
+        if (!item.classList.contains('dropdown-submenu-toggle')) releaseClosedUiFocus(menu, btn);
       }
     });
     document.addEventListener('click', (e) => {

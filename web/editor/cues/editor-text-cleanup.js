@@ -7,16 +7,11 @@ import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweHint } from '../ui/editor-hint.js';
 import { MaweNavPreview } from './editor-nav-preview.js';
 import { pausePlaybackAfterMouseClick } from '../media/editor-media-playback.js';
-export let MaweTextCleanup;
+let MaweTextCleanup;
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweTextCleanup() {
-'use strict';
-
-// 文本清理与 seek：分组时间同步、媒体 seek 助手。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweTextCleanup(global) {
-  'use strict';
-
+  // 文本清理与 seek：分组时间同步、媒体 seek 助手。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // Explicit normalization remains available to callers; opening a project
   // keeps the original text and does not invoke this operation.
   function cleanPunctuation() {
@@ -104,11 +99,8 @@ export function initMaweTextCleanup() {
     notifyAutoLoadedMediaReady,
     flushPendingMediaSeek
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function cleanPunctuation(...args) { return MaweTextCleanup.cleanPunctuation(...args); }
 export function syncTimelineGroupRanges(...args) { return MaweTextCleanup.syncTimelineGroupRanges(...args); }
 export function seekFromWaveform(...args) { return MaweTextCleanup.seekFromWaveform(...args); }
 export function notifyAutoLoadedMediaReady(...args) { return MaweTextCleanup.notifyAutoLoadedMediaReady(...args); }

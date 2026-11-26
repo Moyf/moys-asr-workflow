@@ -5,13 +5,8 @@ import { MaweProjectLoad } from './editor-project-load.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweLoadingProgress;
 export function initLoadingProgressModule() {
-// 加载进度：进度条状态机与带进度的文件读取。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweLoadingProgress(global) {
-  'use strict';
-
-
-
+  // 加载进度：进度条状态机与带进度的文件读取。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   const editorLoading = document.getElementById('editor-loading');
 
 
@@ -97,6 +92,4 @@ export function initLoadingProgressModule() {
     readFileTextWithProgress,
     parseSubtitleImportFile
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

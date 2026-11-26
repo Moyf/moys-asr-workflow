@@ -1,5 +1,5 @@
 import { MaweCueElements } from '../cues/editor-cue-elements.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { renderAll } from '../cues/editor-cue-panel.js';
 import { MaweSearch } from '../cues/editor-search.js';
 import { MaweTimeline } from '../cues/editor-timeline.js';
 import { MaweJklPlayback } from '../media/editor-jkl.js';
@@ -177,7 +177,7 @@ MaweDom.timelineTimecodeSeparatorInput?.addEventListener('change', () => {
   MaweCoreState.waveformEditor?.refreshPointerLine?.();
   // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，
   // 不必等到下一次字幕编辑操作才看到新格式。
-  MaweCuePanel.renderAll({ waveform: 'none' });
+  renderAll({ waveform: 'none' });
 });
 MaweDom.autoSnapAdjacentCuesToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ autoSnapAdjacentCues: MaweDom.autoSnapAdjacentCuesToggle.checked });

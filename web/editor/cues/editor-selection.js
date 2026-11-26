@@ -16,14 +16,7 @@ import { getOverlayTrack } from './overlay-track.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweSelection() {
-'use strict';
-
-// 选择状态：主/副选中集、点击锚点与多选类刷新。
-(function initMaweSelection(global) {
-  'use strict';
-
-
-
+  // 选择状态：主/副选中集、点击锚点与多选类刷新。
   //   1) sticker.rel + STICKER_ROOT  - 拼出服务器或 file:// URL
   //   2) sticker.path  - 兼容老版工程
   function stickerUrl(sticker) {
@@ -495,8 +488,6 @@ export function initMaweSelection() {
     addManyToExtensionSelection,
     selectAll
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function stickerUrl(...args) { return MaweSelection.stickerUrl(...args); }

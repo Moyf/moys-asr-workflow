@@ -5,10 +5,6 @@ import { MaweState } from './editor-state.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweSettings;
 export function initMaweSettings() {
-(function initMaweSettings(global) {
-  'use strict';
-
-
   const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 
 
@@ -461,8 +457,6 @@ export function initMaweSettings() {
     EDITOR_SETTINGS,
     updateEditorSettings
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function clampMediaSeekStepMs(...args) { return MaweSettings.clampMediaSeekStepMs(...args); }

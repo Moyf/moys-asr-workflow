@@ -6,12 +6,8 @@ import { MaweHint } from '../ui/editor-hint.js';
 import { MaweExportTimeline } from './editor-export-timeline.js';
 export let MaweStickerOtioExport;
 export function initStickerOtioExportModule() {
-// 表情包 OTIO 导出：便携模式同步与导出入口。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweStickerOtioExport(global) {
-  'use strict';
-
-
+  // 表情包 OTIO 导出：便携模式同步与导出入口。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   const stickerOtioExportMode = /** @type {HTMLSelectElement} */ (document.getElementById('sticker-otio-export-mode'));
 
 
@@ -73,6 +69,4 @@ export function initStickerOtioExportModule() {
     syncStickerOtioExportMode,
     exportStickerOtio
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

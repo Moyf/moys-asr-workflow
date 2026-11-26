@@ -9,7 +9,7 @@ import { MaweHint } from '../ui/editor-hint.js';
 import { MaweInlineEdit } from './editor-inline-edit.js';
 import { MaweSelection } from './editor-selection.js';
 import { fmtSrtTime, syncCharCountThresholdInputs, updateTimedTextEditSingleGuide } from './editor-cue-elements.js';
-export let MaweTimedTextEdit;
+let MaweTimedTextEdit;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { finishEdit } from './editor-inline-edit.js';
@@ -24,9 +24,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 由 split-cluster codemod 自 editor.js 拆出。
 
 export function initMaweTimedTextEdit() {
-(function initMaweTimedTextEdit(global) {
-  'use strict';
-
   const timedTextEditFindInput = /** @type {HTMLInputElement} */ (document.getElementById('timed-text-edit-find'));
   const timedTextEditReplaceInput = /** @type {HTMLInputElement} */ (document.getElementById('timed-text-edit-replace'));
   const timedTextEditSearchCount = document.getElementById('timed-text-edit-search-count');
@@ -1429,8 +1426,6 @@ export function initMaweTimedTextEdit() {
     requestCloseTimedTextEdit,
     openTimedTextEdit
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function timedTextEditSegments(...args) { return MaweTimedTextEdit.timedTextEditSegments(...args); }

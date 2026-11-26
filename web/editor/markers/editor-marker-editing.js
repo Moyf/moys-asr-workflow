@@ -14,308 +14,285 @@ import { MaweDom } from '../ui/editor-dom.js';
 import { MaweHint } from '../ui/editor-hint.js';
 import { MaweMarkersPanel } from './editor-markers-panel.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
-export let MaweMarkerEditing;
-export function initMaweMarkerEditing() {
-(function initMaweMarkerEditing(global) {
-  'use strict';
+let markerEditingSessionOverride = null;
 
-  let markerEditingSessionOverride = null;
-
-  function isEditingEnabled() {
-    return markerEditingSessionOverride ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
-  }
-
-  function setEditingEnabled(enabled) {
-    markerEditingSessionOverride = null;
-    MaweSettings.updateEditorSettings({ markerEditingEnabled: enabled === true });
-    applyMarkerEditingEnabled();
-  }
-
-
-
-  function markerUtils() {
-    return AsrEditorUtils;
-  }
-
-  // DATA.markers 始终是规范化数组；旧工程/异常输入也在这里兜底。
-  function markerList() {
-    if (!Array.isArray(MaweBoot.DATA.markers)) MaweBoot.DATA.markers = [];
-    return MaweBoot.DATA.markers;
-  }
-
-  function getMarkers() {
-    return Array.isArray(MaweBoot.DATA.markers) ? MaweBoot.DATA.markers : [];
-  }
-
-  function findMarker(markerId) {
-    return getMarkers().find((marker) => marker?.id === markerId) || null;
-  }
-
-  function formatMarkerSeconds(ms) {
-    return `${(Number(ms || 0) / 1000).toFixed(3)}s`;
-  }
-
-  function refreshWaveformMarkers() {
-    MaweCoreState.waveformEditor?.refreshMarkerOverlay?.();
-  }
-
-
-  // 统一变更入口：克隆 → mutate → 规范化 → 推撤销（变更前快照）→ 标脏 → 刷新。
-  // mutate 返回 false 表示放弃本次变更（不进历史、不标脏）。
-  function commitMarkerChange(label, mutate) {
-    const utils = markerUtils();
-    const before = utils.cloneMarkerValue(markerList());
-    const list = utils.cloneMarkerValue(before);
-    if (mutate(list) === false) return null;
-    MaweBoot.DATA.markers = utils.normalizeMarkers(list);
-    MaweHistory.pushMarkersUndo(label, before);
-    MaweState.changes.markersDirty = true;
-    refreshWaveformMarkers();
-    MaweMarkersPanel?.render?.();
-    MaweViewUpdates.invalidate({ save: true });
-    return getMarkers();
-  }
-
-
-
-  function addMarkerAt(startMs, { name = '', color = null } = {}) {
-    const utils = markerUtils();
-    const start = Math.max(0, Math.round(Number(startMs)));
-    if (!Number.isFinite(start)) return null;
-    commitMarkerChange('添加标记', (list) => {
-      list.push({
-        id: utils.nextMarkerId(list),
-        start,
-        name: typeof name === 'string' ? name : '',
-        color: color || utils.MARKER_DEFAULT_COLOR,
-        note: '',
-      });
-    });
-    MaweHint.flashHint(`已在 ${formatMarkerSeconds(start)} 添加标记`, 'success');
-    return getMarkers();
-  }
-
-
-  function addMarkerAtCurrentTime() {
-    const player = MaweCoreState.player;
-    const currentMs = Number(player?.currentTime) * 1000;
-    if (!Number.isFinite(currentMs) || currentMs < 0) {
-      MaweHint.flashHint('媒体尚未就绪，无法在播放头添加标记', 'warning');
-      return null;
-    }
-    return addMarkerAt(currentMs);
-  }
-
-
-  function createMarkerRegion(startMs, endMs) {
-    const utils = markerUtils();
-    const start = Math.max(0, Math.round(Number(startMs)));
-    const end = Math.round(Number(endMs));
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-    if (end <= start) return addMarkerAt(start);
-    commitMarkerChange('添加区段', (list) => {
-      list.push({
-        id: utils.nextMarkerId(list),
-        start,
-        end,
-        name: '',
-        color: utils.MARKER_DEFAULT_COLOR,
-        note: '',
-      });
-    });
-    MaweHint.flashHint(`已添加区段 ${formatMarkerSeconds(start)} → ${formatMarkerSeconds(end)}`, 'success');
-    return getMarkers();
-  }
-
-
-  function moveMarker(markerId, deltaMs) {
-    const marker = findMarker(markerId);
-    const delta = Math.round(Number(deltaMs));
-    if (!marker || !Number.isFinite(delta) || delta === 0) return null;
-    const durationMs = MaweCoreState.waveformEditor?.durationMs || 0;
-    const start = Math.max(0, Math.min(Math.round(marker.start) + delta, Math.max(0, Math.round(durationMs) - 1)));
-    commitMarkerChange('移动标记', (list) => {
-      const target = list.find((item) => item.id === markerId);
-      if (!target) return false;
-      target.start = start;
-      if (target.end != null) target.end = start + (marker.end - marker.start);
-    });
-    return getMarkers();
-  }
-
-
-  function resizeMarker(markerId, edge, valueMs) {
-    const marker = findMarker(markerId);
-    const value = Math.max(0, Math.round(Number(valueMs)));
-    if (!marker || (edge !== 'start' && edge !== 'end') || !Number.isFinite(value)) return null;
-    commitMarkerChange('调整标记边界', (list) => {
-      const target = list.find((item) => item.id === markerId);
-      if (!target) return false;
-      target[edge] = value;
-      // end <= start 时由 normalizeMarkers 收敛为单点标记。
-    });
-    return getMarkers();
-  }
-
-
-  // 管理窗 / 波形浮层字段编辑：name/color/note/start/end/review 任意子集。
-  // end 传 null 表示移除区段终点（退化为单点标记）；
-  // review 传 null 表示清除复核状态（普通标记），'pending' / 'confirmed' 设置
-  // 对应状态并保留原 reason（AI 复核原因不因切换状态而丢失）。
-  function updateMarkerFields(markerId, fields = {}) {
-    const marker = findMarker(markerId);
-    if (!marker) return null;
-    commitMarkerChange('编辑标记', (list) => {
-      const target = list.find((item) => item.id === markerId);
-      if (!target) return false;
-      if (typeof fields.name === 'string') target.name = fields.name;
-      if (typeof fields.note === 'string') target.note = fields.note;
-      if (typeof fields.color === 'string') target.color = markerUtils().normalizeMarkerColor(fields.color);
-      if (fields.start != null) {
-        const start = Math.max(0, Math.round(Number(fields.start)));
-        if (Number.isFinite(start)) target.start = start;
-      }
-      if (fields.end === null) {
-        delete target.end;
-      } else if (fields.end != null) {
-        const end = Math.round(Number(fields.end));
-        if (Number.isFinite(end) && end > 0) target.end = end;
-      }
-      if (fields.review !== undefined) {
-        if (fields.review === null) {
-          delete target.review;
-        } else if (fields.review === 'pending' || fields.review === 'confirmed') {
-          const reason = typeof target.review?.reason === 'string' ? target.review.reason : '';
-          target.review = { status: fields.review, reason };
-        }
-      }
-    });
-    return getMarkers();
-  }
-
-
-  function deleteMarker(markerId) {
-    const marker = findMarker(markerId);
-    if (!marker) return null;
-    commitMarkerChange('删除标记', (list) => {
-      const index = list.findIndex((item) => item.id === markerId);
-      if (index < 0) return false;
-      list.splice(index, 1);
-    });
-    MaweHint.flashHint(`已删除${marker.end ? '区段' : '标记'}「${marker.name || marker.id}」`, 'success');
-    return getMarkers();
-  }
-
-
-  function deleteMarkers(markerIds) {
-    const ids = new Set(Array.isArray(markerIds) ? markerIds : []);
-    const count = getMarkers().filter((marker) => ids.has(marker.id)).length;
-    if (!count) return null;
-    commitMarkerChange('批量删除标记与区段', (list) => {
-      for (let index = list.length - 1; index >= 0; index -= 1) {
-        if (ids.has(list[index].id)) list.splice(index, 1);
-      }
-    });
-    MaweHint.flashHint(`已删除 ${count} 项标记与区段`, 'success');
-    return getMarkers();
-  }
-
-
-  // 定位：跳转播放头到标记位置（区段取起点），跟随播放逻辑滚动波形；
-  // play: true 时区段只试听其范围，单点跳转后播放；列表项 / 波形点击仍只跳转。
-  function locateMarker(markerId, { play = false } = {}) {
-    const marker = findMarker(markerId);
-    if (!marker) return false;
-    if (play && Number.isFinite(marker.end) && marker.end > marker.start) {
-      return MaweMediaPlayback.auditionRange(marker.start, marker.end);
-    }
-    const player = MaweCoreState.player;
-    if (player && Number.isFinite(Number(player.currentTime))) {
-      MaweMediaPlayback.setPlayerCurrentTime(marker.start / 1000);
-    }
-    if (play && player?.paused && !MaweGapPlayback?.pendingPlayback) {
-      const promise = player.play?.();
-      promise?.catch?.(() => {});
-    }
-    MaweCoreState.waveformEditor?.updatePlayback?.();
-    return true;
-  }
-
-
-  // 历史恢复 / 工程载入后的被动刷新：不推历史、不标脏。
-  function afterExternalMarkersChange() {
-    markerList();
-    refreshWaveformMarkers();
-    MaweMarkersPanel?.render?.();
-  }
-
-
-  // 标记编辑总开关（默认关闭）：启用后显示「标记与区段」入口、渲染标记轨道
-  // 并允许编辑；关闭时隐藏入口与轨道，工程数据保留。快捷键 M。
-  function applyMarkerEditingEnabled() {
-    const enabled = isEditingEnabled();
-    const quick = document.getElementById('markers-quick-toggle');
-    if (quick) {
-      quick.classList.toggle('active', enabled);
-      quick.setAttribute('aria-pressed', String(enabled));
-    }
-    if (MaweDom.markersManageButton) MaweDom.markersManageButton.hidden = !enabled;
-    const mirror = /** @type {HTMLInputElement} */ (document.getElementById('project-marker-track-toggle'));
-    if (mirror) mirror.checked = enabled;
-    MaweCoreState.waveformEditor?.refreshMarkerOverlay();
-  }
-
-  // 打开带标记的工程（如 AI 整理产物）时默认启用标记轨道：只改本次会话的
-  // 内存状态，不写个人偏好；切到无标记工程时恢复个人值。
-  // 用户手动关闭后重新打开带标记工程会再次默认开启。
-  function enableForProjectMarkers(markers) {
-    const wasEnabled = isEditingEnabled();
-    markerEditingSessionOverride = Array.isArray(markers) && markers.length > 0 ? true : null;
-    applyMarkerEditingEnabled();
-    return !wasEnabled && isEditingEnabled();
-  }
-
-
-  function pendingReviewCount() {
-    return markerUtils().countPendingReviewMarkers(getMarkers());
-  }
-
-
-
-  MaweMarkerEditing = Object.freeze({
-    getMarkers,
-    findMarker,
-    addMarkerAt,
-    addMarkerAtCurrentTime,
-    createMarkerRegion,
-    moveMarker,
-    resizeMarker,
-    updateMarkerFields,
-    deleteMarker,
-    deleteMarkers,
-    locateMarker,
-    afterExternalMarkersChange,
-    isEditingEnabled,
-    setEditingEnabled,
-    applyMarkerEditingEnabled,
-    enableForProjectMarkers,
-    pendingReviewCount,
-  });
-
-})(window);
+export function isEditingEnabled() {
+  return markerEditingSessionOverride ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
 }
 
-export function getMarkers(...args) { return MaweMarkerEditing.getMarkers(...args); }
-export function findMarker(...args) { return MaweMarkerEditing.findMarker(...args); }
-export function addMarkerAt(...args) { return MaweMarkerEditing.addMarkerAt(...args); }
-export function addMarkerAtCurrentTime(...args) { return MaweMarkerEditing.addMarkerAtCurrentTime(...args); }
-export function createMarkerRegion(...args) { return MaweMarkerEditing.createMarkerRegion(...args); }
-export function moveMarker(...args) { return MaweMarkerEditing.moveMarker(...args); }
-export function resizeMarker(...args) { return MaweMarkerEditing.resizeMarker(...args); }
-export function updateMarkerFields(...args) { return MaweMarkerEditing.updateMarkerFields(...args); }
-export function deleteMarker(...args) { return MaweMarkerEditing.deleteMarker(...args); }
-export function deleteMarkers(...args) { return MaweMarkerEditing.deleteMarkers(...args); }
-export function locateMarker(...args) { return MaweMarkerEditing.locateMarker(...args); }
-export function afterExternalMarkersChange(...args) { return MaweMarkerEditing.afterExternalMarkersChange(...args); }
-export function isEditingEnabled(...args) { return MaweMarkerEditing?.isEditingEnabled?.(...args); }
-export function enableForProjectMarkers(...args) { return MaweMarkerEditing?.enableForProjectMarkers?.(...args); }
+function setEditingEnabled(enabled) {
+  markerEditingSessionOverride = null;
+  MaweSettings.updateEditorSettings({ markerEditingEnabled: enabled === true });
+  applyMarkerEditingEnabled();
+}
+
+
+
+function markerUtils() {
+  return AsrEditorUtils;
+}
+
+// DATA.markers 始终是规范化数组；旧工程/异常输入也在这里兜底。
+function markerList() {
+  if (!Array.isArray(MaweBoot.DATA.markers)) MaweBoot.DATA.markers = [];
+  return MaweBoot.DATA.markers;
+}
+
+export function getMarkers() {
+  return Array.isArray(MaweBoot.DATA.markers) ? MaweBoot.DATA.markers : [];
+}
+
+export function findMarker(markerId) {
+  return getMarkers().find((marker) => marker?.id === markerId) || null;
+}
+
+function formatMarkerSeconds(ms) {
+  return `${(Number(ms || 0) / 1000).toFixed(3)}s`;
+}
+
+function refreshWaveformMarkers() {
+  MaweCoreState.waveformEditor?.refreshMarkerOverlay?.();
+}
+
+
+// 统一变更入口：克隆 → mutate → 规范化 → 推撤销（变更前快照）→ 标脏 → 刷新。
+// mutate 返回 false 表示放弃本次变更（不进历史、不标脏）。
+function commitMarkerChange(label, mutate) {
+  const utils = markerUtils();
+  const before = utils.cloneMarkerValue(markerList());
+  const list = utils.cloneMarkerValue(before);
+  if (mutate(list) === false) return null;
+  MaweBoot.DATA.markers = utils.normalizeMarkers(list);
+  MaweHistory.pushMarkersUndo(label, before);
+  MaweState.changes.markersDirty = true;
+  refreshWaveformMarkers();
+  MaweMarkersPanel?.render?.();
+  MaweViewUpdates.invalidate({ save: true });
+  return getMarkers();
+}
+
+
+
+export function addMarkerAt(startMs, { name = '', color = null } = {}) {
+  const utils = markerUtils();
+  const start = Math.max(0, Math.round(Number(startMs)));
+  if (!Number.isFinite(start)) return null;
+  commitMarkerChange('添加标记', (list) => {
+    list.push({
+      id: utils.nextMarkerId(list),
+      start,
+      name: typeof name === 'string' ? name : '',
+      color: color || utils.MARKER_DEFAULT_COLOR,
+      note: '',
+    });
+  });
+  MaweHint.flashHint(`已在 ${formatMarkerSeconds(start)} 添加标记`, 'success');
+  return getMarkers();
+}
+
+
+export function addMarkerAtCurrentTime() {
+  const player = MaweCoreState.player;
+  const currentMs = Number(player?.currentTime) * 1000;
+  if (!Number.isFinite(currentMs) || currentMs < 0) {
+    MaweHint.flashHint('媒体尚未就绪，无法在播放头添加标记', 'warning');
+    return null;
+  }
+  return addMarkerAt(currentMs);
+}
+
+
+export function createMarkerRegion(startMs, endMs) {
+  const utils = markerUtils();
+  const start = Math.max(0, Math.round(Number(startMs)));
+  const end = Math.round(Number(endMs));
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (end <= start) return addMarkerAt(start);
+  commitMarkerChange('添加区段', (list) => {
+    list.push({
+      id: utils.nextMarkerId(list),
+      start,
+      end,
+      name: '',
+      color: utils.MARKER_DEFAULT_COLOR,
+      note: '',
+    });
+  });
+  MaweHint.flashHint(`已添加区段 ${formatMarkerSeconds(start)} → ${formatMarkerSeconds(end)}`, 'success');
+  return getMarkers();
+}
+
+
+export function moveMarker(markerId, deltaMs) {
+  const marker = findMarker(markerId);
+  const delta = Math.round(Number(deltaMs));
+  if (!marker || !Number.isFinite(delta) || delta === 0) return null;
+  const durationMs = MaweCoreState.waveformEditor?.durationMs || 0;
+  const start = Math.max(0, Math.min(Math.round(marker.start) + delta, Math.max(0, Math.round(durationMs) - 1)));
+  commitMarkerChange('移动标记', (list) => {
+    const target = list.find((item) => item.id === markerId);
+    if (!target) return false;
+    target.start = start;
+    if (target.end != null) target.end = start + (marker.end - marker.start);
+  });
+  return getMarkers();
+}
+
+
+export function resizeMarker(markerId, edge, valueMs) {
+  const marker = findMarker(markerId);
+  const value = Math.max(0, Math.round(Number(valueMs)));
+  if (!marker || (edge !== 'start' && edge !== 'end') || !Number.isFinite(value)) return null;
+  commitMarkerChange('调整标记边界', (list) => {
+    const target = list.find((item) => item.id === markerId);
+    if (!target) return false;
+    target[edge] = value;
+    // end <= start 时由 normalizeMarkers 收敛为单点标记。
+  });
+  return getMarkers();
+}
+
+
+// 管理窗 / 波形浮层字段编辑：name/color/note/start/end/review 任意子集。
+// end 传 null 表示移除区段终点（退化为单点标记）；
+// review 传 null 表示清除复核状态（普通标记），'pending' / 'confirmed' 设置
+// 对应状态并保留原 reason（AI 复核原因不因切换状态而丢失）。
+export function updateMarkerFields(markerId, fields = {}) {
+  const marker = findMarker(markerId);
+  if (!marker) return null;
+  commitMarkerChange('编辑标记', (list) => {
+    const target = list.find((item) => item.id === markerId);
+    if (!target) return false;
+    if (typeof fields.name === 'string') target.name = fields.name;
+    if (typeof fields.note === 'string') target.note = fields.note;
+    if (typeof fields.color === 'string') target.color = markerUtils().normalizeMarkerColor(fields.color);
+    if (fields.start != null) {
+      const start = Math.max(0, Math.round(Number(fields.start)));
+      if (Number.isFinite(start)) target.start = start;
+    }
+    if (fields.end === null) {
+      delete target.end;
+    } else if (fields.end != null) {
+      const end = Math.round(Number(fields.end));
+      if (Number.isFinite(end) && end > 0) target.end = end;
+    }
+    if (fields.review !== undefined) {
+      if (fields.review === null) {
+        delete target.review;
+      } else if (fields.review === 'pending' || fields.review === 'confirmed') {
+        const reason = typeof target.review?.reason === 'string' ? target.review.reason : '';
+        target.review = { status: fields.review, reason };
+      }
+    }
+  });
+  return getMarkers();
+}
+
+
+export function deleteMarker(markerId) {
+  const marker = findMarker(markerId);
+  if (!marker) return null;
+  commitMarkerChange('删除标记', (list) => {
+    const index = list.findIndex((item) => item.id === markerId);
+    if (index < 0) return false;
+    list.splice(index, 1);
+  });
+  MaweHint.flashHint(`已删除${marker.end ? '区段' : '标记'}「${marker.name || marker.id}」`, 'success');
+  return getMarkers();
+}
+
+
+export function deleteMarkers(markerIds) {
+  const ids = new Set(Array.isArray(markerIds) ? markerIds : []);
+  const count = getMarkers().filter((marker) => ids.has(marker.id)).length;
+  if (!count) return null;
+  commitMarkerChange('批量删除标记与区段', (list) => {
+    for (let index = list.length - 1; index >= 0; index -= 1) {
+      if (ids.has(list[index].id)) list.splice(index, 1);
+    }
+  });
+  MaweHint.flashHint(`已删除 ${count} 项标记与区段`, 'success');
+  return getMarkers();
+}
+
+
+// 定位：跳转播放头到标记位置（区段取起点），跟随播放逻辑滚动波形；
+// play: true 时区段只试听其范围，单点跳转后播放；列表项 / 波形点击仍只跳转。
+export function locateMarker(markerId, { play = false } = {}) {
+  const marker = findMarker(markerId);
+  if (!marker) return false;
+  if (play && Number.isFinite(marker.end) && marker.end > marker.start) {
+    return MaweMediaPlayback.auditionRange(marker.start, marker.end);
+  }
+  const player = MaweCoreState.player;
+  if (player && Number.isFinite(Number(player.currentTime))) {
+    MaweMediaPlayback.setPlayerCurrentTime(marker.start / 1000);
+  }
+  if (play && player?.paused && !MaweGapPlayback?.pendingPlayback) {
+    const promise = player.play?.();
+    promise?.catch?.(() => {});
+  }
+  MaweCoreState.waveformEditor?.updatePlayback?.();
+  return true;
+}
+
+
+// 历史恢复 / 工程载入后的被动刷新：不推历史、不标脏。
+export function afterExternalMarkersChange() {
+  markerList();
+  refreshWaveformMarkers();
+  MaweMarkersPanel?.render?.();
+}
+
+
+// 标记编辑总开关（默认关闭）：启用后显示「标记与区段」入口、渲染标记轨道
+// 并允许编辑；关闭时隐藏入口与轨道，工程数据保留。快捷键 M。
+function applyMarkerEditingEnabled() {
+  const enabled = isEditingEnabled();
+  const quick = document.getElementById('markers-quick-toggle');
+  if (quick) {
+    quick.classList.toggle('active', enabled);
+    quick.setAttribute('aria-pressed', String(enabled));
+  }
+  if (MaweDom.markersManageButton) MaweDom.markersManageButton.hidden = !enabled;
+  const mirror = /** @type {HTMLInputElement} */ (document.getElementById('project-marker-track-toggle'));
+  if (mirror) mirror.checked = enabled;
+  MaweCoreState.waveformEditor?.refreshMarkerOverlay();
+}
+
+// 打开带标记的工程（如 AI 整理产物）时默认启用标记轨道：只改本次会话的
+// 内存状态，不写个人偏好；切到无标记工程时恢复个人值。
+// 用户手动关闭后重新打开带标记工程会再次默认开启。
+export function enableForProjectMarkers(markers) {
+  const wasEnabled = isEditingEnabled();
+  markerEditingSessionOverride = Array.isArray(markers) && markers.length > 0 ? true : null;
+  applyMarkerEditingEnabled();
+  return !wasEnabled && isEditingEnabled();
+}
+
+
+function pendingReviewCount() {
+  return markerUtils().countPendingReviewMarkers(getMarkers());
+}
+
+
+
+export const MaweMarkerEditing = Object.freeze({
+  getMarkers,
+  findMarker,
+  addMarkerAt,
+  addMarkerAtCurrentTime,
+  createMarkerRegion,
+  moveMarker,
+  resizeMarker,
+  updateMarkerFields,
+  deleteMarker,
+  deleteMarkers,
+  locateMarker,
+  afterExternalMarkersChange,
+  isEditingEnabled,
+  setEditingEnabled,
+  applyMarkerEditingEnabled,
+  enableForProjectMarkers,
+  pendingReviewCount,
+});

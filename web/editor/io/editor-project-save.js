@@ -2,7 +2,7 @@ import { editorDialogs } from '../../shared/editor-dialogs.js';
 // 工程保存：服务器、文件句柄、另存为路径与脏标记清理。
 import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweHost } from '../boot/editor-host.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { commitCuePanelEdit, getCurrentCuePanelTarget, captureCuePanelTextEditSnapshot } from '../cues/editor-cue-panel.js';
 import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
 import { MaweWordTiming } from '../cues/editor-word-timing.js';
 import { MaweCommands } from '../state/editor-commands.js';
@@ -23,11 +23,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweProjectSave;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initMaweProjectSave() {
-(function initMaweProjectSave(global) {
-  'use strict';
-
-
-
 function inlineEditHasUncommittedText() {
 if (MaweCoreState.waveformEditor?.hasUncommittedCueQuickEdit?.()) return true;
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
@@ -44,11 +39,11 @@ function flushInlineEditsForSave() {
 MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) {
-if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
+if (!MaweDom.cuePanel?.contains(document.activeElement)) commitCuePanelEdit();
 else {
 // Live panel text is already in the project, but timed labels are deferred until
 // commit. Sync them before replacing the snapshot, while keeping the caret intact.
-const target = MaweCuePanel.getCurrentCuePanelTarget();
+const target = getCurrentCuePanelTarget();
 const snapshot = MaweCuePanelState.cuePanelTextEditSnapshot;
 if (target?.kind === 'main' && snapshot?.kind === target.kind
     && snapshot.index === target.index && snapshot.trackId === target.trackId
@@ -58,7 +53,7 @@ MaweViewUpdates.invalidate({ waveform: 'overlay', preview: 'update' });
 }
 // Finalize the current transaction; subsequent typing begins a new one.
 MaweCuePanelState.resetCuePanelEditState();
-MaweCuePanel.captureCuePanelTextEditSnapshot();
+captureCuePanelTextEditSnapshot();
 }
 return;
 }
@@ -288,7 +283,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     prepareWaveformDragForSave(false);
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     // 波形快速编辑气泡的待提交文字先落盘提交（幂等）；原生保存路径的
     // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
     MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
@@ -392,8 +387,6 @@ mediaNameEl,
 jsonNameEl,
 translatedEditorText
 });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function translatedEditorText(...args) { return MaweProjectSave.translatedEditorText(...args); }

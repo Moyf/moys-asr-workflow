@@ -1,5 +1,5 @@
 import { editorDialogs } from '../../shared/editor-dialogs.js';
-import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { isSpaceKey } from '../cues/editor-keyboard-targets.js';
 import { MaweSplitCore } from '../cues/editor-split-core.js';
 import { MaweLoadingProgress } from '../io/editor-loading-progress.js';
 import { MaweMultiImport } from '../io/editor-multi-import.js';
@@ -160,7 +160,7 @@ document.addEventListener('keydown', (event) => {
     MaweSplitCore.confirmLinkedSplit();
     return;
   }
-  if (MaweKeyboardTargets.isSpaceKey(event)) {
+  if (isSpaceKey(event)) {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     if (onNativeControl || event.repeat) return;
     const lane = MaweSplitCore.splitKeyboardActiveLane(state);

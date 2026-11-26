@@ -5,7 +5,7 @@ import { parse } from 'acorn';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
-const source = initModuleSource('editor/io/editor-wiring-export-actions.js');
+const source = initModuleSource('editor/io/editor-wiring-export-actions.js', { isolate: false });
 const fn = parse(source, { ecmaVersion: 'latest' }).body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'downloadPreparedAss');
 const code = source.slice(fn.start, fn.end);
 function fixture({ trackError, pickerError, writeError } = {}) {

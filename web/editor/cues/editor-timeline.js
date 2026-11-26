@@ -18,10 +18,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 由 split-cluster codemod 自 editor.js 拆出。
 
 export function initMaweTimeline() {
-(function initMaweTimeline(global) {
-  'use strict';
-
-
   const normalizeTimelineTimebase = AsrEditorUtils.normalizeTimelineTimebase;
 
 
@@ -605,8 +601,6 @@ export function initMaweTimeline() {
     setTimelineTimebase,
     refreshAdjacentBoundaryModeUi
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function normalizeTimelineTimebase(...args) { return MaweTimeline.normalizeTimelineTimebase(...args); }

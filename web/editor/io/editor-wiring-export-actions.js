@@ -1,6 +1,6 @@
 import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweHost } from '../boot/editor-host.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { commitCuePanelEdit } from '../cues/editor-cue-panel.js';
 import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
 import { MaweCommands } from '../state/editor-commands.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
@@ -88,7 +88,7 @@ function flushInlineEditsForSave() {
     // edit; otherwise stale display values can rewrite externally changed
     // timing and schedule a second save.
     if (!MaweDom.cuePanel?.contains(document.activeElement) && MaweCuePanelState.cuePanelUndoPushed) {
-      MaweCuePanel.commitCuePanelEdit();
+      commitCuePanelEdit();
     }
     return;
   }

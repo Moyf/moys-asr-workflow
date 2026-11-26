@@ -1,5 +1,5 @@
 import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { renderAll } from '../cues/editor-cue-panel.js';
 import { MaweSelection } from '../cues/editor-selection.js';
 import { MaweJsonRepair } from '../io/editor-json-repair.js';
 import { MaweProjectSave } from '../io/editor-project-save.js';
@@ -88,7 +88,7 @@ MAWE_EDITOR_BRIDGE = Object.freeze({
   closeHelp: () => MaweHelpPanel.helpFloatingPanel.close(),
 });
 setOnboardingEditor(MAWE_EDITOR_BRIDGE);
-MaweCuePanel.renderAll({ waveform: 'full' });
+renderAll({ waveform: 'full' });
 const importedProjectChanges = MaweBoot.SERVER_CONFIG?.projectImportChanges || [];
 MaweJsonRepair.noteImportReport(importedProjectChanges);
 const startupContentRepaired = repairedTimingCount > 0 || repairedGroupReferenceCount > 0

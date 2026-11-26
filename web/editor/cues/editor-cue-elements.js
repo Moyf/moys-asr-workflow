@@ -23,11 +23,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 由 split-cluster codemod 自 editor.js 拆出。
 
 export function initMaweCueElements() {
-(function initMaweCueElements(global) {
-  'use strict';
-
-
-
   function updateCueColorPresentation(el, colorBar, seg) {
   if (!el || !colorBar || !seg) return;
   const originalSegment = seg;
@@ -595,8 +590,6 @@ export function initMaweCueElements() {
     releaseTemporaryVisibleSplitCuesUnless,
     refreshAllCharCounts
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function updateCueColorPresentation(...args) { return MaweCueElements.updateCueColorPresentation(...args); }

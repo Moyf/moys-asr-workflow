@@ -889,7 +889,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             "  MaweCoreState.waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
             "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
-            "  MaweCuePanel.renderAll({ waveform: 'none' });",
+            "  renderAll({ waveform: 'none' });",
             source,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
@@ -1085,7 +1085,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。', page)
         self.assertNotIn('altSnapReversal', page)
         self.assertNotIn('cancelSubtitleDragOnEscape', page)
-        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) MaweCuePanel.cancelCuePanelTextEdit();', source)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();', source)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-navigation'", source)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-sticker'", source)
         self.assertIn('class="toolbar main-toolbar"', page)
@@ -1139,8 +1139,8 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", source)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", source)
-        self.assertIn('const action = MaweCueEvents.getConfiguredEnterAction(event);', source)
-        self.assertIn("if (action === 'split') MaweCuePanel.splitCuePanelAtCursor();", source)
+        self.assertIn('const action = getConfiguredEnterAction(event);', source)
+        self.assertIn("if (action === 'split') splitCuePanelAtCursor();", source)
         self.assertIn('if (e.target === MaweDom.cuePanelText) return;', source)
         self.assertIn('.cue .sticker-slot {\n    flex: 0 1 80px; min-width: 40px;', page)
         self.assertIn('.cue .time {\n    font-size: 11px;', page)
@@ -1314,7 +1314,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('event.composedPath?.().includes(MaweCoreState.player)', source)
         self.assertIn('function isTextEditingTarget(event)', source)
         self.assertIn('function isPlaybackKeyboardTarget(event)', source)
-        self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', source)
+        self.assertIn('if (MaweInlineEdit.editingState || isTextEditingTarget(e)) return;', source)
         self.assertIn('let interceptedSpace = false;', source)
         self.assertIn('.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)

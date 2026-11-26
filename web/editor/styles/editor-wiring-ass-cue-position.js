@@ -1,5 +1,5 @@
 import { MaweBoot } from '../boot/editor-boot.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { getCurrentCuePanelTarget, commitCuePanelEdit } from '../cues/editor-cue-panel.js';
 import { MaweSelection } from '../cues/editor-selection.js';
 import { MaweExportSrt } from '../io/editor-export-srt.js';
 import { MaweGapPlayback } from '../media/editor-gap-playback.js';
@@ -18,9 +18,8 @@ export let MaweAssCuePosition;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initWiringAssCuePositionModule() {
-// Per-cue ASS positioning and scaling for every subtitle track.
-(function initAssCuePosition(global) {
-  'use strict';
+  // Per-cue ASS positioning and scaling for every subtitle track.
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const panel = document.getElementById('ass-cue-position');
   const scaleControls = document.getElementById('ass-cue-scale-controls');
   const positionControls = document.getElementById('ass-cue-coordinate-controls');
@@ -34,7 +33,7 @@ export function initWiringAssCuePositionModule() {
   let scaleDrag = null;
   let scaleWheel = null;
   const target = () => {
-    const current = MaweCuePanel.getCurrentCuePanelTarget();
+    const current = getCurrentCuePanelTarget();
     return ['main', 'extension', 'overlay'].includes(current?.kind) ? current : null;
   };
   const trackSegments = kind => kind === 'overlay'
@@ -120,7 +119,7 @@ export function initWiringAssCuePositionModule() {
     const current = target();
     if (!enabled() || !current || drag || scaleDrag) return;
     if (scaleWheel) finishScaleWheel();
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     MaweCommands.run(label, () => mutate(current.segment), { invalidate: { preview: 'refresh' } });
     sync();
   }
@@ -167,7 +166,7 @@ export function initWiringAssCuePositionModule() {
     if (scaleWheel) finishScaleWheel();
     const located = locateSegment(id);
     if (!located) return;
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     MaweGapPlayback?.cancelPendingPlayback();
     MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
@@ -210,7 +209,7 @@ export function initWiringAssCuePositionModule() {
     const segment = located?.segment;
     const record = segment && recordFor(segment, located.kind);
     if (!segment || !record?.bounds) return;
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     MaweGapPlayback?.cancelPendingPlayback();
     MaweCoreState.player?.pause();
     event.preventDefault(); event.stopPropagation();
@@ -459,5 +458,4 @@ export function initWiringAssCuePositionModule() {
   });
 
   sync();
-})(typeof window !== 'undefined' ? window : globalThis);
 }

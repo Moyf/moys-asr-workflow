@@ -9,7 +9,6 @@ import { MaweInlineEdit } from './editor-inline-edit.js';
 import { MaweNavPreview } from './editor-nav-preview.js';
 import { MaweSelection } from './editor-selection.js';
 import { beginRealSplit } from '../boot/editor-onboarding.js';
-export let MaweCueEvents;
 import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { selectCueByClick } from './editor-binding-align.js';
 import { restoreCueListVisualAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
@@ -26,14 +25,8 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 字幕行事件：行级监听绑定与拆分键配置。
 // 由 split-cluster codemod 自 editor.js 拆出。
 
-export function initMaweCueEvents() {
-(function initMaweCueEvents(global) {
-  'use strict';
-
-
-
   // === 单击/双击/Shift/Ctrl ===
-  function bindCueEvents(el, idx) {
+export function bindCueEvents(el, idx) {
   let pointerDownState = null;
   let lastPrimaryPointerDownAt = 0;
 
@@ -178,23 +171,10 @@ export function initMaweCueEvents() {
 
 
   // === 全局键盘 ===
-  function getSplitKey() { return MaweDom.splitKeySel.value; }
+export function getSplitKey() { return MaweDom.splitKeySel.value; }
 
     // 'enter' or 'ctrl-enter'
 
-  function getConfiguredEnterAction(event) {
-    return AsrEditorUtils.configuredEnterAction(event, getSplitKey());
-  }
-
-  MaweCueEvents = Object.freeze({
-    bindCueEvents,
-    getSplitKey,
-    getConfiguredEnterAction
-  });
-
-})(typeof window !== 'undefined' ? window : globalThis);
+export function getConfiguredEnterAction(event) {
+  return AsrEditorUtils.configuredEnterAction(event, getSplitKey());
 }
-
-export function bindCueEvents(...args) { return MaweCueEvents.bindCueEvents(...args); }
-export function getSplitKey(...args) { return MaweCueEvents.getSplitKey(...args); }
-export function getConfiguredEnterAction(...args) { return MaweCueEvents.getConfiguredEnterAction(...args); }

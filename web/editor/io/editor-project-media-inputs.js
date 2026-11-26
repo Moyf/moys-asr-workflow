@@ -3,11 +3,6 @@ import { scheduleOnboarding } from '../boot/editor-onboarding.js';
 export let MaweProjectMediaInputs;
 // 工程与媒体文件输入：input 元素、Blob URL 与媒体选择弹窗。
 export function initMaweProjectMediaInputs() {
-(function initMaweProjectMediaInputs(global) {
-  'use strict';
-
-
-
   // === 打开工程 ===
   const openProjectFileInput = document.getElementById('open-project-file');
 
@@ -53,8 +48,6 @@ export function initMaweProjectMediaInputs() {
     closeProjectMediaModal,
     showProjectMediaModal
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function loadSrtFileInput(...args) { return MaweProjectMediaInputs.loadSrtFileInput(...args); }

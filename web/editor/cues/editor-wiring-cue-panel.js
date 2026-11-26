@@ -7,9 +7,9 @@ import { MaweViewUpdates } from '../state/editor-view-updates.js';
 import { MaweDom } from '../ui/editor-dom.js';
 import { MaweHint } from '../ui/editor-hint.js';
 import { MaweCueElements } from './editor-cue-elements.js';
-import { MaweCueEvents } from './editor-cue-events.js';
+import { getConfiguredEnterAction } from './editor-cue-events.js';
 import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
-import { MaweCuePanel } from './editor-cue-panel.js';
+import { navigateCuePanel, captureCuePanelTextEditSnapshot, cancelCuePanelTextEdit, exitCuePanelEdit, splitCuePanelAtCursor, getCurrentCuePanelTarget, ensureCuePanelUndo, getCuePanelTextElement, commitCuePanelEdit, renderAll } from './editor-cue-panel.js';
 import { MaweStickerPicker } from './editor-sticker-picker.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweCuePanelWiring() {
@@ -119,8 +119,8 @@ export function initMaweCuePanelWiring() {
 
 
 
-MaweDom.cuePanelPrev?.addEventListener('click', () => MaweCuePanel.navigateCuePanel(-1));
-MaweDom.cuePanelNext?.addEventListener('click', () => MaweCuePanel.navigateCuePanel(1));
+MaweDom.cuePanelPrev?.addEventListener('click', () => navigateCuePanel(-1));
+MaweDom.cuePanelNext?.addEventListener('click', () => navigateCuePanel(1));
 // A keyboard user can enter a panel field while still holding a waveform drag.
 // Finish that gesture before accepting a separate edit in the panel.
 function finishWaveformBeforePanelEdit() {
@@ -132,28 +132,28 @@ function finishWaveformBeforePanelEdit() {
 for (const field of [MaweDom.cuePanelText, MaweDom.cuePanelStart, MaweDom.cuePanelDuration]) {
   field?.addEventListener('focus', finishWaveformBeforePanelEdit);
 }
-MaweDom.cuePanelText?.addEventListener('focus', MaweCuePanel.captureCuePanelTextEditSnapshot);
+MaweDom.cuePanelText?.addEventListener('focus', captureCuePanelTextEditSnapshot);
 MaweDom.cuePanelText?.addEventListener('keydown', (event) => {
   // Esc：按当前字幕编辑区设置决定取消还是提交文本编辑。
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
-    if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) MaweCuePanel.cancelCuePanelTextEdit();
-    else MaweCuePanel.exitCuePanelEdit();
+    if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();
+    else exitCuePanelEdit();
     return;
   }
-  const action = MaweCueEvents.getConfiguredEnterAction(event);
+  const action = getConfiguredEnterAction(event);
   if (!action || action === 'newline') return;
   event.preventDefault();
   event.stopPropagation();
-  if (action === 'split') MaweCuePanel.splitCuePanelAtCursor();
-  else MaweCuePanel.exitCuePanelEdit();
+  if (action === 'split') splitCuePanelAtCursor();
+  else exitCuePanelEdit();
 });
 MaweDom.cuePanelText?.addEventListener('input', () => {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const target = getCurrentCuePanelTarget();
   if (!target) return;
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
-  MaweCuePanel.ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
+  ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
   const seg = target.segment;
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
@@ -168,7 +168,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   );
   MaweDom.cuePanelTotalLength.textContent = String(metrics.totalLength);
   MaweDom.cuePanelCharsPerSecond.textContent = metrics.charsPerSecond.toFixed(2);
-  const textEl = MaweCuePanel.getCuePanelTextElement(target);
+  const textEl = getCuePanelTextElement(target);
   if (textEl) {
     textEl.closest('.multi-cue-column, .cue')?.classList.add('dirty');
     MaweCueElements.setTextHtml(textEl, seg.text, MaweDom.searchEl.value);
@@ -182,29 +182,29 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
 });
 MaweDom.cuePanelText?.addEventListener('blur', () => {
   if (MaweCuePanelState.cuePanelCanceling) return;
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
 });
-MaweDom.cuePanelStart?.addEventListener('change', () => MaweCuePanel.commitCuePanelEdit());
-MaweDom.cuePanelDuration?.addEventListener('change', () => MaweCuePanel.commitCuePanelEdit());
+MaweDom.cuePanelStart?.addEventListener('change', () => commitCuePanelEdit());
+MaweDom.cuePanelDuration?.addEventListener('change', () => commitCuePanelEdit());
 MaweDom.cuePanelAddSticker?.addEventListener('click', () => {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const target = getCurrentCuePanelTarget();
   if (target?.kind === 'main') MaweStickerPicker.openStickerPicker([target.index], false);
   else if (target?.kind === 'overlay') MaweStickerPicker.openStickerPicker([target.index], false, { overlay: true });
 });
 MaweDom.cuePanelSticker?.addEventListener('click', () => {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const target = getCurrentCuePanelTarget();
   if (target?.kind === 'main') MaweStickerPicker.openStickerPicker([target.index], false);
   else if (target?.kind === 'overlay') MaweStickerPicker.openStickerPicker([target.index], false, { overlay: true });
 });
 MaweDom.cuePanelSticker?.addEventListener('contextmenu', (event) => {
   event.preventDefault();
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const target = getCurrentCuePanelTarget();
   if (target?.kind !== 'main') return;
   MaweStickerPicker.removeStickerCascade(target.index);
-  MaweCuePanel.renderAll();
+  renderAll();
   MaweHint.flashHint('已删除当前表情包', 'success');
 });
-MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCursor);
+MaweDom.cuePanelSplit?.addEventListener('click', splitCuePanelAtCursor);
 
 
 

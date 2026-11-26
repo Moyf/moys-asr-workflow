@@ -21,15 +21,8 @@ import { getOverlayTrack } from './overlay-track.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweColorFilter() {
-'use strict';
-
-// 颜色筛选：配色下拉、用量缓存与行色刷新。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweColorFilter(global) {
-  'use strict';
-
-
-
+  // 颜色筛选：配色下拉、用量缓存与行色刷新。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // === 颜色过滤 ===
   // 工程中存在彩色字幕时，在过滤输入框右侧显示 🎨 按钮：
   // 点击行（非 checkbox）= 只显示该颜色；勾选 checkbox = 多选；清除 = 全部显示。
@@ -457,8 +450,6 @@ export function initMaweColorFilter() {
     refreshColorAssignmentUi,
     positionColorFilterMenu
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function COLOR_FILTER_DEFAULT_KEY(...args) { return MaweColorFilter.COLOR_FILTER_DEFAULT_KEY(...args); }

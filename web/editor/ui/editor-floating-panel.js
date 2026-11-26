@@ -1,7 +1,7 @@
 // 非模态浮层前置栈：层级管理、激活绑定与通用浮动面板工厂（settings-panels 加载期依赖）。
 // 由 split-cluster codemod 自 editor.js 拆出。
 import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
-import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { releaseClosedUiFocus } from '../cues/editor-keyboard-targets.js';
 import { MaweDom } from './editor-dom.js';
 import { MaweSubtitleJoinSettings } from './editor-wiring-theme-split-settings.js';
 export let MaweFloatingPanel;
@@ -179,7 +179,7 @@ export function initMaweFloatingPanel() {
       drag = null;
       manageButton?.classList.remove('active');
       manageButton?.setAttribute('aria-expanded', 'false');
-      MaweKeyboardTargets.releaseClosedUiFocus(panel, manageButton);
+      releaseClosedUiFocus(panel, manageButton);
       syncFloatingSurfaceLayers();
     }
 

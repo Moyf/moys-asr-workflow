@@ -149,8 +149,10 @@ export function migrateEditorFile(source, file, owners, { removeAliases = false,
   }
 
   for (const [node, parent] of parents) {
-    if (node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' && realms(node.init, info)) {
-      for (const property of node.id.properties) {
+    const pattern = node.type === 'VariableDeclarator' && realms(node.init, info) ? node.id
+      : node.type === 'AssignmentExpression' && node.operator === '=' && realms(node.right, info) ? node.left : null;
+    if (pattern?.type === 'ObjectPattern') {
+      for (const property of pattern.properties) {
         const name = property.key?.type === 'Literal' ? property.key.value : property.computed ? null : property.key?.name;
         if (isAppGlobal(name) || property.type === 'RestElement' || name === null) {
           report(property, name ?? '(computed)', 'destructured browser global');
@@ -190,7 +192,11 @@ export function migrateEditorFile(source, file, owners, { removeAliases = false,
           const end = source.indexOf('\n', statement.end);
           const wholeLine = /^[ \t]*$/.test(source.slice(start, statement.start))
             && /^[ \t]*\r?$/.test(source.slice(statement.end, end < 0 ? source.length : end));
-          if (wholeLine) edit.remove(start, end < 0 ? source.length : end + 1);
+          const statements = container.type === 'SwitchCase' ? container.consequent : container.body;
+          const previous = statements[statements.indexOf(statement) - 1];
+          // Keep a separator wherever removing the statement could change ASI.
+          if (previous && source[previous.end - 1] !== ';') edit.overwrite(statement.start, statement.end, ';');
+          else if (wholeLine) edit.remove(start, end < 0 ? source.length : end + 1);
           else edit.remove(statement.start, statement.end);
         }
       } else report(node, name, 'global write');
@@ -200,11 +206,13 @@ export function migrateEditorFile(source, file, owners, { removeAliases = false,
       report(node, name, 'missing module export');
       continue;
     }
-    if (parent?.type === 'CallExpression' && parent.callee === node) {
+    const receiver = parent?.type === 'ChainExpression' ? parent : node;
+    const use = parents.get(receiver);
+    if (use?.type === 'CallExpression' && use.callee === receiver) {
       report(node, name, 'call uses global receiver');
       continue;
     }
-    if (parent?.type === 'TaggedTemplateExpression' && parent.tag === node) {
+    if (use?.type === 'TaggedTemplateExpression' && use.tag === receiver) {
       report(node, name, 'tagged template uses global receiver');
       continue;
     }

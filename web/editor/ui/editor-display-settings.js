@@ -2,10 +2,10 @@ import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweCueElements } from '../cues/editor-cue-elements.js';
 import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
 import { MaweSearch } from '../cues/editor-search.js';
-import { MaweSplitMode } from '../cues/editor-split-mode.js';
+import { refreshMergeJoinModeHint } from '../cues/editor-split-mode.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
-import { MaweProjectSettings } from '../state/editor-project-settings.js';
+import { syncTrackControls } from '../state/editor-project-settings.js';
 import { MaweSettings } from '../state/editor-settings.js';
 import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
 import { MaweDom } from './editor-dom.js';
@@ -215,7 +215,7 @@ export function initMaweDisplaySettings() {
 
 
   function updateMultiSubtitleUi() {
-  MaweProjectSettings?.syncTrackControls();
+  syncTrackControls?.();
   // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
   // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
   if (getMaweDomPanels().overlayTrackSeparator) getMaweDomPanels().overlayTrackSeparator.hidden = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;
@@ -226,7 +226,7 @@ export function initMaweDisplaySettings() {
   const hasMainSubtitle = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0;
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled);
-  MaweSplitMode.refreshMergeJoinModeHint();
+  refreshMergeJoinModeHint();
   if (MaweDom.multiSubtitleEmptyHint) {
     MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);

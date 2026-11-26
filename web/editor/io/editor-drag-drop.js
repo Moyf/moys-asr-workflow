@@ -12,13 +12,8 @@ import { MaweServerSave } from './editor-server-save.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweDragDrop;
 export function initDragDropModule() {
-// 拖放：文件拖入分流与拖拽遮罩。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweDragDrop(global) {
-  'use strict';
-
-
-
+  // 拖放：文件拖入分流与拖拽遮罩。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // === Drag & Drop：拖入视频/音频/JSON/SRT/LRC 自动加载 ===
   const dragOverlay = document.getElementById('drag-overlay');
 
@@ -151,6 +146,4 @@ export function initDragDropModule() {
     get dragCounter() { return dragCounter; },
     set dragCounter(v) { dragCounter = v; }
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

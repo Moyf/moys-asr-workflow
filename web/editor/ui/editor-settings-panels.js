@@ -1,4 +1,4 @@
-import { MaweKeyboardTargets } from '../cues/editor-keyboard-targets.js';
+import { releaseClosedUiFocus } from '../cues/editor-keyboard-targets.js';
 import { MaweWordTiming } from '../cues/editor-word-timing.js';
 import { MaweSettings } from '../state/editor-settings.js';
 import { MaweSpeakerManager } from '../styles/editor-speaker-manager.js';
@@ -180,7 +180,7 @@ export function initMaweSettingsPanels() {
     setSettingsPanelOwnerOpen(MaweDom.cueListSettingsPanel, open);
     MaweDom.cueListSettingsToggle.classList.toggle('active', open);
     MaweDom.cueListSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (!open) MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle);
+    if (!open) releaseClosedUiFocus(MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle);
     if (open) {
       MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.cueListSettingsPanel);
       positionCueListSettingsPanel();
@@ -202,7 +202,7 @@ export function initMaweSettingsPanels() {
     setSettingsPanelOwnerOpen(MaweDom.cueEditorSettingsPanel, open);
     MaweDom.cueEditorSettingsToggle.classList.toggle('active', open);
     MaweDom.cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (!open) MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle);
+    if (!open) releaseClosedUiFocus(MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle);
     if (open) {
       MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.cueEditorSettingsPanel);
       positionCueEditorSettingsPanel();
@@ -224,7 +224,7 @@ export function initMaweSettingsPanels() {
     setSettingsPanelOwnerOpen(MaweDom.waveformSettingsPanel, open);
     MaweDom.waveformSettingsToggle.classList.toggle('active', open);
     MaweDom.waveformSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (!open) MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle);
+    if (!open) releaseClosedUiFocus(MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle);
     if (open) {
       MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.waveformSettingsPanel);
       positionWaveformSettingsPanel();

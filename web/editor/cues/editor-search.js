@@ -5,24 +5,14 @@ import { MaweSettings } from '../state/editor-settings.js';
 import { MaweDom } from '../ui/editor-dom.js';
 import { MaweColorFilter } from './editor-color-filter.js';
 import { buildSearchRegex, calcCharWidth, cueElementHasTemporarySplitVisibility, getCharCountThreshold, setTextHtml } from './editor-cue-elements.js';
-export let MaweSearch;
 import { captureCueListRenderAnchor, restoreCueListRenderAnchor } from './editor-cue-list-anchor.js';
 import { colorFilterSuspended, effectiveCueColorKey, speakerMatches } from './editor-color-filter.js';
 import { getOverlayTrack } from './overlay-track.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
-export function initMaweSearch() {
-'use strict';
-
 // 搜索：过滤应用与防抖。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweSearch(global) {
-  'use strict';
-
-
-
   // === 搜索 ===
-  function applySearch(query, { refreshText = true, preserveCueListScroll = true } = {}) {
+export function applySearch(query, { refreshText = true, preserveCueListScroll = true } = {}) {
   const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   try {
     const trimmed = query.trim();
@@ -89,16 +79,12 @@ export function initMaweSearch() {
 }
 
 
-  let searchDebounce = null;
+let searchDebounce = null;
 
 
-  MaweSearch = Object.freeze({
-    applySearch,
-    get searchDebounce() { return searchDebounce; },
-    set searchDebounce(v) { searchDebounce = v; },
-  });
-
-})(typeof window !== 'undefined' ? window : globalThis);
-}
-
-export function applySearch(...args) { return MaweSearch.applySearch(...args); }
+export const MaweSearch = {
+  applySearch,
+  get searchDebounce() { return searchDebounce; },
+  set searchDebounce(v) { searchDebounce = v; },
+};
+Object.freeze(MaweSearch);

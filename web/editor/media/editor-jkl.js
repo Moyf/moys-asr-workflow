@@ -8,12 +8,8 @@ import { MaweStickerOverlay } from './editor-sticker-overlay.js';
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export let MaweJklPlayback;
 export function initJklModule() {
-// J/K/L 播放控制：双模式（速度/倒放）状态机与速率档位。editor.js 在加载期经本模块门面初始化 UI。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweJklPlayback(global) {
-  'use strict';
-
-
+  // J/K/L 播放控制：双模式（速度/倒放）状态机与速率档位。editor.js 在加载期经本模块门面初始化 UI。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   let jklPlaybackRate = 1;
 
 
@@ -191,6 +187,4 @@ export function initJklModule() {
     JKL_PLAYBACK_RATE_STEPS,
     nextJklDirectionRate
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -14,7 +14,7 @@ import { MaweContextMenus } from '../ui/editor-context-menus.js';
 import { MaweHint } from '../ui/editor-hint.js';
 import { MaweColorFilter } from './editor-color-filter.js';
 import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
-import { MaweCuePanel } from './editor-cue-panel.js';
+import { commitCuePanelEdit, renderCurrentCuePanel, setCuePanelTarget, renderAll, focusCuePanelText } from './editor-cue-panel.js';
 import { MaweSegmentOps } from './editor-segment-ops.js';
 import { MaweSelection } from './editor-selection.js';
 import { MaweTimeline } from './editor-timeline.js';
@@ -103,7 +103,7 @@ function shiftMainGroupRefsAfterInsert(_index) {}
 function resetOverlayGroupRefs(_index) {}
 
 function detachCuePanelFromTrackEdits() {
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   MaweCuePanelState.currentCuePanelIdx = -1;
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
@@ -139,7 +139,7 @@ function detachCuePanelDuringDrag() {
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState();
-  MaweCuePanel.renderCurrentCuePanel();
+  renderCurrentCuePanel();
 }
 
 // 菜单入口：把选中的主轨字幕转为叠加字幕。返回成功迁移的数量。
@@ -201,7 +201,7 @@ function convertMainCueToOverlayForDrag(index) {
   const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('main', index);
   MaweSelection.lastClickedIdx = nextAnchor;
   updateSelectionCountText();
-  if (panelWasHere) MaweCuePanel.setCuePanelTarget('overlay', newIndex);
+  if (panelWasHere) setCuePanelTarget('overlay', newIndex);
   if (wasSelected) {
     MaweState.selection.add('overlay', newIndex);
     MaweState.selection.overlayAnchor = newIndex;
@@ -233,7 +233,7 @@ function convertOverlayCueToMainForDrag(index) {
   const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('overlay', index);
   MaweState.selection.overlayAnchor = nextAnchor;
   updateSelectionCountText();
-  if (panelWasHere) MaweCuePanel.setCuePanelTarget('main', newIndex);
+  if (panelWasHere) setCuePanelTarget('main', newIndex);
   if (wasSelected && !MaweSelection.isHiddenDisabled(newIndex)) {
     MaweSelection.addMainIndexToSelection(newIndex);
     MaweSelection.lastClickedIdx = newIndex;
@@ -382,7 +382,7 @@ function clearOverlaySticker(index) {
   segment._dirty = true;
   overlay._dirty = true;
   MaweState.markProjectDirty();
-  MaweCuePanel.renderAll({ waveform: 'full' });
+  renderAll({ waveform: 'full' });
   MaweViewUpdates.invalidate({ save: true });
   MaweHint.flashHint('已删除', 'success');
 }
@@ -476,7 +476,7 @@ function mergeOverlaySegments(idxs, { detachPanel = false } = {}) {
     MaweState.selection.clear('overlay');
     MaweState.selection.add('overlay', sorted[0]);
     MaweState.selection.overlayAnchor = sorted[0];
-    MaweCuePanel.setCuePanelTarget('overlay', sorted[0]);
+    setCuePanelTarget('overlay', sorted[0]);
     MaweViewUpdates.invalidate({ preview: 'update' });
     const el = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
     if (cueListAnchor) MaweCueListAnchor.restoreCueListVisualAnchor(el, cueListAnchor);
@@ -516,7 +516,7 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
     MaweHint.flashHint('该空白区域不足 100ms，无法新增叠加字幕', 'warning');
     return;
   }
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   return MaweCommands.run('新增叠加字幕', (command) => {
     overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
     MaweAssManagerWiring?.initializeProjectStyles?.();
@@ -539,9 +539,9 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
     // 气泡打不开时回退聚焦下方字幕面板文本框。
     if (MaweCoreState.waveformEditor?.openCueQuickEditAtIndex) {
       MaweCoreState.waveformEditor.openCueQuickEditAtIndex(
-        'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay'));
+        'overlay', index, () => focusCuePanelText(index, 'overlay'));
     } else {
-      MaweCuePanel.focusCuePanelText(index, 'overlay');
+      focusCuePanelText(index, 'overlay');
     }
     MaweCoreState.waveformEditor?.revealTime(safeStart, true);
 

@@ -4,17 +4,15 @@ import { MaweAssCanvas } from './editor-wiring-ass-canvas.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweAssFontAliases;
 export function initMaweAssFontAliases() {
-// 服务端 ASS 字体别名表：libass（Windows directwrite/GDI 提供器）只按字体
-// nameID1（GDI 兼容 family）匹配，样式里存的排版名（nameID16，如
-// "Smiley Sans"）会被静默回退。启动时拉取本机字体别名表，供导出归一化
-// （ass-export）、ASS 字体下拉（font-geometry）与预览别名链（ass-preview /
-// ass-canvas）共用。
-//
-// 便携模式（无 SERVER_CONFIG）、旧服务器（端点不存在）与请求失败时保持
-// 未加载状态：所有消费点降级为现状行为。
-(function initMaweAssFontAliases(global) {
-  'use strict';
-
+  // 服务端 ASS 字体别名表：libass（Windows directwrite/GDI 提供器）只按字体
+  // nameID1（GDI 兼容 family）匹配，样式里存的排版名（nameID16，如
+  // "Smiley Sans"）会被静默回退。启动时拉取本机字体别名表，供导出归一化
+  // （ass-export）、ASS 字体下拉（font-geometry）与预览别名链（ass-preview /
+  // ass-canvas）共用。
+  //
+  // 便携模式（无 SERVER_CONFIG）、旧服务器（端点不存在）与请求失败时保持
+  // 未加载状态：所有消费点降级为现状行为。
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const SCHEMA = 'moy.asr.font_aliases.v1';
   const config = MaweBoot?.SERVER_CONFIG;
   const entries = [];
@@ -372,5 +370,4 @@ export function initMaweAssFontAliases() {
   });
 
   void loadAliases();
-})(typeof window !== 'undefined' ? window : globalThis);
 }

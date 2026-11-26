@@ -1,8 +1,8 @@
-import { MaweCueEvents } from '../cues/editor-cue-events.js';
+import { getConfiguredEnterAction } from '../cues/editor-cue-events.js';
 import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
 import { MaweSelection } from '../cues/editor-selection.js';
 import { MaweSplitCore } from '../cues/editor-split-core.js';
-import { MaweTimedTextEdit } from '../cues/editor-timed-text-edit.js';
+import { requestCloseTimedTextEdit } from '../cues/editor-timed-text-edit.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
 import { MaweDom } from '../ui/editor-dom.js';
@@ -20,7 +20,7 @@ document.addEventListener('keydown', (e) => {
   if (e.target === MaweDom.cuePanelText) return;
   if (!MaweInlineEdit.editingState) return;
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); MaweInlineEdit.finishEdit(false); return; }
-  const action = MaweCueEvents.getConfiguredEnterAction(e);
+  const action = getConfiguredEnterAction(e);
   if (!action || action === 'newline') return;
   e.preventDefault();
   // 拆分会在当前 keydown 事件内打开弹窗；阻止同一 document 上后注册的
@@ -38,7 +38,7 @@ document.addEventListener('keydown', (event) => {
     MaweInlineEdit.finishExtensionEdit(false);
     return;
   }
-  const action = MaweCueEvents.getConfiguredEnterAction(event);
+  const action = getConfiguredEnterAction(event);
   if (!action || action === 'newline') return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -63,7 +63,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.timedTextEditModal.classList.contains('show')) {
     e.preventDefault();
     e.stopPropagation();
-    MaweTimedTextEdit.requestCloseTimedTextEdit();
+    requestCloseTimedTextEdit();
     return;
   }
   // 浮窗自己的 Esc 处理器稍后执行；不要先清空其背后的字幕选区。

@@ -1,5 +1,5 @@
 // 显式工程视图副作用：命令与历史适配器共享的统一失效入口。
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { renderAll, patchCueRows as cuePanelPatchCueRows } from '../cues/editor-cue-panel.js';
 import { MaweServerSave } from '../io/editor-server-save.js';
 import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
 import { MaweSpeakerManager } from '../styles/editor-speaker-manager.js';
@@ -27,11 +27,11 @@ export function createViewUpdates(dependencies) {
 export function initMaweViewUpdates() {
   'use strict';
   MaweViewUpdates = createViewUpdates({
-    renderCues: options => MaweCuePanel.renderAll(options),
+    renderCues: options => renderAll(options),
     updatePreview: () => MawePlaybackLoop.updateWithoutCueListAutoScroll(),
     refreshPreview: () => MawePlaybackLoop.refreshSubtitlePreview(),
     scheduleSave: () => MaweServerSave.scheduleAutoSaveFlush(),
-    patchCueRows: patch => MaweCuePanel.patchCueRows(patch),
+    patchCueRows: patch => cuePanelPatchCueRows(patch),
     notifyProjectChanged: () => MaweAssFrame?.notifyProjectChanged?.(),
     syncSpeakers: () => MaweSpeakerManager?.sync?.(),
   });

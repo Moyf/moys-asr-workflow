@@ -5,13 +5,8 @@ import { MaweLoadingProgress } from './editor-loading-progress.js';
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export let MaweServerConnection;
 export function initServerConnectionModule() {
-// 服务器连接：健康检查、断联横幅与启动进度轮询。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweServerConnection(global) {
-  'use strict';
-
-
-
+  // 服务器连接：健康检查、断联横幅与启动进度轮询。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // Server-editor 页面可能在本地服务退出后继续留在浏览器中。定期复用
   // startup-status 这个轻量 JSON 接口：断联时保留页面里的编辑内容，并显示
   // 持久横幅；服务恢复后自动清掉横幅，不刷新页面，避免覆盖未保存的改动。
@@ -214,6 +209,4 @@ export function initServerConnectionModule() {
     serverStartupLabel,
     loadServerStartup
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

@@ -1,5 +1,5 @@
 import { MaweBoot } from '../boot/editor-boot.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { remapPanelItems } from '../cues/editor-cue-panel.js';
 import { MaweSelection } from '../cues/editor-selection.js';
 import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
 import { MaweHint } from '../ui/editor-hint.js';
@@ -12,10 +12,6 @@ export let MaweMultiSubtitleCore;
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 多重字幕核心：副轨状态、绑定关系、范围钳制与双轨联动计算。
 export function initMaweMultiSubtitleCore() {
-(function initMaweMultiSubtitleCore(global) {
-  'use strict';
-
-
   const MULTI_SUBTITLE_TOLERANCE_MS = AsrEditorUtils.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 
 
@@ -344,7 +340,7 @@ export function initMaweMultiSubtitleCore() {
     const safe = clampExtensionRange(null, start, end);
     segment.start = safe.start;
     segment.end = safe.end;
-    segment.items = MaweCuePanel.remapPanelItems(
+    segment.items = remapPanelItems(
       segment.items,
       Number.isFinite(oldStart) ? oldStart : safe.start,
       Number.isFinite(oldEnd) ? oldEnd : safe.end,
@@ -694,7 +690,7 @@ export function initMaweMultiSubtitleCore() {
       || constrained.end !== desiredMainEnd;
     const nextStart = oldStart + (constrained.start - main.start);
     const nextEnd = oldEnd + (constrained.end - main.end);
-    extension.items = MaweCuePanel.remapPanelItems(extension.items, oldStart, oldEnd, nextStart, nextEnd);
+    extension.items = remapPanelItems(extension.items, oldStart, oldEnd, nextStart, nextEnd);
     extension.start = nextStart;
     extension.end = nextEnd;
     main.start = constrained.start;
@@ -760,8 +756,6 @@ export function initMaweMultiSubtitleCore() {
     syncBoundExtensionForMain,
     constrainBoundExtensionPanelEdit
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function normalizeMultiSubtitleState(...args) { return MaweMultiSubtitleCore.normalizeMultiSubtitleState(...args); }

@@ -8,18 +8,26 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'acorn';
 import { editorInitializers } from './editor-entry.mjs';
-import { fixtureImports } from './editor-fixture-imports.mjs';
-import { publishFixtureBindings } from './editor-fixture-bindings.mjs';
+import { fixtureFacadeForExport, fixtureImports, privateFixtureFacadeForExport } from './editor-fixture-imports.mjs';
+import { isPrivateFixtureFacade, publishFixtureBindings } from './editor-fixture-bindings.mjs';
 
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web');
 
-export function initModuleSource(relativeWebPath) {
+function vmFixtureImports(source, relativeWebPath) {
+  return fixtureImports(source, () => true, (specifier, name) => {
+    if (!specifier.startsWith('.')) return null;
+    const provider = path.posix.normalize(path.posix.join(path.posix.dirname(relativeWebPath), specifier));
+    return privateFixtureFacadeForExport(fs.readFileSync(path.join(webDir, provider), 'utf8'), name, provider);
+  }, { preferNamed: true });
+}
+
+export function initModuleSource(relativeWebPath, { isolate = true } = {}) {
   const source = fs.readFileSync(path.join(webDir, relativeWebPath), 'utf8');
   const initializer = editorInitializers.find(item => item.file === relativeWebPath)?.exportName;
   const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
   const init = ast.body.find(node => node.type === 'ExportNamedDeclaration'
     && node.declaration?.type === 'FunctionDeclaration' && node.declaration.id.name === initializer)?.declaration;
-  if (!init || !initializer) throw new Error(`Not an init module: ${relativeWebPath}`);
+  if (initializer && !init) throw new Error(`Missing initializer: ${relativeWebPath}`);
   // 底部“兄弟 import 边”转发导出段是 ESM 侧通道：vm classic 体里
   // 调用方要么走门面要么直接同域解析，转发函数本身不被调用，剥掉
   // （保留 `function` 声明也无害，但剥净可避免与 context mock 混淆）。
@@ -33,13 +41,9 @@ export function initModuleSource(relativeWebPath) {
     for (const raw of names.split(',')) {
       const [name, localName = name] = raw.trim().split(/\s+as\s+/);
       if (!name) continue;
-      // 转发导出行格式固定（脚本生成），用行前缀 + 回读门面名的字符串比对。
-      const prefix = `export function ${name}(...args) { return `;
-      const line = targetSrc.split('\n').find(l => l.startsWith(prefix));
-      // prefix 里的正则元字符（括号、点）先转义再拼接。
-      const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const facadeMatch = line ? line.match(new RegExp('^' + esc + '(?:window\\.)?(Mawe\\w+)\\.')) : null;
-      if (facadeMatch) shims.push(`var ${localName} = (...args) => (globalThis.${facadeMatch[1]} ?? window.${facadeMatch[1]}).${name}(...args);`);
+      if (privateFixtureFacadeForExport(targetSrc, name, path.posix.join(path.posix.dirname(relativeWebPath), `${target}.js`))) continue;
+      const facade = fixtureFacadeForExport(targetSrc, name);
+      if (facade) shims.push(`var ${localName} = (...args) => (globalThis.${facade} ?? window.${facade}).${name}(...args);`);
       else if (target === 'editor-ass-preview-refresh') {
         shims.push(`var ${localName} = (...args) => window.MaweAssPreviewRefresh.${name}(...args);`);
       }
@@ -56,10 +60,12 @@ export function initModuleSource(relativeWebPath) {
   if (source.includes('import { getMaweDomPanels }')) {
     shims.push('var getMaweDomPanels = () => globalThis.MaweDomPanelsWiring ?? window.MaweDomPanelsWiring;');
   }
+  if (!init) return `(() => {\n${shims.join('\n')}\n${plainModuleSource(relativeWebPath)}\n})();`;
   // 将顶层常量和模块级门面绑定带入 VM classic 体。
   const constants = ast.body.filter(node =>
     (node.type === 'VariableDeclaration' && (node.kind === 'const'
-      || node.declarations.every(entry => /^(activeBurnVideoTask|activeGapRemovedVideoTask)$/.test(entry.id.name))))
+      || node.declarations.every(entry => isPrivateFixtureFacade(entry.id.name)
+        || /^(activeBurnVideoTask|activeGapRemovedVideoTask)$/.test(entry.id.name))))
     || (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
       && (node.declaration.kind === 'const' || node.declaration.declarations.every(
         entry => /^(Mawe\w+|MAWE_I18N|AsrEditorUtils)$/.test(entry.id.name)
@@ -67,8 +73,9 @@ export function initModuleSource(relativeWebPath) {
     .map(node => source.slice(node.start, node.end).replace(/^export\s+/m, '')
       // vm 无脚本级词法隔离：const 会与后续脚本的同名 var 冲突，统一降为 var。
       .replace(/^(?:const|let)\s+/m, 'var '));
-  const body = publishFixtureBindings(source, fixtureImports(source)).slice(init.body.start + 1, init.body.end - 1);
-  return [...shims, ...constants, body].join('\n');
+  const body = publishFixtureBindings(source, vmFixtureImports(source, relativeWebPath)).slice(init.body.start + 1, init.body.end - 1);
+  const script = isolate ? `(function runEditorFixtureInitializer() {\n${body}\n})();` : body;
+  return [...shims, ...constants, script].join('\n');
 }
 
 // 把无副作用的 ESM 纯模块（如 cues/overlay-track.js）还原为 classic 文本：
@@ -76,12 +83,12 @@ export function initModuleSource(relativeWebPath) {
 // 其函数闭包里的自由变量（Mawe* 门面）与 classic 时代一样从 context 解析。
 export function plainModuleSource(relativeWebPath) {
   const source = fs.readFileSync(path.join(webDir, relativeWebPath), 'utf8');
-  const withoutImports = publishFixtureBindings(source, fixtureImports(source)).toString().replace(/^import[^\n]*\n/gm, '');
+  const withoutImports = publishFixtureBindings(source, vmFixtureImports(source, relativeWebPath), { file: relativeWebPath }).toString().replace(/^import[^\n]*\n/gm, '');
   const withoutExportBlock = withoutImports.replace(/^export \{[\s\S]*?\n\};?\s*$/gm, '');
   // 与 initModuleSource 同因：vm 无脚本级词法隔离，顶层 const
   // 与后续脚本的同名 var 冲突；统一降为 var。
   return withoutExportBlock
-    .replace(/^export let (Mawe\w+|MAWE_I18N|AsrEditorUtils);$/gm, 'var $1;')
+    .replace(/^(?:export )?let (Mawe\w+|MAWE_I18N|AsrEditorUtils);$/gm, 'var $1;')
     .replace(/^export (?=(?:function|const|let|var)\b)/gm, '')
     .replace(/^const\s+/gm, 'var ');
 }

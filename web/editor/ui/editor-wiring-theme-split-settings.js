@@ -1,6 +1,6 @@
 import { MaweSegmentOps } from '../cues/editor-segment-ops.js';
-import { MaweSplitMode } from '../cues/editor-split-mode.js';
-import { MaweSplitTrim } from '../cues/editor-split-trim.js';
+import { refreshSplitKeyHelp } from '../cues/editor-split-mode.js';
+import { renderSplitTrimSymbolGrid, refreshSplitTrimExtraInput, splitTrimExtraInput, persistSplitTrimSymbols, splitTrimPrimaryCheckedSet, splitTrimSymbolsReset } from '../cues/editor-split-trim.js';
 import { MaweProcessing } from '../cues/editor-text-presets.js';
 import { MaweSettings } from '../state/editor-settings.js';
 import { MaweState } from '../state/editor-state.js';
@@ -57,7 +57,7 @@ if (MaweTheme.editorSystemThemeMedia?.addEventListener) {
 }
 MaweDom.splitKeySel.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitKey: MaweDom.splitKeySel.value });
-  MaweSplitMode.refreshSplitKeyHelp();
+  refreshSplitKeyHelp();
 });
 MaweDom.splitUseWordTimestampsToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitUseWordTimestamps: MaweDom.splitUseWordTimestampsToggle.checked });
@@ -86,20 +86,20 @@ if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.addEventListe
 
 
 
-MaweSplitTrim.renderSplitTrimSymbolGrid();
-MaweSplitTrim.refreshSplitTrimExtraInput();
-MaweSplitTrim.splitTrimExtraInput?.addEventListener('change', () => {
-  const extras = AsrEditorUtils.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
-  MaweSplitTrim.persistSplitTrimSymbols([...MaweSplitTrim.splitTrimPrimaryCheckedSet(), ...extras]);
-  MaweSplitTrim.refreshSplitTrimExtraInput();
+renderSplitTrimSymbolGrid();
+refreshSplitTrimExtraInput();
+splitTrimExtraInput?.addEventListener('change', () => {
+  const extras = AsrEditorUtils.parseSplitTrimSymbolInput(splitTrimExtraInput.value);
+  persistSplitTrimSymbols([...splitTrimPrimaryCheckedSet(), ...extras]);
+  refreshSplitTrimExtraInput();
 });
-MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
+splitTrimSymbolsReset?.addEventListener('click', () => {
   const defaults = AsrEditorUtils.setSplitTrimSymbols(
     [...AsrEditorUtils.DEFAULT_SPLIT_TRIM_SYMBOLS],
   );
   MaweSettings.updateEditorSettings({ splitTrimSymbols: defaults });
-  MaweSplitTrim.renderSplitTrimSymbolGrid();
-  MaweSplitTrim.refreshSplitTrimExtraInput();
+  renderSplitTrimSymbolGrid();
+  refreshSplitTrimExtraInput();
 });
 // Keep the open form as a draft. Only the explicit save buttons persist it.
 (() => {

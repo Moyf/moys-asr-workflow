@@ -4,7 +4,7 @@ import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweState } from '../state/editor-state.js';
 import { MaweDom } from '../ui/editor-dom.js';
 import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
-import { MaweCuePanel } from './editor-cue-panel.js';
+import { commitCuePanelEdit, setCuePanelTarget, focusCuePanelText } from './editor-cue-panel.js';
 import { MaweSelection } from './editor-selection.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function updateSelectionCountText() {
@@ -28,12 +28,12 @@ export function syncOverlaySelectionClasses() {
 export function selectOverlayCueRow(index, { focusEditor = false } = {}) {
   // 与副字幕 selectOnlyExtension 同一逻辑：点击叠加字幕先清空主轨/副轨
   // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   MaweSelection.clearSelection({ silent: true });
   MaweState.selection.add('overlay', index);
   MaweState.selection.overlayAnchor = index;
-  MaweCuePanel.setCuePanelTarget('overlay', index);
-  if (focusEditor) MaweCuePanel.focusCuePanelText(index, 'overlay');
+  setCuePanelTarget('overlay', index);
+  if (focusEditor) focusCuePanelText(index, 'overlay');
   syncOverlaySelectionClasses();
   MaweCoreState.waveformEditor?.updateSelection();
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
@@ -50,7 +50,7 @@ export function selectOverlayRange(fromIndex, toIndex) {
     if (MaweSelection.isHiddenDisabled(index, track)) continue;
     MaweState.selection.add('overlay', index);
   }
-  MaweCuePanel.setCuePanelTarget('overlay', toIndex);
+  setCuePanelTarget('overlay', toIndex);
   syncOverlaySelectionClasses();
   MaweCoreState.waveformEditor?.updateSelection();
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${toIndex}"]`);
@@ -70,7 +70,7 @@ export function toggleOverlaySelection(index) {
   }
   MaweState.selection.overlayAnchor = index;
   // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
-  MaweCuePanel.setCuePanelTarget('overlay', index);
+  setCuePanelTarget('overlay', index);
   updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
 }

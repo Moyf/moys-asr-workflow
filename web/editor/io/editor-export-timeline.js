@@ -20,13 +20,8 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweExportTimeline;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initExportTimelineModule() {
-// 时间线导出：工作区 JSON、Resolve/OTIO/otioz 与下载拷贝工具。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweExportTimeline(global) {
-  'use strict';
-
-
-
+  // 时间线导出：工作区 JSON、Resolve/OTIO/otioz 与下载拷贝工具。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   function buildWorkspaceJson() {
     const workspace = buildCurrentWorkspaceData();
     return JSON.stringify(workspace || {}, null, 2);
@@ -1100,6 +1095,4 @@ export function initExportTimelineModule() {
     downloadFile,
     copyText
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

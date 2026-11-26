@@ -6,15 +6,8 @@ import { MaweStickerPreviewWiring } from './editor-wiring-sticker-preview.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweStickerOverlay;
 export function initMaweStickerOverlay() {
-'use strict';
-
-// 表情包浮层：叠加层渲染与区间缓存。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweStickerOverlay(global) {
-  'use strict';
-
-
-
+  // 表情包浮层：叠加层渲染与区间缓存。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // 合成表情包文件的 URL（用于 <img src>）
   // 优先级:
   let stickerAssetRevision = 0;
@@ -216,6 +209,4 @@ export function initMaweStickerOverlay() {
     activeStickersAt,
     renderStickerOverlay
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

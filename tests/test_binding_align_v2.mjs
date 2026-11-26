@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function fixture({ mainSelected = [], extensionSelected = [] } = {}) {
@@ -42,7 +42,7 @@ function fixture({ mainSelected = [], extensionSelected = [] } = {}) {
   };
   context.window = context;
   vm.createContext(exposeWindowGlobals(context));
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-binding-align.js', 'initMaweBindingAlign'), context);
+  vm.runInContext(plainModuleSource('editor/cues/editor-binding-align.js'), context);
   return { context, project, binding, calls };
 }
 

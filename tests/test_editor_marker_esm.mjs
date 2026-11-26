@@ -8,7 +8,7 @@ const web = new URL('../web/', import.meta.url);
 test('marker modules import without initializing browser state', async () => {
   const editing = await import('../web/editor/markers/editor-marker-editing.js');
   const panel = await import('../web/editor/markers/editor-markers-panel.js');
-  assert.equal(typeof editing.initMaweMarkerEditing, 'function');
+  assert.equal(editing.MaweMarkerEditing.getMarkers, editing.getMarkers);
   assert.equal(typeof panel.initMaweMarkersPanel, 'function');
 });
 
@@ -16,14 +16,13 @@ test('marker ESM consumers use the editing module in production initialization o
   const files = editorInitializers.map(item => item.file);
 
   const targets = [
-    ['editor/markers/editor-marker-editing.js', 'initMaweMarkerEditing'],
     ['editor/markers/editor-markers-panel.js', 'initMaweMarkersPanel'],
   ];
-  assert.equal(files.indexOf(targets[1][0]), files.indexOf(targets[0][0]) + 1);
+  assert.ok(!files.includes('editor/markers/editor-marker-editing.js'));
   for (const [file, exportName] of targets) {
     assert.ok(editorInitializers.some(module => module.file === file && module.exportName === exportName));
   }
-  for (const file of [targets[1][0], 'editor/media/editor-waveform-init.js']) {
+  for (const file of [targets[0][0], 'editor/media/editor-waveform-init.js']) {
     const source = readFileSync(new URL(file, web), 'utf8');
     assert.match(source, /import \* as markerEditing from ['"][^'"]*editor-marker-editing\.js['"]/);
   }

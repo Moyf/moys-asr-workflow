@@ -2,11 +2,6 @@
 import { MaweHint } from '../ui/editor-hint.js';
 export let MaweShortcuts;
 export function initMaweShortcuts() {
-(function initMaweShortcuts(global) {
-  'use strict';
-
-
-
   function showShortcutBlocked(message) {
     MaweHint.flashHint(message, 'invalid');
   }
@@ -41,8 +36,6 @@ export function initMaweShortcuts() {
     PLAYBACK_RATE_MAX,
     fmtRate
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function showShortcutBlocked(...args) { return MaweShortcuts.showShortcutBlocked(...args); }

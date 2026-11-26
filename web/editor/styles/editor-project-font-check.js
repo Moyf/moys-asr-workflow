@@ -11,9 +11,7 @@ import { MaweAssFrame } from './editor-wiring-ass-frame.js';
 import { MaweAssManagerWiring } from './editor-wiring-ass-manager.js';
 export let MaweProjectFontCheck;
 export function initMaweProjectFontCheck() {
-// 检查工程明确保存的字体；自动建立的默认轨道样式不要求用户安装字体。
-(function initProjectFontCheck(global) {
-  'use strict';
+  // 检查工程明确保存的字体；自动建立的默认轨道样式不要求用户安装字体。
   let serial = 0;
   let panel = null;
   // These are explicitly selected preview presets, not the default fallback.
@@ -198,6 +196,4 @@ export function initMaweProjectFontCheck() {
   }
   MaweState.observeProjectLoad(() => { serial += 1; close(); });
   MaweProjectFontCheck = Object.freeze({ schedule });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

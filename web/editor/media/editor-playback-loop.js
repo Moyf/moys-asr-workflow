@@ -19,94 +19,84 @@ import { MaweGapPlayback } from './editor-gap-playback.js';
 import { MaweMediaPlayback } from './editor-media-playback.js';
 import { MaweStickerOverlay } from './editor-sticker-overlay.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
-export let MawePlaybackLoop;
 import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
 import { applyAssSubtitlePreview, restoreCssSubtitlePreview } from '../styles/editor-wiring-ass-preview.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
-export function initMawePlaybackLoop() {
-'use strict';
-
 // 播放循环：活动字幕追踪、预览刷新与统一渲染帧。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMawePlaybackLoop(global) {
-  'use strict';
-
-
-
   // === 当前行高亮 + overlay ===
-  let lastActive = -1;
+let lastActive = -1;
 
 
   // 列表点击关闭自动滚动时，避免这次 seek 的同步 active 更新再次滚动列表；
   // 播放指针拖动期间也暂时保持列表位置，避免连续 seek 触发滚动布局。
-  let suppressCueListAutoScroll = false;
+let suppressCueListAutoScroll = false;
 
 
-  let waveformPlayheadDragging = false;
+let waveformPlayheadDragging = false;
 
 
-  function findActiveSegmentIndex(segments, tMs, skipDisabled = false) {
-    if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(tMs))) return -1;
-    let lo = 0;
-    let hi = segments.length;
-    const time = Number(tMs);
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      const start = Number(segments[mid]?.start);
-      if (Number.isFinite(start) && start <= time) lo = mid + 1;
-      else hi = mid;
-    }
-    let index = lo - 1;
-    if (skipDisabled) {
-      while (index >= 0 && segments[index]?.disabled) index -= 1;
-    }
-    return index;
+function findActiveSegmentIndex(segments, tMs, skipDisabled = false) {
+  if (!Array.isArray(segments) || !segments.length || !Number.isFinite(Number(tMs))) return -1;
+  let lo = 0;
+  let hi = segments.length;
+  const time = Number(tMs);
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const start = Number(segments[mid]?.start);
+    if (Number.isFinite(start) && start <= time) lo = mid + 1;
+    else hi = mid;
   }
-
-
-
-  function findActive(tMs) {
-    // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
-    // 前一条字幕作为当前项，和原有列表高亮语义一致。
-    return findActiveSegmentIndex(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, tMs);
+  let index = lo - 1;
+  if (skipDisabled) {
+    while (index >= 0 && segments[index]?.disabled) index -= 1;
   }
+  return index;
+}
 
 
 
-  function isSubtitlePreviewActive(segment, tMs) {
-    if (!segment || segment.disabled) return false;
-    const start = Number(segment.start);
-    const end = Number(segment.end);
-    return Number.isFinite(start) && Number.isFinite(end) && tMs >= start && tMs < end;
+function findActive(tMs) {
+  // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
+  // 前一条字幕作为当前项，和原有列表高亮语义一致。
+  return findActiveSegmentIndex(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, tMs);
+}
+
+
+
+function isSubtitlePreviewActive(segment, tMs) {
+  if (!segment || segment.disabled) return false;
+  const start = Number(segment.start);
+  const end = Number(segment.end);
+  return Number.isFinite(start) && Number.isFinite(end) && tMs >= start && tMs < end;
+}
+
+
+
+function extensionSegmentAtTime(tMs, mainIndex = -1) {
+  if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return null;
+  const bound = mainIndex >= 0 ? MaweMultiSubtitleCore.extensionForMainIndex(mainIndex) : null;
+  if (isSubtitlePreviewActive(bound, tMs)) return bound;
+  const segments = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
+  const index = findActiveSegmentIndex(segments, tMs, true);
+  const segment = index >= 0 ? segments[index] : null;
+  return isSubtitlePreviewActive(segment, tMs) ? segment : null;
+}
+
+
+
+function previewGapAt(index, timeMs) {
+  const state = MaweGapRemoveData.getGapRemoveData(false);
+  const gap = MaweGapRemoveData.getGapRemoveGaps()[index];
+  if (!state?.skip_playback || !gap || gap.removed === false
+      || timeMs < gap.start || timeMs >= gap.end) {
+    MaweCuePanelState.gapPreviewRange = null;
+    return;
   }
-
-
-
-  function extensionSegmentAtTime(tMs, mainIndex = -1) {
-    if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return null;
-    const bound = mainIndex >= 0 ? MaweMultiSubtitleCore.extensionForMainIndex(mainIndex) : null;
-    if (isSubtitlePreviewActive(bound, tMs)) return bound;
-    const segments = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
-    const index = findActiveSegmentIndex(segments, tMs, true);
-    const segment = index >= 0 ? segments[index] : null;
-    return isSubtitlePreviewActive(segment, tMs) ? segment : null;
-  }
-
-
-
-  function previewGapAt(index, timeMs) {
-    const state = MaweGapRemoveData.getGapRemoveData(false);
-    const gap = MaweGapRemoveData.getGapRemoveGaps()[index];
-    if (!state?.skip_playback || !gap || gap.removed === false
-        || timeMs < gap.start || timeMs >= gap.end) {
-      MaweCuePanelState.gapPreviewRange = null;
-      return;
-    }
-    MaweCuePanelState.gapPreviewRange = { start: gap.start, end: gap.end };
-    MaweGapPlayback?.refresh();
-    MaweHint.flashHint('正在预览此空隙；播放头离开后恢复跳过');
-  }
+  MaweCuePanelState.gapPreviewRange = { start: gap.start, end: gap.end };
+  MaweGapPlayback?.refresh();
+  MaweHint.flashHint('正在预览此空隙；播放头离开后恢复跳过');
+}
 
 
 
@@ -136,37 +126,37 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
 
 
-  function applyGapPlaybackSkip(skippedGap, player) {
-    return MaweGapPlayback?.update(player, skippedGap) === true;
+function applyGapPlaybackSkip(skippedGap, player) {
+  return MaweGapPlayback?.update(player, skippedGap) === true;
+}
+
+function updatePlaybackFrame() {
+  const tMs = MaweCoreState.player.currentTime * 1000;
+  if (MaweCuePanelState.gapPreviewRange && (tMs < MaweCuePanelState.gapPreviewRange.start || tMs >= MaweCuePanelState.gapPreviewRange.end)) {
+    MaweCuePanelState.gapPreviewRange = null;
   }
-
-  function updatePlaybackFrame() {
-    const tMs = MaweCoreState.player.currentTime * 1000;
-    if (MaweCuePanelState.gapPreviewRange && (tMs < MaweCuePanelState.gapPreviewRange.start || tMs >= MaweCuePanelState.gapPreviewRange.end)) {
-      MaweCuePanelState.gapPreviewRange = null;
-    }
-    const gapState = MaweGapRemoveData.getGapRemoveData(false);
-    const skippedGap = AsrGapRemoveCore.getGapPlaybackSkip(
-      MaweGapRemoveData.getRemovedGapRanges(),
-      tMs,
-      {
-        skipPlayback: gapState?.skip_playback === true && !MaweMediaPlayback.isAuditioning,
-        isPlaying: !MaweCoreState.player.paused,
-        previewRange: MaweCuePanelState.gapPreviewRange,
-      },
-    );
-    if (applyGapPlaybackSkip(skippedGap, MaweCoreState.player)) return;
-    const nowLabel = MaweCueElements.fmtShort(tMs);
-    if (MaweDom.nowEl.textContent !== nowLabel) MaweDom.nowEl.textContent = nowLabel;
-    const idx = findActive(tMs);
-    updateActiveCue(idx);
-    refreshSubtitlePreview(tMs, idx);
-    MaweCoreState.waveformEditor?.updatePlayback();
-  }
+  const gapState = MaweGapRemoveData.getGapRemoveData(false);
+  const skippedGap = AsrGapRemoveCore.getGapPlaybackSkip(
+    MaweGapRemoveData.getRemovedGapRanges(),
+    tMs,
+    {
+      skipPlayback: gapState?.skip_playback === true && !MaweMediaPlayback.isAuditioning,
+      isPlaying: !MaweCoreState.player.paused,
+      previewRange: MaweCuePanelState.gapPreviewRange,
+    },
+  );
+  if (applyGapPlaybackSkip(skippedGap, MaweCoreState.player)) return;
+  const nowLabel = MaweCueElements.fmtShort(tMs);
+  if (MaweDom.nowEl.textContent !== nowLabel) MaweDom.nowEl.textContent = nowLabel;
+  const idx = findActive(tMs);
+  updateActiveCue(idx);
+  refreshSubtitlePreview(tMs, idx);
+  MaweCoreState.waveformEditor?.updatePlayback();
+}
 
 
 
-  function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
+function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
   const sourceSegment = idx >= 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null;
   const seg = sourceSegment
@@ -396,27 +386,27 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
 
 
-  function update() {
-    const tMs = MaweCoreState.player.currentTime * 1000;
-    if (MaweCuePanelState.gapPreviewRange && (tMs < MaweCuePanelState.gapPreviewRange.start || tMs >= MaweCuePanelState.gapPreviewRange.end)) {
-      MaweCuePanelState.gapPreviewRange = null;
-    }
-    const gapState = MaweGapRemoveData.getGapRemoveData(false);
-    const skippedGap = AsrGapRemoveCore.getGapPlaybackSkip(
-      MaweGapRemoveData.getRemovedGapRanges(),
-      tMs,
-      {
-        skipPlayback: gapState?.skip_playback === true && !MaweMediaPlayback.isAuditioning,
-        isPlaying: !MaweCoreState.player.paused,
-        previewRange: MaweCuePanelState.gapPreviewRange,
-      },
-    );
-    if (applyGapPlaybackSkip(skippedGap, MaweCoreState.player)) return;
-    MaweDom.nowEl.textContent = MaweCueElements.fmtShort(tMs);
-    const idx = findActive(tMs);
-    updateActiveCue(idx);
-    refreshSubtitlePreview(tMs, idx);
+function update() {
+  const tMs = MaweCoreState.player.currentTime * 1000;
+  if (MaweCuePanelState.gapPreviewRange && (tMs < MaweCuePanelState.gapPreviewRange.start || tMs >= MaweCuePanelState.gapPreviewRange.end)) {
+    MaweCuePanelState.gapPreviewRange = null;
   }
+  const gapState = MaweGapRemoveData.getGapRemoveData(false);
+  const skippedGap = AsrGapRemoveCore.getGapPlaybackSkip(
+    MaweGapRemoveData.getRemovedGapRanges(),
+    tMs,
+    {
+      skipPlayback: gapState?.skip_playback === true && !MaweMediaPlayback.isAuditioning,
+      isPlaying: !MaweCoreState.player.paused,
+      previewRange: MaweCuePanelState.gapPreviewRange,
+    },
+  );
+  if (applyGapPlaybackSkip(skippedGap, MaweCoreState.player)) return;
+  MaweDom.nowEl.textContent = MaweCueElements.fmtShort(tMs);
+  const idx = findActive(tMs);
+  updateActiveCue(idx);
+  refreshSubtitlePreview(tMs, idx);
+}
 
 
 
@@ -426,34 +416,32 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   // 再用被污染的 offsetTop 算出错误目标平滑滚走（页面放大倍率越高、真实
   // 行高与估算差异越大越容易触发）。这些操作是否滚动、滚到哪里都应由
   // 调用方显式决定（例如拆分按来源保持原位或居中新右半段）。
-  function updateWithoutCueListAutoScroll() {
-    const previousSuppress = suppressCueListAutoScroll;
-    suppressCueListAutoScroll = true;
-    try {
-      update();
-    } finally {
-      suppressCueListAutoScroll = previousSuppress;
-    }
+function updateWithoutCueListAutoScroll() {
+  const previousSuppress = suppressCueListAutoScroll;
+  suppressCueListAutoScroll = true;
+  try {
+    update();
+  } finally {
+    suppressCueListAutoScroll = previousSuppress;
   }
-
-  MawePlaybackLoop = Object.freeze({
-    get lastActive() { return lastActive; },
-    set lastActive(v) { lastActive = v; },
-    get suppressCueListAutoScroll() { return suppressCueListAutoScroll; },
-    set suppressCueListAutoScroll(v) { suppressCueListAutoScroll = v; },
-    get waveformPlayheadDragging() { return waveformPlayheadDragging; },
-    set waveformPlayheadDragging(v) { waveformPlayheadDragging = v; },
-    findActiveSegmentIndex,
-    findActive,
-    isSubtitlePreviewActive,
-    extensionSegmentAtTime,
-    previewGapAt,
-    updateActiveCue,
-    updatePlaybackFrame,
-    refreshSubtitlePreview,
-    update,
-    updateWithoutCueListAutoScroll
-  });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export const MawePlaybackLoop = {
+  get lastActive() { return lastActive; },
+  set lastActive(v) { lastActive = v; },
+  get suppressCueListAutoScroll() { return suppressCueListAutoScroll; },
+  set suppressCueListAutoScroll(v) { suppressCueListAutoScroll = v; },
+  get waveformPlayheadDragging() { return waveformPlayheadDragging; },
+  set waveformPlayheadDragging(v) { waveformPlayheadDragging = v; },
+  findActiveSegmentIndex,
+  findActive,
+  isSubtitlePreviewActive,
+  extensionSegmentAtTime,
+  previewGapAt,
+  updateActiveCue,
+  updatePlaybackFrame,
+  refreshSubtitlePreview,
+  update,
+  updateWithoutCueListAutoScroll
+};
+Object.freeze(MawePlaybackLoop);

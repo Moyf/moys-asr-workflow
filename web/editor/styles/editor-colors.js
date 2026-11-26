@@ -14,11 +14,6 @@ export let MaweColors;
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweColors() {
-(function initMaweColorsFacade(global) {
-  'use strict';
-
-
-
   // 标记颜色：5 种基础色，用于给字幕分组着色。
   // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
   // 内置色值由 maw/colors.py 提供，渲染器嵌入页面。
@@ -174,8 +169,6 @@ export function initMaweColors() {
     refreshSubtitleColorPalettePresentation,
     setSubtitleColorPaletteValue,
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function syncSubtitleColorPaletteControls(...args) { return MaweColors.syncSubtitleColorPaletteControls(...args); }

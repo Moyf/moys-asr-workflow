@@ -11,7 +11,6 @@ import { MaweNinja } from '../ui/editor-ninja.js';
 import { MaweInlineEdit } from './editor-inline-edit.js';
 import { MaweSelection } from './editor-selection.js';
 import { getOverlayTrack } from './overlay-track.js';
-export let MaweSplitCore;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { fmtShort, rememberTemporaryVisibleSplitCues } from './editor-cue-elements.js';
 import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
@@ -25,401 +24,393 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 拆分核心：拆分点计算、字词时间码回退与拆分会话状态。
 // 由 split-cluster codemod 自 editor.js 拆出。
 
-export function initMaweSplitCore() {
-(function initMaweSplitCore(global) {
-  'use strict';
-
-
-
   // === 拆分 ===
-  let pendingLinkedSplit = null;
-  const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
+let pendingLinkedSplit = null;
+const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
 
 
 
-  const splitStyleVisiblePrefixes = new WeakMap();
+const splitStyleVisiblePrefixes = new WeakMap();
 
   // Match the existing ASS parser's delimiter widths, boundaries and feature gates.
   // Positions always refer to the source text, never to newly inserted display markers.
-  function splitStyleTokens(text, settings = {}) {
-    if (settings.assMode !== true || settings.assSpecialSymbolRule === 'none') return [];
-    const rule = settings.assSpecialSymbolRule;
-    const widths = rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
-    /** @type {Array<[string, boolean]>} */
-    const kinds = [
-      ['*', ['single', 'double', 'both'].includes(settings.assEmphasisSyntax)],
-      ['_', settings.assUnderlineEnabled !== false],
-      ['~', settings.assStrikeEnabled !== false],
-      ['-', settings.assSmallTextEnabled !== false],
-      ['+', settings.assLargeTextEnabled !== false],
-      ['//', settings.assItalicEnabled !== false],
-      ['%%', settings.assCommentEnabled !== false],
-    ];
-    const tokens = [];
-    for (const [symbol, enabled] of kinds) {
-      if (!enabled) continue;
-      // 斜体 // 与弱化 %% 是固定双符号：不随单双规则变化，也不接受单符号。
-      const fixedDouble = symbol === '//' || symbol === '%%';
-      for (const width of fixedDouble ? [2] : widths) {
-        const marker = fixedDouble ? symbol : symbol.repeat(width);
-        const wordMarker = ['_', '-', '+'].includes(marker[0]);
-        let cursor = 0;
-        while (cursor < text.length) {
-          if (!text.startsWith(marker, cursor)
-              || text[cursor - 1] === marker[0] || text[cursor + width] === marker[0]
-              || (wordMarker && /[a-z0-9]/iu.test(text[cursor - 1] || ''))) {
-            cursor += 1;
-            continue;
-          }
-          let end = text.indexOf(marker, cursor + width);
-          while (end >= 0 && (text[end - 1] === marker[0] || text[end + width] === marker[0])) {
-            end = text.indexOf(marker, end + width);
-          }
-          if (end <= cursor + width
-              || (wordMarker && (/[a-z0-9]/iu.test(text[end + width] || '')
-                || text.slice(cursor + width, end).includes('\n')))) {
-            cursor += width;
-            continue;
-          }
-          const pair = { start: cursor, end, marker, width };
-          tokens.push({ ...pair, position: cursor, opening: true },
-            { ...pair, position: end, opening: false });
-          cursor = end + width;
-        }
-      }
-    }
-    // The fade parser also understands fades nested inside complete sentence shells.
-    const faded = AsrEditorUtils.parseSentenceFadeMarkers(text, rule);
-    if (faded.fadeIn || faded.fadeOut) {
-      let start = 0, end = text.length;
-      const shells = ['!!', '++', '--', '**', '__', '~~', '//', '%%'];
-      while (start < end) {
-        const body = text.slice(start, end);
-        const shell = shells.find((marker) => body.length > marker.length * 2
-          && body.startsWith(marker) && body.endsWith(marker)
-          && (marker === '!!' || !body.slice(marker.length, -marker.length).includes(marker)));
-        if (shell) { start += shell.length; end -= shell.length; continue; }
-        const single = rule === 'both' || rule === 'single';
-        const left = body.startsWith('>>') ? 2 : single && body.startsWith('>') ? 1 : 0;
-        const right = body.endsWith('<<') ? 2 : single && body.endsWith('<') ? 1 : 0;
-        if (left) tokens.push({ position: start, width: left, fade: true });
-        if (right) tokens.push({ position: end - right, width: right, fade: true });
-        break;
-      }
-    }
-    if (tokens.length) {
-      const hidden = new Uint8Array(text.length);
-      for (const token of tokens) hidden.fill(1, token.position, token.position + token.width);
-      const prefix = new Uint32Array(text.length + 1);
-      for (let index = 0; index < text.length; index++) prefix[index + 1] = prefix[index] + (hidden[index] ? 0 : 1);
-      splitStyleVisiblePrefixes.set(tokens, prefix);
-    }
-    return tokens;
-  }
-
-  function alignSplitItems(text, items, tokens, segment = null) {
-    const itemText = items.map((item) => String(item?.text || '')).join('');
-    const segmentStart = Number(segment?.start);
-    const segmentEnd = Number(segment?.end);
-    let previousEnd = -Infinity;
-    const timedSuffix = itemText && itemText !== text && text.endsWith(itemText)
-      && Number.isFinite(segmentStart) && Number.isFinite(segmentEnd)
-      && items.every((item) => {
-        if (item?.start == null || item?.end == null) return false;
-        const start = Number(item?.start);
-        const end = Number(item?.end);
-        const valid = Number.isFinite(start) && Number.isFinite(end)
-          && start >= segmentStart && end <= segmentEnd && end > start && start >= previousEnd;
-        previousEnd = end;
-        return valid;
-      });
-    // 渐进拆分的右段保留完整文本，却只保留后缀 items；绝对时间码仍在段内。
-    // 这种可从保存后的段/词数据重建的结构必须从右对齐，避免重复词抢占前缀位置。
-    const aligned = AsrEditorUtils.alignItemsToText(text, items, { fromEnd: timedSuffix });
-    if (!tokens.length || aligned.every((record, index) => record || !items[index]?.text)) return aligned;
-    const positions = [];
-    for (let index = 0; index < text.length; index++) {
-      if (splitVisibleLength(text, index, index + 1, tokens)) positions.push(index);
-    }
-    const visible = positions.map((index) => text[index]).join('');
-    const itemTexts = items.map((item) => String(item?.text || ''));
-    let recovered;
-    if (visible === itemTexts.join('')) {
-      // Complete speech coverage is unambiguous even for repeated words: O(text + items).
+function splitStyleTokens(text, settings = {}) {
+  if (settings.assMode !== true || settings.assSpecialSymbolRule === 'none') return [];
+  const rule = settings.assSpecialSymbolRule;
+  const widths = rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
+  /** @type {Array<[string, boolean]>} */
+  const kinds = [
+    ['*', ['single', 'double', 'both'].includes(settings.assEmphasisSyntax)],
+    ['_', settings.assUnderlineEnabled !== false],
+    ['~', settings.assStrikeEnabled !== false],
+    ['-', settings.assSmallTextEnabled !== false],
+    ['+', settings.assLargeTextEnabled !== false],
+    ['//', settings.assItalicEnabled !== false],
+    ['%%', settings.assCommentEnabled !== false],
+  ];
+  const tokens = [];
+  for (const [symbol, enabled] of kinds) {
+    if (!enabled) continue;
+    // 斜体 // 与弱化 %% 是固定双符号：不随单双规则变化，也不接受单符号。
+    const fixedDouble = symbol === '//' || symbol === '%%';
+    for (const width of fixedDouble ? [2] : widths) {
+      const marker = fixedDouble ? symbol : symbol.repeat(width);
+      const wordMarker = ['_', '-', '+'].includes(marker[0]);
       let cursor = 0;
-      recovered = items.map((item, index) => {
-        const itemText = itemTexts[index];
-        const textStart = cursor;
-        cursor += itemText.length;
-        return itemText ? { item, itemText, textStart, textEnd: cursor } : null;
-      });
-    } else {
-      // Recovery is optional and runs on the input path. Keep its extra DP work below
-      // the general aligner's budget; oversized/ambiguous inputs retain the old fallback.
-      if (items.length * (visible.length + 2) > 50_000) return aligned;
-      recovered = AsrEditorUtils.alignItemsToText(visible, items);
+      while (cursor < text.length) {
+        if (!text.startsWith(marker, cursor)
+            || text[cursor - 1] === marker[0] || text[cursor + width] === marker[0]
+            || (wordMarker && /[a-z0-9]/iu.test(text[cursor - 1] || ''))) {
+          cursor += 1;
+          continue;
+        }
+        let end = text.indexOf(marker, cursor + width);
+        while (end >= 0 && (text[end - 1] === marker[0] || text[end + width] === marker[0])) {
+          end = text.indexOf(marker, end + width);
+        }
+        if (end <= cursor + width
+            || (wordMarker && (/[a-z0-9]/iu.test(text[end + width] || '')
+              || text.slice(cursor + width, end).includes('\n')))) {
+          cursor += width;
+          continue;
+        }
+        const pair = { start: cursor, end, marker, width };
+        tokens.push({ ...pair, position: cursor, opening: true },
+          { ...pair, position: end, opening: false });
+        cursor = end + width;
+      }
     }
-    const previous = [], next = [];
-    let anchor = null;
-    for (let index = 0; index < aligned.length; index++) {
-      previous[index] = anchor;
-      if (aligned[index]) anchor = aligned[index];
+  }
+  // The fade parser also understands fades nested inside complete sentence shells.
+  const faded = AsrEditorUtils.parseSentenceFadeMarkers(text, rule);
+  if (faded.fadeIn || faded.fadeOut) {
+    let start = 0, end = text.length;
+    const shells = ['!!', '++', '--', '**', '__', '~~', '//', '%%'];
+    while (start < end) {
+      const body = text.slice(start, end);
+      const shell = shells.find((marker) => body.length > marker.length * 2
+        && body.startsWith(marker) && body.endsWith(marker)
+        && (marker === '!!' || !body.slice(marker.length, -marker.length).includes(marker)));
+      if (shell) { start += shell.length; end -= shell.length; continue; }
+      const single = rule === 'both' || rule === 'single';
+      const left = body.startsWith('>>') ? 2 : single && body.startsWith('>') ? 1 : 0;
+      const right = body.endsWith('<<') ? 2 : single && body.endsWith('<') ? 1 : 0;
+      if (left) tokens.push({ position: start, width: left, fade: true });
+      if (right) tokens.push({ position: end - right, width: right, fade: true });
+      break;
     }
-    anchor = null;
-    for (let index = aligned.length - 1; index >= 0; index--) {
-      next[index] = anchor;
-      if (aligned[index]) anchor = aligned[index];
-    }
-    // Keep existing raw anchors authoritative when recovering a missing speech item.
-    return aligned.map((record, index) => {
-      const candidate = recovered[index];
-      if (record || !candidate) return record;
-      const textStart = positions[candidate.textStart];
-      const textEnd = positions[candidate.textEnd - 1] + 1;
-      if ((previous[index] && textStart < previous[index].textEnd)
-          || (next[index] && textEnd > next[index].textStart)) return null;
-      return { ...candidate, textStart, textEnd, visibleAlignment: true };
+  }
+  if (tokens.length) {
+    const hidden = new Uint8Array(text.length);
+    for (const token of tokens) hidden.fill(1, token.position, token.position + token.width);
+    const prefix = new Uint32Array(text.length + 1);
+    for (let index = 0; index < text.length; index++) prefix[index + 1] = prefix[index] + (hidden[index] ? 0 : 1);
+    splitStyleVisiblePrefixes.set(tokens, prefix);
+  }
+  return tokens;
+}
+
+function alignSplitItems(text, items, tokens, segment = null) {
+  const itemText = items.map((item) => String(item?.text || '')).join('');
+  const segmentStart = Number(segment?.start);
+  const segmentEnd = Number(segment?.end);
+  let previousEnd = -Infinity;
+  const timedSuffix = itemText && itemText !== text && text.endsWith(itemText)
+    && Number.isFinite(segmentStart) && Number.isFinite(segmentEnd)
+    && items.every((item) => {
+      if (item?.start == null || item?.end == null) return false;
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const valid = Number.isFinite(start) && Number.isFinite(end)
+        && start >= segmentStart && end <= segmentEnd && end > start && start >= previousEnd;
+      previousEnd = end;
+      return valid;
     });
+  // 渐进拆分的右段保留完整文本，却只保留后缀 items；绝对时间码仍在段内。
+  // 这种可从保存后的段/词数据重建的结构必须从右对齐，避免重复词抢占前缀位置。
+  const aligned = AsrEditorUtils.alignItemsToText(text, items, { fromEnd: timedSuffix });
+  if (!tokens.length || aligned.every((record, index) => record || !items[index]?.text)) return aligned;
+  const positions = [];
+  for (let index = 0; index < text.length; index++) {
+    if (splitVisibleLength(text, index, index + 1, tokens)) positions.push(index);
   }
+  const visible = positions.map((index) => text[index]).join('');
+  const itemTexts = items.map((item) => String(item?.text || ''));
+  let recovered;
+  if (visible === itemTexts.join('')) {
+    // Complete speech coverage is unambiguous even for repeated words: O(text + items).
+    let cursor = 0;
+    recovered = items.map((item, index) => {
+      const itemText = itemTexts[index];
+      const textStart = cursor;
+      cursor += itemText.length;
+      return itemText ? { item, itemText, textStart, textEnd: cursor } : null;
+    });
+  } else {
+    // Recovery is optional and runs on the input path. Keep its extra DP work below
+    // the general aligner's budget; oversized/ambiguous inputs retain the old fallback.
+    if (items.length * (visible.length + 2) > 50_000) return aligned;
+    recovered = AsrEditorUtils.alignItemsToText(visible, items);
+  }
+  const previous = [], next = [];
+  let anchor = null;
+  for (let index = 0; index < aligned.length; index++) {
+    previous[index] = anchor;
+    if (aligned[index]) anchor = aligned[index];
+  }
+  anchor = null;
+  for (let index = aligned.length - 1; index >= 0; index--) {
+    next[index] = anchor;
+    if (aligned[index]) anchor = aligned[index];
+  }
+  // Keep existing raw anchors authoritative when recovering a missing speech item.
+  return aligned.map((record, index) => {
+    const candidate = recovered[index];
+    if (record || !candidate) return record;
+    const textStart = positions[candidate.textStart];
+    const textEnd = positions[candidate.textEnd - 1] + 1;
+    if ((previous[index] && textStart < previous[index].textEnd)
+        || (next[index] && textEnd > next[index].textStart)) return null;
+    return { ...candidate, textStart, textEnd, visibleAlignment: true };
+  });
+}
 
-  function splitStyleDisplayPlan(tokens) {
-    const groups = new Map();
-    for (const token of tokens.filter((token) => token.opening)) {
-      const key = token.marker[0];
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(token);
-    }
-    const pairs = [], edits = new Map();
-    // Single/double markers of the same style have boolean semantics in the ASS
-    // parser. Coalesce overlapping ranges: emitting their adjacent closures would
-    // create an unrecognised triple marker and expose syntax as literal text.
-    for (const group of groups.values()) {
-      group.sort((a, b) => a.start - b.start || b.end - a.end);
-      let component = [], last = null;
-      const flush = () => {
-        if (!component.length) return;
-        const first = component[0];
-        pairs.push({ ...first, end: last.end });
-        if (component.length > 1) {
-          for (const pair of component) {
-            edits.set(pair.start, { width: pair.width, text: '' });
-            edits.set(pair.end, { width: pair.width, text: '' });
-          }
-          edits.set(first.start, { width: first.width, text: first.marker });
-          edits.set(last.end, { width: last.width, text: first.marker });
+function splitStyleDisplayPlan(tokens) {
+  const groups = new Map();
+  for (const token of tokens.filter((token) => token.opening)) {
+    const key = token.marker[0];
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(token);
+  }
+  const pairs = [], edits = new Map();
+  // Single/double markers of the same style have boolean semantics in the ASS
+  // parser. Coalesce overlapping ranges: emitting their adjacent closures would
+  // create an unrecognised triple marker and expose syntax as literal text.
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.start - b.start || b.end - a.end);
+    let component = [], last = null;
+    const flush = () => {
+      if (!component.length) return;
+      const first = component[0];
+      pairs.push({ ...first, end: last.end });
+      if (component.length > 1) {
+        for (const pair of component) {
+          edits.set(pair.start, { width: pair.width, text: '' });
+          edits.set(pair.end, { width: pair.width, text: '' });
         }
-      };
-      for (const pair of group) {
-        if (last && pair.start >= last.end) { flush(); component = []; last = null; }
-        component.push(pair);
-        if (!last || pair.end > last.end) last = pair;
+        edits.set(first.start, { width: first.width, text: first.marker });
+        edits.set(last.end, { width: last.width, text: first.marker });
       }
-      flush();
-    }
-    for (const token of tokens.filter((token) => token.fade)) {
-      edits.set(token.position, { width: token.width, text: '' });
-    }
-    return { pairs, edits };
-  }
-
-  function splitVisibleLength(text, start, end, tokens) {
-    const prefix = splitStyleVisiblePrefixes.get(tokens);
-    const from = Math.max(0, Math.min(text.length, start));
-    const to = Math.max(from, Math.min(text.length, end));
-    return prefix ? prefix[to] - prefix[from] : to - from;
-  }
-
-  function splitStyledTextParts(text, parts, settings = {}) {
-    if (!parts) return null;
-    const tokens = splitStyleTokens(text, settings);
-    if (!tokens.length) return parts;
-    let offset = parts.offset;
-    // Never bisect a marker. A marker without any body on its side follows its pair.
-    for (let pass = 0; pass < tokens.length; pass++) {
-      const before = offset;
-      for (const token of tokens) {
-        if (token.fade) continue;
-        if ((offset > token.position && offset < token.position + token.width)
-            || (token.opening && offset === token.position + token.width)
-            || (!token.opening && offset === token.position)) {
-          offset = token.opening ? token.position : token.position + token.width;
-        }
-      }
-      if (before === offset) break;
-    }
-    const display = splitStyleDisplayPlan(tokens);
-    const crossing = display.pairs.filter((token) => token.position + token.width < offset && token.end > offset)
-      .sort((a, b) => a.start - b.start);
-    const fadeTokens = tokens.filter((token) => token.fade);
-    const displaySlice = (start, end) => {
-      let value = '';
-      for (let index = start; index < end;) {
-        const edit = display.edits.get(index);
-        if (edit) { value += edit.text; index += edit.width; }
-        else { value += text[index]; index += 1; }
-      }
-      return value;
     };
-    // The caller already trimmed this source offset (and may preserve word-mode
-    // connectors). Render that same source slice before inserting style closures.
-    const sameOffset = offset === parts.offset;
-    let left = !display.edits.size && sameOffset ? parts.left
-      : displaySlice(0, sameOffset ? parts.left.length : offset);
-    let right = !display.edits.size && sameOffset ? parts.right
-      : displaySlice(sameOffset ? text.length - parts.right.length : offset, text.length);
-    if (!sameOffset) {
-      left = AsrEditorUtils.applySplitEdgeTrim(left, 'end');
-      right = AsrEditorUtils.applySplitEdgeTrim(right, 'start');
+    for (const pair of group) {
+      if (last && pair.start >= last.end) { flush(); component = []; last = null; }
+      component.push(pair);
+      if (!last || pair.end > last.end) last = pair;
     }
-    const content = (start, end) => text.slice(start, end).split('').filter(
-      (_, index) => splitVisibleLength(text, index + start, index + start + 1, tokens) > 0,
-    ).join('');
-    if (!AsrEditorUtils.applySplitEdgeTrim(content(0, offset), 'end')
-        || !AsrEditorUtils.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
-    const leftClosures = [...crossing].reverse().map((token) => token.marker).join('');
-    const rightClosures = crossing.map((token) => token.marker).join('');
-    left += leftClosures;
-    right = rightClosures + right;
-    // items 层同步需要知道 styled 在两侧端点追加了什么：左 = crossing 闭符号
-    // （原文嵌套逆序）[+ fade 收口]；右 = [fade 起手 +] crossing 开符号。
-    // displayEdits 只指「同符号重叠合并渲染」类编辑（text 为替换 marker）；
-    // fade 剥除类编辑（text 为空串）不算——它们由下方 fade 重包统一还原。
-    const coalescedEdits = [...display.edits.values()].some((edit) => edit.text !== '');
-    if (fadeTokens.length) {
-      left = `>>${left}<<`;
-      right = `>>${right}<<`;
-      return { left, right, offset, leftClosures: `${leftClosures}<<`, rightClosures: `>>${rightClosures}`, displayEdits: coalescedEdits };
+    flush();
+  }
+  for (const token of tokens.filter((token) => token.fade)) {
+    edits.set(token.position, { width: token.width, text: '' });
+  }
+  return { pairs, edits };
+}
+
+function splitVisibleLength(text, start, end, tokens) {
+  const prefix = splitStyleVisiblePrefixes.get(tokens);
+  const from = Math.max(0, Math.min(text.length, start));
+  const to = Math.max(from, Math.min(text.length, end));
+  return prefix ? prefix[to] - prefix[from] : to - from;
+}
+
+export function splitStyledTextParts(text, parts, settings = {}) {
+  if (!parts) return null;
+  const tokens = splitStyleTokens(text, settings);
+  if (!tokens.length) return parts;
+  let offset = parts.offset;
+  // Never bisect a marker. A marker without any body on its side follows its pair.
+  for (let pass = 0; pass < tokens.length; pass++) {
+    const before = offset;
+    for (const token of tokens) {
+      if (token.fade) continue;
+      if ((offset > token.position && offset < token.position + token.width)
+          || (token.opening && offset === token.position + token.width)
+          || (!token.opening && offset === token.position)) {
+        offset = token.opening ? token.position : token.position + token.width;
+      }
     }
-    return { left, right, offset, leftClosures, rightClosures, displayEdits: coalescedEdits };
+    if (before === offset) break;
   }
-
-  function currentSplitStyleSettings() {
-    return typeof MaweSettings === 'undefined' ? {} : MaweSettings.EDITOR_SETTINGS;
-  }
-
-  function splitTimeForTextOffset(segment, offset) {
-    const timing = splitItemsAtChar(segment, offset);
-    if (Number.isFinite(timing.splitMs)) return timing.splitMs;
-    const text = String(segment?.text || '');
-    const safeOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));
-    return Number(segment?.start)
-      + ((Number(segment?.end) - Number(segment?.start)) * safeOffset) / Math.max(1, text.length);
-  }
-
-
-
-  function shouldUseMainSplitTimestamps(segment) {
-    return MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps
-      && AsrEditorUtils.hasUsableSplitTimestamps(segment);
-  }
-
-
-
-  function notifyMainSplitTimestampFallback(segment) {
-    if (!MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps
-        || AsrEditorUtils.hasUsableSplitTimestamps(segment)) return;
-    const message = '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。';
-    MaweHint.flashHint(MAWE_I18N?.translateText?.(message) || message, 'warning');
-  }
-
-
-
-  function splitOffsetNearTime(segment, timeMs, splitMode) {
-    const legalOffsets = AsrEditorUtils.subtitleSplitOffsets(segment?.text || '', splitMode);
-    if (!legalOffsets.length) return null;
-    const timestampOffset = AsrEditorUtils.hasUsableSplitTimestamps(segment)
-      ? AsrEditorUtils.splitCharOffsetAtTime(segment, timeMs)
-      : null;
-    if (Number.isInteger(timestampOffset)) {
-      return legalOffsets.reduce((best, candidate) => (
-        Math.abs(candidate - timestampOffset) < Math.abs(best - timestampOffset) ? candidate : best
-      ), legalOffsets[0]);
+  const display = splitStyleDisplayPlan(tokens);
+  const crossing = display.pairs.filter((token) => token.position + token.width < offset && token.end > offset)
+    .sort((a, b) => a.start - b.start);
+  const fadeTokens = tokens.filter((token) => token.fade);
+  const displaySlice = (start, end) => {
+    let value = '';
+    for (let index = start; index < end;) {
+      const edit = display.edits.get(index);
+      if (edit) { value += edit.text; index += edit.width; }
+      else { value += text[index]; index += 1; }
     }
-    return AsrEditorUtils.nearestSubtitleSplitOffset(
-      segment.text, timeMs, segment.start, segment.end, splitMode,
-    );
+    return value;
+  };
+  // The caller already trimmed this source offset (and may preserve word-mode
+  // connectors). Render that same source slice before inserting style closures.
+  const sameOffset = offset === parts.offset;
+  let left = !display.edits.size && sameOffset ? parts.left
+    : displaySlice(0, sameOffset ? parts.left.length : offset);
+  let right = !display.edits.size && sameOffset ? parts.right
+    : displaySlice(sameOffset ? text.length - parts.right.length : offset, text.length);
+  if (!sameOffset) {
+    left = AsrEditorUtils.applySplitEdgeTrim(left, 'end');
+    right = AsrEditorUtils.applySplitEdgeTrim(right, 'start');
   }
+  const content = (start, end) => text.slice(start, end).split('').filter(
+    (_, index) => splitVisibleLength(text, index + start, index + start + 1, tokens) > 0,
+  ).join('');
+  if (!AsrEditorUtils.applySplitEdgeTrim(content(0, offset), 'end')
+      || !AsrEditorUtils.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
+  const leftClosures = [...crossing].reverse().map((token) => token.marker).join('');
+  const rightClosures = crossing.map((token) => token.marker).join('');
+  left += leftClosures;
+  right = rightClosures + right;
+  // items 层同步需要知道 styled 在两侧端点追加了什么：左 = crossing 闭符号
+  // （原文嵌套逆序）[+ fade 收口]；右 = [fade 起手 +] crossing 开符号。
+  // displayEdits 只指「同符号重叠合并渲染」类编辑（text 为替换 marker）；
+  // fade 剥除类编辑（text 为空串）不算——它们由下方 fade 重包统一还原。
+  const coalescedEdits = [...display.edits.values()].some((edit) => edit.text !== '');
+  if (fadeTokens.length) {
+    left = `>>${left}<<`;
+    right = `>>${right}<<`;
+    return { left, right, offset, leftClosures: `${leftClosures}<<`, rightClosures: `>>${rightClosures}`, displayEdits: coalescedEdits };
+  }
+  return { left, right, offset, leftClosures, rightClosures, displayEdits: coalescedEdits };
+}
+
+function currentSplitStyleSettings() {
+  return typeof MaweSettings === 'undefined' ? {} : MaweSettings.EDITOR_SETTINGS;
+}
+
+export function splitTimeForTextOffset(segment, offset) {
+  const timing = splitItemsAtChar(segment, offset);
+  if (Number.isFinite(timing.splitMs)) return timing.splitMs;
+  const text = String(segment?.text || '');
+  const safeOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));
+  return Number(segment?.start)
+    + ((Number(segment?.end) - Number(segment?.start)) * safeOffset) / Math.max(1, text.length);
+}
 
 
 
-  function splitOffsetNearTextPosition(text, offset, splitMode) {
-    const legalOffsets = AsrEditorUtils.subtitleSplitOffsets(text || '', splitMode);
-    if (!legalOffsets.length) return null;
-    const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+export function shouldUseMainSplitTimestamps(segment) {
+  return MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps
+    && AsrEditorUtils.hasUsableSplitTimestamps(segment);
+}
+
+
+
+export function notifyMainSplitTimestampFallback(segment) {
+  if (!MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps
+      || AsrEditorUtils.hasUsableSplitTimestamps(segment)) return;
+  const message = '已勾选“主字幕自动使用时间码拆分”，但当前主字幕没有可用的字词时间码，本次设置不生效，已改用拆分面板。';
+  MaweHint.flashHint(MAWE_I18N?.translateText?.(message) || message, 'warning');
+}
+
+
+
+export function splitOffsetNearTime(segment, timeMs, splitMode) {
+  const legalOffsets = AsrEditorUtils.subtitleSplitOffsets(segment?.text || '', splitMode);
+  if (!legalOffsets.length) return null;
+  const timestampOffset = AsrEditorUtils.hasUsableSplitTimestamps(segment)
+    ? AsrEditorUtils.splitCharOffsetAtTime(segment, timeMs)
+    : null;
+  if (Number.isInteger(timestampOffset)) {
     return legalOffsets.reduce((best, candidate) => (
-      Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+      Math.abs(candidate - timestampOffset) < Math.abs(best - timestampOffset) ? candidate : best
     ), legalOffsets[0]);
   }
+  return AsrEditorUtils.nearestSubtitleSplitOffset(
+    segment.text, timeMs, segment.start, segment.end, splitMode,
+  );
+}
 
 
 
-  function cleanSplitItems(items, side) {
-    const source = Array.isArray(items) ? items : [];
-    return source
-      .map((item) => ({ ...item, text: String(item?.text || '') }))
-      .map((item, index, list) => ({
-        ...item,
-        text: side === 'left' && index === list.length - 1
-          ? AsrEditorUtils.applySplitEdgeTrim(item.text, 'end')
-          : side === 'right' && index === 0
-            ? AsrEditorUtils.applySplitEdgeTrim(item.text, 'start')
-            : item.text,
-      }))
-      .filter((item) => item.text && Number.isFinite(item.start)
-        && Number.isFinite(item.end) && item.end > item.start);
-  }
+export function splitOffsetNearTextPosition(text, offset, splitMode) {
+  const legalOffsets = AsrEditorUtils.subtitleSplitOffsets(text || '', splitMode);
+  if (!legalOffsets.length) return null;
+  const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+  return legalOffsets.reduce((best, candidate) => (
+    Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+  ), legalOffsets[0]);
+}
+
+
+
+export function cleanSplitItems(items, side) {
+  const source = Array.isArray(items) ? items : [];
+  return source
+    .map((item) => ({ ...item, text: String(item?.text || '') }))
+    .map((item, index, list) => ({
+      ...item,
+      text: side === 'left' && index === list.length - 1
+        ? AsrEditorUtils.applySplitEdgeTrim(item.text, 'end')
+        : side === 'right' && index === 0
+          ? AsrEditorUtils.applySplitEdgeTrim(item.text, 'start')
+          : item.text,
+    }))
+    .filter((item) => item.text && Number.isFinite(item.start)
+      && Number.isFinite(item.end) && item.end > item.start);
+}
 
 
   // items 层符号补位已上移共享 utils（appendMassMarkersToLastItem /
   // prependMassMarkersToFirstItem），拆分补齐与各转换出口共用同一实现。
 
-
-
-  function forceSplitCutForSegments(segments, requestedCutMs) {
-    const ranges = (Array.isArray(segments) ? segments : [segments])
-      .map((segment) => ({
-        start: Number(segment?.start),
-        end: Number(segment?.end),
-      }))
-      .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end));
-    if (!ranges.length || ranges.some((range) => range.end - range.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2)) {
-      return null;
-    }
-    const lower = Math.max(...ranges.map((range) => range.start + MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS));
-    const upper = Math.min(...ranges.map((range) => range.end - MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS));
-    if (lower > upper) return null;
-    const requested = Number(requestedCutMs);
-    const cut = Number.isFinite(requested) ? Math.round(requested) : lower;
-    return Math.min(upper, Math.max(lower, cut));
+export function forceSplitCutForSegments(segments, requestedCutMs) {
+  const ranges = (Array.isArray(segments) ? segments : [segments])
+    .map((segment) => ({
+      start: Number(segment?.start),
+      end: Number(segment?.end),
+    }))
+    .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end));
+  if (!ranges.length || ranges.some((range) => range.end - range.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2)) {
+    return null;
   }
+  const lower = Math.max(...ranges.map((range) => range.start + MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS));
+  const upper = Math.min(...ranges.map((range) => range.end - MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS));
+  if (lower > upper) return null;
+  const requested = Number(requestedCutMs);
+  const cut = Number.isFinite(requested) ? Math.round(requested) : lower;
+  return Math.min(upper, Math.max(lower, cut));
+}
 
 
 
-  function forcedSplitRetryHint(explicitOnly = false) {
-    // 波形来源的拆分没有行内编辑态,Enter 不会触发强制拆分,提示只提 B;
-    // 列表来源停留在编辑态,B 与 Enter 都能确认强制拆分。
-    return explicitOnly
-      ? '当前切点会产生不足 100ms 的一侧；请再次按 B 强制拆分，切点将调整为两侧各至少 100ms'
-      : '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
-  }
+export function forcedSplitRetryHint(explicitOnly = false) {
+  // 波形来源的拆分没有行内编辑态,Enter 不会触发强制拆分,提示只提 B;
+  // 列表来源停留在编辑态,B 与 Enter 都能确认强制拆分。
+  return explicitOnly
+    ? '当前切点会产生不足 100ms 的一侧；请再次按 B 强制拆分，切点将调整为两侧各至少 100ms'
+    : '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
+}
 
 
 
-  function armForcedSplit(state) {
-    if (!state) return false;
-    if (!Number.isFinite(state.forceCutMs)) {
-      MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
-      return false;
-    }
-    if (state.forceSplitArmed) return true;
-    state.forceSplitArmed = true;
-    MaweHint.flashHint(forcedSplitRetryHint(), 'warning');
+export function armForcedSplit(state) {
+  if (!state) return false;
+  if (!Number.isFinite(state.forceCutMs)) {
+    MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
     return false;
   }
+  if (state.forceSplitArmed) return true;
+  state.forceSplitArmed = true;
+  MaweHint.flashHint(forcedSplitRetryHint(), 'warning');
+  return false;
+}
 
 
 
-  function splitItemsAtChar(
+export function splitItemsAtChar(
   segment,
   cursorChar,
   requestedCutMs = null,
@@ -667,48 +658,48 @@ export function initMaweSplitCore() {
 
   // Modal and caret splits share segment inheritance. Timing/text decisions
   // stay with their callers; metadata and group references must not vary by UI path.
-  function createSplitSegments(segment, {
-    idBase, headIndex, leftText, rightText, leftEnd, rightStart, leftItems, rightItems,
-  }) {
-    const usedSegments = AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments);
-    const left = {
-      ...AsrEditorUtils.cloneJsonValue(segment),
-      id: segment.id,
-      end: leftEnd,
-      text: leftText,
-      items: leftItems.length ? leftItems : null,
-      _dirty: true,
-    };
-    const right = {
-      ...AsrEditorUtils.cloneJsonValue(segment),
-      id: AsrEditorUtils.uniqueStableSegmentId([...usedSegments, left], `${idBase}-b`, 'segment'),
-      start: rightStart,
-      text: rightText,
-      items: rightItems.length ? rightItems : null,
-      _dirty: true,
-    };
-    // Both halves inherit independent cue positioning (no shared nested pos).
-    if (segment.assOverride) {
-      left.assOverride = AsrEditorUtils.normalizeAssOverride(segment.assOverride);
-      right.assOverride = AsrEditorUtils.normalizeAssOverride(segment.assOverride);
-    }
-    if (segment.assStyle) {
-      left.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
-      right.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
-    }
-    return { left, right };
+function createSplitSegments(segment, {
+  idBase, headIndex, leftText, rightText, leftEnd, rightStart, leftItems, rightItems,
+}) {
+  const usedSegments = AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments);
+  const left = {
+    ...AsrEditorUtils.cloneJsonValue(segment),
+    id: segment.id,
+    end: leftEnd,
+    text: leftText,
+    items: leftItems.length ? leftItems : null,
+    _dirty: true,
+  };
+  const right = {
+    ...AsrEditorUtils.cloneJsonValue(segment),
+    id: AsrEditorUtils.uniqueStableSegmentId([...usedSegments, left], `${idBase}-b`, 'segment'),
+    start: rightStart,
+    text: rightText,
+    items: rightItems.length ? rightItems : null,
+    _dirty: true,
+  };
+  // Both halves inherit independent cue positioning (no shared nested pos).
+  if (segment.assOverride) {
+    left.assOverride = AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+    right.assOverride = AsrEditorUtils.normalizeAssOverride(segment.assOverride);
   }
+  if (segment.assStyle) {
+    left.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
+    right.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
+  }
+  return { left, right };
+}
 
 
   // A split inserts one array entry. Keep group references in that track's
   // coordinate system, including linked splits whose two indices differ.
-  function replaceSegmentWithSplit(segments, index, { left, right }) {
-    segments.splice(index, 1, left, right);
-  }
+export function replaceSegmentWithSplit(segments, index, { left, right }) {
+  segments.splice(index, 1, left, right);
+}
 
 
   /** @param {{preserveCutMs?: boolean, forceCut?: boolean, duplicateText?: boolean, splitTextMode?: string, headIndex?: number}} [options] */
-  function buildSplitPair(
+export function buildSplitPair(
   segment,
   offset,
   cutMs,
@@ -809,7 +800,7 @@ export function initMaweSplitCore() {
 
 
 
-   function linkedSplitState(mainIndex, initial = {}) {
+export function linkedSplitState(mainIndex, initial = {}) {
   const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
   const binding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
   const track = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) : null;
@@ -881,7 +872,7 @@ export function initMaweSplitCore() {
 
 
 
-  function mainWaveformSplitState(mainIndex, initial = {}) {
+export function mainWaveformSplitState(mainIndex, initial = {}) {
   const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
   if (!main) return null;
   const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
@@ -913,7 +904,7 @@ export function initMaweSplitCore() {
 
 
 
-  function extensionOnlySplitState(extensionIndex, track, initial = {}) {
+export function extensionOnlySplitState(extensionIndex, track, initial = {}) {
   const extension = track?.segments?.[extensionIndex];
   if (!extension || !track) return null;
   // 副字幕独立拆分同样要求总时长能容纳两侧各 100ms；不足时提交必然失败，
@@ -957,450 +948,450 @@ export function initMaweSplitCore() {
 
 
 
-  function splitLaneElements(lane) {
-    return lane === 'main'
-      ? { laneEl: MaweDom.multiSubtitleSplitMainLane, textEl: MaweDom.multiSubtitleSplitMainText }
-      : { laneEl: MaweDom.multiSubtitleSplitExtensionLane, textEl: MaweDom.multiSubtitleSplitText };
-  }
+export function splitLaneElements(lane) {
+  return lane === 'main'
+    ? { laneEl: MaweDom.multiSubtitleSplitMainLane, textEl: MaweDom.multiSubtitleSplitMainText }
+    : { laneEl: MaweDom.multiSubtitleSplitExtensionLane, textEl: MaweDom.multiSubtitleSplitText };
+}
 
 
 
-  function splitLaneLocked(state, lane) {
-    return state?.lockedLanes?.[lane] === true;
-  }
+export function splitLaneLocked(state, lane) {
+  return state?.lockedLanes?.[lane] === true;
+}
 
 
 
-  function splitLaneUsesMainTimestamp(state, lane) {
-    return lane === 'main' && state?.kind === 'linked' && state.mainTimestampLocked === true;
-  }
+export function splitLaneUsesMainTimestamp(state, lane) {
+  return lane === 'main' && state?.kind === 'linked' && state.mainTimestampLocked === true;
+}
 
 
 
   // 键盘可交互：⌚️ 时间码锚定的主轨和已用 Space/点击锁定的 lane 不响应移动键。
-  function splitLaneKeyboardInteractive(state, lane) {
-    return !splitLaneUsesMainTimestamp(state, lane) && !splitLaneLocked(state, lane);
-  }
+export function splitLaneKeyboardInteractive(state, lane) {
+  return !splitLaneUsesMainTimestamp(state, lane) && !splitLaneLocked(state, lane);
+}
 
 
 
-  function splitLaneSegment(state, lane) {
-    if (lane === 'main') return state?.mainIndex >= 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex] : null;
-    return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, splitStateTrack(state));
-  }
+export function splitLaneSegment(state, lane) {
+  if (lane === 'main') return state?.mainIndex >= 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex] : null;
+  return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, splitStateTrack(state));
+}
 
 
 
   // 左右移动：在当前 lane 的合法断点序列中前进/后退一步。
-  function stepSplitLaneOffset(state, lane, direction) {
-    const segment = splitLaneSegment(state, lane);
-    const mode = lane === 'main' ? state?.mainMode : state?.extensionMode;
-    const current = lane === 'main' ? state?.mainOffset : state?.offset;
-    const offsets = AsrEditorUtils.subtitleSplitOffsets(segment?.text || '', mode);
-    if (!offsets.length) return null;
-    if (direction < 0) {
-      for (let index = offsets.length - 1; index >= 0; index -= 1) {
-        if (offsets[index] < current) return offsets[index];
-      }
-      return null;
+export function stepSplitLaneOffset(state, lane, direction) {
+  const segment = splitLaneSegment(state, lane);
+  const mode = lane === 'main' ? state?.mainMode : state?.extensionMode;
+  const current = lane === 'main' ? state?.mainOffset : state?.offset;
+  const offsets = AsrEditorUtils.subtitleSplitOffsets(segment?.text || '', mode);
+  if (!offsets.length) return null;
+  if (direction < 0) {
+    for (let index = offsets.length - 1; index >= 0; index -= 1) {
+      if (offsets[index] < current) return offsets[index];
     }
-    return offsets.find((offset) => offset > current) ?? null;
+    return null;
   }
+  return offsets.find((offset) => offset > current) ?? null;
+}
 
 
 
   // 上下移动：按渲染后的视觉行定位。gap 元素样式一致，同一行的 top 相同；
   // 行距约等于 line-height（36px），用远小于行距的容差聚类即可。
-  const SPLIT_LANE_LINE_TOLERANCE_PX = 10;
+const SPLIT_LANE_LINE_TOLERANCE_PX = 10;
 
 
 
-  function splitLaneGapLines(textEl) {
-    return Array.from(textEl.querySelectorAll('.multi-subtitle-split-gap'))
-      .map((gap) => {
-        const rect = gap.getBoundingClientRect();
-        return { gap, midX: rect.left + rect.width / 2, midY: rect.top + rect.height / 2 };
-      })
-      .sort((left, right) => left.midY - right.midY || left.midX - right.midX)
-      .reduce((lines, entry) => {
-        const current = lines[lines.length - 1];
-        if (current && Math.abs(entry.midY - current.midY) <= SPLIT_LANE_LINE_TOLERANCE_PX) {
-          current.entries.push(entry);
-          return lines;
-        }
-        lines.push({ midY: entry.midY, entries: [entry] });
+export function splitLaneGapLines(textEl) {
+  return Array.from(textEl.querySelectorAll('.multi-subtitle-split-gap'))
+    .map((gap) => {
+      const rect = gap.getBoundingClientRect();
+      return { gap, midX: rect.left + rect.width / 2, midY: rect.top + rect.height / 2 };
+    })
+    .sort((left, right) => left.midY - right.midY || left.midX - right.midX)
+    .reduce((lines, entry) => {
+      const current = lines[lines.length - 1];
+      if (current && Math.abs(entry.midY - current.midY) <= SPLIT_LANE_LINE_TOLERANCE_PX) {
+        current.entries.push(entry);
         return lines;
-      }, []);
-  }
+      }
+      lines.push({ midY: entry.midY, entries: [entry] });
+      return lines;
+    }, []);
+}
 
 
 
   // 上下移动：目标行上取与当前断点水平距离最近的 gap；单行或越界时返回 null。
-  function verticalSplitLaneOffset(state, lane, direction) {
-    const { textEl } = splitLaneElements(lane);
-    if (!textEl) return null;
-    const lines = splitLaneGapLines(textEl);
-    if (lines.length < 2) return null;
-    const currentOffset = lane === 'main' ? state?.mainOffset : state?.offset;
-    let anchor = lines.flatMap((line) => line.entries)
-      .find((entry) => Number(entry.gap.dataset.offset) === currentOffset);
-    if (!anchor) {
-      // 当前断点没有 gap 元素（如文字开头）时退回字符锚点，用行中点估算所在行。
-      const charRect = Array.from(textEl.querySelectorAll('.multi-subtitle-split-char'))
-        .find((char) => Number(char.dataset.offset) === currentOffset)
-        ?.getBoundingClientRect();
-      if (!charRect) return null;
-      const anchorMidY = charRect.top + charRect.height / 2;
-      const nearestLine = lines.reduce((best, line) => (
-        Math.abs(line.midY - anchorMidY) < Math.abs(best.midY - anchorMidY) ? line : best
-      ), lines[0]);
-      const target = lines[lines.indexOf(nearestLine) + direction];
-      if (!target) return null;
-      const anchorMidX = charRect.left + charRect.width / 2;
-      const picked = target.entries.reduce((best, entry) => (
-        Math.abs(entry.midX - anchorMidX) < Math.abs(best.midX - anchorMidX) ? entry : best
-      ), target.entries[0]);
-      return picked ? Number(picked.gap.dataset.offset) : null;
-    }
-    const target = lines[lines.findIndex(
-      (line) => line.entries.includes(anchor),
-    ) + direction];
+export function verticalSplitLaneOffset(state, lane, direction) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl) return null;
+  const lines = splitLaneGapLines(textEl);
+  if (lines.length < 2) return null;
+  const currentOffset = lane === 'main' ? state?.mainOffset : state?.offset;
+  let anchor = lines.flatMap((line) => line.entries)
+    .find((entry) => Number(entry.gap.dataset.offset) === currentOffset);
+  if (!anchor) {
+    // 当前断点没有 gap 元素（如文字开头）时退回字符锚点，用行中点估算所在行。
+    const charRect = Array.from(textEl.querySelectorAll('.multi-subtitle-split-char'))
+      .find((char) => Number(char.dataset.offset) === currentOffset)
+      ?.getBoundingClientRect();
+    if (!charRect) return null;
+    const anchorMidY = charRect.top + charRect.height / 2;
+    const nearestLine = lines.reduce((best, line) => (
+      Math.abs(line.midY - anchorMidY) < Math.abs(best.midY - anchorMidY) ? line : best
+    ), lines[0]);
+    const target = lines[lines.indexOf(nearestLine) + direction];
     if (!target) return null;
+    const anchorMidX = charRect.left + charRect.width / 2;
     const picked = target.entries.reduce((best, entry) => (
-      Math.abs(entry.midX - anchor.midX) < Math.abs(best.midX - anchor.midX) ? entry : best
+      Math.abs(entry.midX - anchorMidX) < Math.abs(best.midX - anchorMidX) ? entry : best
     ), target.entries[0]);
     return picked ? Number(picked.gap.dataset.offset) : null;
   }
+  const target = lines[lines.findIndex(
+    (line) => line.entries.includes(anchor),
+  ) + direction];
+  if (!target) return null;
+  const picked = target.entries.reduce((best, entry) => (
+    Math.abs(entry.midX - anchor.midX) < Math.abs(best.midX - anchor.midX) ? entry : best
+  ), target.entries[0]);
+  return picked ? Number(picked.gap.dataset.offset) : null;
+}
 
 
 
   // 键盘操作的 lane：优先看真实焦点，失焦（如点到复选框）时回退到上次记录。
-  function splitKeyboardActiveLane(state) {
-    if (document.activeElement === MaweDom.multiSubtitleSplitMainText) return 'main';
-    if (document.activeElement === MaweDom.multiSubtitleSplitText) return 'extension';
-    return state?.keyboardLane || null;
-  }
+export function splitKeyboardActiveLane(state) {
+  if (document.activeElement === MaweDom.multiSubtitleSplitMainText) return 'main';
+  if (document.activeElement === MaweDom.multiSubtitleSplitText) return 'extension';
+  return state?.keyboardLane || null;
+}
 
 
 
-  function splitLaneVisible(lane) {
-    const { laneEl } = splitLaneElements(lane);
-    return Boolean(laneEl && !laneEl.hidden);
-  }
+export function splitLaneVisible(lane) {
+  const { laneEl } = splitLaneElements(lane);
+  return Boolean(laneEl && !laneEl.hidden);
+}
 
 
 
-  function focusSplitLane(state, lane) {
-    const { textEl } = splitLaneElements(lane);
-    if (!textEl || !splitLaneVisible(lane)) return false;
-    textEl.focus({ preventScroll: true });
-    if (state) state.keyboardLane = lane;
-    return true;
-  }
+export function focusSplitLane(state, lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl || !splitLaneVisible(lane)) return false;
+  textEl.focus({ preventScroll: true });
+  if (state) state.keyboardLane = lane;
+  return true;
+}
 
 
 
   // Tab 在主/副 lane 间切换：仅在联动模式且主轨可交互时可用。
-  function splitKeyboardSwitchLane(state, current) {
-    if (state?.kind !== 'linked') return null;
-    if (splitLaneUsesMainTimestamp(state, 'main')) return null;
-    if (current === 'main') return 'extension';
-    if (current === 'extension') return 'main';
-    return 'main';
-  }
+export function splitKeyboardSwitchLane(state, current) {
+  if (state?.kind !== 'linked') return null;
+  if (splitLaneUsesMainTimestamp(state, 'main')) return null;
+  if (current === 'main') return 'extension';
+  if (current === 'extension') return 'main';
+  return 'main';
+}
 
 
 
   // Space 与鼠标点击同语义：锁定当前断点；再按一次解锁以便继续移动。
-  function toggleSplitLaneKeyboardLock(state, lane) {
-    if (state !== pendingLinkedSplit || !state.lockedLanes) return;
-    if (splitLaneUsesMainTimestamp(state, lane)) return;
-    state.lockedLanes[lane] = !splitLaneLocked(state, lane);
-    updateLinkedSplitLockVisual();
-    if (!splitLaneLocked(state, lane)) return;
-    const submitted = maybeAutoSubmitLinkedSplit(state);
-    // 键盘锁定后自动聚焦下一条未锁定的 lane（若有），WASD/空格 可连续操作；
-    // 自动提交已接管或弹窗已关闭（提交成功）时不再移动焦点。
-    if (submitted || state !== pendingLinkedSplit) return;
-    const nextLane = splitKeyboardSwitchLane(state, lane);
-    if (nextLane && !splitLaneLocked(state, nextLane)) focusSplitLane(state, nextLane);
-  }
+export function toggleSplitLaneKeyboardLock(state, lane) {
+  if (state !== pendingLinkedSplit || !state.lockedLanes) return;
+  if (splitLaneUsesMainTimestamp(state, lane)) return;
+  state.lockedLanes[lane] = !splitLaneLocked(state, lane);
+  updateLinkedSplitLockVisual();
+  if (!splitLaneLocked(state, lane)) return;
+  const submitted = maybeAutoSubmitLinkedSplit(state);
+  // 键盘锁定后自动聚焦下一条未锁定的 lane（若有），WASD/空格 可连续操作；
+  // 自动提交已接管或弹窗已关闭（提交成功）时不再移动焦点。
+  if (submitted || state !== pendingLinkedSplit) return;
+  const nextLane = splitKeyboardSwitchLane(state, lane);
+  if (nextLane && !splitLaneLocked(state, nextLane)) focusSplitLane(state, nextLane);
+}
 
 
 
   // 已锁定的 lane 上按移动键：闪烁边缘并提示先解锁再移动。
-  function flashSplitLaneBlockedFeedback(lane) {
-    const { textEl } = splitLaneElements(lane);
-    if (textEl) {
+export function flashSplitLaneBlockedFeedback(lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (textEl) {
+    textEl.classList.remove('lane-move-blocked');
+    void textEl.offsetWidth; // 强制重排，让动画可以重新触发
+    textEl.classList.add('lane-move-blocked');
+    textEl.addEventListener('animationend', () => {
       textEl.classList.remove('lane-move-blocked');
-      void textEl.offsetWidth; // 强制重排，让动画可以重新触发
-      textEl.classList.add('lane-move-blocked');
-      textEl.addEventListener('animationend', () => {
-        textEl.classList.remove('lane-move-blocked');
-      }, { once: true });
-    }
-    MaweHint.flashHint('请先按空格解除锁定，然后再进行移动', 'invalid');
+    }, { once: true });
   }
+  MaweHint.flashHint('请先按空格解除锁定，然后再进行移动', 'invalid');
+}
 
 
 
-  function syncLinkedSplitTime(state, activeLane, main, extension) {
-    if (state?.kind !== 'linked' || !main || !extension) return;
+export function syncLinkedSplitTime(state, activeLane, main, extension) {
+  if (state?.kind !== 'linked' || !main || !extension) return;
 
-    // 默认的主轨字词时间码是固定锚点；关闭该设置后，未锁定的当前 lane
-    // 才能推动共享切点。另一条 lane 的文字 offset 随共享时间吸附到最近合法边界。
-    const absoluteFixed = Number.isFinite(state.fixedCutMs);
-    const mainFixed = !state.mainInteractive || splitLaneLocked(state, 'main');
-    const extensionFixed = splitLaneLocked(state, 'extension');
-    let cutMs = state.cutMs;
-    if (absoluteFixed) {
-      cutMs = state.fixedCutMs;
-    } else if (mainFixed) {
-      cutMs = state.mainCutMs;
-    } else if (extensionFixed) {
-      cutMs = state.extensionCutMs;
-    } else {
-      const source = activeLane === 'main' ? main : extension;
-      const sourceOffset = activeLane === 'main' ? state.mainOffset : state.offset;
-      cutMs = activeLane === 'main'
-        && AsrEditorUtils.hasUsableSplitTimestamps(main)
-        ? splitTimeForTextOffset(main, sourceOffset)
-        : splitCutTime(source, sourceOffset, false);
-    }
-    if (!Number.isFinite(cutMs)) return;
-
-    const sharedCutMs = Math.round(cutMs);
-    state.cutMs = sharedCutMs;
-    state.mainCutMs = sharedCutMs;
-    state.extensionCutMs = sharedCutMs;
-
-    if (!absoluteFixed && activeLane === 'main' && !extensionFixed) {
-      const extensionOffset = AsrEditorUtils.nearestSubtitleSplitOffset(
-        extension.text, sharedCutMs, extension.start, extension.end, state.extensionMode,
-      );
-      if (Number.isInteger(extensionOffset)) state.offset = extensionOffset;
-    } else if (!absoluteFixed && activeLane === 'extension' && !mainFixed) {
-      const mainOffset = AsrEditorUtils.nearestSubtitleSplitOffset(
-        main.text, sharedCutMs, main.start, main.end, state.mainMode,
-      );
-      if (Number.isInteger(mainOffset)) state.mainOffset = mainOffset;
-    }
+  // 默认的主轨字词时间码是固定锚点；关闭该设置后，未锁定的当前 lane
+  // 才能推动共享切点。另一条 lane 的文字 offset 随共享时间吸附到最近合法边界。
+  const absoluteFixed = Number.isFinite(state.fixedCutMs);
+  const mainFixed = !state.mainInteractive || splitLaneLocked(state, 'main');
+  const extensionFixed = splitLaneLocked(state, 'extension');
+  let cutMs = state.cutMs;
+  if (absoluteFixed) {
+    cutMs = state.fixedCutMs;
+  } else if (mainFixed) {
+    cutMs = state.mainCutMs;
+  } else if (extensionFixed) {
+    cutMs = state.extensionCutMs;
+  } else {
+    const source = activeLane === 'main' ? main : extension;
+    const sourceOffset = activeLane === 'main' ? state.mainOffset : state.offset;
+    cutMs = activeLane === 'main'
+      && AsrEditorUtils.hasUsableSplitTimestamps(main)
+      ? splitTimeForTextOffset(main, sourceOffset)
+      : splitCutTime(source, sourceOffset, false);
   }
+  if (!Number.isFinite(cutMs)) return;
 
+  const sharedCutMs = Math.round(cutMs);
+  state.cutMs = sharedCutMs;
+  state.mainCutMs = sharedCutMs;
+  state.extensionCutMs = sharedCutMs;
 
-
-  function splitCutTime(segment, offset, useWordTimestamps = false) {
-    if (useWordTimestamps) return Math.round(splitTimeForTextOffset(segment, offset));
-    const text = String(segment?.text || '');
-    const tokens = splitStyleTokens(text, currentSplitStyleSettings());
-    const fraction = splitVisibleLength(text, 0, Number(offset || 0), tokens)
-      / Math.max(1, splitVisibleLength(text, 0, text.length, tokens));
-    return Math.round(Number(segment?.start || 0)
-      + (Number(segment?.end || 0) - Number(segment?.start || 0)) * fraction);
+  if (!absoluteFixed && activeLane === 'main' && !extensionFixed) {
+    const extensionOffset = AsrEditorUtils.nearestSubtitleSplitOffset(
+      extension.text, sharedCutMs, extension.start, extension.end, state.extensionMode,
+    );
+    if (Number.isInteger(extensionOffset)) state.offset = extensionOffset;
+  } else if (!absoluteFixed && activeLane === 'extension' && !mainFixed) {
+    const mainOffset = AsrEditorUtils.nearestSubtitleSplitOffset(
+      main.text, sharedCutMs, main.start, main.end, state.mainMode,
+    );
+    if (Number.isInteger(mainOffset)) state.mainOffset = mainOffset;
   }
+}
 
 
 
-  function setSplitPreviewLine(label, parts) {
-    const row = document.createElement('div');
-    row.className = 'multi-subtitle-split-preview-line';
-    const labelEl = document.createElement('span');
-    labelEl.className = 'multi-subtitle-split-preview-label';
-    labelEl.textContent = `${label}：`;
-    const left = document.createElement('span');
-    left.className = 'multi-subtitle-split-preview-left';
-    left.textContent = parts.left;
-    const separator = document.createElement('span');
-    separator.className = 'multi-subtitle-split-preview-separator';
-    separator.textContent = ' / ';
-    const right = document.createElement('span');
-    right.className = 'multi-subtitle-split-preview-right';
-    right.textContent = parts.right;
-    row.append(labelEl, left, separator, right);
-    MaweDom.multiSubtitleSplitPreview.appendChild(row);
+export function splitCutTime(segment, offset, useWordTimestamps = false) {
+  if (useWordTimestamps) return Math.round(splitTimeForTextOffset(segment, offset));
+  const text = String(segment?.text || '');
+  const tokens = splitStyleTokens(text, currentSplitStyleSettings());
+  const fraction = splitVisibleLength(text, 0, Number(offset || 0), tokens)
+    / Math.max(1, splitVisibleLength(text, 0, text.length, tokens));
+  return Math.round(Number(segment?.start || 0)
+    + (Number(segment?.end || 0) - Number(segment?.start || 0)) * fraction);
+}
+
+
+
+export function setSplitPreviewLine(label, parts) {
+  const row = document.createElement('div');
+  row.className = 'multi-subtitle-split-preview-line';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'multi-subtitle-split-preview-label';
+  labelEl.textContent = `${label}：`;
+  const left = document.createElement('span');
+  left.className = 'multi-subtitle-split-preview-left';
+  left.textContent = parts.left;
+  const separator = document.createElement('span');
+  separator.className = 'multi-subtitle-split-preview-separator';
+  separator.textContent = ' / ';
+  const right = document.createElement('span');
+  right.className = 'multi-subtitle-split-preview-right';
+  right.textContent = parts.right;
+  row.append(labelEl, left, separator, right);
+  MaweDom.multiSubtitleSplitPreview.appendChild(row);
+}
+
+
+
+export function updateSplitLaneVisual(state, lane) {
+  const { textEl } = splitLaneElements(lane);
+  if (!textEl) return;
+  const offset = lane === 'main' ? state?.mainOffset : state?.offset;
+  const timestampLocked = splitLaneUsesMainTimestamp(state, lane);
+  textEl.classList.toggle('timestamp-locked', timestampLocked);
+  textEl.querySelectorAll('.multi-subtitle-split-char').forEach((character) => {
+    const charOffset = Number(character.dataset.offset || 0);
+    character.classList.toggle('split-left', charOffset <= offset);
+    character.classList.toggle('split-right', charOffset > offset);
+  });
+  textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
+    gap.classList.toggle('active', Number(gap.dataset.offset) === offset);
+    gap.classList.toggle('timestamp-locked', timestampLocked);
+  });
+}
+
+
+
+export function renderSplitLane(state, lane) {
+  const { laneEl, textEl } = splitLaneElements(lane);
+  if (!laneEl || !textEl) return;
+  const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state?.mainIndex];
+  const track = MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
+  const extension = MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, track);
+  const isMain = lane === 'main';
+  const displaySegment = isMain ? main : extension;
+  const displayMode = isMain ? state?.mainMode : state?.extensionMode;
+  const timestampLocked = splitLaneUsesMainTimestamp(state, lane);
+  const heading = laneEl.querySelector('h4');
+  if (heading) {
+    const headingText = timestampLocked
+      ? '⌚️ 主字幕按时间码会拆在这里'
+      : isMain ? '主字幕拆分' : '副字幕拆分';
+    heading.textContent = MAWE_I18N?.translateText?.(headingText) || headingText;
   }
-
-
-
-  function updateSplitLaneVisual(state, lane) {
-    const { textEl } = splitLaneElements(lane);
-    if (!textEl) return;
-    const offset = lane === 'main' ? state?.mainOffset : state?.offset;
-    const timestampLocked = splitLaneUsesMainTimestamp(state, lane);
-    textEl.classList.toggle('timestamp-locked', timestampLocked);
-    textEl.querySelectorAll('.multi-subtitle-split-char').forEach((character) => {
-      const charOffset = Number(character.dataset.offset || 0);
-      character.classList.toggle('split-left', charOffset <= offset);
-      character.classList.toggle('split-right', charOffset > offset);
-    });
-    textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
-      gap.classList.toggle('active', Number(gap.dataset.offset) === offset);
-      gap.classList.toggle('timestamp-locked', timestampLocked);
-    });
-  }
-
-
-
-  function renderSplitLane(state, lane) {
-    const { laneEl, textEl } = splitLaneElements(lane);
-    if (!laneEl || !textEl) return;
-    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state?.mainIndex];
-    const track = MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
-    const extension = MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, track);
-    const isMain = lane === 'main';
-    const displaySegment = isMain ? main : extension;
-    const displayMode = isMain ? state?.mainMode : state?.extensionMode;
-    const timestampLocked = splitLaneUsesMainTimestamp(state, lane);
-    const heading = laneEl.querySelector('h4');
-    if (heading) {
-      const headingText = timestampLocked
-        ? '⌚️ 主字幕按时间码会拆在这里'
-        : isMain ? '主字幕拆分' : '副字幕拆分';
-      heading.textContent = MAWE_I18N?.translateText?.(headingText) || headingText;
-    }
-    laneEl.classList.toggle('timestamp-locked-lane', timestampLocked);
-    const visible = Boolean(displaySegment) && (isMain
-      ? state?.kind === 'main' || state?.mainInteractive || timestampLocked
-      : state?.kind !== 'main');
-    laneEl.hidden = !visible;
-    if (!visible) return;
-    textEl.replaceChildren();
-    textEl.classList.toggle('timestamp-locked', timestampLocked);
-    const legalOffsets = new Set(AsrEditorUtils.subtitleSplitOffsets(displaySegment.text, displayMode));
-    const characters = Array.from(displaySegment.text || '');
-    let offset = 0;
-    const appendCharacter = (character, characterOffset) => {
-      const characterSpan = document.createElement('span');
-      characterSpan.className = 'multi-subtitle-split-char';
-      characterSpan.dataset.offset = String(characterOffset);
-      characterSpan.textContent = character;
-      textEl.appendChild(characterSpan);
-    };
-    const appendGap = (splitOffset, whitespace = '', extraClass = '') => {
-      const gap = document.createElement('span');
-      gap.className = 'multi-subtitle-split-gap';
-      if (extraClass) gap.classList.add(extraClass);
-      gap.dataset.offset = String(splitOffset);
-      if (timestampLocked) {
-        gap.setAttribute('aria-disabled', 'true');
-      } else {
-        gap.setAttribute('role', 'button');
-        gap.setAttribute('aria-label', `在第 ${splitOffset} 个字符后拆分`);
-      }
-      // 保留原始空白；只有当前选中的断点通过 CSS 将这个空白替换成剪刀。
-      gap.textContent = whitespace;
-      textEl.appendChild(gap);
-    };
-    for (let index = 0; index < characters.length; index += 1) {
-      const character = characters[index];
-      if (/\s/u.test(character)) {
-        let runEnd = index;
-        let runOffset = offset + character.length;
-        while (runEnd + 1 < characters.length && /\s/u.test(characters[runEnd + 1])) {
-          runEnd += 1;
-          runOffset += characters[runEnd].length;
-        }
-        if (legalOffsets.has(runOffset)) {
-          appendGap(runOffset, characters.slice(index, runEnd + 1).join(''));
-        }
-        else {
-          for (let whitespaceIndex = index; whitespaceIndex <= runEnd; whitespaceIndex += 1) {
-            offset += characters[whitespaceIndex].length;
-            appendCharacter(characters[whitespaceIndex], offset);
-          }
-        }
-        if (legalOffsets.has(runOffset)) offset = runOffset;
-        else offset = runOffset;
-        index = runEnd;
-        continue;
-      }
-      if (displayMode === 'word' && AsrEditorUtils.isWordSplitConnector(character)) {
-        let runEnd = index;
-        let runOffset = offset + character.length;
-        while (
-          runEnd + 1 < characters.length
-          && AsrEditorUtils.isWordSplitConnector(characters[runEnd + 1])
-        ) {
-          runEnd += 1;
-            runOffset += characters[runEnd].length;
-        }
-        if (!legalOffsets.has(offset) && !legalOffsets.has(runOffset)) {
-          for (let connectorIndex = index; connectorIndex <= runEnd; connectorIndex += 1) {
-            offset += characters[connectorIndex].length;
-            appendCharacter(characters[connectorIndex], offset);
-          }
-        } else {
-          // 符号本身是独立 token；前一个普通字符后的 gap 已由上方逻辑插入，
-          // 这里保留符号，并在符号之后插入另一个零宽断点。
-          for (let connectorIndex = index; connectorIndex <= runEnd; connectorIndex += 1) {
-            offset += characters[connectorIndex].length;
-            appendCharacter(characters[connectorIndex], offset);
-          }
-          if (legalOffsets.has(runOffset)) appendGap(runOffset, '', 'connector-gap');
-        }
-        offset = runOffset;
-        index = runEnd;
-        continue;
-      }
-      offset += character.length;
-      appendCharacter(character, offset);
-      if (legalOffsets.has(offset)) {
-        const nextCharacter = characters[index + 1];
-        const connectorGap = displayMode === 'word'
-          && AsrEditorUtils.isWordSplitConnector(nextCharacter);
-        appendGap(offset, '', connectorGap ? 'connector-gap' : '');
-      }
-    }
+  laneEl.classList.toggle('timestamp-locked-lane', timestampLocked);
+  const visible = Boolean(displaySegment) && (isMain
+    ? state?.kind === 'main' || state?.mainInteractive || timestampLocked
+    : state?.kind !== 'main');
+  laneEl.hidden = !visible;
+  if (!visible) return;
+  textEl.replaceChildren();
+  textEl.classList.toggle('timestamp-locked', timestampLocked);
+  const legalOffsets = new Set(AsrEditorUtils.subtitleSplitOffsets(displaySegment.text, displayMode));
+  const characters = Array.from(displaySegment.text || '');
+  let offset = 0;
+  const appendCharacter = (character, characterOffset) => {
+    const characterSpan = document.createElement('span');
+    characterSpan.className = 'multi-subtitle-split-char';
+    characterSpan.dataset.offset = String(characterOffset);
+    characterSpan.textContent = character;
+    textEl.appendChild(characterSpan);
+  };
+  const appendGap = (splitOffset, whitespace = '', extraClass = '') => {
+    const gap = document.createElement('span');
+    gap.className = 'multi-subtitle-split-gap';
+    if (extraClass) gap.classList.add(extraClass);
+    gap.dataset.offset = String(splitOffset);
     if (timestampLocked) {
-      textEl.setAttribute('aria-label', '主字幕按时间码拆分位置，不可交互');
-      textEl.setAttribute('aria-readonly', 'true');
-      textEl.setAttribute('aria-disabled', 'true');
-      textEl.setAttribute('tabindex', '-1');
-      textEl.title = '主字幕按时间码拆分于此处，不可交互';
-      textEl.onmousemove = null;
-      textEl.onclick = null;
+      gap.setAttribute('aria-disabled', 'true');
     } else {
-      textEl.removeAttribute('aria-readonly');
-      textEl.removeAttribute('aria-disabled');
-      textEl.setAttribute('tabindex', '0');
-      textEl.setAttribute('aria-label', isMain ? '选择主字幕拆分点' : '选择副字幕断点');
-      textEl.title = '鼠标移动选择拆分点，左键点击锁定；也可用 WASD/方向键移动，空格确认或取消';
-      textEl.onmousemove = (event) => {
-        if (splitLaneLocked(pendingLinkedSplit, lane)) return;
-        const target = event.target;
-        const gap = target?.closest?.('.multi-subtitle-split-gap');
-        if (gap && textEl.contains(gap)) {
-          updateLinkedSplitPreview(Number(gap.dataset.offset), lane);
-          return;
-        }
-        const rawOffset = caretCharFromPoint(textEl, event.clientX, event.clientY);
-        if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
-      };
-      textEl.onclick = (event) => {
-        const current = pendingLinkedSplit;
-        if (!current) return;
-        if (splitLaneLocked(current, lane)) {
-          current.lockedLanes[lane] = false;
-          updateLinkedSplitLockVisual();
-          return;
-        }
-        const target = event.target;
-        const gap = target?.closest?.('.multi-subtitle-split-gap');
-        const rawOffset = gap && textEl.contains(gap)
-          ? Number(gap.dataset.offset)
-          : caretCharFromPoint(textEl, event.clientX, event.clientY);
-        if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
-        current.lockedLanes[lane] = true;
-        updateLinkedSplitLockVisual();
-        maybeAutoSubmitLinkedSplit(current);
-      };
+      gap.setAttribute('role', 'button');
+      gap.setAttribute('aria-label', `在第 ${splitOffset} 个字符后拆分`);
     }
-    updateSplitLaneVisual(state, lane);
+    // 保留原始空白；只有当前选中的断点通过 CSS 将这个空白替换成剪刀。
+    gap.textContent = whitespace;
+    textEl.appendChild(gap);
+  };
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    if (/\s/u.test(character)) {
+      let runEnd = index;
+      let runOffset = offset + character.length;
+      while (runEnd + 1 < characters.length && /\s/u.test(characters[runEnd + 1])) {
+        runEnd += 1;
+        runOffset += characters[runEnd].length;
+      }
+      if (legalOffsets.has(runOffset)) {
+        appendGap(runOffset, characters.slice(index, runEnd + 1).join(''));
+      }
+      else {
+        for (let whitespaceIndex = index; whitespaceIndex <= runEnd; whitespaceIndex += 1) {
+          offset += characters[whitespaceIndex].length;
+          appendCharacter(characters[whitespaceIndex], offset);
+        }
+      }
+      if (legalOffsets.has(runOffset)) offset = runOffset;
+      else offset = runOffset;
+      index = runEnd;
+      continue;
+    }
+    if (displayMode === 'word' && AsrEditorUtils.isWordSplitConnector(character)) {
+      let runEnd = index;
+      let runOffset = offset + character.length;
+      while (
+        runEnd + 1 < characters.length
+        && AsrEditorUtils.isWordSplitConnector(characters[runEnd + 1])
+      ) {
+        runEnd += 1;
+          runOffset += characters[runEnd].length;
+      }
+      if (!legalOffsets.has(offset) && !legalOffsets.has(runOffset)) {
+        for (let connectorIndex = index; connectorIndex <= runEnd; connectorIndex += 1) {
+          offset += characters[connectorIndex].length;
+          appendCharacter(characters[connectorIndex], offset);
+        }
+      } else {
+        // 符号本身是独立 token；前一个普通字符后的 gap 已由上方逻辑插入，
+        // 这里保留符号，并在符号之后插入另一个零宽断点。
+        for (let connectorIndex = index; connectorIndex <= runEnd; connectorIndex += 1) {
+          offset += characters[connectorIndex].length;
+          appendCharacter(characters[connectorIndex], offset);
+        }
+        if (legalOffsets.has(runOffset)) appendGap(runOffset, '', 'connector-gap');
+      }
+      offset = runOffset;
+      index = runEnd;
+      continue;
+    }
+    offset += character.length;
+    appendCharacter(character, offset);
+    if (legalOffsets.has(offset)) {
+      const nextCharacter = characters[index + 1];
+      const connectorGap = displayMode === 'word'
+        && AsrEditorUtils.isWordSplitConnector(nextCharacter);
+      appendGap(offset, '', connectorGap ? 'connector-gap' : '');
+    }
   }
+  if (timestampLocked) {
+    textEl.setAttribute('aria-label', '主字幕按时间码拆分位置，不可交互');
+    textEl.setAttribute('aria-readonly', 'true');
+    textEl.setAttribute('aria-disabled', 'true');
+    textEl.setAttribute('tabindex', '-1');
+    textEl.title = '主字幕按时间码拆分于此处，不可交互';
+    textEl.onmousemove = null;
+    textEl.onclick = null;
+  } else {
+    textEl.removeAttribute('aria-readonly');
+    textEl.removeAttribute('aria-disabled');
+    textEl.setAttribute('tabindex', '0');
+    textEl.setAttribute('aria-label', isMain ? '选择主字幕拆分点' : '选择副字幕断点');
+    textEl.title = '鼠标移动选择拆分点，左键点击锁定；也可用 WASD/方向键移动，空格确认或取消';
+    textEl.onmousemove = (event) => {
+      if (splitLaneLocked(pendingLinkedSplit, lane)) return;
+      const target = event.target;
+      const gap = target?.closest?.('.multi-subtitle-split-gap');
+      if (gap && textEl.contains(gap)) {
+        updateLinkedSplitPreview(Number(gap.dataset.offset), lane);
+        return;
+      }
+      const rawOffset = caretCharFromPoint(textEl, event.clientX, event.clientY);
+      if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
+    };
+    textEl.onclick = (event) => {
+      const current = pendingLinkedSplit;
+      if (!current) return;
+      if (splitLaneLocked(current, lane)) {
+        current.lockedLanes[lane] = false;
+        updateLinkedSplitLockVisual();
+        return;
+      }
+      const target = event.target;
+      const gap = target?.closest?.('.multi-subtitle-split-gap');
+      const rawOffset = gap && textEl.contains(gap)
+        ? Number(gap.dataset.offset)
+        : caretCharFromPoint(textEl, event.clientX, event.clientY);
+      if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
+      current.lockedLanes[lane] = true;
+      updateLinkedSplitLockVisual();
+      maybeAutoSubmitLinkedSplit(current);
+    };
+  }
+  updateSplitLaneVisual(state, lane);
+}
 
 
 
-  function renderLinkedSplitText(state) {
+export function renderLinkedSplitText(state) {
   if (!state) return;
   state.lockedLanes = { main: false, extension: false };
   if (MaweDom.multiSubtitleSplitTimestampHint) {
@@ -1437,45 +1428,45 @@ export function initMaweSplitCore() {
 
 
 
-  function updateLinkedSplitLockVisual() {
-    const state = pendingLinkedSplit;
-    const mainLocked = splitLaneLocked(state, 'main');
-    const extensionLocked = splitLaneLocked(state, 'extension');
-    MaweDom.multiSubtitleSplitMainText?.classList.toggle('locked', mainLocked);
-    MaweDom.multiSubtitleSplitText?.classList.toggle('locked', extensionLocked);
-    [
-      ['main', MaweDom.multiSubtitleSplitMainText],
-      ['extension', MaweDom.multiSubtitleSplitText],
-    ].forEach(([lane, textEl]) => {
-      if (!textEl) return;
-      const timestampLocked = splitLaneUsesMainTimestamp(state, lane);
-      textEl.classList.toggle('locked', !timestampLocked && splitLaneLocked(state, lane));
-      textEl.title = timestampLocked
-        ? '主字幕按时间码拆分于此处，不可交互'
-        : splitLaneLocked(state, lane)
-          ? '拆分点已锁定，点击或按空格解锁'
-          : '鼠标移动选择拆分点，左键点击锁定；也可用 WASD/方向键移动，空格确认或取消';
-      textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
-        gap.classList.toggle(
-          'locked',
-          !timestampLocked && splitLaneLocked(state, lane) && gap.classList.contains('active'),
-        );
-      });
+export function updateLinkedSplitLockVisual() {
+  const state = pendingLinkedSplit;
+  const mainLocked = splitLaneLocked(state, 'main');
+  const extensionLocked = splitLaneLocked(state, 'extension');
+  MaweDom.multiSubtitleSplitMainText?.classList.toggle('locked', mainLocked);
+  MaweDom.multiSubtitleSplitText?.classList.toggle('locked', extensionLocked);
+  [
+    ['main', MaweDom.multiSubtitleSplitMainText],
+    ['extension', MaweDom.multiSubtitleSplitText],
+  ].forEach(([lane, textEl]) => {
+    if (!textEl) return;
+    const timestampLocked = splitLaneUsesMainTimestamp(state, lane);
+    textEl.classList.toggle('locked', !timestampLocked && splitLaneLocked(state, lane));
+    textEl.title = timestampLocked
+      ? '主字幕按时间码拆分于此处，不可交互'
+      : splitLaneLocked(state, lane)
+        ? '拆分点已锁定，点击或按空格解锁'
+        : '鼠标移动选择拆分点，左键点击锁定；也可用 WASD/方向键移动，空格确认或取消';
+    textEl.querySelectorAll('.multi-subtitle-split-gap').forEach((gap) => {
+      gap.classList.toggle(
+        'locked',
+        !timestampLocked && splitLaneLocked(state, lane) && gap.classList.contains('active'),
+      );
     });
-    MaweDom.multiSubtitleSplitPreview?.classList.toggle('locked', mainLocked || extensionLocked);
-  }
+  });
+  MaweDom.multiSubtitleSplitPreview?.classList.toggle('locked', mainLocked || extensionLocked);
+}
 
 
 
-  function isSplitAutoSubmitEnabled() {
-    return MaweDom.multiSubtitleSplitAutoSubmit
-      ? MaweDom.multiSubtitleSplitAutoSubmit.checked
-      : MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
-  }
+export function isSplitAutoSubmitEnabled() {
+  return MaweDom.multiSubtitleSplitAutoSubmit
+    ? MaweDom.multiSubtitleSplitAutoSubmit.checked
+    : MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
+}
 
 
 
-  function splitAutoSubmitReady(state) {
+export function splitAutoSubmitReady(state) {
   if (!state?.valid) return false;
   if (state.kind === 'main') return splitLaneLocked(state, 'main');
   if (state.kind === 'extension' || state.kind === 'overlay') {
@@ -1488,51 +1479,51 @@ export function initMaweSplitCore() {
 
 
 
-  function maybeAutoSubmitLinkedSplit(state) {
-    if (state !== pendingLinkedSplit || !isSplitAutoSubmitEnabled() || !splitAutoSubmitReady(state)) {
-      return false;
-    }
-    confirmLinkedSplit();
-    return true;
+export function maybeAutoSubmitLinkedSplit(state) {
+  if (state !== pendingLinkedSplit || !isSplitAutoSubmitEnabled() || !splitAutoSubmitReady(state)) {
+    return false;
   }
+  confirmLinkedSplit();
+  return true;
+}
 
 
 
-  function splitCutSourceHint(state) {
-    if (state?.cutSource === 'pointer') return '当前切分位置固定为波形指针位置';
-    if (state?.cutSource === 'word-timestamps') return '当前切分位置由字词时间码推定';
-    if (state?.cutSource === 'word-timestamps-default') return '默认位置参考主字幕字词时间码，可继续调整';
-    return '';
-  }
+export function splitCutSourceHint(state) {
+  if (state?.cutSource === 'pointer') return '当前切分位置固定为波形指针位置';
+  if (state?.cutSource === 'word-timestamps') return '当前切分位置由字词时间码推定';
+  if (state?.cutSource === 'word-timestamps-default') return '默认位置参考主字幕字词时间码，可继续调整';
+  return '';
+}
 
 
 
-  function renderSplitMeta(text, state) {
-    if (!MaweDom.multiSubtitleSplitMeta) return;
-    MaweDom.multiSubtitleSplitMeta.replaceChildren();
-    MaweDom.multiSubtitleSplitMeta.appendChild(document.createTextNode(text));
-    const hint = splitCutSourceHint(state);
-    if (!hint) return;
-    const hintEl = document.createElement('span');
-    hintEl.className = 'multi-subtitle-split-cut-hint';
-    const translatedHint = MAWE_I18N?.translateText?.(hint) || hint;
-    hintEl.textContent = `（${translatedHint}）`;
-    MaweDom.multiSubtitleSplitMeta.appendChild(hintEl);
-  }
+export function renderSplitMeta(text, state) {
+  if (!MaweDom.multiSubtitleSplitMeta) return;
+  MaweDom.multiSubtitleSplitMeta.replaceChildren();
+  MaweDom.multiSubtitleSplitMeta.appendChild(document.createTextNode(text));
+  const hint = splitCutSourceHint(state);
+  if (!hint) return;
+  const hintEl = document.createElement('span');
+  hintEl.className = 'multi-subtitle-split-cut-hint';
+  const translatedHint = MAWE_I18N?.translateText?.(hint) || hint;
+  hintEl.textContent = `（${translatedHint}）`;
+  MaweDom.multiSubtitleSplitMeta.appendChild(hintEl);
+}
 
 
 
-  function completeStyledSplitPreviewParts(text, parts) {
-    const styled = splitStyledTextParts(text, parts, currentSplitStyleSettings());
-    if (!styled) return null;
-    const completed = AsrEditorUtils.completeSplitMassPairs(
-      styled.left, styled.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-    );
-    return { ...styled, left: completed.left, right: completed.right };
-  }
+function completeStyledSplitPreviewParts(text, parts) {
+  const styled = splitStyledTextParts(text, parts, currentSplitStyleSettings());
+  if (!styled) return null;
+  const completed = AsrEditorUtils.completeSplitMassPairs(
+    styled.left, styled.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+  );
+  return { ...styled, left: completed.left, right: completed.right };
+}
 
 
-  function updateLinkedSplitPreview(offset, lane = 'extension') {
+export function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
   const track = splitStateTrack(state);
@@ -1675,56 +1666,56 @@ export function initMaweSplitCore() {
 
 
 
-  function closeLinkedSplitModal() {
-    MaweDom.multiSubtitleSplitModal?.classList.remove('show');
-    [MaweDom.multiSubtitleSplitMainText, MaweDom.multiSubtitleSplitText].forEach((textEl) => {
-      textEl?.classList.remove('locked');
-      if (textEl) textEl.title = '';
-    });
-    MaweDom.multiSubtitleSplitPreview?.classList.remove('locked');
-    pendingLinkedSplit = null;
+export function closeLinkedSplitModal() {
+  MaweDom.multiSubtitleSplitModal?.classList.remove('show');
+  [MaweDom.multiSubtitleSplitMainText, MaweDom.multiSubtitleSplitText].forEach((textEl) => {
+    textEl?.classList.remove('locked');
+    if (textEl) textEl.title = '';
+  });
+  MaweDom.multiSubtitleSplitPreview?.classList.remove('locked');
+  pendingLinkedSplit = null;
+}
+
+
+
+export function openMainWaveformSplitModal(mainIndex, timeMs, { splitTextMode = null } = {}) {
+  const state = mainWaveformSplitState(mainIndex, { timeMs });
+  if (state) state.splitTextMode = splitTextMode;
+  if (!state) {
+    MaweHint.flashHint('这条字幕没有可用的文字边界', 'invalid');
+    return false;
   }
+  state.feedbackPoint = MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'main') || null;
+  pendingLinkedSplit = state;
+  MaweDom.multiSubtitleSplitModal?.classList.add('show');
+  renderLinkedSplitText(state);
+  return true;
+}
 
 
 
-  function openMainWaveformSplitModal(mainIndex, timeMs, { splitTextMode = null } = {}) {
-    const state = mainWaveformSplitState(mainIndex, { timeMs });
-    if (state) state.splitTextMode = splitTextMode;
-    if (!state) {
-      MaweHint.flashHint('这条字幕没有可用的文字边界', 'invalid');
-      return false;
-    }
-    state.feedbackPoint = MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'main') || null;
-    pendingLinkedSplit = state;
-    MaweDom.multiSubtitleSplitModal?.classList.add('show');
-    renderLinkedSplitText(state);
-    return true;
+export function openExtensionSplitModal(
+  extensionIndex,
+  timeMs,
+  track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
+  initial = {},
+) {
+  const state = extensionOnlySplitState(extensionIndex, track, { timeMs, ...initial });
+  if (!state) {
+    MaweHint.flashHint('这条副字幕没有可用的文字边界', 'invalid');
+    return false;
   }
+  state.feedbackPoint = state.feedbackPoint
+    || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
+  pendingLinkedSplit = state;
+  MaweDom.multiSubtitleSplitModal?.classList.add('show');
+  renderLinkedSplitText(state);
+  return true;
+}
 
 
 
-  function openExtensionSplitModal(
-    extensionIndex,
-    timeMs,
-    track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
-    initial = {},
-  ) {
-    const state = extensionOnlySplitState(extensionIndex, track, { timeMs, ...initial });
-    if (!state) {
-      MaweHint.flashHint('这条副字幕没有可用的文字边界', 'invalid');
-      return false;
-    }
-    state.feedbackPoint = state.feedbackPoint
-      || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
-    pendingLinkedSplit = state;
-    MaweDom.multiSubtitleSplitModal?.classList.add('show');
-    renderLinkedSplitText(state);
-    return true;
-  }
-
-
-
-  function commitMainWaveformSplit(
+export function commitMainWaveformSplit(
   state,
   {
     force = false,
@@ -1799,7 +1790,7 @@ export function initMaweSplitCore() {
 
 
   // 降级路径：副轨无法形成合法拆分时，只拆主轨并解除与副字幕的绑定。
-  function commitLinkedSplitMainOnly(state, { duplicateText = false } = {}) {
+export function commitLinkedSplitMainOnly(state, { duplicateText = false } = {}) {
   const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex];
   if (!main) return false;
   let force = false;
@@ -1827,7 +1818,7 @@ export function initMaweSplitCore() {
 
 
 
-  function commitExtensionSplit(
+export function commitExtensionSplit(
   state,
   { force = false, duplicateText = false, successMessage = null } = {},
 ) {
@@ -1906,7 +1897,7 @@ export function initMaweSplitCore() {
 
 
 
-  function confirmLinkedSplit({ duplicateText = false } = {}) {
+export function confirmLinkedSplit({ duplicateText = false } = {}) {
   const state = pendingLinkedSplit;
   if (!state) return;
   const previewLane = state.kind === 'main' ? 'main' : 'extension';
@@ -2061,608 +2052,550 @@ export function initMaweSplitCore() {
   // 命令流）与编辑态路径完全共用，仅跳过 editingState 与 DOM selection 的读写。
   // <100ms 首次被拒时通过 onForcedSplitArmed 把强制拆分 armed 交还调用方外置，
   // 而不是寄存在 editingState 上。
-  function splitAtCursor(
-    feedbackPoint = null,
-    { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null, splitTextMode = null, explicit = null } = {},
-  ) {
-    const explicitSplit = explicit && typeof explicit === 'object' ? explicit : null;
-    if (!explicitSplit && !MaweInlineEdit.editingState) return false;
-    const force = explicitSplit
-      ? explicitSplit.force === true
-      : MaweInlineEdit.editingState.forceSplitArmed === true;
-    // 渐进拆分：前半句保留左半，后半句保留整句原文；复制拆分：两侧都是整句原文。
-    const progressiveSplit = splitTextMode === 'progressive';
-    const duplicateSplit = splitTextMode === 'duplicate';
-    const el = explicitSplit ? null : MaweInlineEdit.editingState.el;
-    const idx = explicitSplit ? explicitSplit.idx : MaweInlineEdit.editingState.idx;
-    const textEl = explicitSplit ? null : MaweInlineEdit.editingState.textEl;
-    let cursorOffset;
-    let fullText;
-    let ninjaFeedbackPoint;
-    if (explicitSplit) {
-      cursorOffset = explicitSplit.cursorOffset;
-      ninjaFeedbackPoint = feedbackPoint;
-    } else {
-      const sel = window.getSelection();
-      if (!sel.rangeCount) {
-        finishEdit(false);
-        return false;
-      }
-      const range = sel.getRangeAt(0);
-      const preRange = range.cloneRange();
-      preRange.selectNodeContents(textEl);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      cursorOffset = preRange.toString().length;
-      fullText = textEl.innerText.replace(/\r\n?/g, '\n');
-      ninjaFeedbackPoint = feedbackPoint || MaweNinja.ninjaSplitPointFromRange(
-        range, textEl, cursorOffset, fullText.length,
-      );
-    }
-    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
-    if (explicitSplit) {
-      // 波形路径没有编辑 DOM，全文以工程数据为准（与刚进入编辑态时一致）。
-      fullText = String(seg?.text || '');
-    }
-
-    if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      if (!explicitSplit) finishEdit(false);
-      pendingLinkedSplit = linkedSplitState(idx, {
-        mainOffset: cursorOffset,
-        feedbackPoint: ninjaFeedbackPoint,
-        ninjaFromList: true,
-        splitTextMode,
-      });
-      if (!pendingLinkedSplit) return;
-      MaweDom.multiSubtitleSplitModal?.classList.add('show');
-      renderLinkedSplitText(pendingLinkedSplit);
-      return;
-    }
-
-    if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
-      if (!explicitSplit) finishEdit(false);
-      MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
+export function splitAtCursor(
+  feedbackPoint = null,
+  { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null, splitTextMode = null, explicit = null } = {},
+) {
+  const explicitSplit = explicit && typeof explicit === 'object' ? explicit : null;
+  if (!explicitSplit && !MaweInlineEdit.editingState) return false;
+  const force = explicitSplit
+    ? explicitSplit.force === true
+    : MaweInlineEdit.editingState.forceSplitArmed === true;
+  // 渐进拆分：前半句保留左半，后半句保留整句原文；复制拆分：两侧都是整句原文。
+  const progressiveSplit = splitTextMode === 'progressive';
+  const duplicateSplit = splitTextMode === 'duplicate';
+  const el = explicitSplit ? null : MaweInlineEdit.editingState.el;
+  const idx = explicitSplit ? explicitSplit.idx : MaweInlineEdit.editingState.idx;
+  const textEl = explicitSplit ? null : MaweInlineEdit.editingState.textEl;
+  let cursorOffset;
+  let fullText;
+  let ninjaFeedbackPoint;
+  if (explicitSplit) {
+    cursorOffset = explicitSplit.cursorOffset;
+    ninjaFeedbackPoint = feedbackPoint;
+  } else {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) {
+      finishEdit(false);
       return false;
     }
+    const range = sel.getRangeAt(0);
+    const preRange = range.cloneRange();
+    preRange.selectNodeContents(textEl);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    cursorOffset = preRange.toString().length;
+    fullText = textEl.innerText.replace(/\r\n?/g, '\n');
+    ninjaFeedbackPoint = feedbackPoint || MaweNinja.ninjaSplitPointFromRange(
+      range, textEl, cursorOffset, fullText.length,
+    );
+  }
+  const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
+  if (explicitSplit) {
+    // 波形路径没有编辑 DOM，全文以工程数据为准（与刚进入编辑态时一致）。
+    fullText = String(seg?.text || '');
+  }
 
-    let parts = {
-      left: AsrEditorUtils.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end'),
-      right: AsrEditorUtils.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start'),
-      offset: cursorOffset,
-    };
-    // splitStyledTextParts 只做刀点吸附（不切碎符号）；跨刀点断对的文本补齐
-    // 由 completeSplitMassPairs 兜底（复验失败回退字面），items 同步在下方。
-    // 渐进拆分同样按原始两段补齐（左段成为完整独立句），见 buildSplitPair。
-    let massCompletion = null;
-    let styledClosures = null;
-    if (!duplicateSplit) {
-      parts = splitStyledTextParts(fullText, parts, currentSplitStyleSettings());
-      // styled 的返回值携带两端点闭符号串，供 items 层同步（同 buildSplitPair）。
-      styledClosures = parts;
-      if (parts) {
-        massCompletion = AsrEditorUtils.completeSplitMassPairs(
-          parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-        );
-        parts.left = massCompletion.left;
-        parts.right = massCompletion.right;
-      }
-    }
-    let leftText = parts?.left || '';
-    let rightText = parts?.right || '';
-    const splitOffset = parts?.offset ?? cursorOffset;
-    if (duplicateSplit) {
-      // 复制拆分：两侧都保留整句原文。
-      leftText = fullText;
-      rightText = fullText;
-    } else if (progressiveSplit) {
-      // 渐进拆分：前半句仍是左半，后半句保留整句原文（含被拆走的前缀）。
-      rightText = fullText;
-    }
-    if (!leftText || !rightText) {
-      if (!explicitSplit) finishEdit(false);
-      MaweHint.flashHint('拆分后任一段为空，已取消', 'warning');
-      return false;
-    }
-
-    // 原字幕总时长不足 200ms 时，无法在原时间范围内让两侧都达到 100ms；
-    // 这和“切点靠边、可通过再次按键强制钳制”的情况不同。
-    if (seg.end - seg.start < 200) {
-      if (!explicitSplit) finishEdit(false);
-      MaweHint.flashHint('字幕时长不足 200ms，无法拆分', 'warning');
-      return false;
-    }
-
-    let itemSplit = splitItemsAtChar({ ...seg, text: fullText }, splitOffset);
-    let splitMs = itemSplit.splitMs;
-    if (!itemSplit.hasItems || !Number.isFinite(splitMs)) {
-      const tokens = splitStyleTokens(fullText, currentSplitStyleSettings());
-      const ratio = splitVisibleLength(fullText, 0, splitOffset, tokens)
-        / Math.max(1, splitVisibleLength(fullText, 0, fullText.length, tokens));
-      const t = seg.start + (seg.end - seg.start) * ratio;
-      // 无词级时间码时按光标位置拆分；第一次按键仍保留原始切点，
-      // 只有第二次强制拆分才把它钳制到两侧各 100ms 的安全范围。
-      splitMs = Math.round(t);
-    }
-    // 普通拆分沿用词级 items 的非对称边界，以保留真实静音；渐进/复制拆分
-    // 必须共享 splitMs，避免两条视觉字幕之间闪空。items 时间仍是原媒体时间，
-    // 不因 right.start 左移而平移或重算。
-    let leftEnd = splitMs;
-    let rightStart = splitMs;
-    const resolveSplitBounds = () => {
-      let leftEndMs = Number.isFinite(splitMs) ? splitMs : null;
-      let rightStartMs = leftEndMs;
-      if (!progressiveSplit && !duplicateSplit && itemSplit && itemSplit.hasItems && Number.isFinite(splitMs)
-          && Number.isFinite(itemSplit.leftEndMs)) {
-        leftEndMs = itemSplit.leftEndMs;
-        rightStartMs = Number.isFinite(itemSplit.rightStartMs)
-          ? itemSplit.rightStartMs : leftEndMs;
-      }
-      leftEnd = leftEndMs ?? NaN;
-      rightStart = rightStartMs ?? NaN;
-    };
-    resolveSplitBounds();
-    const timingValid = Number.isFinite(leftEnd) && Number.isFinite(rightStart)
-      && leftEnd - seg.start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
-      && seg.end - rightStart >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
-    if (!timingValid && !force) {
-      if (explicitSplit) {
-        // 显式模式没有 editingState 可寄存 armed，交由调用方外置记录。
-        explicitSplit.onForcedSplitArmed?.(Number.isFinite(splitMs) ? splitMs : null);
-      } else {
-        MaweInlineEdit.editingState.forceSplitArmed = true;
-      }
-      MaweHint.flashHint(forcedSplitRetryHint(Boolean(explicitSplit)), 'warning');
-      return false;
-    }
-    if (force) {
-      const forcedCut = forceSplitCutForSegments([seg], splitMs);
-      if (!Number.isFinite(forcedCut)) {
-        if (!explicitSplit) finishEdit(false);
-        MaweHint.flashHint('字幕时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
-        return false;
-      }
-      splitMs = forcedCut;
-      itemSplit = splitItemsAtChar(
-        { ...seg, text: fullText },
-        splitOffset,
-        splitMs,
-        { preserveCutMs: true, forceCut: true },
-      );
-      resolveSplitBounds();
-      if (Number.isFinite(forcedCut)) {
-        // 强制拆分承诺两侧各 >= 100ms：当自然词边界使某一侧过短
-        // （如最后一个词紧贴字幕末尾）时，该侧退回用户确认的强制切点，
-        // 另一侧保留非对称自然边界。
-        if (!Number.isFinite(leftEnd) || leftEnd - seg.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS) {
-          leftEnd = forcedCut;
-        }
-        if (!Number.isFinite(rightStart) || seg.end - rightStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS) {
-          rightStart = forcedCut;
-        }
-        if (rightStart < leftEnd) rightStart = leftEnd;
-      }
-    }
-    // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
-    // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
-    // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
-    // items 层追加符号 = styled 端点闭符号 + 补齐符号（顺序与最终文本一致）；
-    // 与 buildSplitPair 相同，仅守恒形态且无 display edits 时才落到 items。
-    const itemsFollowText = Array.isArray(seg?.items)
-      && seg.items.map((item) => String(item?.text || '')).join('') === fullText
-      && !styledClosures?.displayEdits;
-    const styledLeftAppend = itemsFollowText ? (styledClosures?.leftClosures || '') : '';
-    const styledRightPrepend = itemsFollowText ? (styledClosures?.rightClosures || '') : '';
-    const leftAppend = `${styledLeftAppend}${itemsFollowText ? (massCompletion?.leftAppend || '') : ''}`;
-    // 渐进拆分的右段是整句原文，边界 item 不再补任何符号（补齐只属于左段）。
-    const rightPrepend = progressiveSplit ? ''
-      : `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
-    const leftItemsClean = AsrEditorUtils.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
-    const rightItemsClean = AsrEditorUtils.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
-    // 复制拆分两侧都是全文，逐词时间码再也对不上文本，清空两侧 items；
-    // 渐进拆分后半句虽然带上复制来的前缀，但后半区间的 items 仍有效，保留。
-    const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;
-    const rightItemsFinal = duplicateSplit ? [] : rightItemsClean;
-
-    const { left: leftSeg, right: rightSeg } = createSplitSegments(seg, {
-      idBase: seg.id || `main-${idx}`, headIndex: idx,
-      leftText, rightText, leftEnd, rightStart,
-      leftItems: leftItemsFinal, rightItems: rightItemsFinal,
+  if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
+    if (!explicitSplit) finishEdit(false);
+    pendingLinkedSplit = linkedSplitState(idx, {
+      mainOffset: cursorOffset,
+      feedbackPoint: ninjaFeedbackPoint,
+      ninjaFromList: true,
+      splitTextMode,
     });
+    if (!pendingLinkedSplit) return;
+    MaweDom.multiSubtitleSplitModal?.classList.add('show');
+    renderLinkedSplitText(pendingLinkedSplit);
+    return;
+  }
 
-    // renderAll() 会重建整张字幕列表。content-visibility 会在重建后先用估算
-    // 行高占位，再为视口附近的行回填真实高度；只保存 scrollTop 无法阻止
-    // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
-    // 重绘后再用左半段恢复这个视觉锚点。
-    const cueListAnchor = listFeedback
-      ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
-      : null;
+  if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
+    if (!explicitSplit) finishEdit(false);
+    MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
+    return false;
+  }
 
-    if (explicitSplit) {
-      // 波形来源没有行内编辑态需要收尾；列表/编辑区来源照旧摘除 contenteditable。
-    } else {
-      textEl.removeAttribute('contenteditable');
-      el.classList.remove('editing');
-      MaweInlineEdit.editingState = null;
+  let parts = {
+    left: AsrEditorUtils.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end'),
+    right: AsrEditorUtils.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start'),
+    offset: cursorOffset,
+  };
+  // splitStyledTextParts 只做刀点吸附（不切碎符号）；跨刀点断对的文本补齐
+  // 由 completeSplitMassPairs 兜底（复验失败回退字面），items 同步在下方。
+  // 渐进拆分同样按原始两段补齐（左段成为完整独立句），见 buildSplitPair。
+  let massCompletion = null;
+  let styledClosures = null;
+  if (!duplicateSplit) {
+    parts = splitStyledTextParts(fullText, parts, currentSplitStyleSettings());
+    // styled 的返回值携带两端点闭符号串，供 items 层同步（同 buildSplitPair）。
+    styledClosures = parts;
+    if (parts) {
+      massCompletion = AsrEditorUtils.completeSplitMassPairs(
+        parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      );
+      parts.left = massCompletion.left;
+      parts.right = massCompletion.right;
     }
-
-    // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
-    // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
-    return MaweCommands.run(
-      duplicateSplit ? '复制拆分字幕' : progressiveSplit ? '渐进拆分字幕' : '拆分字幕',
-      (command) => {
-      clearSelection({ silent: true });
-      // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
-      // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
-      MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
-      replaceSegmentWithSplit(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, idx, { left: leftSeg, right: rightSeg });
-
-      rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
-      command.commit({ cueList: true, cueListAnchor });
-      selectOnly(idx + 1);
-      // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
-      MaweSelection.lastClickedIdx = idx + 1;
-      // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
-      // 统一回退到波形区实际切点位置，波形上找不到时才用编辑区文字坐标。
-      MaweNinja.triggerNinjaSplitFeedback(
-        (listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null)
-          || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
-          || ninjaFeedbackPoint,
-      );
-      MaweViewUpdates.invalidate({ preview: 'update' });
-      flashSplitFeedback({
-        index: idx,
-        track: 'main',
-        splitMs,
-        feedbackPoint: listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null,
-        listFeedback,
-      });
-      return true;
-    }, { captureView: true });
+  }
+  let leftText = parts?.left || '';
+  let rightText = parts?.right || '';
+  const splitOffset = parts?.offset ?? cursorOffset;
+  if (duplicateSplit) {
+    // 复制拆分：两侧都保留整句原文。
+    leftText = fullText;
+    rightText = fullText;
+  } else if (progressiveSplit) {
+    // 渐进拆分：前半句仍是左半，后半句保留整句原文（含被拆走的前缀）。
+    rightText = fullText;
+  }
+  if (!leftText || !rightText) {
+    if (!explicitSplit) finishEdit(false);
+    MaweHint.flashHint('拆分后任一段为空，已取消', 'warning');
+    return false;
   }
 
+  // 原字幕总时长不足 200ms 时，无法在原时间范围内让两侧都达到 100ms；
+  // 这和“切点靠边、可通过再次按键强制钳制”的情况不同。
+  if (seg.end - seg.start < 200) {
+    if (!explicitSplit) finishEdit(false);
+    MaweHint.flashHint('字幕时长不足 200ms，无法拆分', 'warning');
+    return false;
+  }
 
+  let itemSplit = splitItemsAtChar({ ...seg, text: fullText }, splitOffset);
+  let splitMs = itemSplit.splitMs;
+  if (!itemSplit.hasItems || !Number.isFinite(splitMs)) {
+    const tokens = splitStyleTokens(fullText, currentSplitStyleSettings());
+    const ratio = splitVisibleLength(fullText, 0, splitOffset, tokens)
+      / Math.max(1, splitVisibleLength(fullText, 0, fullText.length, tokens));
+    const t = seg.start + (seg.end - seg.start) * ratio;
+    // 无词级时间码时按光标位置拆分；第一次按键仍保留原始切点，
+    // 只有第二次强制拆分才把它钳制到两侧各 100ms 的安全范围。
+    splitMs = Math.round(t);
+  }
+  // 普通拆分沿用词级 items 的非对称边界，以保留真实静音；渐进/复制拆分
+  // 必须共享 splitMs，避免两条视觉字幕之间闪空。items 时间仍是原媒体时间，
+  // 不因 right.start 左移而平移或重算。
+  let leftEnd = splitMs;
+  let rightStart = splitMs;
+  const resolveSplitBounds = () => {
+    let leftEndMs = Number.isFinite(splitMs) ? splitMs : null;
+    let rightStartMs = leftEndMs;
+    if (!progressiveSplit && !duplicateSplit && itemSplit && itemSplit.hasItems && Number.isFinite(splitMs)
+        && Number.isFinite(itemSplit.leftEndMs)) {
+      leftEndMs = itemSplit.leftEndMs;
+      rightStartMs = Number.isFinite(itemSplit.rightStartMs)
+        ? itemSplit.rightStartMs : leftEndMs;
+    }
+    leftEnd = leftEndMs ?? NaN;
+    rightStart = rightStartMs ?? NaN;
+  };
+  resolveSplitBounds();
+  const timingValid = Number.isFinite(leftEnd) && Number.isFinite(rightStart)
+    && leftEnd - seg.start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
+    && seg.end - rightStart >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
+  if (!timingValid && !force) {
+    if (explicitSplit) {
+      // 显式模式没有 editingState 可寄存 armed，交由调用方外置记录。
+      explicitSplit.onForcedSplitArmed?.(Number.isFinite(splitMs) ? splitMs : null);
+    } else {
+      MaweInlineEdit.editingState.forceSplitArmed = true;
+    }
+    MaweHint.flashHint(forcedSplitRetryHint(Boolean(explicitSplit)), 'warning');
+    return false;
+  }
+  if (force) {
+    const forcedCut = forceSplitCutForSegments([seg], splitMs);
+    if (!Number.isFinite(forcedCut)) {
+      if (!explicitSplit) finishEdit(false);
+      MaweHint.flashHint('字幕时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+      return false;
+    }
+    splitMs = forcedCut;
+    itemSplit = splitItemsAtChar(
+      { ...seg, text: fullText },
+      splitOffset,
+      splitMs,
+      { preserveCutMs: true, forceCut: true },
+    );
+    resolveSplitBounds();
+    if (Number.isFinite(forcedCut)) {
+      // 强制拆分承诺两侧各 >= 100ms：当自然词边界使某一侧过短
+      // （如最后一个词紧贴字幕末尾）时，该侧退回用户确认的强制切点，
+      // 另一侧保留非对称自然边界。
+      if (!Number.isFinite(leftEnd) || leftEnd - seg.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS) {
+        leftEnd = forcedCut;
+      }
+      if (!Number.isFinite(rightStart) || seg.end - rightStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS) {
+        rightStart = forcedCut;
+      }
+      if (rightStart < leftEnd) rightStart = leftEnd;
+    }
+  }
+  // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
+  // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
+  // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
+  // items 层追加符号 = styled 端点闭符号 + 补齐符号（顺序与最终文本一致）；
+  // 与 buildSplitPair 相同，仅守恒形态且无 display edits 时才落到 items。
+  const itemsFollowText = Array.isArray(seg?.items)
+    && seg.items.map((item) => String(item?.text || '')).join('') === fullText
+    && !styledClosures?.displayEdits;
+  const styledLeftAppend = itemsFollowText ? (styledClosures?.leftClosures || '') : '';
+  const styledRightPrepend = itemsFollowText ? (styledClosures?.rightClosures || '') : '';
+  const leftAppend = `${styledLeftAppend}${itemsFollowText ? (massCompletion?.leftAppend || '') : ''}`;
+  // 渐进拆分的右段是整句原文，边界 item 不再补任何符号（补齐只属于左段）。
+  const rightPrepend = progressiveSplit ? ''
+    : `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
+  const leftItemsClean = AsrEditorUtils.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
+  const rightItemsClean = AsrEditorUtils.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
+  // 复制拆分两侧都是全文，逐词时间码再也对不上文本，清空两侧 items；
+  // 渐进拆分后半句虽然带上复制来的前缀，但后半区间的 items 仍有效，保留。
+  const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;
+  const rightItemsFinal = duplicateSplit ? [] : rightItemsClean;
 
-  function flashCueSplitAt(idx, clientX, track = 'main') {
-    if (!Number.isFinite(clientX)) return false;
-    const cue = track === 'extension'
-      ? MaweCoreState.container.querySelector(
-        `.multi-cue-column.extension[data-ext-idx="${idx}"], .cue[data-ext-idx="${idx}"]`,
-      )
-      : MaweCoreState.container.querySelector(
-        `.multi-cue-column.main[data-main-idx="${idx}"], .cue[data-idx="${idx}"]`,
-      );
-    if (!cue) return false;
-    const rect = cue.getBoundingClientRect();
-    const marker = document.createElement('span');
-    marker.className = 'cue-split-flash';
-    // .cue 的绝对定位子元素以 padding box 为坐标原点；rect.left 是 border box，
-    // 还要扣掉左边的 3px 状态边框，否则光条会向右压进字形。
-    marker.style.left = `${Math.max(0, Math.min(rect.width, clientX - rect.left - cue.clientLeft))}px`;
-    cue.appendChild(marker);
-    // 先触发布局，再加动画类，确保连续拆分时每个光条都能独立播放。
-    void marker.offsetWidth;
-    marker.classList.add('is-active');
-    let removed = false;
-    let timer = 0;
-    const cleanup = () => {
-      if (removed) return;
-      removed = true;
-      if (timer) window.clearTimeout(timer);
-      marker.remove();
-    };
-    marker.addEventListener('animationend', cleanup, { once: true });
-    timer = window.setTimeout(cleanup, 800);
+  const { left: leftSeg, right: rightSeg } = createSplitSegments(seg, {
+    idBase: seg.id || `main-${idx}`, headIndex: idx,
+    leftText, rightText, leftEnd, rightStart,
+    leftItems: leftItemsFinal, rightItems: rightItemsFinal,
+  });
+
+  // renderAll() 会重建整张字幕列表。content-visibility 会在重建后先用估算
+  // 行高占位，再为视口附近的行回填真实高度；只保存 scrollTop 无法阻止
+  // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
+  // 重绘后再用左半段恢复这个视觉锚点。
+  const cueListAnchor = listFeedback
+    ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
+    : null;
+
+  if (explicitSplit) {
+    // 波形来源没有行内编辑态需要收尾；列表/编辑区来源照旧摘除 contenteditable。
+  } else {
+    textEl.removeAttribute('contenteditable');
+    el.classList.remove('editing');
+    MaweInlineEdit.editingState = null;
+  }
+
+  // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
+  // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
+  return MaweCommands.run(
+    duplicateSplit ? '复制拆分字幕' : progressiveSplit ? '渐进拆分字幕' : '拆分字幕',
+    (command) => {
+    clearSelection({ silent: true });
+    // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
+    // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
+    MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
+    replaceSegmentWithSplit(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, idx, { left: leftSeg, right: rightSeg });
+
+    rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
+    command.commit({ cueList: true, cueListAnchor });
+    selectOnly(idx + 1);
+    // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
+    MaweSelection.lastClickedIdx = idx + 1;
+    // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
+    // 统一回退到波形区实际切点位置，波形上找不到时才用编辑区文字坐标。
+    MaweNinja.triggerNinjaSplitFeedback(
+      (listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null)
+        || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(splitMs, 'main')
+        || ninjaFeedbackPoint,
+    );
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    flashSplitFeedback({
+      index: idx,
+      track: 'main',
+      splitMs,
+      feedbackPoint: listFeedback ? (feedbackPoint || ninjaFeedbackPoint) : null,
+      listFeedback,
+    });
     return true;
-  }
+  }, { captureView: true });
+}
+
+
+
+export function flashCueSplitAt(idx, clientX, track = 'main') {
+  if (!Number.isFinite(clientX)) return false;
+  const cue = track === 'extension'
+    ? MaweCoreState.container.querySelector(
+      `.multi-cue-column.extension[data-ext-idx="${idx}"], .cue[data-ext-idx="${idx}"]`,
+    )
+    : MaweCoreState.container.querySelector(
+      `.multi-cue-column.main[data-main-idx="${idx}"], .cue[data-idx="${idx}"]`,
+    );
+  if (!cue) return false;
+  const rect = cue.getBoundingClientRect();
+  const marker = document.createElement('span');
+  marker.className = 'cue-split-flash';
+  // .cue 的绝对定位子元素以 padding box 为坐标原点；rect.left 是 border box，
+  // 还要扣掉左边的 3px 状态边框，否则光条会向右压进字形。
+  marker.style.left = `${Math.max(0, Math.min(rect.width, clientX - rect.left - cue.clientLeft))}px`;
+  cue.appendChild(marker);
+  // 先触发布局，再加动画类，确保连续拆分时每个光条都能独立播放。
+  void marker.offsetWidth;
+  marker.classList.add('is-active');
+  let removed = false;
+  let timer = 0;
+  const cleanup = () => {
+    if (removed) return;
+    removed = true;
+    if (timer) window.clearTimeout(timer);
+    marker.remove();
+  };
+  marker.addEventListener('animationend', cleanup, { once: true });
+  timer = window.setTimeout(cleanup, 800);
+  return true;
+}
 
 
 
   // 拆分来源可能是字幕列表、当前编辑区或弹窗；只有列表来源有可靠的列表坐标，
   // 其它来源统一回退到波形时间位置。波形反馈只创建一个短暂标记，不参与播放帧刷新。
   /** @param {{index?: number, track?: string, splitMs?: number, feedbackPoint?: {clientX: number}, listFeedback?: boolean}} [options] */
-  function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = null, listFeedback = false } = {}) {
-    const timeMs = Number(splitMs);
-    const hasListMarker = listFeedback
-      && Number.isFinite(feedbackPoint?.clientX)
-      && flashCueSplitAt(index, feedbackPoint.clientX, track);
-    if (!hasListMarker && Number.isFinite(timeMs)) {
-      MaweCoreState.waveformEditor?.flashSplitAtTime?.(timeMs, track);
-    }
+export function flashSplitFeedback({ index, track = 'main', splitMs, feedbackPoint = null, listFeedback = false } = {}) {
+  const timeMs = Number(splitMs);
+  const hasListMarker = listFeedback
+    && Number.isFinite(feedbackPoint?.clientX)
+    && flashCueSplitAt(index, feedbackPoint.clientX, track);
+  if (!hasListMarker && Number.isFinite(timeMs)) {
+    MaweCoreState.waveformEditor?.flashSplitAtTime?.(timeMs, track);
   }
+}
 
-  function fallbackSplitOffset(text, requestedOffset = null) {
-    const length = String(text || '').length;
-    if (!length) return null;
-    if (length <= 1) return 0;
-    const requested = Number.isFinite(Number(requestedOffset))
-      ? Math.round(Number(requestedOffset)) : Math.floor(length / 2);
-    return Math.max(1, Math.min(length - 1, requested));
-  }
+function fallbackSplitOffset(text, requestedOffset = null) {
+  const length = String(text || '').length;
+  if (!length) return null;
+  if (length <= 1) return 0;
+  const requested = Number.isFinite(Number(requestedOffset))
+    ? Math.round(Number(requestedOffset)) : Math.floor(length / 2);
+  return Math.max(1, Math.min(length - 1, requested));
+}
 
-  function splitOffsetNearTimeForModal(segment, timeMs, splitMode) {
-    const offset = splitOffsetNearTime(segment, timeMs, splitMode);
-    if (Number.isInteger(offset)) return offset;
-    const start = Number(segment?.start);
-    const end = Number(segment?.end);
-    const time = Number(timeMs);
-    const ratio = Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(time)
-      ? (time - start) / (end - start) : 0.5;
-    return fallbackSplitOffset(segment?.text, ratio * String(segment?.text || '').length);
-  }
+function splitOffsetNearTimeForModal(segment, timeMs, splitMode) {
+  const offset = splitOffsetNearTime(segment, timeMs, splitMode);
+  if (Number.isInteger(offset)) return offset;
+  const start = Number(segment?.start);
+  const end = Number(segment?.end);
+  const time = Number(timeMs);
+  const ratio = Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(time)
+    ? (time - start) / (end - start) : 0.5;
+  return fallbackSplitOffset(segment?.text, ratio * String(segment?.text || '').length);
+}
 
-  function splitOffsetNearTextPositionForModal(text, offset, splitMode) {
-    const legalOffsets = AsrEditorUtils.subtitleSplitOffsets(text || '', splitMode);
-    const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
-    if (legalOffsets.length) {
-      return legalOffsets.reduce((best, candidate) => (
-        Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
-      ), legalOffsets[0]);
-    }
-    return fallbackSplitOffset(text, requested);
+function splitOffsetNearTextPositionForModal(text, offset, splitMode) {
+  const legalOffsets = AsrEditorUtils.subtitleSplitOffsets(text || '', splitMode);
+  const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
+  if (legalOffsets.length) {
+    return legalOffsets.reduce((best, candidate) => (
+      Math.abs(candidate - requested) < Math.abs(best - requested) ? candidate : best
+    ), legalOffsets[0]);
   }
+  return fallbackSplitOffset(text, requested);
+}
 
   // 拆分对齐的兜底提示（修复③）：文本与词时间戳脱钩、且切分边界明显偏离
   // 下刀位置时给出警告，杜绝「字拆对、时拆错」的静默错拆与静默失败。强制
   // 拆分（force）会刻意把切点移出词边界，不适用本提示。
-  function flashSplitAlignmentHint(alignment, { committed = true } = {}) {
-    if (!alignment?.broken) return;
-    const drift = Number(alignment.driftMs);
-    if (!Number.isFinite(drift) || drift <= SPLIT_ALIGNMENT_DRIFT_WARN_MS) return;
-    const message = committed
-      ? `已拆分，但字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；如需贴合语音，可先校正文本或检查词时间戳`
-      : `未完成拆分：字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；请调整切点或校正文本后重试`;
-    MaweHint.flashHint(MAWE_I18N?.translateText?.(message) || message, 'warning');
-  }
+function flashSplitAlignmentHint(alignment, { committed = true } = {}) {
+  if (!alignment?.broken) return;
+  const drift = Number(alignment.driftMs);
+  if (!Number.isFinite(drift) || drift <= SPLIT_ALIGNMENT_DRIFT_WARN_MS) return;
+  const message = committed
+    ? `已拆分，但字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；如需贴合语音，可先校正文本或检查词时间戳`
+    : `未完成拆分：字幕文本与词时间戳不完全一致，切点与下刀位置相差约 ${Math.round(drift)} ms；请调整切点或校正文本后重试`;
+  MaweHint.flashHint(MAWE_I18N?.translateText?.(message) || message, 'warning');
+}
 
   // 拆分失败路径上拿不到 pair，用相同入参重新评估一次对齐质量（纯计算）。
-  function assessSplitAlignment(segment, offset, cutMs, options = {}) {
-    const itemParts = splitItemsAtChar(segment, offset, cutMs, options);
-    return {
-      ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
-      driftMs: AsrEditorUtils.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
-    };
-  }
+function assessSplitAlignment(segment, offset, cutMs, options = {}) {
+  const itemParts = splitItemsAtChar(segment, offset, cutMs, options);
+  return {
+    ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
+    driftMs: AsrEditorUtils.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+  };
+}
 
   // 拆分弹窗状态对应的轨：叠加轨拆分复用副轨弹窗机制，但轨解析走叠加轨。
-  function splitStateTrack(state) {
-    if (state?.kind === 'overlay') return getOverlayTrack();
-    return MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
-  }
+function splitStateTrack(state) {
+  if (state?.kind === 'overlay') return getOverlayTrack();
+  return MaweMultiSubtitleCore.getExtensionTrack(state?.trackId);
+}
 
-  function splitTimingIsValid(segment, cutMs) {
-    const start = Number(segment?.start);
-    const end = Number(segment?.end);
-    const cut = Number(cutMs);
-    return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(cut)
-      && end - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2
-      && cut - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
-      && end - cut >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
-  }
+function splitTimingIsValid(segment, cutMs) {
+  const start = Number(segment?.start);
+  const end = Number(segment?.end);
+  const cut = Number(cutMs);
+  return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(cut)
+    && end - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2
+    && cut - start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
+    && end - cut >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
+}
 
-  function duplicateSplitTimingIsValid(state) {
-    if (!state) return false;
-    if (state.kind === 'main') {
-      return splitTimingIsValid(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex], state.mainCutMs);
-    }
-    const track = splitStateTrack(state);
-    if (state.kind === 'extension' || state.kind === 'overlay') {
-      return splitTimingIsValid(
-        MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track),
-        state.extensionCutMs,
-      );
-    }
-    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex];
-    const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
-    return splitTimingIsValid(main, state.mainCutMs)
-      && splitTimingIsValid(extension, state.extensionCutMs);
+function duplicateSplitTimingIsValid(state) {
+  if (!state) return false;
+  if (state.kind === 'main') {
+    return splitTimingIsValid(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex], state.mainCutMs);
   }
+  const track = splitStateTrack(state);
+  if (state.kind === 'extension' || state.kind === 'overlay') {
+    return splitTimingIsValid(
+      MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track),
+      state.extensionCutMs,
+    );
+  }
+  const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex];
+  const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
+  return splitTimingIsValid(main, state.mainCutMs)
+    && splitTimingIsValid(extension, state.extensionCutMs);
+}
 
   // 叠加轨拆分：复用副轨的独立拆分弹窗机制（单 lane、无主副联动），
   // 但组引用（颜色/表情包）按主轨拆分规则在叠加轨数组内维护。
-  function openOverlaySplitModal(index, timeMs, initial = {}) {
-    const track = getOverlayTrack();
-    const segment = track?.segments?.[index];
-    if (!segment) return false;
-    if (segment.end - segment.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2) {
-      MaweHint.flashHint('叠加字幕总时长不足 200ms，无法拆分', 'warning');
-      return false;
-    }
-    const state = extensionOnlySplitState(index, track, { timeMs, ...initial });
-    if (!state) {
-      MaweHint.flashHint('这条叠加字幕没有可用的文字边界', 'invalid');
-      return false;
-    }
-    state.kind = 'overlay';
-    state.feedbackPoint = state.feedbackPoint
-      || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
-    pendingLinkedSplit = state;
-    MaweDom.multiSubtitleSplitModal?.classList.add('show');
-    renderLinkedSplitText(state);
-    return true;
+export function openOverlaySplitModal(index, timeMs, initial = {}) {
+  const track = getOverlayTrack();
+  const segment = track?.segments?.[index];
+  if (!segment) return false;
+  if (segment.end - segment.start < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS * 2) {
+    MaweHint.flashHint('叠加字幕总时长不足 200ms，无法拆分', 'warning');
+    return false;
   }
-
-  function commitOverlaySplit(
-    state,
-    {
-      force = false,
-      duplicateText = false,
-      successMessage = '已按选择的断点拆分叠加字幕',
-    } = {},
-  ) {
-    const track = getOverlayTrack();
-    const overlayIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
-    const segment = track?.segments?.[overlayIndex];
-    if (!track || overlayIndex < 0 || !segment) return false;
-    const splitMs = force
-      ? forceSplitCutForSegments([segment], state.extensionCutMs)
-      : state.extensionCutMs;
-    if (!Number.isFinite(splitMs)) {
-      MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
-      return false;
-    }
-    const splitAlignmentOptions = {
-      preserveCutMs: force || Number.isFinite(state.fixedCutMs),
-      forceCut: force,
-    };
-    const pair = buildSplitPair(
-      segment,
-      state.offset,
-      splitMs,
-      segment.id || `overlay-${overlayIndex}`,
-      true,
-      state.extensionMode,
-      { ...splitAlignmentOptions, duplicateText, headIndex: overlayIndex },
-    );
-    if (!pair) {
-      if (!force && !duplicateText) {
-        flashSplitAlignmentHint(
-          assessSplitAlignment(segment, state.offset, splitMs, splitAlignmentOptions),
-          { committed: false },
-        );
-      }
-      return false;
-    }
-    if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
-    return MaweCommands.run(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', (command) => {
-      clearSelection({ commitCuePanel: false });
-      replaceSegmentWithSplit(track.segments, overlayIndex, pair);
-      track._dirty = true;
-      closeLinkedSplitModal();
-      clearSelection({ commitCuePanel: false });
-      command.commit({ cueList: true });
-      MaweState.selection.clear('overlay');
-      MaweState.selection.add('overlay', overlayIndex + 1);
-      MaweState.selection.overlayAnchor = overlayIndex + 1;
-      setCuePanelTarget('overlay', overlayIndex + 1);
-      MaweViewUpdates.invalidate({ preview: 'update' });
-      flashSplitFeedback({
-        index: overlayIndex,
-        track: 'overlay',
-        splitMs,
-        feedbackPoint: null,
-        listFeedback: false,
-      });
-      MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'overlay'));
-      if (successMessage) MaweHint.flashHint(successMessage, 'success');
-      state.onQuickEditSplitComplete?.(overlayIndex + 1);
-      return true;
-    }, { captureView: true });
+  const state = extensionOnlySplitState(index, track, { timeMs, ...initial });
+  if (!state) {
+    MaweHint.flashHint('这条叠加字幕没有可用的文字边界', 'invalid');
+    return false;
   }
-
-  MaweSplitCore = Object.freeze({
-    openOverlaySplitModal,
-    get pendingLinkedSplit() { return pendingLinkedSplit; },
-    set pendingLinkedSplit(v) { pendingLinkedSplit = v; },
-    splitTimeForTextOffset,
-    shouldUseMainSplitTimestamps,
-    notifyMainSplitTimestampFallback,
-    splitOffsetNearTime,
-    splitOffsetNearTextPosition,
-    cleanSplitItems,
-    forceSplitCutForSegments,
-    forcedSplitRetryHint,
-    armForcedSplit,
-    splitItemsAtChar,
-    splitStyledTextParts,
-    buildSplitPair,
-    replaceSegmentWithSplit,
-    linkedSplitState,
-    mainWaveformSplitState,
-    extensionOnlySplitState,
-    splitLaneElements,
-    splitLaneLocked,
-    splitLaneUsesMainTimestamp,
-    splitLaneKeyboardInteractive,
-    splitLaneSegment,
-    stepSplitLaneOffset,
-    SPLIT_LANE_LINE_TOLERANCE_PX,
-    splitLaneGapLines,
-    verticalSplitLaneOffset,
-    splitKeyboardActiveLane,
-    splitLaneVisible,
-    focusSplitLane,
-    splitKeyboardSwitchLane,
-    toggleSplitLaneKeyboardLock,
-    flashSplitLaneBlockedFeedback,
-    syncLinkedSplitTime,
-    splitCutTime,
-    setSplitPreviewLine,
-    updateSplitLaneVisual,
-    renderSplitLane,
-    renderLinkedSplitText,
-    updateLinkedSplitLockVisual,
-    isSplitAutoSubmitEnabled,
-    splitAutoSubmitReady,
-    maybeAutoSubmitLinkedSplit,
-    splitCutSourceHint,
-    renderSplitMeta,
-    updateLinkedSplitPreview,
-    closeLinkedSplitModal,
-    openMainWaveformSplitModal,
-    openExtensionSplitModal,
-    commitMainWaveformSplit,
-    commitLinkedSplitMainOnly,
-    commitExtensionSplit,
-    confirmLinkedSplit,
-    splitAtCursor,
-    flashCueSplitAt,
-    flashSplitFeedback
-  });
-
-})(typeof window !== 'undefined' ? window : globalThis);
+  state.kind = 'overlay';
+  state.feedbackPoint = state.feedbackPoint
+    || MaweCoreState.waveformEditor?.getSplitPointAtTime?.(timeMs, 'extension') || null;
+  pendingLinkedSplit = state;
+  MaweDom.multiSubtitleSplitModal?.classList.add('show');
+  renderLinkedSplitText(state);
+  return true;
 }
 
-export function splitTimeForTextOffset(...args) { return MaweSplitCore.splitTimeForTextOffset(...args); }
-export function shouldUseMainSplitTimestamps(...args) { return MaweSplitCore.shouldUseMainSplitTimestamps(...args); }
-export function notifyMainSplitTimestampFallback(...args) { return MaweSplitCore.notifyMainSplitTimestampFallback(...args); }
-export function splitOffsetNearTime(...args) { return MaweSplitCore.splitOffsetNearTime(...args); }
-export function splitOffsetNearTextPosition(...args) { return MaweSplitCore.splitOffsetNearTextPosition(...args); }
-export function cleanSplitItems(...args) { return MaweSplitCore.cleanSplitItems(...args); }
-export function forceSplitCutForSegments(...args) { return MaweSplitCore.forceSplitCutForSegments(...args); }
-export function forcedSplitRetryHint(...args) { return MaweSplitCore.forcedSplitRetryHint(...args); }
-export function armForcedSplit(...args) { return MaweSplitCore.armForcedSplit(...args); }
-export function splitItemsAtChar(...args) { return MaweSplitCore.splitItemsAtChar(...args); }
-export function splitStyledTextParts(...args) { return MaweSplitCore.splitStyledTextParts(...args); }
-export function buildSplitPair(...args) { return MaweSplitCore.buildSplitPair(...args); }
-export function replaceSegmentWithSplit(...args) { return MaweSplitCore.replaceSegmentWithSplit(...args); }
-export function linkedSplitState(...args) { return MaweSplitCore.linkedSplitState(...args); }
-export function mainWaveformSplitState(...args) { return MaweSplitCore.mainWaveformSplitState(...args); }
-export function extensionOnlySplitState(...args) { return MaweSplitCore.extensionOnlySplitState(...args); }
-export function splitLaneElements(...args) { return MaweSplitCore.splitLaneElements(...args); }
-export function splitLaneLocked(...args) { return MaweSplitCore.splitLaneLocked(...args); }
-export function splitLaneUsesMainTimestamp(...args) { return MaweSplitCore.splitLaneUsesMainTimestamp(...args); }
-export function splitLaneKeyboardInteractive(...args) { return MaweSplitCore.splitLaneKeyboardInteractive(...args); }
-export function splitLaneSegment(...args) { return MaweSplitCore.splitLaneSegment(...args); }
-export function stepSplitLaneOffset(...args) { return MaweSplitCore.stepSplitLaneOffset(...args); }
-export function splitLaneGapLines(...args) { return MaweSplitCore.splitLaneGapLines(...args); }
-export function verticalSplitLaneOffset(...args) { return MaweSplitCore.verticalSplitLaneOffset(...args); }
-export function splitKeyboardActiveLane(...args) { return MaweSplitCore.splitKeyboardActiveLane(...args); }
-export function splitLaneVisible(...args) { return MaweSplitCore.splitLaneVisible(...args); }
-export function focusSplitLane(...args) { return MaweSplitCore.focusSplitLane(...args); }
-export function splitKeyboardSwitchLane(...args) { return MaweSplitCore.splitKeyboardSwitchLane(...args); }
-export function toggleSplitLaneKeyboardLock(...args) { return MaweSplitCore.toggleSplitLaneKeyboardLock(...args); }
-export function flashSplitLaneBlockedFeedback(...args) { return MaweSplitCore.flashSplitLaneBlockedFeedback(...args); }
-export function syncLinkedSplitTime(...args) { return MaweSplitCore.syncLinkedSplitTime(...args); }
-export function splitCutTime(...args) { return MaweSplitCore.splitCutTime(...args); }
-export function setSplitPreviewLine(...args) { return MaweSplitCore.setSplitPreviewLine(...args); }
-export function updateSplitLaneVisual(...args) { return MaweSplitCore.updateSplitLaneVisual(...args); }
-export function renderSplitLane(...args) { return MaweSplitCore.renderSplitLane(...args); }
-export function renderLinkedSplitText(...args) { return MaweSplitCore.renderLinkedSplitText(...args); }
-export function updateLinkedSplitLockVisual(...args) { return MaweSplitCore.updateLinkedSplitLockVisual(...args); }
-export function isSplitAutoSubmitEnabled(...args) { return MaweSplitCore.isSplitAutoSubmitEnabled(...args); }
-export function splitAutoSubmitReady(...args) { return MaweSplitCore.splitAutoSubmitReady(...args); }
-export function maybeAutoSubmitLinkedSplit(...args) { return MaweSplitCore.maybeAutoSubmitLinkedSplit(...args); }
-export function splitCutSourceHint(...args) { return MaweSplitCore.splitCutSourceHint(...args); }
-export function renderSplitMeta(...args) { return MaweSplitCore.renderSplitMeta(...args); }
-export function updateLinkedSplitPreview(...args) { return MaweSplitCore.updateLinkedSplitPreview(...args); }
-export function closeLinkedSplitModal(...args) { return MaweSplitCore.closeLinkedSplitModal(...args); }
-export function openMainWaveformSplitModal(...args) { return MaweSplitCore.openMainWaveformSplitModal(...args); }
-export function openExtensionSplitModal(...args) { return MaweSplitCore.openExtensionSplitModal(...args); }
-export function commitMainWaveformSplit(...args) { return MaweSplitCore.commitMainWaveformSplit(...args); }
-export function commitLinkedSplitMainOnly(...args) { return MaweSplitCore.commitLinkedSplitMainOnly(...args); }
-export function commitExtensionSplit(...args) { return MaweSplitCore.commitExtensionSplit(...args); }
-export function confirmLinkedSplit(...args) { return MaweSplitCore.confirmLinkedSplit(...args); }
-export function splitAtCursor(...args) { return MaweSplitCore.splitAtCursor(...args); }
-export function flashCueSplitAt(...args) { return MaweSplitCore.flashCueSplitAt(...args); }
-export function flashSplitFeedback(...args) { return MaweSplitCore.flashSplitFeedback(...args); }
+function commitOverlaySplit(
+  state,
+  {
+    force = false,
+    duplicateText = false,
+    successMessage = '已按选择的断点拆分叠加字幕',
+  } = {},
+) {
+  const track = getOverlayTrack();
+  const overlayIndex = track?.segments?.findIndex((segment) => segment.id === state.extensionId) ?? -1;
+  const segment = track?.segments?.[overlayIndex];
+  if (!track || overlayIndex < 0 || !segment) return false;
+  const splitMs = force
+    ? forceSplitCutForSegments([segment], state.extensionCutMs)
+    : state.extensionCutMs;
+  if (!Number.isFinite(splitMs)) {
+    MaweHint.flashHint('字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
+    return false;
+  }
+  const splitAlignmentOptions = {
+    preserveCutMs: force || Number.isFinite(state.fixedCutMs),
+    forceCut: force,
+  };
+  const pair = buildSplitPair(
+    segment,
+    state.offset,
+    splitMs,
+    segment.id || `overlay-${overlayIndex}`,
+    true,
+    state.extensionMode,
+    { ...splitAlignmentOptions, duplicateText, headIndex: overlayIndex },
+  );
+  if (!pair) {
+    if (!force && !duplicateText) {
+      flashSplitAlignmentHint(
+        assessSplitAlignment(segment, state.offset, splitMs, splitAlignmentOptions),
+        { committed: false },
+      );
+    }
+    return false;
+  }
+  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  return MaweCommands.run(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', (command) => {
+    clearSelection({ commitCuePanel: false });
+    replaceSegmentWithSplit(track.segments, overlayIndex, pair);
+    track._dirty = true;
+    closeLinkedSplitModal();
+    clearSelection({ commitCuePanel: false });
+    command.commit({ cueList: true });
+    MaweState.selection.clear('overlay');
+    MaweState.selection.add('overlay', overlayIndex + 1);
+    MaweState.selection.overlayAnchor = overlayIndex + 1;
+    setCuePanelTarget('overlay', overlayIndex + 1);
+    MaweViewUpdates.invalidate({ preview: 'update' });
+    flashSplitFeedback({
+      index: overlayIndex,
+      track: 'overlay',
+      splitMs,
+      feedbackPoint: null,
+      listFeedback: false,
+    });
+    MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'overlay'));
+    if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    state.onQuickEditSplitComplete?.(overlayIndex + 1);
+    return true;
+  }, { captureView: true });
+}
 
-export function openOverlaySplitModal(...args) { return MaweSplitCore.openOverlaySplitModal(...args); }
+export const MaweSplitCore = {
+  openOverlaySplitModal,
+  get pendingLinkedSplit() { return pendingLinkedSplit; },
+  set pendingLinkedSplit(v) { pendingLinkedSplit = v; },
+  splitTimeForTextOffset,
+  shouldUseMainSplitTimestamps,
+  notifyMainSplitTimestampFallback,
+  splitOffsetNearTime,
+  splitOffsetNearTextPosition,
+  cleanSplitItems,
+  forceSplitCutForSegments,
+  forcedSplitRetryHint,
+  armForcedSplit,
+  splitItemsAtChar,
+  splitStyledTextParts,
+  buildSplitPair,
+  replaceSegmentWithSplit,
+  linkedSplitState,
+  mainWaveformSplitState,
+  extensionOnlySplitState,
+  splitLaneElements,
+  splitLaneLocked,
+  splitLaneUsesMainTimestamp,
+  splitLaneKeyboardInteractive,
+  splitLaneSegment,
+  stepSplitLaneOffset,
+  SPLIT_LANE_LINE_TOLERANCE_PX,
+  splitLaneGapLines,
+  verticalSplitLaneOffset,
+  splitKeyboardActiveLane,
+  splitLaneVisible,
+  focusSplitLane,
+  splitKeyboardSwitchLane,
+  toggleSplitLaneKeyboardLock,
+  flashSplitLaneBlockedFeedback,
+  syncLinkedSplitTime,
+  splitCutTime,
+  setSplitPreviewLine,
+  updateSplitLaneVisual,
+  renderSplitLane,
+  renderLinkedSplitText,
+  updateLinkedSplitLockVisual,
+  isSplitAutoSubmitEnabled,
+  splitAutoSubmitReady,
+  maybeAutoSubmitLinkedSplit,
+  splitCutSourceHint,
+  renderSplitMeta,
+  updateLinkedSplitPreview,
+  closeLinkedSplitModal,
+  openMainWaveformSplitModal,
+  openExtensionSplitModal,
+  commitMainWaveformSplit,
+  commitLinkedSplitMainOnly,
+  commitExtensionSplit,
+  confirmLinkedSplit,
+  splitAtCursor,
+  flashCueSplitAt,
+  flashSplitFeedback
+};
+Object.freeze(MaweSplitCore);

@@ -20,7 +20,7 @@ import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
 import { MaweInlineEdit } from './editor-inline-edit.js';
 import { MaweSelection } from './editor-selection.js';
 import { scheduleOnboarding } from '../boot/editor-onboarding.js';
-export let MaweCuePanel;
+let MaweCuePanel;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { buildOverlayCueEl } from './editor-overlay-cue-rows.js';
 import { applyCharCount, buildBoundExtensionIds, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort, speakerName } from './editor-cue-elements.js';
@@ -37,15 +37,8 @@ import { getOverlayTrack, overlayTrackVisible } from './overlay-track.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweCuePanel() {
-'use strict';
-
-// 当前字幕面板：renderAll 协调、目标切换与时间/items 重映射。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweCuePanel(global) {
-  'use strict';
-
-
-
+  // 当前字幕面板：renderAll 协调、目标切换与时间/items 重映射。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // === 渲染 ===
   /** @param {Pick<ViewInvalidation, 'waveform' | 'preserveCueListScroll' | 'cueListAnchor'>} [options] */
   function renderAll({ waveform = 'overlay', preserveCueListScroll = true, cueListAnchor } = {}) {
@@ -866,8 +859,6 @@ export function initMaweCuePanel() {
     navigateCuePanel,
     splitCuePanelAtCursor
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function renderAll(...args) { return MaweCuePanel.renderAll(...args); }

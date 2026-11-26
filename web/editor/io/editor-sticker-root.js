@@ -1,15 +1,13 @@
 import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweHost } from '../boot/editor-host.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { renderAll } from '../cues/editor-cue-panel.js';
 import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
 import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
 import { MaweExportTimeline } from './editor-export-timeline.js';
 import { MaweServerSave } from './editor-server-save.js';
 export let MaweStickerRoot;
 export function initStickerRootModule() {
-// Personal default directory and project override share the existing validated server endpoint.
-(function initStickerRoot(global) {
-  'use strict';
+  // Personal default directory and project override share the existing validated server endpoint.
   const DEFAULT_ROOT_KEY = 'moy.asr.editor.sticker-root.v1';
   const defaultInput = /** @type {HTMLInputElement} */ (document.getElementById('sticker-root-input'));
   const defaultButton = /** @type {HTMLButtonElement} */ (document.getElementById('sticker-root-read'));
@@ -59,7 +57,7 @@ export function initStickerRootModule() {
     }
     MaweStickerOverlay.stickerAssetRevision += 1;
     MaweAssFrame?.syncWindowStickers?.();
-    MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
+    MaweExportTimeline.updateStickerExportButtons(); renderAll();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }
   async function applyRoot(scope, value) {
@@ -103,6 +101,4 @@ export function initStickerRootModule() {
     getDefaultRoot, projectRoot, syncControls, applyRoot, activateProjectRoot,
     defaultInput, defaultButton, projectInput, projectButton, overrideToggle,
   });
-
-})(window);
 }

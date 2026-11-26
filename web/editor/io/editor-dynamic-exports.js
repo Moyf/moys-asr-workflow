@@ -1,6 +1,6 @@
 import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweHost } from '../boot/editor-host.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { commitCuePanelEdit } from '../cues/editor-cue-panel.js';
 import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
@@ -23,12 +23,8 @@ import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { runFcp7PngExport, waitForFcp7Fonts } from './editor-fcp7-png.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweDynamicExports() {
-'use strict';
-
-// 动态导出：FCP7XML、Lottie、Ograf 模态与导出。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweDynamicExports(global) {
-  'use strict';
+  // 动态导出：FCP7XML、Lottie、Ograf 模态与导出。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   let fcp7SizeProjectEpoch = null;
   function updateFcp7RatioWarning() {
     const original = MaweExportSrt.currentAssVideoResolution();
@@ -54,7 +50,7 @@ export function initMaweDynamicExports() {
   function openFcp7ExportModal() {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   const extensionAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   const overlayAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export');
   const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
@@ -282,7 +278,7 @@ export function initMaweDynamicExports() {
   if (lottieExportBlocked()) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
   const extensionAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
@@ -404,7 +400,7 @@ export function initMaweDynamicExports() {
   if (ografExportBlocked()) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
   const extensionAvailable = AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
@@ -503,6 +499,4 @@ export function initMaweDynamicExports() {
     ografExportCanvasSize,
     exportOgrafDynamicCaptions
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

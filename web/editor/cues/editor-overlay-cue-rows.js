@@ -5,7 +5,7 @@ import { MaweSettings } from '../state/editor-settings.js';
 import { MaweState } from '../state/editor-state.js';
 import { MaweCueElements } from './editor-cue-elements.js';
 import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
-import { MaweTextCleanup } from './editor-text-cleanup.js';
+import { seekFromWaveform } from './editor-text-cleanup.js';
 import { isPlaybackActive } from '../media/editor-media-playback.js';
 import { showOverlayContextMenu } from '../ui/editor-context-menus.js';
 import { getOverlayTrack } from './overlay-track.js';
@@ -38,7 +38,7 @@ export function buildOverlayCueEl(seg, index) {
     try {
       MaweCoreState.waveformEditor?.revealTime(segment.start, true);
       if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
-        MaweTextCleanup.seekFromWaveform(segment.start / 1000, { mouseClick: true });
+        seekFromWaveform(segment.start / 1000, { mouseClick: true });
       }
     } finally {
       MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;

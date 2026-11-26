@@ -5,7 +5,7 @@ import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
 import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
 import { MaweHistory } from '../state/editor-history.js';
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
-import { MaweProjectSettings } from '../state/editor-project-settings.js';
+import { syncTrackControls } from '../state/editor-project-settings.js';
 import { MaweSettings } from '../state/editor-settings.js';
 import { MaweState } from '../state/editor-state.js';
 import { MaweDom } from '../ui/editor-dom.js';
@@ -497,7 +497,7 @@ function syncAssStyleManager({ force = false } = {}) {
   updateAssStyleLibraryStatus();
   // 样式库变化后，设置页「字幕样式」里的 ASS 样式选择器同步刷新。
   syncSubtitleStyleAssControls();
-  MaweProjectSettings?.syncTrackControls?.();
+  syncTrackControls?.();
   if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
 }
 

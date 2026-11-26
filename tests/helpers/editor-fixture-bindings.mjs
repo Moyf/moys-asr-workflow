@@ -2,7 +2,22 @@ import { full } from 'acorn-walk';
 import MagicString from 'magic-string';
 import { analyzeModule } from '../../scripts/refactor-tools/scope-core.mjs';
 
-export function publishFixtureBindings(source, edit = new MagicString(source), { liveFacadeBindings = false } = {}) {
+const privateFacades = new Set([
+  'MaweCuePanel', 'MaweKeyboardTargets', 'MaweSplitContext', 'MaweSplitMode', 'MaweSplitTrim',
+  'MaweTextCleanup', 'MaweTimedTextEdit',
+]);
+export const isPrivateFixtureFacade = name => privateFacades.has(name);
+
+const fixtureNamespaces = new Map([
+  ['editor/cues/editor-add-cue.js', 'MaweAddCue'],
+  ['editor/cues/editor-binding-align.js', 'MaweBindingAlign'],
+  ['editor/cues/editor-cue-events.js', 'MaweCueEvents'],
+  ['editor/media/editor-ass-preview-refresh.js', 'MaweAssPreviewRefresh'],
+  ['editor/state/editor-project-settings.js', 'MaweProjectSettings'],
+]);
+export const editorFixtureNamespace = file => fixtureNamespaces.get(file);
+
+export function publishFixtureBindings(source, edit = new MagicString(source), { liveFacadeBindings = false, file } = {}) {
   const { ast, scopes } = analyzeModule(source);
   const variables = scopes.scopes.find(scope => scope.type === 'module').set;
   const published = new Map();
@@ -45,12 +60,21 @@ export function publishFixtureBindings(source, edit = new MagicString(source), {
       }
     }
   });
+  const namespace = editorFixtureNamespace(file);
+  if (namespace) {
+    const members = ast.body.filter(node => node.type === 'ExportNamedDeclaration')
+      .flatMap(node => node.declaration?.declarations?.map(({id}) => id.name) ?? [node.declaration?.id?.name])
+      .filter(name => name && !/^init[A-Z]/.test(name));
+    const getters = members.map(name => `get ${name}() { return ${name}; }`).join(', ');
+    edit.append(`\n${assignment(namespace)}Object.freeze({ ${getters} });\n`);
+  }
   return edit;
 }
 
 function fixtureAlias(name, exported) {
   if (name === 'activeBurnVideoTask') return '__maweBurnVideoTask';
   if (name === 'activeGapRemovedVideoTask') return '__maweGapRemovedVideoTask';
+  if (isPrivateFixtureFacade(name)) return name;
   if (exported && /^(?:Mawe[A-Z]\w*|Asr(?:EditorUtils|Waveform|GapRemoveCore)|MAWE_(?:I18N|EDITOR_BRIDGE)|ASR_EDITOR_PALETTE)$/.test(name ?? '')) return name;
   return null;
 }

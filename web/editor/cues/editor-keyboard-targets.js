@@ -3,20 +3,13 @@ import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
 import { MaweSelection } from './editor-selection.js';
 import { interruptCueListFollowing, scrollCueIntoViewIfNeeded } from './editor-cue-list-anchor.js';
-export let MaweKeyboardTargets;
+let MaweKeyboardTargets;
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { isHiddenDisabled, selectOnly, selectOnlyExtension } from './editor-selection.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 键盘目标判定：输入焦点守卫、播放目标与字幕重叠查找。
 export function initMaweKeyboardTargets() {
-(function initMaweKeyboardTargets(global) {
-  'use strict';
-
-
-
-
-
   function isSpaceKey(e) {
     return e.key === ' ' || e.code === 'Space';
   }
@@ -150,12 +143,9 @@ MaweSelection.lastClickedIdx = nextIndex;
     boundSegmentIndex,
     switchMultiSubtitleTrack
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function isSpaceKey(...args) { return MaweKeyboardTargets.isSpaceKey(...args); }
-export function TEXT_INPUT_TYPES(...args) { return MaweKeyboardTargets.TEXT_INPUT_TYPES(...args); }
 export function isPlayerKeyboardTarget(...args) { return MaweKeyboardTargets.isPlayerKeyboardTarget(...args); }
 export function isTextEditingTarget(...args) { return MaweKeyboardTargets.isTextEditingTarget(...args); }
 export function isPlaybackKeyboardTarget(...args) { return MaweKeyboardTargets.isPlaybackKeyboardTarget(...args); }

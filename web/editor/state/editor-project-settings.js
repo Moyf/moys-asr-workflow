@@ -1,14 +1,16 @@
 // 工程属性设置：从活动工程读取的 assMode / 导出说话人标签 / 主字幕拆分模式
 // 覆盖，由共享偏好对象上的访问器读写。
 import { MaweBoot } from '../boot/editor-boot.js';
-import { MaweSplitMode } from '../cues/editor-split-mode.js';
+import { refreshMergeJoinModeHint } from '../cues/editor-split-mode.js';
 import { MaweStickerRoot } from '../io/editor-sticker-root.js';
 import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
 import { MaweDom } from '../ui/editor-dom.js';
 import { MaweSettings } from './editor-settings.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
-export let MaweProjectSettings;
-export function syncTrackControls() {
+export let syncControls;
+export let syncTrackControls;
+
+function updateTrackControls() {
   const tracks = MaweBoot.DATA?.tracks || [];
   for (const row of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('.track-visibility-row'))) {
     const track = tracks.find(item => item.role === row.dataset.trackRole);
@@ -29,11 +31,11 @@ export function syncTrackControls() {
   }
 }
 
-export function syncControls() {
-  syncTrackControls();
+function updateControls() {
+  updateTrackControls();
   MaweAssManagerWiring?.syncAssModeControl?.();
   if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels;
-  MaweSplitMode.refreshMergeJoinModeHint();
+  refreshMergeJoinModeHint();
   MaweStickerRoot?.syncControls?.();
 }
 
@@ -73,7 +75,8 @@ export function initMaweProjectSettings() {
       },
     },
   });
-  MaweProjectSettings = Object.freeze({ syncControls, syncTrackControls });
+  syncControls = updateControls;
+  syncTrackControls = updateTrackControls;
 
 
 }

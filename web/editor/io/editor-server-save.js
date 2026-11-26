@@ -5,7 +5,7 @@ import { MaweCueElements } from '../cues/editor-cue-elements.js';
 import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
 import { MaweSearch } from '../cues/editor-search.js';
 import { MaweSelection } from '../cues/editor-selection.js';
-import { MaweTextCleanup } from '../cues/editor-text-cleanup.js';
+import { seekFromWaveform } from '../cues/editor-text-cleanup.js';
 import { MaweMediaPlayback } from '../media/editor-media-playback.js';
 import { MaweCommands } from '../state/editor-commands.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
@@ -25,14 +25,6 @@ export let MaweServerSave;
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 服务器保存：保存目标、校验预览、自动保存调度。
 export function initMaweServerSave() {
-(function initMaweServerSave(global) {
-  'use strict';
-
-
-
-
-
-
   let projectCheckpointed = Boolean(MaweBoot.SERVER_CONFIG?.canSave)
     || !document.getElementById('json-name')?.classList.contains('empty');
 
@@ -212,7 +204,7 @@ export function initMaweServerSave() {
       window.setTimeout(() => cue.classList.remove('validation-target'), 2200);
     }
     MaweCoreState.waveformEditor?.revealTime(segment.start, true);
-    if (MaweMediaPlayback.hasLoadedMedia()) MaweTextCleanup.seekFromWaveform(segment.start / 1000);
+    if (MaweMediaPlayback.hasLoadedMedia()) seekFromWaveform(segment.start / 1000);
   }
 
 
@@ -712,8 +704,6 @@ export function initMaweServerSave() {
     configureRecentProjects,
     configureServerProjectSettings
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function configureServerSaveControls(...args) { return MaweServerSave.configureServerSaveControls(...args); }

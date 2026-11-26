@@ -10,12 +10,9 @@ export function getOnboardingEditor() {
 }
 
 export function initMaweBoot() {
-// 启动数据块：模板注入的工程/表情包/服务器配置 token 与调试工具。
-// 由 split-cluster codemod 自 editor.js 拆出。
+  // 启动数据块：模板注入的工程/表情包/服务器配置 token 与调试工具。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   /** @param {Window & typeof globalThis} global */
-(function initMaweBoot(global) {
-  'use strict';
-
   /** @type {ProjectData} */
   const DATA = __DATA_JSON__;
 
@@ -87,6 +84,4 @@ export function initMaweBoot() {
     maweDebug,
     maweDomContractCheck
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

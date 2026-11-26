@@ -1,7 +1,7 @@
 import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweCueListAnchor } from './editor-cue-list-anchor.js';
 import { MaweInlineEdit } from './editor-inline-edit.js';
-import { MaweKeyboardTargets } from './editor-keyboard-targets.js';
+import { isTextEditingTarget, isNativeKeyboardControl, isPlayerKeyboardTarget } from './editor-keyboard-targets.js';
 import { MaweNavPreview } from './editor-nav-preview.js';
 import { MaweSelection } from './editor-selection.js';
 export function initMaweListNavigationWiring() {
@@ -38,7 +38,7 @@ document.addEventListener('keydown', (event) => {
 // 应用自己消费的列表导航在其导航入口交出跟随，其余原生滚动在冒泡时处理。
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.isComposing || MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState
-      || MaweKeyboardTargets.isTextEditingTarget(event) || MaweKeyboardTargets.isNativeKeyboardControl(event) || MaweKeyboardTargets.isPlayerKeyboardTarget(event)) return;
+      || isTextEditingTarget(event) || isNativeKeyboardControl(event) || isPlayerKeyboardTarget(event)) return;
   if (document.querySelector('.modal-mask.show, #ctxmenu.show')
       || event.target?.closest?.('[role="dialog"], [role="menu"]')) return;
   if (event.ctrlKey || event.altKey || event.metaKey) return;

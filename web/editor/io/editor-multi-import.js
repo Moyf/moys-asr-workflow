@@ -25,11 +25,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweMultiImport() {
   // Preserve the classic editor.js alias inside this module's own closure.
   const MULTI_SUBTITLE_UTILS = AsrEditorUtils;
-(function initMaweMultiImport(global) {
-  'use strict';
-
-
-
   let pendingMultiImport = null;
 
 
@@ -379,8 +374,6 @@ const expectedName = AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
     openSubtitleFile,
     openProjectFile
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function showMultiSubtitleImportChoice(...args) { return MaweMultiImport.showMultiSubtitleImportChoice(...args); }

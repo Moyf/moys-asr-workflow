@@ -3,7 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createUtilsModule as createGroups } from '../web/shared/utils/subtitle-groups.js';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 import { expandMainBoundCueRefs } from '../web/shared/utils/speaker-identity.js';
 import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
@@ -35,7 +35,7 @@ function fixture() {
   };
   context.window = context;
   vm.createContext(exposeWindowGlobals(context));
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-sticker-picker.js', 'initMaweStickerPicker'), context);
+  vm.runInContext(plainModuleSource('editor/cues/editor-sticker-picker.js'), context);
   return { context, project, main, overlay, secondary, groups };
 }
 

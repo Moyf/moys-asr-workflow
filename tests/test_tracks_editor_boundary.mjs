@@ -5,7 +5,7 @@ import test from 'node:test';
 import { createUtilsModule as createProjectTracks } from '../web/shared/utils/project-tracks.js';
 const tracks = createProjectTracks();
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
 initRealEditorUtils();
@@ -13,8 +13,10 @@ initRealEditorUtils();
 const plain = value => JSON.parse(JSON.stringify(value));
 const canonical = () => JSON.parse(readFileSync(new URL('./fixtures/project-tracks/legacy-three-tracks.expected.json', import.meta.url), 'utf8'));
 function run(context, module) {
-  const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-load': 'initMaweProjectLoad', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-multi-import': 'initMaweMultiImport', 'io/editor-loading-progress': 'initLoadingProgressModule' };
-  const source = initializers[module] ? invokedInitModuleSource(`editor/${module}.js`, initializers[module]) : readFileSync(new URL(`../web/editor/${module}.js`, import.meta.url), 'utf8');
+  const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-load': 'initMaweProjectLoad', 'io/editor-multi-import': 'initMaweMultiImport', 'io/editor-loading-progress': 'initLoadingProgressModule' };
+  const sourcePath = `editor/${module}.js`;
+  const source = module === 'io/editor-json-repair' ? plainModuleSource(sourcePath)
+    : initializers[module] ? invokedInitModuleSource(sourcePath, initializers[module]) : readFileSync(new URL(`../web/${sourcePath}`, import.meta.url), 'utf8');
   vm.runInContext(source, context);
 }
 

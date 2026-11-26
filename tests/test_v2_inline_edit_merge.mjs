@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function fixture() {
@@ -30,7 +30,7 @@ function fixture() {
   };
   context.window = context;
   vm.createContext(exposeWindowGlobals(context));
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-inline-edit.js', 'initMaweInlineEdit'), context);
+  vm.runInContext(plainModuleSource('editor/cues/editor-inline-edit.js'), context);
   return { context, main, secondary, calls, textEl, el };
 }
 

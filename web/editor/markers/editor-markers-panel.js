@@ -13,9 +13,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 数据变更一律经 MaweMarkerEditing，撤销/重做、保存脏标记与波形轨道刷新
 // 都由那一层统一处理，这里只负责展示与输入采集。
 export function initMaweMarkersPanel() {
-(function initMaweMarkersPanel(global) {
-  'use strict';
-
   // 管理窗私有 UI 状态：过滤条件、选中高亮项与展开编辑项（不进工程数据）。
   const filter = { query: '', kind: 'all', color: 'all', review: 'all' };
   let selectedMarkerId = null;
@@ -817,7 +814,6 @@ export function initMaweMarkersPanel() {
   });
 
   document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
-})(window);
 }
 
 export function resetSelection(...args) { return MaweMarkersPanel?.resetSelection?.(...args); }

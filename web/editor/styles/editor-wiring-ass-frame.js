@@ -16,11 +16,9 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweAssFrame;
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initWiringAssFrameModule() {
-// Paused Server media previews use the same native libass frame as the floating
-// comparison window. Playback/file:// keep the immediate CSS approximation.
-(function initMaweAssFrame(global) {
-  'use strict';
-
+  // Paused Server media previews use the same native libass frame as the floating
+  // comparison window. Playback/file:// keep the immediate CSS approximation.
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const openButton = document.getElementById('ass-frame-preview-open');
   const quickOpenButton = document.getElementById('ass-frame-quick-open');
   const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
@@ -602,5 +600,4 @@ export function initWiringAssFrameModule() {
   MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, notifyProjectChanged, bindPlayer, syncWindowStickers });
 
   syncAssFrameControls();
-})(typeof window !== 'undefined' ? window : globalThis);
 }

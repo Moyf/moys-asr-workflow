@@ -19,8 +19,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 字词时间码：字词对齐数据与行渲染。
 export function initMaweWordTiming() {
-(function initWordTiming(global) {
-  'use strict';
   let enabled = false, selection = null, conversionTarget = null;
   const ui = (zh, en) => MAWE_I18N?.language === 'en' ? en : zh;
   const dialog = () => /** @type {HTMLDialogElement} */ (document.getElementById('word-conversion-dialog'));
@@ -313,8 +311,6 @@ export function initMaweWordTiming() {
   }, true);
   MaweWordTiming = Object.freeze({ get enabled() { return enabled; }, setEnabled, reset, bind,
     select, getSelection, clearSelection, previewItems, merge, showMenu, openConversion, syncTextChange });
-
-})(window);
 }
 
 export function setEnabled(...args) { return MaweWordTiming.setEnabled(...args); }

@@ -12,8 +12,6 @@ export function observeAssSubtitlePreviewPlayer(player) {
   return refreshService.observePlayer(player);
 }
 
-export let MaweAssPreviewRefresh;
-
 export function initMaweAssPreviewRefresh() {
   if (refreshService.schedule) return;
 
@@ -56,8 +54,4 @@ export function initMaweAssPreviewRefresh() {
   window.addEventListener('resize', schedule);
   refreshService.schedule = schedule;
   refreshService.observePlayer = observePlayer;
-  MaweAssPreviewRefresh = Object.freeze({
-    scheduleAssSubtitlePreviewRefresh,
-    observeAssSubtitlePreviewPlayer,
-  });
 }

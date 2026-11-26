@@ -1,9 +1,9 @@
 import { editorDialogs } from '../../shared/editor-dialogs.js';
 import { MaweBoot } from '../boot/editor-boot.js';
-import { MaweBindingAlign } from '../cues/editor-binding-align.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { alignSelectedExtensionSubtitleRanges } from '../cues/editor-binding-align.js';
+import { renderCurrentCuePanel, renderAll } from '../cues/editor-cue-panel.js';
 import { MaweSegmentOps } from '../cues/editor-segment-ops.js';
-import { MaweSplitMode } from '../cues/editor-split-mode.js';
+import { refreshSplitKeyHelp, mergeJoinModeSwitch, setMainSubtitleSplitModeBinding } from '../cues/editor-split-mode.js';
 import { MaweTimeline } from '../cues/editor-timeline.js';
 import { MaweWordTiming } from '../cues/editor-word-timing.js';
 import { MaweMultiImport } from '../io/editor-multi-import.js';
@@ -14,7 +14,7 @@ import { MaweMediaStep } from '../media/editor-media-step.js';
 import { MaweCommands } from '../state/editor-commands.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
-import { MaweProjectSettings } from '../state/editor-project-settings.js';
+import { syncTrackControls } from '../state/editor-project-settings.js';
 import { MaweSettings } from '../state/editor-settings.js';
 import { MaweAppearance } from '../styles/editor-appearance.js';
 import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
@@ -117,7 +117,7 @@ document.querySelector('.track-visibility-settings')?.addEventListener('change',
   if (input.dataset.trackField === 'enabled') {
     const existing = role === 'secondary' ? MaweDom.multiSubtitleToggle : getMaweDomPanels().overlayTrackToggle;
     if (existing && existing.checked !== input.checked) existing.click();
-    MaweProjectSettings.syncTrackControls();
+    syncTrackControls();
     return;
   }
   const track = MaweBoot.DATA.tracks.find(item => item.role === role);
@@ -157,8 +157,8 @@ document.querySelector('.track-visibility-settings')?.addEventListener('change',
 
 // 切换语言时 i18n 会重置动态文本节点，需重新套用当前拆分按键提示和目标轨道标签。
 document.addEventListener('mawe:languagechange', () => {
-  MaweSplitMode.refreshSplitKeyHelp();
-  MaweCuePanel.renderCurrentCuePanel();
+  refreshSplitKeyHelp();
+  renderCurrentCuePanel();
   MaweTimeline.refreshTimelineSettingsUi();
   MaweMediaPlayback.refreshMediaSeekStepHelp();
   MaweMediaPlayback.refreshMediaSeekControlLabels();
@@ -173,7 +173,7 @@ const quickEditSplitFocusNextToggle = document.getElementById('quick-edit-split-
 if (quickEditSplitFocusNextToggle) quickEditSplitFocusNextToggle.checked = MaweSettings.EDITOR_SETTINGS.quickEditSplitFocusNext;
 if (MaweDom.multiSubtitleSplitAutoSubmit) MaweDom.multiSubtitleSplitAutoSubmit.checked = MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
 MaweDisplaySettings.applyPlatformKeyLabels();
-MaweSplitMode.refreshSplitKeyHelp();
+refreshSplitKeyHelp();
 if (MaweDom.mergeJoinTextContinuousInput) MaweDom.mergeJoinTextContinuousInput.value = MaweSettings.EDITOR_SETTINGS.mergeJoinTextContinuous;
 if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.value = MaweSettings.EDITOR_SETTINGS.mergeJoinTextWord;
 // 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
@@ -186,8 +186,8 @@ if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.value = MaweS
 
 
 
-MaweSplitMode.mergeJoinModeSwitch?.addEventListener('click', () => {
-  MaweSplitMode.setMainSubtitleSplitModeBinding(MaweSplitMode.mergeJoinModeSwitch.dataset.targetMode);
+mergeJoinModeSwitch?.addEventListener('click', () => {
+  setMainSubtitleSplitModeBinding(mergeJoinModeSwitch.dataset.targetMode);
 });
 MaweSegmentOps.syncAutoMergePanelInputs();
 MaweDom.overlayToggle.checked = MaweSettings.EDITOR_SETTINGS.overlayEnabled;
@@ -280,7 +280,7 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
     // 这里不同步重建：先提交变更并让下拉框状态上屏，下一帧再重建列表，
     // 避免同一次 change 里既做视觉反馈又扛整表重建。
     command.commit({ cueList: false, waveform: 'none' });
-    requestAnimationFrame(() => MaweCuePanel.renderAll({ waveform: 'none' }));
+    requestAnimationFrame(() => renderAll({ waveform: 'none' }));
   });
 });
 MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
@@ -351,7 +351,7 @@ MaweDom.multiSubtitleSwapButton?.addEventListener('click', () => {
   MaweMultiImport.swapMainAndExtensionSubtitles();
 });
 MaweDom.multiSubtitleAlignButton?.addEventListener('click', () => {
-  MaweBindingAlign.alignSelectedExtensionSubtitleRanges();
+  alignSelectedExtensionSubtitleRanges();
 });
 MaweAppearance.applySubtitleAppearance();
 MaweAppearance.applyExtensionSubtitleAppearance();

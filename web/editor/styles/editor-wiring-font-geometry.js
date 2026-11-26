@@ -1,4 +1,4 @@
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { getCurrentCuePanelTarget } from '../cues/editor-cue-panel.js';
 import { MaweSelection } from '../cues/editor-selection.js';
 import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
 import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
@@ -395,7 +395,7 @@ MaweDom.playerStage.addEventListener('click', (event) => {
   const press = previewBackgroundPress;
   previewBackgroundPress = null;
   if (!press || event.defaultPrevented || event.detail === 0 || !isPreviewStageBackground(event.target)) return;
-  const hasCueSelection = MaweCuePanel.getCurrentCuePanelTarget()
+  const hasCueSelection = getCurrentCuePanelTarget()
     || ['main', 'extension', 'overlay'].some(track => MaweState.selection.indices(track).size > 0);
   if (!hasCueSelection && !press.hadBoxSelection) return;
   // 视频的 click 播放处理器会跳过已消费的点击。

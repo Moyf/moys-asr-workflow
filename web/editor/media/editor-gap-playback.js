@@ -7,11 +7,10 @@ import { MaweAudioProcessing } from './editor-audio-processing.js';
 import { MaweMediaPlayback } from './editor-media-playback.js';
 export let MaweGapPlayback;
 export function initEditorGapPlayback() {
-// Gap preview playback owns its boundary timer and an independent audio gate.
-// The audio clock closes the gate even while the page is busy; the timer seeks
-// only after the actual boundary, so retained media is never trimmed early.
-(function initMaweGapPlayback(global) {
-  'use strict';
+  // Gap preview playback owns its boundary timer and an independent audio gate.
+  // The audio clock closes the gate even while the page is busy; the timer seeks
+  // only after the actual boundary, so retained media is never trimmed early.
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const boundPlayers = new WeakSet();
   let timer = 0, scheduledKey = '', gateScheduled = false, skipping = null, boundPlayer = null, waiting = false;
 
@@ -197,6 +196,4 @@ export function initEditorGapPlayback() {
   MaweState?.observeProjectLoad(reset);
   MaweGapPlayback = Object.freeze({ needsAudioGate, beforePlay, bindPlayer, update, refresh, reset, cancelPendingPlayback, retargetPendingSeek,
     get pendingPlayback() { return skipping?.resumePending === true; } });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

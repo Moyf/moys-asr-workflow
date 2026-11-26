@@ -13,7 +13,7 @@ import sys
 # alone does not establish that every shell test exercises each imported feature.
 PYTHON_SHELLS = {'edit.py', 'maw_gui.py', 'maw/cli.py', 'maw/gui_web.py',
                  'maw/gui_workflow.py', 'server-editor/serve.py'}
-READ = re.compile(r'\b(?:read_text|read_bytes|readFileSync|readFile|loadEditorModule|invokedInitModuleSource|import|require)\b')
+READ = re.compile(r'\b(?:read_text|read_bytes|readFileSync|readFile|loadEditorModule|(?:invokedInit|init|plain)ModuleSource|import|require)\b')
 
 
 @lru_cache(maxsize=128)
@@ -743,6 +743,12 @@ def node_python_dependencies(root: Path, tests: set[str]) -> bool:
 def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]]:
     """Discover tests exercising a module's DOM IDs or published facade."""
     tests = root / 'tests'
+    fixture_bindings = tests / 'helpers/editor-fixture-bindings.mjs'
+    try:
+        fixture_facades = dict(re.findall(r"\['(editor/[^']+\.js)', '(Mawe\w+)'\]",
+                                          fixture_bindings.read_text(encoding='utf-8')))
+    except (OSError, UnicodeError):
+        fixture_facades = {}
     paths = list(tests.glob('test_*.mjs')) + list((tests / 'e2e').glob('*.spec.mjs')) if tests.is_dir() else []
     texts = _texts(root, paths)
     selected = {path: set() for path in changed}
@@ -759,7 +765,10 @@ def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]
             r'''(?:const|let|var)\s+\w+\s*=\s*(?:/\*\*\s*@type[^\n]*?\*/\s*\(\s*)?'''
             r'''document\.getElementById\(\s*["']([\w-]+)["']''', source))
         facades = set(re.findall(r'\b(?:global|window)\.(Mawe\w+)\s*=\s*(?:Object\.freeze\(|\1\b)', source))
-        facades.update(re.findall(r'^export\s+(?:const|let)\s+(Mawe\w+)\b', source, flags=re.M))
+        facades.update(re.findall(r'^(?:export\s+)?(?:const|let)\s+(Mawe\w+)\b', source, flags=re.M))
+        fixture_facade = fixture_facades.get(path.removeprefix('web/'))
+        if fixture_facade:
+            facades.add(fixture_facade)
         # Shared ESM factories publish their returned methods through an
         # aggregate facade. Match actual calls, not every test loading it.
         exposed = set()

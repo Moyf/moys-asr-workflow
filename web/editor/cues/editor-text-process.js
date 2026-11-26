@@ -19,8 +19,6 @@ import { editorDialogs } from '../../shared/editor-dialogs.js';
 // Ordered subtitle processing, including the existing right-click wrapper.
 
 export function initMaweTextProcess() {
-(function initMaweTextProcess(global) {
-  'use strict';
   const $ = (id) => document.getElementById(id);
   const modal = $('text-process-modal');
   const preview = $('text-process-preview');
@@ -1022,8 +1020,6 @@ export function initMaweTextProcess() {
     get wrapCharsScope() { return wrapCharsScope; },
     openTextProcessModal, applyWrapChars, openWrapCharsModal, closeWrapCharsModal,
   });
-
-})(window);
 }
 
 export function openTextProcessModal(...args) { return MaweTextProcess.openTextProcessModal(...args); }

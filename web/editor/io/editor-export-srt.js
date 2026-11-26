@@ -22,14 +22,9 @@ import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweExportSrt() {
-'use strict';
-
-// SRT 导出：主/副/去空隙 SRT、配色分拆与动态字幕数据。
-// 由 split-cluster codemod 自 editor.js 拆出。
+  // SRT 导出：主/副/去空隙 SRT、配色分拆与动态字幕数据。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   /** @param {Window & typeof globalThis} global */
-(function initMaweExportSrt(global) {
-  'use strict';
-
   // === 下载 ===
   // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
@@ -591,6 +586,4 @@ export function initMaweExportSrt() {
     buildGapRemovedFfconcat,
     buildGapRemovedRegionsJson
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

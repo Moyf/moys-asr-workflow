@@ -6,13 +6,9 @@ import { MaweSettings } from '../state/editor-settings.js';
 import { MaweDisplaySettings } from '../ui/editor-display-settings.js';
 import { MaweDom } from '../ui/editor-dom.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
-export let MaweSplitMode;
+let MaweSplitMode;
+export let mergeJoinModeSwitch;
 export function initMaweSplitMode() {
-(function initMaweSplitMode(global) {
-  'use strict';
-
-
-
   function refreshSplitKeyHelp() {
     const label = MaweDisplaySettings.splitKeyLabel();
     if (MaweDom.helpSplitKey) MaweDom.helpSplitKey.textContent = label;
@@ -36,7 +32,7 @@ export function initMaweSplitMode() {
   const mergeJoinModeText = document.getElementById('merge-join-mode-text');
 
 
-  const mergeJoinModeSwitch = document.getElementById('merge-join-mode-switch');
+  mergeJoinModeSwitch = document.getElementById('merge-join-mode-switch');
 
 
   function isConfiguredMainSplitModeOverride(value) {
@@ -92,14 +88,9 @@ export function initMaweSplitMode() {
     refreshMergeJoinModeHint,
     setMainSubtitleSplitModeBinding
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function refreshSplitKeyHelp(...args) { return MaweSplitMode.refreshSplitKeyHelp(...args); }
-export function mergeJoinModeHint(...args) { return MaweSplitMode.mergeJoinModeHint(...args); }
-export function mergeJoinModeText(...args) { return MaweSplitMode.mergeJoinModeText(...args); }
-export function mergeJoinModeSwitch(...args) { return MaweSplitMode.mergeJoinModeSwitch(...args); }
 export function isConfiguredMainSplitModeOverride(...args) { return MaweSplitMode.isConfiguredMainSplitModeOverride(...args); }
 export function refreshMergeJoinModeHint(...args) { return MaweSplitMode.refreshMergeJoinModeHint(...args); }
 export function setMainSubtitleSplitModeBinding(...args) { return MaweSplitMode.setMainSubtitleSplitModeBinding(...args); }

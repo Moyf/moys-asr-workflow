@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture(role = 'main') {
   const track = { role, id: role === 'secondary' ? 'en' : role, segments: [{ id: `${role}-cue`, start: 0, end: 1000 }] };
@@ -14,7 +14,7 @@ function fixture(role = 'main') {
   };
   context.window = context;
   vm.createContext(context);
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-nav-preview.js', 'initMaweNavPreview'), context);
+  vm.runInContext(plainModuleSource('editor/cues/editor-nav-preview.js'), context);
   return { context, track, setSelection(nextRefs, nextCurrent) { refs = nextRefs; current = nextCurrent; } };
 }
 

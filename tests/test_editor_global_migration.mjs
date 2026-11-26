@@ -79,6 +79,22 @@ test('tagged templates retain the global receiver for manual migration', () => {
   assert.deepEqual(result.issues.map(issue => issue.reason), ['tagged template uses global receiver']);
 });
 
+test('parenthesized optional chains keep their global receiver for calls and tags', () => {
+  const source = '(window?.MaweCore)(); (window?.MaweCore)`value`;';
+  const result = migrateEditorFile(source, consumer, owners);
+  assert.equal(result.source, source);
+  assert.deepEqual(result.issues.map(issue => issue.reason), [
+    'call uses global receiver', 'tagged template uses global receiver',
+  ]);
+});
+
+test('removing a standalone alias keeps the original statement boundary', () => {
+  const source = 'export let MaweCore;\nf()\nwindow.MaweCore = MaweCore;\n(g)();';
+  const result = migrateEditorFile(source, owner, owners, { removeAliases: true });
+  assert.equal(result.aliases.length, 1);
+  assert.match(result.source, /f\(\)\s*;\s*\(g\)\(\);/);
+});
+
 test('a reassigned IIFE parameter is not a browser realm alias', () => {
   const source = '(function (root) { root = unrelated; return root.MaweCore.read(); })(window);';
   assert.equal(migrateEditorFile(source, consumer, owners).source, source);
@@ -127,4 +143,10 @@ test('browser audit recognizes destructuring, an undeclared write and a classic 
   assert.ok(issues.some(issue => issue.name === 'MAWLauncher' && issue.reason === 'destructured browser global'));
   assert.ok(issues.some(issue => issue.name === 'taskState' && issue.reason === 'assignment to undeclared binding'));
   assert.ok(issues.some(issue => issue.name === 'openTool' && issue.reason === 'classic script global declaration'));
+});
+
+test('browser audit finds facade reads in destructuring assignments', () => {
+  const source = 'let impl; const browser = window; ({MaweCore: impl} = browser);';
+  const { issues } = migrateEditorFile(source, consumer, owners, { auditOnly: true });
+  assert.deepEqual(issues, [{ line: 1, name: 'MaweCore', reason: 'destructured browser global' }]);
 });

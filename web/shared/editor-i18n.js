@@ -2,9 +2,7 @@
 export let MAWE_I18N;
 
 export function initEditorI18n() {
-(function initMaweI18n(global) {
-  'use strict';
-
+  const global = window;
   const STORAGE_KEY = 'mawe.language';
   const ZH = 'zh';
   const EN = 'en';
@@ -2396,5 +2394,4 @@ export function initEditorI18n() {
   } else {
     start();
   }
-})(window);
 }

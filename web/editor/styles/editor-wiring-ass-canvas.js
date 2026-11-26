@@ -6,25 +6,23 @@ import { MaweAssPreview } from './editor-wiring-ass-preview.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweAssCanvas;
 export function initWiringAssCanvasModule() {
-// ASS 预览的 Canvas 合成层。
-//
-// DOM/CSS 预览（-webkit-text-stroke）的描边是逐 span 居中描边：半透明描边
-// 在 run 交界处叠加出接缝，且在显示分辨率上直接描边，边缘不如 libass 的
-// 「原生分辨率渲染再缩小」平滑。本模块按 libass 的绘制顺序（阴影 → 描边 →
-// 填充）在 PlayRes 原生分辨率的画布上光栅化，整行一次描边消除接缝，再由
-// CSS 缩小到舞台大小获得抗锯齿边缘。
-//
-// 复刻范围锁定在 MAW 导出会产生的 tag 集合：fad/fade（合成透明度）、
-// \move（锚点位移）、\t 的 fs/fscx/fscy/frz/bord/shad/颜色插值、
-// BorderStyle 1/3、\fsp、强调/下划线/删除线 run。\frx/\fry 的 3D 透视
-// 是 Canvas 2D 做不到的，以轴向透视缩短近似保留动画表现（见 drawTrack）。
-//
-// 性能模型：行位图按 (文本 run + 样式快照) 缓存，fad/fade 只改合成
-// globalAlpha 不触发重光栅；播放时每帧成本是几次 drawImage，量级远低于
-// 视频解码。缓存溢出整体清空，由 document.fonts 载入事件主动失效。
-(function initMaweAssCanvas(global) {
-  'use strict';
-
+  // ASS 预览的 Canvas 合成层。
+  //
+  // DOM/CSS 预览（-webkit-text-stroke）的描边是逐 span 居中描边：半透明描边
+  // 在 run 交界处叠加出接缝，且在显示分辨率上直接描边，边缘不如 libass 的
+  // 「原生分辨率渲染再缩小」平滑。本模块按 libass 的绘制顺序（阴影 → 描边 →
+  // 填充）在 PlayRes 原生分辨率的画布上光栅化，整行一次描边消除接缝，再由
+  // CSS 缩小到舞台大小获得抗锯齿边缘。
+  //
+  // 复刻范围锁定在 MAW 导出会产生的 tag 集合：fad/fade（合成透明度）、
+  // \move（锚点位移）、\t 的 fs/fscx/fscy/frz/bord/shad/颜色插值、
+  // BorderStyle 1/3、\fsp、强调/下划线/删除线 run。\frx/\fry 的 3D 透视
+  // 是 Canvas 2D 做不到的，以轴向透视缩短近似保留动画表现（见 drawTrack）。
+  //
+  // 性能模型：行位图按 (文本 run + 样式快照) 缓存，fad/fade 只改合成
+  // globalAlpha 不触发重光栅；播放时每帧成本是几次 drawImage，量级远低于
+  // 视频解码。缓存溢出整体清空，由 document.fonts 载入事件主动失效。
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const LINE_CACHE_MAX = 160;
   const lineCache = new Map();
   const fontRatioCache = new Map();
@@ -699,6 +697,4 @@ export function initWiringAssCanvasModule() {
     // 渲染参数快照：e2e 迁移断言用（测试看到的就是画布实际消费的值）。
     get lastRender() { return lastRender; },
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

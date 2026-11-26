@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'acorn';
 import { build } from 'esbuild';
-import { fixtureImports } from './editor-fixture-imports.mjs';
+import { fixtureFacadeForExport, fixtureImports } from './editor-fixture-imports.mjs';
 import { publishFixtureBindings } from './editor-fixture-bindings.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -82,12 +82,8 @@ export async function compileEditorFixture(files, {beforeEntry, exposed = {}} = 
           if (!/^(?:editor|shared)\//.test(file)) return;
           const resolve = specifier => path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
           const edit = fixtureImports(read(file), specifier => specifier.startsWith('.') && !files.includes(resolve(specifier)),
-            (specifier, name) => {
-              const prefix = `export function ${name}(...args) { return `;
-              const line = read(resolve(specifier)).split('\n').find(text => text.startsWith(prefix));
-              return line?.slice(prefix.length).match(/^(?:window\.)?(Mawe\w+)\./)?.[1];
-            });
-          if (files.includes(file)) publishFixtureBindings(read(file), edit);
+            (specifier, name) => fixtureFacadeForExport(read(resolve(specifier)), name, resolve(specifier)));
+          if (files.includes(file)) publishFixtureBindings(read(file), edit, { file });
           return { contents: edit.toString(), loader: 'js' };
         });
       },

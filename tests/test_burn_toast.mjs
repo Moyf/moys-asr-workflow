@@ -87,7 +87,7 @@ test('real burn flow retains independent errors and successes across consecutive
     MaweHost: host, MaweSettings: {EDITOR_SETTINGS: {assMode: false}}, location: {href: 'http://localhost/', origin: 'http://localhost'},
     URL, Uint8Array, AbortController, crypto: {getRandomValues: value => value},
   });
-  const source = initModuleSource('editor/io/editor-wiring-burn-video.js');
+  const source = initModuleSource('editor/io/editor-wiring-burn-video.js', { isolate: false });
   vm.runInContext(source, f.context);
   const button = f.document.createElement('button');
   const options = {button, label: 'burn', suggestedName: 'result.mp4', startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'test'})};
@@ -149,7 +149,7 @@ test('Launcher burn uses a task-scoped native destination and opens only a saved
       }},
     },
   });
-  vm.runInContext(initModuleSource('editor/io/editor-wiring-burn-video.js'), f.context);
+  vm.runInContext(initModuleSource('editor/io/editor-wiring-burn-video.js', { isolate: false }), f.context);
   const button = f.document.createElement('button');
   const pending = f.context.runBurnVideoJob({button, label: 'burn', suggestedName: 'old.mp4',
     startHint: 'start', successText: 'saved', buildRequest: () => ({srt: 'old'})});

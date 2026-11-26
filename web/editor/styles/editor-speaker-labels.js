@@ -18,8 +18,7 @@ import { rebuildEditorColorPalette } from './editor-colors.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweSpeakerLabels() {
-(function initMaweSpeakerLabelsFacade(global) {
-  'use strict';
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const ui = (zh, en) => MAWE_I18N?.language === 'en' ? en : zh;
 
 
@@ -238,7 +237,6 @@ export function initMaweSpeakerLabels() {
   });
 
   global.document?.addEventListener?.('mawe:languagechange', () => syncSpeakerLabelControls());
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function getSpeakerLabelSettings(...args) { return MaweSpeakerLabels.getSpeakerLabelSettings(...args); }

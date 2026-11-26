@@ -10,10 +10,9 @@ import { MaweGapPlayback } from './editor-gap-playback.js';
 import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export let MaweAudioProcessing;
 export function initEditorAudioProcessing() {
-// Project gain is separate from the player's listening volume. Loudness results
-// belong to a live server/media binding and are deliberately never persisted.
-(function initMaweAudioProcessing(global) {
-  'use strict';
+  // Project gain is separate from the player's listening volume. Loudness results
+  // belong to a live server/media binding and are deliberately never persisted.
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const MIN_GAIN = -60, MAX_GAIN = 24, PEAK_CEILING = -1;
   const NORMAL_MIN_GAIN = -6, NORMAL_MAX_GAIN = 12, TARGET_PRESETS = [-14, -16, -23];
   const routes = new WeakMap(), boundPlayers = new WeakSet();
@@ -352,6 +351,4 @@ export function initEditorAudioProcessing() {
     normalizationGain, normalizeToTarget, measure, invalidateMeasurement, applyPreview, render, init,
     setGapPlaybackMuted, scheduleGapPlaybackMute, waitForGapPlaybackSilence,
     get measurement() { return measurement; }, get measurementState() { return measurementState; } });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }

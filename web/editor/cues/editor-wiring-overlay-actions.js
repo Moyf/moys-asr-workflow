@@ -4,7 +4,7 @@
 // 读写）。
 import { MaweDom } from '../ui/editor-dom.js';
 import { MaweHint } from '../ui/editor-hint.js';
-import { MaweCuePanel } from './editor-cue-panel.js';
+import { renderAll } from './editor-cue-panel.js';
 import { MaweStickerPicker } from './editor-sticker-picker.js';
 import { overlaySticker } from './overlay-track.js';
 
@@ -30,7 +30,7 @@ document.getElementById('sticker-preview-delete')?.addEventListener('click', () 
   // 如果删除的是 head，要把所有引用它的 sticker_ref 也清掉
   MaweStickerPicker.removeStickerCascade(MaweStickerPicker.previewIdx, { overlay: overlaySticker.previewTrack === 'overlay' });
   MaweDom.stickerPreviewModal.classList.remove('show');
-  MaweCuePanel.renderAll();
+  renderAll();
   MaweHint.flashHint('已删除', 'success');
 });
 

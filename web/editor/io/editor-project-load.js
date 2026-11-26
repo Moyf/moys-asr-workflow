@@ -1,9 +1,9 @@
 import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweHost } from '../boot/editor-host.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { renderAll, commitCuePanelEdit } from '../cues/editor-cue-panel.js';
 import { MaweNavPreview } from '../cues/editor-nav-preview.js';
 import { MaweSelection } from '../cues/editor-selection.js';
-import { MaweTextCleanup } from '../cues/editor-text-cleanup.js';
+import { syncTimelineGroupRanges } from '../cues/editor-text-cleanup.js';
 import { MaweTimeline } from '../cues/editor-timeline.js';
 import { MaweWordTiming } from '../cues/editor-word-timing.js';
 import { MaweAudioProcessing } from '../media/editor-audio-processing.js';
@@ -15,7 +15,7 @@ import { MaweCommands } from '../state/editor-commands.js';
 import { MaweCoreState } from '../state/editor-core-state.js';
 import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
 import { MaweHistory } from '../state/editor-history.js';
-import { MaweProjectSettings } from '../state/editor-project-settings.js';
+import { syncControls } from '../state/editor-project-settings.js';
 import { MaweState } from '../state/editor-state.js';
 import { MaweAppearance } from '../styles/editor-appearance.js';
 import { MaweProjectFontCheck } from '../styles/editor-project-font-check.js';
@@ -41,9 +41,6 @@ import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweProjectLoad() {
   // The classic editor.js binding is local to initializeLegacy, not visible to ESM modules.
   const MULTI_SUBTITLE_UTILS = AsrEditorUtils;
-(function initMaweProjectLoad(global) {
-  'use strict';
-
   // Page-local project changes invalidate export operations waiting on a picker.
   let projectBindingEpoch = 0;
 
@@ -158,7 +155,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
   // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
   // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
-  MaweTextCleanup.syncTimelineGroupRanges();
+  syncTimelineGroupRanges();
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection();
@@ -176,8 +173,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweAssManagerWiring?.initializeProjectStyles?.();
   MaweAssManagerWiring?.syncAssStyleManager?.();
-  MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
-  MaweProjectSettings.syncControls();
+  renderAll({ waveform: 'full', preserveCueListScroll: false });
+  syncControls();
   MaweAssManagerWiring?.updateAssStyleLibraryStatus();
   MaweStickerRoot.activateProjectRoot();
   MaweState.establishProjectCheckpoint({ repaired });
@@ -376,7 +373,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
   // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板
   // 文本时，会把旧字幕写回新导入的同一下标，表现为“导入后又变回旧值”。
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   MaweCuePanelState.currentCuePanelIdx = -1;
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
@@ -444,8 +441,6 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     parseSrtSegments,
     replaceMainTrack
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function replaceMainTrack(...args) { return MaweProjectLoad.replaceMainTrack(...args); }

@@ -14,7 +14,7 @@ test('VM helper compiles every cue initializer, including aliased imports', () =
 for (const owner of ['globalThis', 'window']) {
   test(`aliased imports resolve the imported facade member on ${owner} at call time`, () => {
     const source = initModuleSource('editor/cues/editor-word-timing.js');
-    const shims = source.slice(0, source.indexOf('(function initWordTiming'));
+    const shims = source.slice(0, source.indexOf('(function runEditorFixtureInitializer'));
     const calls = [];
     const facade = { clearSelection: options => { calls.push(options); return 'cleared'; } };
     const context = { window: {} };

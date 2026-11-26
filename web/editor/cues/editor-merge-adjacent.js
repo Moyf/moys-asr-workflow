@@ -3,22 +3,12 @@ import { MaweState } from '../state/editor-state.js';
 import { MaweHint } from '../ui/editor-hint.js';
 import { MaweSelection } from './editor-selection.js';
 import { mergeExtensionSegments, mergeSegments } from './editor-segment-ops.js';
-export let MaweMergeAdjacent;
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { getOverlayTrack, mergeOverlaySegments } from './overlay-track.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
-export function initMaweMergeAdjacent() {
-'use strict';
-
 // 相邻字幕合并。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweMergeAdjacent(global) {
-  'use strict';
-
-
-
-  function mergeAdjacentSubtitle(direction) {
+export function mergeAdjacentSubtitle(direction) {
   const target = getCurrentCuePanelTarget();
   const extension = target?.kind === 'extension';
   const overlay = target?.kind === 'overlay';
@@ -45,12 +35,3 @@ export function initMaweMergeAdjacent() {
   mergeSegments(indices);
   return true;
 }
-
-  MaweMergeAdjacent = Object.freeze({
-    mergeAdjacentSubtitle
-  });
-
-})(typeof window !== 'undefined' ? window : globalThis);
-}
-
-export function mergeAdjacentSubtitle(...args) { return MaweMergeAdjacent.mergeAdjacentSubtitle(...args); }

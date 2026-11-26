@@ -73,7 +73,7 @@ test('loaded font aliases invalidate the paused preview plan before its first re
     }) }),
   };
   vm.createContext(exposeWindowGlobals(context));
-  vm.runInContext(initModuleSource('editor/styles/editor-wiring-ass-preview.js'), context);
+  vm.runInContext(initModuleSource('editor/styles/editor-wiring-ass-preview.js', { isolate: false }), context);
   vm.runInContext("cachedAssStackKey = 'old'; assPreviewFontMetrics.set('old', 1)", context);
   let refreshed = false;
   context.window.MawePlaybackLoop = { refreshSubtitlePreview() {

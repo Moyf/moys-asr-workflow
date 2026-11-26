@@ -7,8 +7,6 @@ import { MaweState } from '../state/editor-state.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export let MaweProcessing;
 export function initMaweTextPresets() {
-(function initProcessing(global) {
-  'use strict';
   const schema = 'moy.asr.text_processing_presets.v2';
   const key = 'moy.asr.text_processing_presets.v1';
   const joinDefaults = Object.freeze({
@@ -236,8 +234,6 @@ export function initMaweTextPresets() {
     get portable() { return !endpoint(); },
     get effectiveJoin() { return projectOverride('join') || library.join || legacyJoin() || joinDefaults; },
   });
-
-})(window);
 }
 
 export function refresh(...args) { return MaweProcessing.refresh(...args); }

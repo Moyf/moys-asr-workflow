@@ -15,11 +15,6 @@ import { isHiddenDisabled, selectOnly, selectOnlyExtension } from './editor-sele
 // 由 split-cluster codemod 自 editor.js 拆出。
 
 export function initMaweCueListAnchor() {
-(function initMaweCueListAnchor(global) {
-  'use strict';
-
-
-
   // === 滚动 ===
   function cueListVisibleBounds() {
     const containerRect = MaweCoreState.container.getBoundingClientRect();
@@ -363,8 +358,6 @@ export function initMaweCueListAnchor() {
     scrollCueToCenter,
     scrollCueIntoViewIfNeeded
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function setCueListFollowing(...args) { return MaweCueListAnchor.setCueListFollowing(...args); }

@@ -1,6 +1,6 @@
 import { MaweBoot } from '../boot/editor-boot.js';
 import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
-import { MaweCuePanel } from '../cues/editor-cue-panel.js';
+import { renderCurrentCuePanel, renderAll } from '../cues/editor-cue-panel.js';
 import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
 import { MaweSelection } from '../cues/editor-selection.js';
 import { MaweWordTiming } from '../cues/editor-word-timing.js';
@@ -18,7 +18,7 @@ import { MaweHint } from '../ui/editor-hint.js';
 import { MaweCoreState } from './editor-core-state.js';
 import { MaweCuePanelState } from './editor-cue-panel-state.js';
 import { MaweMultiSubtitleCore } from './editor-multi-subtitle-core.js';
-import { MaweProjectSettings } from './editor-project-settings.js';
+import { syncControls } from './editor-project-settings.js';
 import { MaweSettings } from './editor-settings.js';
 import { MaweState } from './editor-state.js';
 import { MaweViewUpdates } from './editor-view-updates.js';
@@ -29,15 +29,8 @@ import { afterExternalMarkersChange } from '../markers/editor-marker-editing.js'
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweHistory() {
-'use strict';
-
-// 撤销/重做：历史栈、快照与各类型记录的入栈恢复。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweHistory(global) {
-  'use strict';
-
-
-
+  // 撤销/重做：历史栈、快照与各类型记录的入栈恢复。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // === 统一撤销/重做 ===
   // 四种记录 kind 共享一个历史栈：
   //   segments   —— 字幕增删改、拆分合并、表情包/颜色、批量替换等
@@ -149,7 +142,7 @@ export function initMaweHistory() {
     if (state.extensionSubtitle) MaweAppearance.restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
     if (state.sticker) MawePreviewGeometry.setStickerGeometry(state.sticker, { markDirty: true });
     if (typeof state.assMode === 'boolean') MaweSettings.updateEditorSettings({ assMode: state.assMode });
-    MaweProjectSettings?.syncControls();
+    syncControls?.();
     MawePreviewGeometry.refreshPreviewGeometryEditable();
     MawePlaybackLoop.update();
   }
@@ -205,7 +198,7 @@ export function initMaweHistory() {
   });
   MaweSelection.updateMultiSelectionClasses();
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.renderCurrentCuePanel();
+  renderCurrentCuePanel();
 }
 
 
@@ -260,7 +253,7 @@ export function initMaweHistory() {
   MawePlaybackLoop.lastActive = -1;
   const structureChanged = previousWaveformStructure
     !== MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
-  MaweCuePanel.renderAll({
+  renderAll({
     waveform: structureChanged ? 'full' : 'overlay',
     cueListAnchor,
   });
@@ -380,8 +373,6 @@ export function initMaweHistory() {
     redoBtn,
     updateUndoRedoButtons
   });
-
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
 export function captureSegmentsRecord(...args) { return MaweHistory.captureSegmentsRecord(...args); }

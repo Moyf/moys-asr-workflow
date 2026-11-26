@@ -5,99 +5,91 @@ import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
 import { MaweContextMenus } from '../ui/editor-context-menus.js';
 import { MaweHint } from '../ui/editor-hint.js';
 import { scrollCueToCenter } from './editor-cue-list-anchor.js';
-export let MaweAddCue;
 import { timelineFrameAlignedMilliseconds } from './editor-timeline.js';
 import { commitCuePanelEdit, focusCuePanelText, setCurrentCuePanelExtensionIndex } from './editor-cue-panel.js';
 import { clearSelection, selectOnly, selectOnlyExtension } from './editor-selection.js';
 import { getOverlayTrack, addOverlayRangeFromWaveform } from './overlay-track.js';
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
-export function initMaweAddCue() {
-'use strict';
-
 // 波形空白处新增主/副字幕。
-// 由 split-cluster codemod 自 editor.js 拆出。
-(function initMaweAddCue(global) {
-  'use strict';
-
   // 创建空字幕后的编辑入口：优先在新字幕块上方弹出快速编辑气泡（与
   // 双击波形字幕块一致）；气泡彻底打不开时回退聚焦下方字幕面板文本框。
-  function editNewCue(track, index, fallback) {
-    const editor = MaweCoreState.waveformEditor;
-    if (editor?.openCueQuickEditAtIndex) editor.openCueQuickEditAtIndex(track, index, fallback);
-    else fallback();
-  }
+function editNewCue(track, index, fallback) {
+  const editor = MaweCoreState.waveformEditor;
+  if (editor?.openCueQuickEditAtIndex) editor.openCueQuickEditAtIndex(track, index, fallback);
+  else fallback();
+}
 
 
 
   // === 从波形空白处新增字幕 ===
-  function addExtensionRangeFromWaveform(
-    requestedStart,
-    requestedEnd,
-    clickX,
-    clickY,
-    track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
-  ) {
-    const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
-    if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    if (!track?.segments) { MaweHint.flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
-    requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
-    requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
-    const start = Math.min(requestedStart, requestedEnd);
-    const end = Math.max(requestedStart, requestedEnd);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (track.segments.some((segment) => start < segment.end && end > segment.start)) {
-      MaweHint.flashHint('拖动范围包含已有副字幕，无法新增副字幕', 'warning');
-      return;
-    }
-    const insertAt = track.segments.findIndex((segment) => segment.start > start);
-    const index = insertAt < 0 ? track.segments.length : insertAt;
-    const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
-    const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
-    const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
-    const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
-    if (safeEnd - safeStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS) {
-      MaweHint.flashHint('该空白区域不足 100ms，无法新增副字幕', 'warning');
-      return;
-    }
-    commitCuePanelEdit();
-    return MaweCommands.run('新增副字幕', (command) => {
-      track.segments.splice(index, 0, {
-        id: AsrEditorUtils.uniqueStableSegmentId(
-          AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${track.id}-${index + 1}`, 'extension'),
-        start: safeStart,
-        end: safeEnd,
-        text: '',
-        items: [],
-        _dirty: true,
-      });
-      // 副轨 color_ref 是数组下标引用：插入点及其后的 head 右移一位。
-      AsrEditorUtils.shiftGroupReferenceIndices(track.segments, index, 1);
-      MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      clearSelection({ silent: true });
-      command.commit({ cueList: true, preserveCueListScroll: false });
-      selectOnlyExtension(index, track);
-      const extensionText = MaweCoreState.container.querySelector(
-        `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
-          + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
-      );
-      if (extensionText) {
-        const cue = extensionText.closest('.cue');
-        if (cue) scrollCueToCenter(cue);
-      }
-      // 拖动创建后在新字幕块上方弹出快速编辑气泡（与双击波形块一致），
-      // 视线自然落在「新建条目 → 直接打字」的路径上；打不开时回退聚焦
-      // 下方副字幕编辑区。
-      setCurrentCuePanelExtensionIndex(index, track);
-      editNewCue('extension', index, () => focusCuePanelText(index, 'extension'));
-      MaweCoreState.waveformEditor?.revealTime(safeStart, true);
-      MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
-    });
+export function addExtensionRangeFromWaveform(
+  requestedStart,
+  requestedEnd,
+  clickX,
+  clickY,
+  track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
+) {
+  const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
+  if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
+  if (!track?.segments) { MaweHint.flashHint('当前没有可用的副字幕轨', 'invalid'); return; }
+  requestedStart = timelineFrameAlignedMilliseconds(requestedStart);
+  requestedEnd = timelineFrameAlignedMilliseconds(requestedEnd);
+  const start = Math.min(requestedStart, requestedEnd);
+  const end = Math.max(requestedStart, requestedEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+  if (track.segments.some((segment) => start < segment.end && end > segment.start)) {
+    MaweHint.flashHint('拖动范围包含已有副字幕，无法新增副字幕', 'warning');
+    return;
   }
+  const insertAt = track.segments.findIndex((segment) => segment.start > start);
+  const index = insertAt < 0 ? track.segments.length : insertAt;
+  const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
+  const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
+  const safeStart = Math.max(previousEnd, Math.min(duration, Math.round(start / 10) * 10));
+  const safeEnd = Math.min(nextStart, Math.max(safeStart, Math.round(end / 10) * 10));
+  if (safeEnd - safeStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS) {
+    MaweHint.flashHint('该空白区域不足 100ms，无法新增副字幕', 'warning');
+    return;
+  }
+  commitCuePanelEdit();
+  return MaweCommands.run('新增副字幕', (command) => {
+    track.segments.splice(index, 0, {
+      id: AsrEditorUtils.uniqueStableSegmentId(
+        AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${track.id}-${index + 1}`, 'extension'),
+      start: safeStart,
+      end: safeEnd,
+      text: '',
+      items: [],
+      _dirty: true,
+    });
+    // 副轨 color_ref 是数组下标引用：插入点及其后的 head 右移一位。
+    AsrEditorUtils.shiftGroupReferenceIndices(track.segments, index, 1);
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    clearSelection({ silent: true });
+    command.commit({ cueList: true, preserveCueListScroll: false });
+    selectOnlyExtension(index, track);
+    const extensionText = MaweCoreState.container.querySelector(
+      `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
+        + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
+    );
+    if (extensionText) {
+      const cue = extensionText.closest('.cue');
+      if (cue) scrollCueToCenter(cue);
+    }
+    // 拖动创建后在新字幕块上方弹出快速编辑气泡（与双击波形块一致），
+    // 视线自然落在「新建条目 → 直接打字」的路径上；打不开时回退聚焦
+    // 下方副字幕编辑区。
+    setCurrentCuePanelExtensionIndex(index, track);
+    editNewCue('extension', index, () => focusCuePanelText(index, 'extension'));
+    MaweCoreState.waveformEditor?.revealTime(safeStart, true);
+    MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
+  });
+}
 
 
 
-  function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, track = 'main') {
+export function addCueRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY, track = 'main') {
   if (track === 'extension') {
     addExtensionRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY);
     return;
@@ -157,110 +149,95 @@ export function initMaweAddCue() {
 
 
 
-  function addCueAtWaveformTime(timeMs, clickX, clickY) {
-    const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
-    if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    timeMs = timelineFrameAlignedMilliseconds(timeMs);
-    if (MaweContextMenus.findWaveformCueAtTime(timeMs) >= 0) {
-      MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
-      return;
-    }
-    const insertAt = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment.start > timeMs);
-    const index = insertAt < 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length : insertAt;
-    const previousEnd = index > 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index - 1].end : 0;
-    const nextStart = index < AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index].start : duration;
-    if (timeMs < previousEnd) {
-      MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
-      return;
-    }
-    const gap = nextStart - previousEnd;
-    if (gap < 100) {
-      MaweHint.flashHint('这里没有足够的空白区域', 'warning');
-      return;
-    }
-    const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
-    const end = Math.min(nextStart, start + 1000);
-    const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
-    addCueRangeFromWaveform(adjustedStart, end, clickX, clickY);
+export function addCueAtWaveformTime(timeMs, clickX, clickY) {
+  const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
+  if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
+  if (MaweContextMenus.findWaveformCueAtTime(timeMs) >= 0) {
+    MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
+    return;
   }
-
-
-
-  function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
-    if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
-    timeMs = timelineFrameAlignedMilliseconds(timeMs);
-    if (!track || !Array.isArray(track.segments)) {
-      MaweHint.flashHint('当前没有可用的副字幕轨', 'invalid');
-      return;
-    }
-    const insertAt = track.segments.findIndex((segment) => Number(segment.start) > timeMs);
-    const index = insertAt < 0 ? track.segments.length : insertAt;
-    const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
-    const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
-    if (timeMs < previousEnd || timeMs > nextStart) {
-      MaweHint.flashHint('当前位置已有副字幕，请先调整相邻字幕时间', 'invalid');
-      return;
-    }
-    const gap = nextStart - previousEnd;
-    if (gap < 100) {
-      MaweHint.flashHint('这里没有足够的空白区域', 'warning');
-      return;
-    }
-    const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
-    const end = Math.min(nextStart, start + 1000);
-    const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
-    if (end - adjustedStart < 100) {
-      MaweHint.flashHint('这里没有足够的空白区域', 'warning');
-      return;
-    }
-    return MaweCommands.run('新增副字幕', (command) => {
-      const segment = {
-        id: AsrEditorUtils.uniqueStableSegmentId(
-          AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
-          `${track.id}-segment-${index + 1}`,
-          'extension',
-        ),
-        start: adjustedStart,
-        end,
-        text: '',
-        _dirty: true,
-      };
-      track.segments.splice(index, 0, segment);
-      // 副轨 color_ref 是数组下标引用：插入点及其后的 head 右移一位。
-      AsrEditorUtils.shiftGroupReferenceIndices(track.segments, index, 1);
-      MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      clearSelection();
-      command.commit({ cueList: true, preserveCueListScroll: false });
-      selectOnlyExtension(index);
-      const extensionText = MaweCoreState.container.querySelector(
-        `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
-          + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
-      );
-      if (extensionText) {
-        const cue = extensionText.closest('.cue');
-        if (cue) scrollCueToCenter(cue);
-      }
-      // 与拖动创建一致：弹出快速编辑气泡直接输入文本，打不开时回退聚焦
-      // 下方副字幕编辑区。
-      setCurrentCuePanelExtensionIndex(index, track);
-      editNewCue('extension', index, () => focusCuePanelText(index, 'extension'));
-      MaweCoreState.waveformEditor?.revealTime(adjustedStart, true);
-      MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
-    });
+  const insertAt = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment.start > timeMs);
+  const index = insertAt < 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length : insertAt;
+  const previousEnd = index > 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index - 1].end : 0;
+  const nextStart = index < AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index].start : duration;
+  if (timeMs < previousEnd) {
+    MaweHint.flashHint('当前位置已有字幕，请使用“按音频位置拆分当前字幕”', 'invalid');
+    return;
   }
-
-  MaweAddCue = Object.freeze({
-    addExtensionRangeFromWaveform,
-    addCueRangeFromWaveform,
-    addCueAtWaveformTime,
-    addExtensionAtWaveformTime
-  });
-
-})(typeof window !== 'undefined' ? window : globalThis);
+  const gap = nextStart - previousEnd;
+  if (gap < 100) {
+    MaweHint.flashHint('这里没有足够的空白区域', 'warning');
+    return;
+  }
+  const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
+  const end = Math.min(nextStart, start + 1000);
+  const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
+  addCueRangeFromWaveform(adjustedStart, end, clickX, clickY);
 }
 
-export function addExtensionRangeFromWaveform(...args) { return MaweAddCue.addExtensionRangeFromWaveform(...args); }
-export function addCueRangeFromWaveform(...args) { return MaweAddCue.addCueRangeFromWaveform(...args); }
-export function addCueAtWaveformTime(...args) { return MaweAddCue.addCueAtWaveformTime(...args); }
-export function addExtensionAtWaveformTime(...args) { return MaweAddCue.addExtensionAtWaveformTime(...args); }
+
+
+export function addExtensionAtWaveformTime(timeMs, clickX, clickY, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
+  const duration = MaweCoreState.waveformEditor?.durationMs || (Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration * 1000 : 0);
+  if (!duration) { MaweHint.flashHint('媒体时长尚未加载', 'invalid'); return; }
+  timeMs = timelineFrameAlignedMilliseconds(timeMs);
+  if (!track || !Array.isArray(track.segments)) {
+    MaweHint.flashHint('当前没有可用的副字幕轨', 'invalid');
+    return;
+  }
+  const insertAt = track.segments.findIndex((segment) => Number(segment.start) > timeMs);
+  const index = insertAt < 0 ? track.segments.length : insertAt;
+  const previousEnd = index > 0 ? Number(track.segments[index - 1].end) : 0;
+  const nextStart = index < track.segments.length ? Number(track.segments[index].start) : duration;
+  if (timeMs < previousEnd || timeMs > nextStart) {
+    MaweHint.flashHint('当前位置已有副字幕，请先调整相邻字幕时间', 'invalid');
+    return;
+  }
+  const gap = nextStart - previousEnd;
+  if (gap < 100) {
+    MaweHint.flashHint('这里没有足够的空白区域', 'warning');
+    return;
+  }
+  const start = Math.max(previousEnd, Math.min(Math.round(timeMs / 10) * 10, nextStart - 100));
+  const end = Math.min(nextStart, start + 1000);
+  const adjustedStart = end - start >= 100 ? start : Math.max(previousEnd, nextStart - 1000);
+  if (end - adjustedStart < 100) {
+    MaweHint.flashHint('这里没有足够的空白区域', 'warning');
+    return;
+  }
+  return MaweCommands.run('新增副字幕', (command) => {
+    const segment = {
+      id: AsrEditorUtils.uniqueStableSegmentId(
+        AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
+        `${track.id}-segment-${index + 1}`,
+        'extension',
+      ),
+      start: adjustedStart,
+      end,
+      text: '',
+      _dirty: true,
+    };
+    track.segments.splice(index, 0, segment);
+    // 副轨 color_ref 是数组下标引用：插入点及其后的 head 右移一位。
+    AsrEditorUtils.shiftGroupReferenceIndices(track.segments, index, 1);
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+    clearSelection();
+    command.commit({ cueList: true, preserveCueListScroll: false });
+    selectOnlyExtension(index);
+    const extensionText = MaweCoreState.container.querySelector(
+      `.multi-extension-cue[data-ext-idx="${index}"] .multi-cue-column.extension, `
+        + `.multi-dual-cue[data-ext-idx="${index}"] .multi-cue-column.extension`,
+    );
+    if (extensionText) {
+      const cue = extensionText.closest('.cue');
+      if (cue) scrollCueToCenter(cue);
+    }
+    // 与拖动创建一致：弹出快速编辑气泡直接输入文本，打不开时回退聚焦
+    // 下方副字幕编辑区。
+    setCurrentCuePanelExtensionIndex(index, track);
+    editNewCue('extension', index, () => focusCuePanelText(index, 'extension'));
+    MaweCoreState.waveformEditor?.revealTime(adjustedStart, true);
+    MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
+  });
+}

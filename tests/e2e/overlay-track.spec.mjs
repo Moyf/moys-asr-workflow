@@ -756,7 +756,8 @@ test('splits and merges overlay cues with group marks following', async ({ page 
 
   // 合并：同组的两条叠加字幕合并后继承该组。
   await page.evaluate(() => MaweCuePanel.setCuePanelTarget('overlay', 0));
-  await page.evaluate(() => MaweMergeAdjacent.mergeAdjacentSubtitle(1));
+  await page.locator('#cues-container').focus();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+d' : 'Control+Shift+d');
   const afterMerge = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(renderedSegments(afterMerge, 'overlay')).toHaveLength(1);
   expect(renderedSegments(afterMerge, 'overlay')[0].text).toContain('hello');
