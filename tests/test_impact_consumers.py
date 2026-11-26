@@ -110,6 +110,13 @@ class ConsumerSelectionTests(unittest.TestCase):
         plan = impact.select_packs(['web/editor/media/editor-ass-preview-refresh.js'])
         self.assertIn('tests/e2e/ass-preview-geometry.spec.mjs', plan['e2e_specs'])
 
+    def test_adjacent_merge_selects_overlay_shortcut_behavior(self):
+        for path in ('web/editor/cues/editor-merge-adjacent.js',
+                     'web/editor/cues/editor-wiring-edit-shortcuts.js'):
+            with self.subTest(path=path):
+                plan = impact.select_packs([path])
+                self.assertIn('tests/e2e/overlay-track.spec.mjs', plan['e2e_specs'])
+
     def test_save_primary_flows_without_secondary_heavy_consumers(self):
         plan = impact.select_packs(['web/editor/io/editor-project-save.js'])
         self.assertIn('tests/test_project_save_state.mjs', plan['node_tests'])

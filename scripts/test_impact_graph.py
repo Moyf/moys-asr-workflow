@@ -740,8 +740,16 @@ def node_python_dependencies(root: Path, tests: set[str]) -> bool:
     return False
 
 
+# The overlay spec dispatches Ctrl/Cmd+Shift+D through the installed shortcut
+# handler, so it has no source-level reference to either module in that path.
+EDITOR_SHORTCUT_SPECS = {
+    'web/editor/cues/editor-merge-adjacent.js': 'tests/e2e/overlay-track.spec.mjs',
+    'web/editor/cues/editor-wiring-edit-shortcuts.js': 'tests/e2e/overlay-track.spec.mjs',
+}
+
+
 def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]]:
-    """Discover tests exercising a module's DOM IDs or published facade."""
+    """Find tests exercising browser interactions or a published facade."""
     tests = root / 'tests'
     fixture_bindings = tests / 'helpers/editor-fixture-bindings.mjs'
     try:
@@ -761,6 +769,9 @@ def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]
             source = file.read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             continue
+        shortcut_spec = EDITOR_SHORTCUT_SPECS.get(path)
+        if shortcut_spec in texts:
+            consumers.add(shortcut_spec)
         ids = set(re.findall(
             r'''(?:const|let|var)\s+\w+\s*=\s*(?:/\*\*\s*@type[^\n]*?\*/\s*\(\s*)?'''
             r'''document\.getElementById\(\s*["']([\w-]+)["']''', source))
