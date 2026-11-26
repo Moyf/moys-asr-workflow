@@ -63,11 +63,16 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('opening focus preserves an early search and ignores a closed dialog', async ({ page }) => {
+async function openWithPausedClock(page) {
+  const clockStart = Date.now();
+  await page.clock.install({time: clockStart});
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.pauseAt(clockStart + 60_000);
+}
+
+test('opening focus preserves an early search and ignores a closed dialog', async ({ page }) => {
+  await openWithPausedClock(page);
   await page.locator('#timed-text-edit-btn').click();
   await page.keyboard.press('Control+f');
   const search = page.locator('#timed-text-edit-find');
@@ -84,10 +89,7 @@ test('opening focus preserves an early search and ignores a closed dialog', asyn
 });
 
 test('rapid reopen locates the newly selected cue rather than the previous one', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
-  await page.goto(server.url);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await openWithPausedClock(page);
   await page.evaluate(() => {
     MaweBoot.DATA.timed_text_edit_view = 'single';
     MaweSelection.selectOnly(0);
@@ -108,10 +110,7 @@ test('rapid reopen locates the newly selected cue rather than the previous one',
 });
 
 test('view focus follows mouse and keyboard without overriding a later selection', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
-  await page.goto(server.url);
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await openWithPausedClock(page);
   await page.locator('#timed-text-edit-btn').click();
   await page.clock.runFor(50);
   const single = page.locator('#timed-text-edit-view [data-view="single"]');
