@@ -313,18 +313,20 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
         self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
-        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
-        self.assertEqual(plan["steps"][0]["preservePunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
+        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";", "?", "!"])
+        self.assertEqual(plan["steps"][0]["preservePunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";", "?", "!"])
         self.assertFalse(plan["steps"][0]["cleanMarkdownSymbols"])
         self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
 
     def test_normalize_plan_migrates_legacy_preserved_question_marks(self) -> None:
         plan = default_postprocess_plan()
+        plan["version"] = 1
         plan["steps"][0]["extraSplitPunctuation"] = []
+        plan["steps"][0]["preservePunctuation"] = ["？", "！"]
 
         normalized = normalize_plan(plan)
 
-        self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
+        self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！", "，", "。", "；", ",", ".", ";", "?", "!"])
 
     def test_normalize_plan_migrates_v1_plan_to_full_default_split_symbols(self) -> None:
         # v1 计划依赖隐式基础断句集（，。,.）；迁移把默认清单一次性并入，
@@ -346,7 +348,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(
             normalized["steps"][0]["extraSplitPunctuation"],
-            ["？", "！", ",", "，", "。", "；", ".", ";"],
+            ["？", "！", ",", "，", "。", "；", ".", ";", "?", "!"],
         )
 
     def test_normalize_plan_keeps_customized_current_plan_split_symbols(self) -> None:
@@ -1609,7 +1611,7 @@ class PostprocessPreflightTests(CompactContainerAssertions, unittest.TestCase):
     def test_default_plan_preserves_all_punctuation_for_transcription(self) -> None:
         self.assertEqual(
             default_postprocess_plan()["steps"][0]["preservePunctuation"],
-            ["，", "。", "？", "！", "；", ",", ".", ";"],
+            ["，", "。", "？", "！", "；", ",", ".", ";", "?", "!"],
         )
         # 新设置保留全部标点，已存配置仍按用户列表派生。
         self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "")
@@ -1619,19 +1621,19 @@ class PostprocessPreflightTests(CompactContainerAssertions, unittest.TestCase):
         plan["steps"][0]["preservePunctuation"] = ["。"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.;")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.;?!")
 
         plan["steps"][0]["preservePunctuation"] = ["。", "，"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.;")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.;?!")
 
     def test_saved_old_default_preserve_list_is_not_guessed_or_replaced(self) -> None:
         plan = default_postprocess_plan()
         plan["steps"][0]["preservePunctuation"] = ["？", "！"]
         save_postprocess_plan(self.env_path, plan)
         self.assertEqual(normalize_plan(plan)["steps"][0]["preservePunctuation"], ["？", "！"])
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.;")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.;?!")
         plan["steps"][0]["preservePunctuation"] = []
         save_postprocess_plan(self.env_path, plan)
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。？！；,.;")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。？！；,.;?!")

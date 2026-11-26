@@ -6294,7 +6294,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            'matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: false',
+            'matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";", "?", "!"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";", "?", "!"], cleanMarkdownSymbols: false',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)

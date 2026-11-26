@@ -416,6 +416,21 @@ class CjkNaturalLimitTests(unittest.TestCase):
 
 
 class WesternSplitTests(unittest.TestCase):
+    def test_plural_possessives_do_not_form_a_quote_across_sentence_boundaries(self) -> None:
+        items = CjkWordBoundaryTests.items(["The", " teachers'", " room.", " The", " students'", " room."])
+        self.assertEqual([s["text"] for s in split_words_to_segments_western(items)],
+                         ["The teachers' room.", " The students' room."])
+
+    def test_default_ascii_sentence_ends_can_be_disabled_explicitly(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        items = CjkWordBoundaryTests.items(["What", " happened?", " Oh", " no!", " Please", " tell me."])
+        segmentation.configure_extra_strong_punct(None)
+        self.assertEqual([s["text"] for s in split_words_to_segments_western(items)],
+                         ["What happened?", " Oh no!", " Please tell me."])
+        segmentation.configure_extra_strong_punct("")
+        self.assertEqual([s["text"] for s in split_words_to_segments_western(items)],
+                         ["What happened? Oh no! Please tell me."])
+
     def test_western_keeps_consecutive_terminal_marks_in_one_cue(self) -> None:
         self.addCleanup(segmentation.configure_extra_strong_punct, None)
         segmentation.configure_extra_strong_punct("?")
@@ -529,6 +544,32 @@ class WesternSplitTests(unittest.TestCase):
 
 
 class CoarsePunctuationTests(unittest.TestCase):
+    def test_coarse_straight_opening_quote_stays_with_the_next_cue(self) -> None:
+        cue = {"text": '前一句。"后一句。"', "start": 0, "end": 1200}
+        pieces = segmentation.split_coarse_segments(
+            [cue], max_len=18, min_len=5, gap_split_ms=500, split_mode="continuous",
+        )
+        self.assertEqual([p["text"] for p in pieces], ["前一句。", '"后一句。"'])
+        self.assertTrue(all("items" not in p for p in pieces))
+
+    def test_coarse_straight_closing_quote_stays_with_the_previous_cue(self) -> None:
+        for quote in ('"', "'"):
+            with self.subTest(quote=quote):
+                before = f"他说{quote}好了。{quote}"
+                cue = {"text": before + "接着说", "start": 0, "end": 1200}
+                pieces = segmentation.split_coarse_segments(
+                    [cue], max_len=18, min_len=5, gap_split_ms=500, split_mode="continuous",
+                )
+                self.assertEqual([p["text"] for p in pieces], [before, "接着说"])
+                self.assertTrue(all("items" not in p for p in pieces))
+
+    def test_coarse_single_quote_pair_skips_the_apostrophe_inside_a_contraction(self) -> None:
+        cue = {"text": "前一句。'Don't stop。'接着说", "start": 0, "end": 1200}
+        pieces = segmentation.split_coarse_segments(
+            [cue], max_len=18, min_len=5, gap_split_ms=500, split_mode="continuous",
+        )
+        self.assertEqual([p["text"] for p in pieces], ["前一句。", "'Don't stop。'", "接着说"])
+
     def test_coarse_opening_dash_stays_with_the_next_cue(self) -> None:
         cue = {"text": "前一句。——下一句", "start": 0, "end": 1200}
         pieces = segmentation.split_coarse_segments(

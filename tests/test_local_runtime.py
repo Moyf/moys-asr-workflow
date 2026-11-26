@@ -39,6 +39,9 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "asr" / "local.py",
                 asr_root / "local.py",
             )
+            source_package = Path(__file__).resolve().parents[1] / "maw"
+            for relative in ("asr/segmentation.py", "colors.py", "speaker.py", "subtitle_segmentation.py"):
+                shutil.copyfile(source_package / relative, package_root / relative)
             (package_root / "__init__.py").write_text("\n", encoding="utf-8")
             shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "maw" / "ffmpeg.py",
@@ -112,6 +115,7 @@ class LocalRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("usage:", result.stdout.lower())
+        self.assertIn("--extra-strong-punct", result.stdout)
 
     def test_local_entry_imports_without_rust_kernel(self) -> None:
         """Issue 96 回归：托管 Runtime 未装 Rust 波形内核（reapeaks）时，转写入口必须可导入。

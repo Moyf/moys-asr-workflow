@@ -30,7 +30,7 @@ def protected_offsets(text: str) -> set[int]:
     }
 
 
-_QUOTE_PAIRS = {"“": "”", "‘": "’", "「": "」", "『": "』", '"': '"'}
+_QUOTE_PAIRS = {"“": "”", "‘": "’", "「": "」", "『": "』", '"': '"', "'": "'"}
 
 
 def _is_body_character(char: str) -> bool:
@@ -47,6 +47,34 @@ def body_character_offsets(text: str) -> list[int]:
     return list(accumulate(map(_is_body_character, text), initial=0))
 
 
+def _paired_quote_spans(text: str) -> list[tuple[int, int]]:
+    stack: list[tuple[str, int]] = []
+    spans = []
+    for index, char in enumerate(text):
+        if char in {"'", "’"} and index:
+            left, right = text[index - 1], text[index + 1:index + 2]
+            ascii_word_end = left.isascii() and left.isalnum()
+            in_ascii_word = right.isascii() and right.isalnum()
+            can_close = bool(stack and stack[-1][0] == char)
+            if ascii_word_end and (in_ascii_word or not can_close):
+                continue  # Don't open quotes on contractions or trailing possessives.
+        if char == "\n":
+            stack.clear()
+        elif stack and char == stack[-1][0]:
+            _, start = stack.pop()
+            spans.append((start, index + 1))
+        elif char in _QUOTE_PAIRS:
+            stack.append((_QUOTE_PAIRS[char], index))
+    return spans
+
+
+def straight_quote_closing_offsets(text: str) -> set[int]:
+    """Return the source offsets immediately after paired straight closing quotes."""
+    if '"' not in text and "'" not in text:
+        return set()
+    return {end for start, end in _paired_quote_spans(text) if text[start] in {'"', "'"}}
+
+
 def fitting_quote_offsets(
     items: list[dict], maximum: int, *, by_word: bool = False,
 ) -> tuple[set[int], set[int]]:
@@ -59,29 +87,25 @@ def fitting_quote_offsets(
             offsets.append(offsets[-1] + len(item["text"]))
     else:
         body_offsets = body_character_offsets(text)
-    stack: list[tuple[str, int]] = []
     inside, closings = set(), set()
-    for index, char in enumerate(text):
-        if char == "\n":
-            stack.clear()
-        elif stack and char == stack[-1][0]:
-            _, start = stack.pop()
-            end = index + 1
-            if body_offsets is not None:
-                length = body_offsets[end] - body_offsets[start]
-            else:
-                length = bisect_left(offsets, end) - (bisect_right(offsets, start) - 1)
-            if length <= maximum:
-                inside.update(range(start + 1, end))
-                closings.add(end)
-        elif char in _QUOTE_PAIRS:
-            stack.append((_QUOTE_PAIRS[char], index))
+    for start, end in _paired_quote_spans(text):
+        if body_offsets is not None:
+            length = body_offsets[end] - body_offsets[start]
+        else:
+            length = bisect_left(offsets, end) - (bisect_right(offsets, start) - 1)
+        if length <= maximum:
+            inside.update(range(start + 1, end))
+            closings.add(end)
     return inside, closings
 
 
-def is_punctuation_continuation(char: str, punctuation: set[str]) -> bool:
+def is_punctuation_continuation(
+    char: str, punctuation: set[str], *, following: str = "", closes_quote: bool = False,
+) -> bool:
     """Marks/closing quotes that belong to the same terminal punctuation run."""
     category = unicodedata.category(char)
+    if char in {'"', "'"} and following.isalnum() and not closes_quote:
+        return False  # A straight quote before a word opens the next clause.
     # Dashes and signs can start the next clause or number; they do not
     # run on from a preceding sentence mark.
     return char not in "\n+−" and category not in {"Ps", "Pi", "Pd"} and (
@@ -95,6 +119,7 @@ def punctuation_item_ends(
     """Keep decimal / version / numeric separators out of punctuation pre-cuts."""
     joined = "".join(item["text"] for item in items)
     protected = protected_offsets(joined)
+    closing_quotes = straight_quote_closing_offsets(joined)
     quoted, _ = fitting_quote_offsets(items, quote_limit, by_word=by_word) if quote_limit is not None else (set(), set())
     result, offset = set(), 0
     for index, item in enumerate(items):
@@ -120,10 +145,10 @@ def punctuation_item_ends(
         next_offset = item_end
         while next_offset < len(joined) and joined[next_offset] in " \t\r":
             next_offset += 1
-        continues = next_offset < len(joined) and is_punctuation_continuation(joined[next_offset], punctuation)
-        if continues and joined[next_offset] in {'"', "'"}:
-            # A straight quote before a word opens the next clause.
-            continues = next_offset + 1 == len(joined) or not joined[next_offset + 1].isalnum()
+        continues = next_offset < len(joined) and is_punctuation_continuation(
+            joined[next_offset], punctuation, following=joined[next_offset + 1:next_offset + 2],
+            closes_quote=next_offset + 1 in closing_quotes,
+        )
         if newline_end or (
             exact and not continues and item_end not in protected and item_end not in quoted
         ):

@@ -21,6 +21,7 @@ from maw.subtitle_segmentation import (
     punctuation_item_ends,
     rebalance_short_groups,
     split_long_items,
+    straight_quote_closing_offsets,
 )
 
 
@@ -30,7 +31,7 @@ from maw.subtitle_segmentation import (
 # 模块默认值与 CLI 参数默认值、Launcher 默认计划保持一致（无隐式内置
 # 强标点）；configure_extra_strong_punct 按运行时配置整体覆盖，空集合 =
 # 仅按换行断句。
-_DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,.;"
+_DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,.;?!"
 _DEFAULT_STRIP_TAIL_PUNCT = ""
 _EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not ch.isspace()}
 
@@ -649,11 +650,15 @@ def build_interpolated_items(
 
     breaks = _strong_punct_set("\n")
     protected = protected_offsets(clean)
+    closing_quotes = straight_quote_closing_offsets(clean)
     pieces: list[str] = []
     buf = ""
     pending_break = False
     for index, ch in enumerate(clean, 1):
-        if pending_break and not is_punctuation_continuation(ch, breaks) and ch not in " \t\r":
+        following = clean[index] if index < len(clean) else ""
+        if pending_break and ch not in " \t\r" and not is_punctuation_continuation(
+            ch, breaks, following=following, closes_quote=index in closing_quotes,
+        ):
             pieces.append(buf)
             buf = ""
             pending_break = False
