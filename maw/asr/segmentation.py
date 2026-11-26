@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re as _re
+from argparse import ArgumentParser
+from bisect import bisect_right
 from maw.speaker import split_items_by_speaker
 from maw.language import (
     DEFAULT_MAX_WORDS,
@@ -11,6 +13,10 @@ from maw.language import (
     timestamp_items_cover_text,
 )
 from maw.subtitle_segmentation import (
+    body_character_count,
+    body_character_offsets,
+    fitting_quote_offsets,
+    is_punctuation_continuation,
     protected_offsets,
     punctuation_item_ends,
     rebalance_short_groups,
@@ -32,7 +38,15 @@ _EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not
 def configure_extra_strong_punct(chars: object) -> None:
     """按共享断句配置整体设置转写强断句符号（换行始终生效）。"""
     global _EXTRA_STRONG_PUNCT
-    _EXTRA_STRONG_PUNCT = {ch for ch in str(chars or "") if not ch.isspace()}
+    value = _DEFAULT_EXTRA_STRONG_PUNCT if chars is None else str(chars)
+    _EXTRA_STRONG_PUNCT = {ch for ch in value if not ch.isspace()}
+
+
+def add_split_punctuation_argument(parser: ArgumentParser) -> None:
+    parser.add_argument(
+        "--extra-strong-punct",
+        help="断句符号清单（逐字符）；未指定用默认清单，空串禁用标点断句，换行始终生效",
+    )
 
 
 def _strong_punct_set(defaults: str) -> set[str]:
@@ -66,9 +80,11 @@ def split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
 _split_by_silence = split_by_silence
 
 
-def _split_long_group(items: list[dict], max_len: int, weak_punct: set) -> list[list[dict]]:
+def _split_long_group(
+    items: list[dict], max_len: int, weak_punct: set, *, min_len: int | None = None,
+) -> list[list[dict]]:
     """兼容已有调用方；本地数字保护、完整词边界与相邻句平衡由领域模块负责。"""
-    return split_long_items(items, max_len, weak_punct)
+    return split_long_items(items, max_len, weak_punct, minimum=min_len)
 
 
 QWEN_AUDIO_NATURAL_TARGET_LEN = 13
@@ -91,7 +107,8 @@ def _split_cjk_group_naturally(
     内部标点的 Qwen-Audio 兜底片段，普通标点切句和其他模型保持不变。
     """
     text_total = "".join(item.get("text", "") for item in items)
-    if len(text_total) <= max_len:
+    body_offsets = body_character_offsets(text_total)
+    if body_offsets[-1] <= max_len:
         return [items]
 
     try:
@@ -210,7 +227,7 @@ def _split_cjk_group_naturally(
             if not is_valid_boundary(end_index):
                 continue
             start_position = item_ends[start_index - 1] if start_index else 0
-            length = end_position - start_position
+            length = body_offsets[end_position] - body_offsets[start_position]
             if length > max_len:
                 continue
             if length < min_len and end_index != len(items):
@@ -234,27 +251,53 @@ def _split_cjk_group_naturally(
         groups.append(items[start_index:end_index])
         start_index = end_index
     if len(groups) >= 2:
-        tail_length = sum(len(item.get("text", "")) for item in groups[-1])
-        previous_length = sum(len(item.get("text", "")) for item in groups[-2])
+        tail_length = sum(body_character_count(item.get("text", "")) for item in groups[-1])
+        previous_length = sum(body_character_count(item.get("text", "")) for item in groups[-2])
         if tail_length < min_len and previous_length + tail_length <= max_len:
             groups[-2].extend(groups.pop())
     return rebalance_short_groups(groups, max_len, weak_punctuation)
 
 
+def _join_brief_comma_groups(
+    groups: list[list[dict]], maximum: int, punctuation: set[str],
+) -> list[list[dict]]:
+    """Suppress a comma cut only when its cue would flash just before the next."""
+    commas = punctuation & {"，", ","}
+    if not commas or len(groups) < 2:
+        return groups
+    result: list[list[dict]] = []
+    for group in reversed(groups):
+        text = "".join(item["text"] for item in group)
+        length = body_character_count(text)
+        tail = text.rstrip(" \t\r")
+        duration = group[-1]["end"] - group[0]["start"]
+        if result and tail and tail[-1] in commas and "\n" not in text and 0 < length <= 2 and 0 < duration <= 300:
+            right = result[-1]
+            gap = right[0]["start"] - group[-1]["end"]
+            right_length = sum(body_character_count(item["text"]) for item in right)
+            speakers = {item.get("speaker") for item in group + right}
+            if (0 <= gap <= 200 and 0 < right_length <= maximum - length
+                    and len(speakers) == 1 and "\n" not in right[0]["text"]):
+                result[-1] = group + right
+                continue
+        result.append(group)
+    return result[::-1]
+
+
 def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
                              gap_split_ms: int = 1000,
                              natural_target_len: int | None = None,
-                             natural_max_len: int | None = None) -> list[dict]:
+                             natural_max_len: int | None = None,
+                             *, merge_brief_cues: bool = True) -> list[dict]:
     """把字/词级 timestamps 合并成句子级字幕。
 
     切分策略（与本地版一致）：
     0. 按静音间隔（>= gap_split_ms）预切
     1. 每个静音组内按强标点（共享断句配置 + 换行）继续切句
-    2. 合并过短片段（< min_len 字符），但合并后不得超过 max_len
-    3. 对本身超长的片段，按共享配置中的标点优先拆分
+    2. 保留标点切点；仅在短到闪现且紧接后文时允许越过逗号
+    3. 对本身超长的片段，按配置优先拆分，并尽量避免太短的片段
     4. 没有弱标点时，用 jieba 分词找最佳断点
     """
-    STRONG_PUNCT = _strong_punct_set("\n")
     WEAK_PUNCT = _weak_punct_set()
 
     def to_seg(group):
@@ -270,7 +313,7 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
     silence_groups = split_by_silence(items, gap_split_ms)
 
     for sg in silence_groups:
-        strong_ends = punctuation_item_ends(sg, STRONG_PUNCT)
+        strong_ends = strong_punctuation_item_ends(sg, quote_limit=max_len)
         raw_groups: list[list[dict]] = []
         buf: list[dict] = []
         for index, it in enumerate(sg):
@@ -280,27 +323,12 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
                 buf = []
         if buf:
             raw_groups.append(buf)
+        if merge_brief_cues:
+            raw_groups = _join_brief_comma_groups(raw_groups, natural_max_len or max_len, WEAK_PUNCT)
 
-        merged: list[list[dict]] = []
         for grp in raw_groups:
-            seg_text = "".join(it["text"] for it in grp)
-            if merged and len(seg_text) < min_len:
-                previous_length = sum(len(item.get("text", "")) for item in merged[-1])
-                if previous_length + len(seg_text) <= max_len:
-                    merged[-1].extend(grp)
-                else:
-                    merged.append(list(grp))
-            else:
-                merged.append(list(grp))
-        if len(merged) >= 2:
-            last_text = "".join(it["text"] for it in merged[-1])
-            previous_text = "".join(it["text"] for it in merged[-2])
-            if len(last_text) < min_len and len(previous_text) + len(last_text) <= max_len:
-                merged[-2].extend(merged.pop())
-
-        for grp in merged:
-            if natural_target_len is None:
-                final.extend(_split_long_group(grp, max_len, WEAK_PUNCT))
+            if natural_target_len is None or fitting_quote_offsets(grp, natural_max_len or max_len)[0]:
+                final.extend(_split_long_group(grp, max_len, WEAK_PUNCT, min_len=min_len))
             else:
                 final.extend(_split_cjk_group_naturally(
                     grp,
@@ -310,7 +338,7 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
                 ))
 
     segments = [to_seg(g) for g in final if g]
-    overlong = sum(len(segment["text"]) > max_len for segment in segments)
+    overlong = sum(body_character_count(segment["text"]) > max_len for segment in segments)
     if overlong:
         print(f"[断句] {overlong} 条字幕含不可拆的字词或数字单位，保留完整内容，超过单句上限 {max_len} 字。")
     return segments
@@ -324,8 +352,6 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
 WESTERN_MAX_WORDS = DEFAULT_MAX_WORDS
 WESTERN_MIN_WORDS = DEFAULT_MIN_WORDS
 
-# 英文句末强标点保留现行句子识别策略；超长补拆标点只读共享配置。
-WESTERN_STRONG_END = ".!?。！？；"
 # 判定时剥掉的尾部引号/括号（如 word." 仍视为句号结尾）
 _TRAILING_QUOTES = "\"'”’)]}』」"
 
@@ -338,7 +364,7 @@ def _western_strong_end() -> str:
     包括已有设置中的英文分号与用户新增符号（如 ~）。
     """
     extra = _EXTRA_STRONG_PUNCT - {",", "，"}
-    return WESTERN_STRONG_END + "".join(sorted(extra))
+    return "".join(sorted(extra))
 
 
 def is_cjk_char(char: str) -> bool:
@@ -369,18 +395,36 @@ def _ends_with_punct(text: str, punct: str) -> bool:
     return bool(stripped) and stripped[-1] in punct
 
 
-def _split_long_western(group: list[dict], max_words: int) -> list[list[dict]]:
+def strong_punctuation_item_ends(
+    items: list[dict], split_mode: str | None = None, *, quote_limit: int | None = None,
+) -> set[int]:
+    by_word = split_mode == "word"
+    punctuation = set(_western_strong_end()) | {"\n"} if by_word else _strong_punct_set("\n")
+    return punctuation_item_ends(items, punctuation, quote_limit=quote_limit, by_word=by_word)
+
+
+def _split_long_western(group: list[dict], max_words: int, min_words: int = 1) -> list[list[dict]]:
     """超过 max_words 词的组：优先在 max_words 内最后一个弱标点处断开，
     没有弱标点则按 max_words 硬切。"""
     if len(group) <= max_words:
         return [group]
-    cut = None
-    for i in range(1, min(max_words, len(group) - 1) + 1):
-        if _ends_with_punct(group[i - 1]["text"], "".join(_weak_punct_set())):
-            cut = i
-    if cut is None:
-        cut = max_words
-    return [group[:cut]] + _split_long_western(group[cut:], max_words)
+    quoted, _ = fitting_quote_offsets(group, max_words, by_word=True)
+    offsets = [0]
+    for item in group:
+        offsets.append(offsets[-1] + len(item["text"]))
+    weak_ends = punctuation_item_ends(group, _weak_punct_set())
+    start = 0
+    pieces = []
+    while len(group) - start > max_words:
+        window = range(start + 1, start + max_words + 1)
+        options = [i for i in window if offsets[i] not in quoted] or window
+        punct = [i for i in options if i in weak_ends]
+        balanced = [i for i in punct if i - start >= min_words and len(group) - i >= min_words]
+        cut = (balanced or punct or options)[-1]
+        pieces.append(group[start:cut])
+        start = cut
+    pieces.append(group[start:])
+    return pieces
 
 
 def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_MAX_WORDS,
@@ -389,9 +433,8 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
     """空格分词语言（英文等）的切句：尽量保住完整句子。
 
     0. 按静音间隔（>= gap_split_ms）预切
-    1. 按句末强标点（. ! ? 及全角）切出完整句子
-    2. 合并过短句子（< min_words 词），但合并后不得超过 max_words
-    3. 本身超长的句子（> max_words 词）优先按弱标点断，兜底硬切
+    1. 按配置的句末标点切出完整句子，保留已经生效的切点
+    2. 超长的句子优先在弱标点处补切，并尽量避免太短的片段
     """
     def to_seg(group: list[dict]) -> dict:
         return {
@@ -403,34 +446,19 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
 
     final: list[list[dict]] = []
     for sg in split_by_silence(items, gap_split_ms):
+        strong_ends = strong_punctuation_item_ends(sg, "word", quote_limit=max_words)
         raw_groups: list[list[dict]] = []
         buf: list[dict] = []
-        for it in sg:
+        for index, it in enumerate(sg, 1):
             buf.append(it)
-            if _ends_with_punct(it["text"], _western_strong_end()):
+            if index in strong_ends:
                 raw_groups.append(buf)
                 buf = []
         if buf:
             raw_groups.append(buf)
 
-        merged: list[list[dict]] = []
         for grp in raw_groups:
-            if merged and len(grp) < min_words:
-                if len(merged[-1]) + len(grp) <= max_words:
-                    merged[-1].extend(grp)
-                else:
-                    merged.append(list(grp))
-            else:
-                merged.append(list(grp))
-        if (
-            len(merged) >= 2
-            and len(merged[-1]) < min_words
-            and len(merged[-2]) + len(merged[-1]) <= max_words
-        ):
-            merged[-2].extend(merged.pop())
-
-        for grp in merged:
-            final.extend(_split_long_western(grp, max_words))
+            final.extend(_split_long_western(grp, max_words, min_words))
 
     return [to_seg(g) for g in final if g]
 
@@ -440,7 +468,8 @@ def split_segments_auto(items: list[dict], *, max_len: int, min_len: int,
                         max_words: int = WESTERN_MAX_WORDS,
                         min_words: int = WESTERN_MIN_WORDS,
                         natural_cjk: bool = False,
-                        split_mode: str | None = None) -> list[dict]:
+                        split_mode: str | None = None,
+                        merge_brief_cues: bool = True) -> list[dict]:
     """按静音组自动选择切句逻辑（双轨）。
 
     先按静音间隔预切；未指定 ``split_mode`` 时，每个静音组内 CJK
@@ -473,6 +502,7 @@ def split_segments_auto(items: list[dict], *, max_len: int, min_len: int,
                     min(QWEN_AUDIO_NATURAL_MAX_LEN, max_len)
                     if natural_cjk else None
                 ),
+                merge_brief_cues=merge_brief_cues,
             ))
         else:
             segments.extend(split_words_to_segments_western(group, max_words, min_words, 0))
@@ -598,10 +628,6 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
     return repaired
 
 
-# 无词级时间码时的文本切块断点：强/弱标点与西文常用标点，并上额外断句符号。
-_COARSE_PIECE_BREAK_PUNCT = "。！？；，、：,.!?;:"
-
-
 def build_interpolated_items(
     text: str,
     start_ms: int,
@@ -615,20 +641,25 @@ def build_interpolated_items(
     小块，下游即可继续用标点/最大字数逻辑拆分；时间点是线性插值的
     近似值，因此结果不得再携带 ``items`` 冒充词级精度。
     """
-    clean = str(text or "").strip()
-    if not clean:
+    clean = str(text or "")
+    if not clean.strip():
         return []
     if end_ms <= start_ms:
         return [{"text": clean, "start": start_ms, "end": max(end_ms, start_ms + 1)}]
 
-    breaks = set(_COARSE_PIECE_BREAK_PUNCT) | _EXTRA_STRONG_PUNCT
+    breaks = _strong_punct_set("\n")
+    protected = protected_offsets(clean)
     pieces: list[str] = []
     buf = ""
-    for ch in clean:
-        buf += ch
-        if ch in breaks:
+    pending_break = False
+    for index, ch in enumerate(clean, 1):
+        if pending_break and not is_punctuation_continuation(ch, breaks) and ch not in " \t\r":
             pieces.append(buf)
             buf = ""
+            pending_break = False
+        buf += ch
+        if ch in breaks and (index not in protected or ch == "\n"):
+            pending_break = True
     if buf:
         if buf.strip() or not pieces:
             pieces.append(buf)
@@ -639,14 +670,20 @@ def build_interpolated_items(
     step = max(1, int(max_piece_len))
     bounded: list[str] = []
     for piece in pieces:
-        while len(piece) > step:
-            bounded.append(piece[:step])
-            piece = piece[step:]
-        if piece:
-            bounded.append(piece)
+        body_offsets = body_character_offsets(piece)
+        start = 0
+        while body_offsets[-1] - body_offsets[start] > step:
+            end = bisect_right(body_offsets, body_offsets[start] + step, lo=start + 1) - 1
+            bounded.append(piece[start:end])
+            start = end
+        if start < len(piece):
+            bounded.append(piece[start:])
 
+    # Keep interpolation on the original text offsets; only cue limits ignore punctuation.
     total = sum(len(piece) for piece in bounded)
     span = end_ms - start_ms
+    if span < len(bounded):
+        return [{"text": clean, "start": start_ms, "end": end_ms}]
     items: list[dict] = []
     cursor = start_ms
     cum = 0
@@ -656,7 +693,7 @@ def build_interpolated_items(
             boundary = end_ms
         else:
             boundary = start_ms + int(round(span * cum / total))
-            boundary = max(boundary, cursor + 1)
+            boundary = min(max(boundary, cursor + 1), end_ms - (len(bounded) - index - 1))
         items.append({"text": piece, "start": cursor, "end": boundary})
         cursor = boundary
     return items
@@ -682,8 +719,11 @@ def build_interpolated_word_items(
         return [{"text": clean.strip(), "start": start_ms, "end": max(end_ms, start_ms + 1)}]
 
     tokens = _re.findall(r"\s*\S+", clean)
+    tokens[-1] += clean[len(clean.rstrip()):]
     total = sum(len(token) for token in tokens)
     span = end_ms - start_ms
+    if span < len(tokens):
+        return [{"text": clean, "start": start_ms, "end": end_ms}]
     items: list[dict] = []
     cursor = start_ms
     cum = 0
@@ -693,7 +733,7 @@ def build_interpolated_word_items(
             boundary = end_ms
         else:
             boundary = start_ms + int(round(span * cum / total))
-            boundary = max(boundary, cursor + 1)
+            boundary = min(max(boundary, cursor + 1), end_ms - (len(tokens) - index - 1))
         items.append({"text": token, "start": cursor, "end": boundary})
         cursor = boundary
     return items
@@ -708,10 +748,11 @@ def split_coarse_segment(
     max_words: int = WESTERN_MAX_WORDS,
     min_words: int = WESTERN_MIN_WORDS,
     split_mode: str | None = None,
+    punctuation_only: bool = False,
 ) -> list[dict]:
-    """对句级兜底段做超长二次拆分，保留原句边界。
+    """按配置的段内标点或长度拆分句级兜底段，保留原段外缘。
 
-    - 不超长的段原样返回（包括其 items）。
+    - 没有需要拆分的原段原样返回（包括其 items）。
     - 超长且带有效 items 的段用词级时间精确拆分。
     - 超长且无 items 的段插值时间拆分（连续语言按标点切块，单词型按
       空白分词），结果不携带 items。
@@ -720,13 +761,37 @@ def split_coarse_segment(
     if split_mode == "word":
         overlong = len(text.split()) > max_words
     else:
-        overlong = len(text) > max_len
-    if not overlong:
+        overlong = body_character_count(text) > max_len
+    internal_text = text.rstrip().rstrip(_TRAILING_QUOTES).rstrip()
+    if split_mode == "word":
+        punctuation = _western_strong_end()
+        has_internal_punctuation = "\n" in internal_text or any(
+            _ends_with_punct(word, punctuation) for word in text.split()[:-1]
+        )
+    else:
+        punctuation = _strong_punct_set("\n")
+        protected = protected_offsets(text)
+        has_internal_punctuation = any(
+            char in punctuation and (index not in protected or char == "\n")
+            for index, char in enumerate(internal_text[:-1], 1)
+        )
+    if not has_internal_punctuation and (punctuation_only or not overlong):
         return [segment]
 
     raw_items = segment.get("items")
     raw_items = raw_items if isinstance(raw_items, list) and raw_items else []
-    if raw_items:
+    if punctuation_only:
+        # Providers that retain native cues may add configured cuts, but
+        # must not pick up unrelated length-driven cuts on this path.
+        max_len = max(max_len, body_character_count(text))
+        max_words = max(max_words, len(text.split()), len(raw_items))
+        gap_split_ms = 0
+    # Word times are only useful here if their text includes the same
+    # punctuation. Otherwise splitting the items could lose the very symbols
+    # that were used to choose this split.
+    if raw_items and all(isinstance(item, dict) for item in raw_items) and "".join(
+        str(item.get("text") or "") for item in raw_items
+    ) == text:
         pieces = split_segments_auto(
             [dict(item) for item in raw_items],
             max_len=max_len,
@@ -753,13 +818,14 @@ def split_coarse_segment(
             max_words=max_words,
             min_words=min_words,
             split_mode=split_mode,
+            merge_brief_cues=False,
         )
         # 插值时间是近似值，不得伪装成词级精度写进工程。
         pieces = [
             {key: value for key, value in piece.items() if key != "items"}
             for piece in pieces
         ]
-    if not pieces:
+    if not pieces or (len(pieces) == 1 and (punctuation_only or not overlong)):
         return [segment]
 
     # 外缘对齐原段范围（与 build_segments_from_api_sentences 的包络做法一致），
@@ -783,6 +849,7 @@ def split_coarse_segments(
     min_words: int = WESTERN_MIN_WORDS,
     split_mode: str | None = None,
     interpolated_boundary_indices: set[int] | None = None,
+    punctuation_only: bool = False,
 ) -> list[dict]:
     """逐段调用 split_coarse_segment（见其 docstring）。"""
     result: list[dict] = []
@@ -795,8 +862,9 @@ def split_coarse_segments(
             max_words=max_words,
             min_words=min_words,
             split_mode=split_mode,
+            punctuation_only=punctuation_only,
         )
-        if interpolated_boundary_indices is not None and not segment.get("items"):
+        if interpolated_boundary_indices is not None and len(pieces) > 1 and not pieces[0].get("items"):
             interpolated_boundary_indices.update(range(len(result) + 1, len(result) + len(pieces)))
         result.extend(pieces)
     return result
@@ -936,7 +1004,7 @@ def build_segments_from_api_sentences(
         for run in split_items_by_speaker(items):
             run_text = "".join(item.get("text", "") for item in run)
             has_internal_punctuation = any(
-                any(char in (set(_COARSE_PIECE_BREAK_PUNCT) | _EXTRA_STRONG_PUNCT) for char in item.get("text", ""))
+                any(char in _strong_punct_set("\n") for char in item.get("text", ""))
                 for item in run[:-1]
             )
             run_segments = split_segments_auto(
@@ -948,7 +1016,7 @@ def build_segments_from_api_sentences(
                 min_words=min_words,
                 split_mode=split_mode,
                 natural_cjk=(
-                    len(run_text) > max_len
+                    body_character_count(run_text) > max_len
                     and is_cjk_dominant(run)
                     and not has_internal_punctuation
                 ),

@@ -34,6 +34,9 @@ from maw.asr.common import (
     parse_duration,
 )
 from maw.asr.segmentation import (
+    add_split_punctuation_argument,
+    configure_extra_strong_punct,
+    split_coarse_segments,
     split_segments_auto,
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
@@ -619,20 +622,23 @@ def _segments_from_result(
     min_words: int = WESTERN_MIN_WORDS,
 ) -> list[dict[str, Any]]:
     items = [dict(item) for item in result.get("items", [])]
-    if result.get("timestamp_granularity") == "segment" and result.get("segments"):
-        return [dict(segment) for segment in result["segments"]]
-    if items:
-        split_mode = split_mode_for_text(str(result.get("text") or ""), result.get("language"))
-        return split_segments_auto(
-            items,
-            max_len=max_len,
-            min_len=min_len,
-            gap_split_ms=gap_split,
-            max_words=max_words,
-            min_words=min_words,
-            split_mode=split_mode,
+    split_mode = split_mode_for_text(str(result.get("text") or ""), result.get("language"))
+    if not items or (result.get("timestamp_granularity") == "segment" and result.get("segments")):
+        return split_coarse_segments(
+            [dict(segment) for segment in result.get("segments", [])],
+            max_len=max_len, min_len=min_len, gap_split_ms=gap_split,
+            max_words=max_words, min_words=min_words, split_mode=split_mode,
+            punctuation_only=True,
         )
-    return [dict(segment) for segment in result.get("segments", [])]
+    return split_segments_auto(
+        items,
+        max_len=max_len,
+        min_len=min_len,
+        gap_split_ms=gap_split,
+        max_words=max_words,
+        min_words=min_words,
+        split_mode=split_mode,
+    )
 
 
 def _strip_trailing_punct(
@@ -695,7 +701,9 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true", help="输出时间戳解析摘要")
     parser.add_argument("--debug-raw", action="store_true")
     parser.add_argument("--no-model-tag", action="store_true", help="输出文件名不附加模型标识段（本 CLI 默认无该段，保留以统一接口）")
+    add_split_punctuation_argument(parser)
     args = parser.parse_args()
+    configure_extra_strong_punct(args.extra_strong_punct)
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
     if args.default_audio_track is not None and args.default_audio_track < 0:

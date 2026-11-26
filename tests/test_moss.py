@@ -467,11 +467,11 @@ class MossSegmentationTests(unittest.TestCase):
         # 拆分产生的新起点被标记为插值切点（供能量谷吸附）
         self.assertTrue(boundaries)
 
-    def test_short_segments_pass_through_unchanged(self) -> None:
+    def test_short_segments_without_internal_cuts_pass_through_unchanged(self) -> None:
         from maw.asr.moss import build_subtitle_segments
 
         original = [
-            {"start": 5050, "end": 5650, "text": "嗯，喂", "speaker": "S01"},
+            {"start": 5050, "end": 5650, "text": "嗯喂", "speaker": "S01"},
             {"start": 5980, "end": 6450, "text": "喂喂喂", "speaker": "S01"},
         ]
 

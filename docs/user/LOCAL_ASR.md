@@ -80,6 +80,7 @@ uv run --no-sync python -m maw.asr.local "clip.mp4" --engine whisper --model lar
 | `--alignment-model ID` / `--alignment-model-path PATH` | 为缺少字词时间码的转写选择共享对齐器。 |
 | `--alignment-mode fill\|generate` | 补缺失或重新生成。 |
 | `--forced-aligner ID` | QwenASR 自身配套对齐模型。 |
+| `--extra-strong-punct CHARS` | 所有本地引擎通用，逐字符替换默认断句符号；传空串禁用标点断句。 |
 | `--audio-track N` | 音频流序号，从 0 开始。 |
 | `-ll` / `--length-limit` | 截取短样本。 |
 | `-o` / `--output PATH` | SRT 输出，工程同名。 |

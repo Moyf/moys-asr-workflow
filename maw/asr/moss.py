@@ -39,6 +39,8 @@ from maw.asr.common import (
     parse_duration,
 )
 from maw.asr.segmentation import (
+    add_split_punctuation_argument,
+    configure_extra_strong_punct,
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
     repair_nonpositive_duration_segments,
@@ -253,7 +255,9 @@ def main() -> int:
         "--no-model-tag", action="store_true",
         help="默认输出文件名不附加供应商标识段（默认附加 moss）",
     )
+    add_split_punctuation_argument(parser)
     args = parser.parse_args()
+    configure_extra_strong_punct(args.extra_strong_punct)
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
     if args.default_audio_track is not None and args.default_audio_track < 0:

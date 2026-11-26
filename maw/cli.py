@@ -43,12 +43,13 @@ def _port_value(value: str) -> int:
 def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog or Path(sys.argv[0]).name,
-        description="MAW 命令行：直接转写媒体、烧录字幕，或启动/停止本机字幕编辑器 Server。",
+        description="MAW 命令行：转写媒体、烧录字幕、打开字幕对比，或管理本机字幕编辑器 Server。",
         epilog=(
             "示例:\n"
             "  MAW.exe -i \"clip.mp3\" -o \"clip.srt\" \"clip.mosp\"\n"
             "  MAW.exe --provider soniox -i \"clip.mp4\" -o \"clip.srt\"\n"
             "  MAW.exe --burn \"clip.srt\" -i \"clip.mp4\" --encoder amf\n"
+            "  MAW.exe --compare \"before.mosp\" \"after.srt\"\n"
             "  MAW.exe --server 8250\n"
             "  MAW.exe --stop-server 8250\n"
             "\n"
@@ -76,6 +77,12 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--burn",
         metavar="SUBTITLE",
         help="把 SRT/ASS/SSA 或 .mosp/.json 字幕烧录进 -i 视频，输出 <原名>.压字幕.mp4",
+    )
+    server_group.add_argument(
+        "--compare",
+        nargs="+",
+        metavar="SUBTITLE",
+        help="将最多 10 份 .mosp/.srt/.json 直接载入同一个转写对比窗口",
     )
     parser.add_argument(
         "--encoder",
@@ -124,7 +131,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--language", help="语言提示；Soniox 可写逗号分隔的多个语言")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾的逗号和句号")
     parser.add_argument("--strip-tail-punct", help="句尾剥除的标点集合；传空串禁用剥除")
-    parser.add_argument("--extra-strong-punct", help="额外强断句符号集合（每个字符并入强断句符号）")
+    parser.add_argument("--extra-strong-punct", help="断句符号清单（逐字符）；留空禁用标点断句")
     parser.add_argument("--gap-split", type=int, help="静音切句阈值（毫秒）")
     parser.add_argument("--speaker", action="store_true", help="开启说话人分离")
     parser.add_argument("--speaker-colors", action="store_true", help="开启说话人分离并写入字幕颜色快照")
@@ -167,6 +174,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.alignment_check and not args.align_script:
         parser.error("--alignment-check 需要 --align-script")
+    if args.compare:
+        return _run_compare(parser, args)
     if args.burn:
         return _run_burn(parser, args)
     if args.align_script:
@@ -176,6 +185,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.stop_server is not None:
         return _run_stop_server(parser, args)
     return _run_transcription(parser, args)
+
+
+def _run_compare(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if any(
+        name != "compare" and value != parser.get_default(name)
+        for name, value in vars(args).items()
+    ):
+        parser.error("--compare 不支持与其他转写或 Server 参数混用")
+    from maw.tool_windows import open_comparison_window, transcript_compare_payload
+
+    try:
+        paths = list(dict.fromkeys(Path(value).expanduser().absolute() for value in args.compare))
+        payload = transcript_compare_payload(paths)
+        if payload["warning"]:
+            print(payload["warning"], file=sys.stderr)
+        if not payload["files"]:
+            print("没有可对比的字幕文件。", file=sys.stderr)
+            return 1
+        import webview
+
+        page = asset_path("tools/compare.html")
+        try:
+            open_comparison_window(page.parent.parent, page=page, title="MAW 转写对比", payload=payload)
+            webview.start()
+        except webview.WebViewException as error:
+            raise RuntimeError(str(error)) from error
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        print(f"打开转写对比失败：{error}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _run_script_alignment(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -500,8 +539,6 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
         ("--base-url", args.base_url if args.provider == "openai" else None),
         ("--gap-split", args.gap_split),
         ("--strip-tail-punct", args.strip_tail_punct),
-        # 目前仅 Qwen 云端脚本支持额外强断句符号，其他供应商不下发。
-        ("--extra-strong-punct", args.extra_strong_punct if args.provider == "qwen" else None),
         ("--length-limit", args.length_limit),
         ("--model", args.model),
         ("--stickers", args.stickers),
@@ -516,6 +553,8 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
     ):
         if value is not None and value != "":
             result.extend([flag, str(value)])
+    if args.extra_strong_punct is not None:
+        result.append(f"--extra-strong-punct={args.extra_strong_punct}")
     if args.keep_punct:
         result.append("--keep-punct")
     if args.keep_dialect:

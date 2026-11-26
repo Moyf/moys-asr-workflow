@@ -7,10 +7,13 @@
 """
 
 import json
+from importlib import import_module
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from maw.postprocess_match import (
     DEFAULT_EXTRA_SPLIT_PUNCTUATION,
@@ -39,6 +42,22 @@ def source_text(relative_path: str) -> str:
 
 
 class PunctuationDefaultsContractTests(unittest.TestCase):
+    def test_all_entrypoints_apply_split_configuration_before_transcribing(self) -> None:
+        providers = ("qwen", "soniox", "doubao", "tencent", "openai", "bcut", "moss", "local")
+        for provider in providers:
+            module = import_module(f"maw.asr.{provider}")
+            for symbols in (None, "", "~", "-~"):
+                with self.subTest(provider=provider, symbols=symbols):
+                    argv = [module.__name__, "clip.wav"]
+                    if symbols is not None:
+                        argv.append(f"--extra-strong-punct={symbols}")
+                    with patch.object(sys, "argv", argv), patch.object(
+                        module, "configure_extra_strong_punct", side_effect=InterruptedError,
+                    ) as configure:
+                        with self.assertRaises(InterruptedError):
+                            module.main()
+                    configure.assert_called_once_with(symbols)
+
     def launcher_plans(self, split: list[str], preserve: list[str]) -> dict:
         result = subprocess.run(
             ["node", str(ROOT / "tests/helpers/launcher-plan-export.mjs")],

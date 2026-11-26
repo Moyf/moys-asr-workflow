@@ -14,6 +14,7 @@ from maw.asr.segmentation import (
     split_words_to_segments_western,
 )
 from maw.project import validate_project
+from maw.subtitle_segmentation import body_character_count
 
 
 def _words(pairs):
@@ -24,6 +25,113 @@ class CjkWordBoundaryTests(unittest.TestCase):
     @staticmethod
     def items(texts):
         return _words([(text, i * 100, i * 100 + 90) for i, text in enumerate(texts)])
+
+    def test_fitting_quoted_speech_keeps_its_inner_comma_and_closing_quote(self) -> None:
+        items = self.items(["哈哈。他说：“哎呀，", "要给", "的要", "给", "的。”", "我继续说"])
+        segments = split_words_to_segments(items, max_len=18, min_len=1, gap_split_ms=500)
+        self.assertEqual([s["text"] for s in segments], ["哈哈。他说：“哎呀，要给的要给的。”", "我继续说"])
+        self.assertEqual([item for s in segments for item in s["items"]], items)
+
+    def test_short_cjk_tail_does_not_cancel_a_configured_cut(self) -> None:
+        items = self.items(["我跟你们讲。", "我昨", "天"])
+        segments = split_words_to_segments(items, max_len=18, min_len=5)
+        self.assertEqual([s["text"] for s in segments], ["我跟你们讲。", "我昨天"])
+        self.assertEqual([item for s in segments for item in s["items"]], items)
+
+    def test_overlong_quote_prefers_a_real_configured_end_to_an_item_internal_mark(self) -> None:
+        items = self.items([
+            "我说：“哎，什", "么", "情", "况？", "这", "天", "才", "录", "一", "天，",
+            "怎", "么", "就", "给", "红", "包了？”",
+        ])
+        segments = split_words_to_segments(items, max_len=18)
+        self.assertEqual([s["text"] for s in segments], [
+            "我说：“哎，什么情况？这天才录一天，", "怎么就给红包了？”",
+        ])
+        self.assertEqual([item for s in segments for item in s["items"]], items)
+
+    def test_brief_comma_fragment_joins_forward_without_a_word_list(self) -> None:
+        items = _words([("先说排箫，", 0, 500), ("对，", 740, 820), ("我给忘了。", 900, 1700)])
+        segments = split_words_to_segments(items, max_len=18, gap_split_ms=500)
+        self.assertEqual([s["text"] for s in segments], ["先说排箫，", "对，我给忘了。"])
+        self.assertEqual(segments[1]["start"], 740)
+        self.assertEqual(segments[1]["items"], items[1:])
+
+    def test_brief_forward_join_keeps_hard_boundaries_and_does_not_bridge_longer_pauses(self) -> None:
+        for ending, gap, maximum in (("。", 80, 18), ("！", 80, 18), ("，", 300, 18), ("，", 80, 4)):
+            with self.subTest(ending=ending, gap=gap, maximum=maximum):
+                first = "不" + ending
+                items = _words([(first, 0, 80), ("你先走吧。", 80 + gap, 800)])
+                self.assertEqual(
+                    [s["text"] for s in split_words_to_segments(items, max_len=maximum, gap_split_ms=500)],
+                    [first, "你先走吧。"],
+                )
+
+    def test_brief_forward_join_does_not_cross_a_speaker_or_use_estimated_times(self) -> None:
+        items = _words([("对，", 0, 80), ("我给忘了。", 160, 800)])
+        items[0]["speaker"], items[1]["speaker"] = "1", "2"
+        self.assertEqual([s["text"] for s in split_words_to_segments(items, max_len=18)], ["对，", "我给忘了。"])
+        items[1]["speaker"] = "1"
+        self.assertEqual([s["text"] for s in split_words_to_segments(
+            items, max_len=18, merge_brief_cues=False,
+        )], ["对，", "我给忘了。"])
+
+    def test_contiguous_punctuation_is_not_a_separate_timed_cue(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        items = self.items(["这是一个问题？", "！", "下一句话"])
+        for marks in ("？！", "？"):
+            segmentation.configure_extra_strong_punct(marks)
+            self.assertEqual([s["text"] for s in split_words_to_segments(items, max_len=18)],
+                             ["这是一个问题？！", "下一句话"])
+
+    def test_a_leading_newline_keeps_the_preceding_comma_cue_separate(self) -> None:
+        items = _words([("对，", 0, 80), ("\n下一句", 160, 800), ("接着说", 800, 1000)])
+        self.assertEqual([s["text"] for s in split_words_to_segments(items, max_len=18)],
+                         ["对，", "\n下一句接着说"])
+
+    def test_next_cue_opening_dash_or_negative_number_does_not_swallow_a_cut(self) -> None:
+        for next_text in ("——下一句", " -5度"):
+            with self.subTest(next_text=next_text):
+                items = self.items(["前一句。", next_text])
+                self.assertEqual([s["text"] for s in split_words_to_segments(items, max_len=18)],
+                                 ["前一句。", next_text])
+
+    def test_configured_hyphen_can_still_split_at_the_item_end(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        segmentation.configure_extra_strong_punct("-")
+        items = self.items(["上半句-", "下半句"])
+        self.assertEqual([s["text"] for s in split_words_to_segments(items, max_len=18)],
+                         ["上半句-", "下半句"])
+
+    def test_overlong_quote_uses_custom_marks_instead_of_an_unconfigured_comma(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        segmentation.configure_extra_strong_punct("~")
+        items = self.items(["“甲乙~", "丙", "丁，", "戊", "己", "庚辛”"])
+        self.assertEqual([s["text"] for s in split_words_to_segments(items, max_len=6, min_len=2)],
+                         ["“甲乙~", "丙丁，戊己庚辛”"])
+
+    def test_fitting_quote_ignores_punctuation_and_space_in_character_limit(self) -> None:
+        items = self.items(["“哎呀，", " 要给的", "要给的。”"])
+        segments = split_words_to_segments(items, max_len=8, min_len=3)
+        self.assertEqual(
+            [(s["text"], s["start"], s["end"], s["items"]) for s in segments],
+            [("“哎呀， 要给的要给的。”", 0, 290, items)],
+        )
+
+    def test_quote_can_still_split_for_length_pause_or_missing_closer(self) -> None:
+        items = self.items(["他说：", "“哎呀，", "要给的要给的。", "”"])
+        long_quote = split_words_to_segments(items, max_len=7, min_len=1)
+        self.assertEqual(long_quote[0]["text"], "他说：“哎呀，")
+        self.assertEqual("".join(s["text"] for s in long_quote), "他说：“哎呀，要给的要给的。”")
+        self.assertTrue(all(body_character_count(s["text"]) <= 7 for s in long_quote))
+        self.assertEqual(
+            [s["text"] for s in split_words_to_segments(items[:-1], max_len=18, min_len=1)],
+            ["他说：“哎呀，", "要给的要给的。"],
+        )
+        for item in items[2:]:
+            item["start"] += 1000
+            item["end"] += 1000
+        segments = split_words_to_segments(items, max_len=18, min_len=1, gap_split_ms=500)
+        self.assertEqual(segments[0]["text"], "他说：“哎呀，")
 
     def test_weather_example_uses_word_boundary_with_character_items(self) -> None:
         items = self.items("今天天气真好啊")
@@ -210,7 +318,7 @@ class CjkNaturalLimitTests(unittest.TestCase):
         segmentation.configure_extra_strong_punct("")
         texts = self.split("我们把画面比例改成16:9然后继续处理", 12)
         self.assertTrue(any("16:9" in text for text in texts), texts)
-        self.assertTrue(all(len(text) <= 12 for text in texts), texts)
+        self.assertTrue(all(body_character_count(text) <= 12 for text in texts), texts)
 
     def test_oversized_number_is_preserved_with_explicit_warning(self) -> None:
         items = self.items("编号12345678901234567890元结束")
@@ -308,6 +416,31 @@ class CjkNaturalLimitTests(unittest.TestCase):
 
 
 class WesternSplitTests(unittest.TestCase):
+    def test_western_keeps_consecutive_terminal_marks_in_one_cue(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        segmentation.configure_extra_strong_punct("?")
+        items = CjkWordBoundaryTests.items(["Really?", "!", " Yes"])
+        self.assertEqual([s["text"] for s in split_words_to_segments_western(items)],
+                         ["Really?!", " Yes"])
+
+    def test_western_length_split_can_handle_thousands_of_items_without_recursion(self) -> None:
+        items = CjkWordBoundaryTests.items([" word"] * 14000)
+        segments = split_words_to_segments_western(items, max_words=13, gap_split_ms=0)
+        self.assertTrue(all(len(s["items"]) <= 13 for s in segments))
+        self.assertEqual([item for s in segments for item in s["items"]], items)
+
+    def test_config_can_replace_all_western_sentence_punctuation_without_disabling_newline(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        items = CjkWordBoundaryTests.items([" One.", " Two~", " Three", "\n Four!"])
+        for symbols, expected in (
+            ("~", [" One. Two~", " Three", "\n Four!"]),
+            ("", [" One. Two~ Three", "\n Four!"]),
+        ):
+            with self.subTest(symbols=symbols):
+                segmentation.configure_extra_strong_punct(symbols)
+                segments = split_words_to_segments_western(items, min_words=1)
+                self.assertEqual([segment["text"] for segment in segments], expected)
+
     def test_western_splits_complete_sentences_like_real_data(self) -> None:
         # 真实语料（merge 后）：旧逻辑输出 "The editing process. Now" + ", don't get me wrong,"
         items = _words([
@@ -324,7 +457,7 @@ class WesternSplitTests(unittest.TestCase):
         self.assertEqual(segments[1]["text"], " Now, don't get me wrong, I really enjoy it.")
         self.assertEqual(segments[0]["items"][-1]["text"], " process.")
 
-    def test_western_merges_short_sentences(self) -> None:
+    def test_western_keeps_configured_cuts_even_for_short_sentences(self) -> None:
         items = _words([
             (" I", 0, 100), (" said", 100, 200), (" so.", 200, 300),
             (" Yes.", 400, 500),
@@ -334,9 +467,8 @@ class WesternSplitTests(unittest.TestCase):
 
         segments = split_words_to_segments_western(items, gap_split_ms=1500)
 
-        # " Yes."（1 词）并入前句；末尾 " Ok."（1 词）并入前句
         self.assertEqual([s["text"] for s in segments],
-                         [" I said so. Yes.", " And then we went home. Ok."])
+                         [" I said so.", " Yes.", " And then we went home.", " Ok."])
 
     def test_western_does_not_merge_short_sentence_past_word_limit(self) -> None:
         items = _words([
@@ -394,6 +526,54 @@ class WesternSplitTests(unittest.TestCase):
 
         self.assertEqual(segments[0]["text"], ' He said "stop."')
         self.assertEqual(segments[1]["text"], " Next one comes.")
+
+
+class CoarsePunctuationTests(unittest.TestCase):
+    def test_coarse_opening_dash_stays_with_the_next_cue(self) -> None:
+        cue = {"text": "前一句。——下一句", "start": 0, "end": 1200}
+        pieces = segmentation.split_coarse_segments(
+            [cue], max_len=18, min_len=5, gap_split_ms=500, split_mode="continuous",
+        )
+        self.assertEqual([p["text"] for p in pieces], ["前一句。", "——下一句"])
+
+    def test_coarse_punctuation_run_stays_with_the_preceding_text(self) -> None:
+        cue = {"text": "这是一个问题？！下一句话", "start": 0, "end": 1200}
+        pieces = segmentation.split_coarse_segments(
+            [cue], max_len=18, min_len=5, gap_split_ms=500, split_mode="continuous",
+        )
+        self.assertEqual([p["text"] for p in pieces], ["这是一个问题？！", "下一句话"])
+        self.assertTrue(all("items" not in p for p in pieces))
+
+    def test_fitting_coarse_quote_does_not_get_retimed_because_of_punctuation(self) -> None:
+        cue = {"text": "“哎呀， 要给的要给的。”", "start": 200, "end": 2600, "speaker": "1"}
+        self.assertEqual(segmentation.split_coarse_segments(
+            [cue], max_len=8, min_len=3, gap_split_ms=500, split_mode="continuous",
+        ), [cue])
+
+    def test_custom_cut_inside_short_provider_segment_does_not_claim_word_times(self) -> None:
+        self.addCleanup(segmentation.configure_extra_strong_punct, None)
+        cue = {"text": "这是前半句~然后是后半句", "start": 200, "end": 2600, "speaker": "1"}
+        cuts = set()
+        segmentation.configure_extra_strong_punct("~")
+        pieces = segmentation.split_coarse_segments(
+            [cue], max_len=18, min_len=5, gap_split_ms=500,
+            split_mode="continuous", punctuation_only=True, interpolated_boundary_indices=cuts,
+        )
+        self.assertEqual([piece["text"] for piece in pieces], ["这是前半句~", "然后是后半句"])
+        self.assertEqual((pieces[0]["start"], pieces[-1]["end"]), (200, 2600))
+        self.assertEqual(pieces[0]["end"], pieces[-1]["start"])
+        self.assertEqual(cuts, {1})
+        self.assertTrue(all(piece["speaker"] == "1" and "items" not in piece for piece in pieces))
+        too_short = {**cue, "end": cue["start"] + 1}
+        self.assertEqual(segmentation.split_coarse_segments(
+            [too_short], max_len=18, min_len=5, gap_split_ms=500,
+            split_mode="continuous", punctuation_only=True,
+        ), [too_short])
+        segmentation.configure_extra_strong_punct("")
+        self.assertEqual(segmentation.split_coarse_segments(
+            [cue], max_len=18, min_len=5, gap_split_ms=500,
+            split_mode="continuous", punctuation_only=True,
+        ), [cue])
 
 
 class CjkDominantTests(unittest.TestCase):
@@ -455,9 +635,7 @@ class AutoTrackTests(unittest.TestCase):
 
         segments = split_segments_auto(items, max_len=21, min_len=5, gap_split_ms=1500)
 
-        self.assertEqual(len(segments), 2)
-        self.assertEqual(segments[0]["text"], "今天。")
-        self.assertEqual(segments[1]["text"], " hello world. OK.")
+        self.assertEqual([s["text"] for s in segments], ["今天。", " hello world.", " OK."])
 
     def test_auto_output_passes_project_validation(self) -> None:
         items = _words([

@@ -13,6 +13,7 @@
 | `-dt` / `--devtools` | 启动 Launcher 并打开 DevTools。 |
 | `-i INPUT` | 转写，默认生成 SRT 与 `.mosp`。 |
 | `--burn SUBTITLE -i MEDIA` | 把字幕烧录进视频，输出 `<原名>.压字幕.mp4`；跳过 ASR。 |
+| `--compare FILE [FILE ...]` | 直接打开同一个转写对比窗口，预载最多 10 份本地字幕或工程。 |
 | `--align-script SCRIPT -i MEDIA` | 文稿与录音直接生成 SRT 与字词时间码工程，跳过 ASR；详见[使用指南](SCRIPT_DRIVEN_ALIGNMENT.md)。 |
 | `--align-script SCRIPT -i MEDIA --alignment-check` | 无需模型，先检查输入 / 音轨与分块；输出 JSON，不生成字幕。 |
 | `--server` / `--stop-server` | 启动或停止本机编辑器。 |
@@ -32,6 +33,14 @@
 
 `-ll 2m` 只处理前两分钟；完整转写时移除该参数。不要默默截断用户要求的完整媒体。
 
+### 直接打开转写对比
+
+```powershell
+.\MAW.exe --compare "before.mosp" "after.mosp" "third.srt"
+```
+
+按参数顺序载入 `.mosp`、`.srt` 或字幕工程 `.json`，不需要通过文件选择器，也不修改输入文件或调用转写服务。路径含空格时分别加引号。该命令启动本机对比窗口，关闭窗口后命令退出；Agent 若要边开窗边处理其他任务，可在后台启动。这里是多工程「转写对比」，不是双文件「时间码对比」。
+
 ## 公开转写参数
 
 ### 输入与通用处理
@@ -45,12 +54,12 @@
 | `--provider VALUE` | `qwen`（默认）、`soniox`、`doubao`、`moss`、`tencent`、`openai`、`bcut`。 |
 | `--model MODEL` | 覆盖模型；各供应商默认值见 [PROVIDERS](PROVIDERS.md)。 |
 | `--language VALUE` | 语言提示；Soniox 可用 `zh,en`；必剪与 MOSS 不支持（MOSS 自动识别语言）。 |
-| `--max-len N` / `--min-len N` | 字符型最大长度/短句合并阈值，生成器默认 18 / 5。完整词与 item 边界间局部重平衡，减少孤立短尾；保护常见数字单位、小数、比例和版本号。不可拆 item 或保护表达自身超限时完整保留并打印提示。 |
-| `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3。 |
+| `--max-len N` / `--min-len N` | 字符型最大长度/短句阈值，默认 18 / 5。只计正文，标点和空白不占字数。超长时优先在配置的标点处补切，并尽量减少孤立短尾；不可拆 item 或受保护的数字等表达自身超限时，完整保留并打印提示。 |
+| `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3；已生效的标点切点不因短句而撤销。 |
 | `--gap-split MS` | 停顿切句阈值，默认 500 毫秒。 |
 | `--keep-punct` | 保留全部句尾标点，覆盖显式 `--strip-tail-punct` 删除设置；未配置时默认保留全部标点。 |
 | `--strip-tail-punct CHARS` | 指定剥除的句尾标点，默认不剥除；公开入口不转发空字符串，可使用 `--keep-punct` 覆盖显式删除设置。 |
-| `--extra-strong-punct CHARS` | 额外强断句符号，仅向 Qwen 下发。 |
+| `--extra-strong-punct CHARS` | 所有转写供应商通用，逐字符替换默认断句符号；传空串时不按标点断句，仍按换行、停顿和长度整理。英文逗号仍只用于超长补拆。 |
 | `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时写颜色快照，无需重复前者。能力取决于模型。 |
 | `-ll` / `--length-limit VALUE` | 限制处理时长，支持 `90`、`20s`、`2m`、`1h`。 |
 | `--json` | 兼容旧调用；输出仍为 `.mosp`。 |
@@ -59,6 +68,8 @@
 | `--html` / `--no-html` | 生成/关闭便携 HTML，二者互斥，默认关闭。 |
 | `--debug` | 输出 API 调试信息。 |
 | `-s` / `--stickers PATH` | 表情包目录，也可用于 Server。 |
+
+字符型字幕按标点拆开后，通常保留切点。例外是已配置的逗号前只有 1–2 字、按字词时间码显示不超过 300 ms，而且后文在 200 ms 内接上：合并后不超长、不跨说话人或换行时，让这段跟后文一起显示。
 
 Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人参数。MOSS 的说话人分离是模型固有输出，`--speaker` 为兼容保留（恒为开）。OpenAI 兼容接口的说话人模式需要 Launcher 或高级模块命令的专用入口，不通过公开 CLI 的 `--speaker` 请求。
 

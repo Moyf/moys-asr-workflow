@@ -88,6 +88,78 @@ test('transcript compare preloads Launcher bytes without touching the offline fl
   } finally { await browser.close(); }
 });
 
+test('transcript compare caps loaded files and hides columns and lanes without unloading', async () => {
+  const browser = await chromium.launch({ executablePath: process.env.MAW_E2E_CHROMIUM_PATH || undefined });
+  try {
+    const page = await browser.newPage();
+    await page.goto(pageUrl('compare.html'));
+    const files = Array.from({ length: 11 }, (_, i) => ({
+      name: `version-${i + 1}.srt`,
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`1\n00:00:${String(i).padStart(2, '0')},000 --> 00:00:${String(i).padStart(2, '0')},500\n${i === 0 ? 'sole-hidden-text' : `unique-${i + 1}`}\n`),
+    }));
+    await page.locator('#fileInput').setInputFiles(files);
+    await page.getByText(/最多.*10.*已跳过/).waitFor({ timeout: 3000 });
+    const cards = page.locator('#cards .card');
+    assert.equal(await cards.count(), 10);
+    assert.equal(await page.locator('.wave-lane').count(), 10);
+    await cards.first().getByRole('button', { name: '设为基准' }).click();
+    await page.locator('#diffOnly').check();
+    const first = cards.first().getByRole('switch');
+    await first.focus();
+    await page.keyboard.press('Space');
+    assert.equal(await first.isChecked(), false);
+    assert.equal(await first.evaluate(node => node === document.activeElement), true);
+    assert.equal(await cards.count(), 10);
+    assert.equal(await page.locator('.wave-lane').count(), 9);
+    assert.equal(await page.locator('#tableWrap .hcell').count(), 10);
+    assert.equal(await page.getByText('sole-hidden-text', { exact: true }).count(), 0);
+    assert.equal(await page.locator('#diffOnly').isDisabled(), true);
+    await page.locator('#search').fill('sole-hidden-text');
+    await page.getByText('当前筛选下没有字幕。').waitFor({ timeout: 3000 });
+    await page.locator('#resetFilters').click();
+    await cards.first().locator('label.switch').click();
+    assert.equal(await page.locator('.wave-lane').count(), 10);
+    assert.equal(await cards.first().getByRole('button', { name: '取消基准' }).count(), 1);
+    await page.locator('#diffOnly').check();
+    await cards.first().locator('label.switch').click();
+    await cards.first().locator('label.switch').click();
+    assert.equal(await page.locator('#diffOnly').isChecked(), true);
+    for (const width of [1280, 768, 414, 375, 320]) {
+      await page.setViewportSize({ width, height: 850 });
+      const layout = await page.evaluate(() => {
+        const control = document.querySelector('.card-actions .switch');
+        const track = control.querySelector('.switch-track');
+        const stats = document.querySelector('.card-stats');
+        const table = document.querySelector('#tableWrap');
+        return {
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          gap: control.getBoundingClientRect().top - stats.getBoundingClientRect().bottom,
+          font: parseFloat(getComputedStyle(control).fontSize),
+          track: [track.offsetWidth, track.offsetHeight],
+          tableScrollable: table.scrollWidth > table.clientWidth,
+        };
+      });
+      assert.equal(layout.overflow, 0, `root overflow at ${width}px`);
+      assert.ok(layout.gap >= 8 && layout.font >= 11);
+      assert.deepEqual(layout.track, [34, 20]);
+      assert.equal(layout.tableScrollable, true);
+    }
+    const screenshots = process.env.MAW_REVIEW_SCREENSHOTS;
+    if (screenshots) await page.screenshot({ path: `${screenshots}/transcript-compare-ten-narrow.png` });
+    await page.setViewportSize({ width: 1280, height: 850 });
+    await page.locator('[data-tool-theme]').click();
+    if (screenshots) await page.screenshot({ path: `${screenshots}/transcript-compare-ten-alternate.png` });
+    for (const control of await cards.locator('label.switch').all()) await control.click();
+    assert.equal(await page.locator('#wavePanel').isVisible(), false);
+    assert.equal(await page.getByText('所有文件均已隐藏').isVisible(), true);
+    assert.equal(await cards.count(), 10);
+    await cards.last().locator('label.switch').click();
+    assert.equal(await page.locator('.wave-lane').count(), 1);
+    assert.equal(await page.locator('#tableWrap .hcell').count(), 2);
+  } finally { await browser.close(); }
+});
+
 test('timestamp compare preloads Launcher projects and keeps the file picker usable', async () => {
   const browser = await chromium.launch({ executablePath: process.env.MAW_E2E_CHROMIUM_PATH || undefined });
   try {
