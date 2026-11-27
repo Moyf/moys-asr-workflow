@@ -423,31 +423,13 @@ jobs:
             xvfb
           sudo apt-get clean
 
-      - name: Install verified FFmpeg 8.1 for Linux media tests
+      - name: Install pinned FFmpeg for Linux media tests
         if: matrix.platform == 'linux'
         shell: bash
         run: |
           set -euo pipefail
-          FfmpegBranch="8.1"
-          FfmpegRelease="$(curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
-            https://api.github.com/repos/FFmpeg-Builds/FFmpeg-Builds/releases/latest \
-            | python3 scripts/select_btbn_ffmpeg.py "$FfmpegBranch")"
-          read -r FfmpegTag FfmpegAsset <<< "$FfmpegRelease"
-          FfmpegBase="https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/$FfmpegTag"
-          mkdir -p build/ci-ffmpeg/download build/ci-ffmpeg/extracted
-          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
-            -o "build/ci-ffmpeg/download/$FfmpegAsset" \
-            "$FfmpegBase/$FfmpegAsset"
-          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
-            -o build/ci-ffmpeg/download/checksums.sha256 \
-            "$FfmpegBase/checksums.sha256"
-          bash scripts/verify_sha256.sh build/ci-ffmpeg/download/checksums.sha256 \
-            "$FfmpegAsset" "build/ci-ffmpeg/download/$FfmpegAsset"
-          tar -xf "build/ci-ffmpeg/download/$FfmpegAsset" -C build/ci-ffmpeg/extracted --strip-components=1
-          test -x build/ci-ffmpeg/extracted/bin/ffmpeg
-          test -x build/ci-ffmpeg/extracted/bin/ffprobe
-          build/ci-ffmpeg/extracted/bin/ffmpeg -version | head -n 1 | grep -F "$FfmpegBranch"
-          echo "$PWD/build/ci-ffmpeg/extracted/bin" >> "$GITHUB_PATH"
+          bash scripts/prepare_linux_ffmpeg.sh build/linux-ffmpeg-cache build/linux-ffmpeg-tools
+          echo "$PWD/build/linux-ffmpeg-tools/bin" >> "$GITHUB_PATH"
 
       - name: Run Python tests
         run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/release-python.json --github-summary
@@ -696,22 +678,34 @@ jobs:
           ldd squashfs-root/_internal/PyQt6/Qt6/plugins/platforms/libqxcb.so 2>&1 | grep "not found" || echo "(依赖完整)"
           rm -r squashfs-root
 
-      - name: Verify bundled static ffmpeg under polluted environment
+      - name: Verify bundled FFmpeg under PyInstaller library paths
         if: matrix.platform == 'linux'
         run: |
           set -euo pipefail
           cd build-appimage
           ./MAW-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
-          BIN="squashfs-root/ffmpeg/bin"
-          test -x "$BIN/ffmpeg"
-          test -x "$BIN/ffprobe"
-          # 模拟 PyInstaller bootloader：LD_LIBRARY_PATH 指向 _internal（含旧 libstdc++）。
-          # 静态 ffmpeg 必须自包含，在此污染环境下仍能正常运行；动态版会
-          # 在这里报 GLIBCXX_3.4.32 not found。
+          BIN="$PWD/squashfs-root/ffmpeg/bin"
+          test -s squashfs-root/ffmpeg/GPLv3.txt
+          test -s squashfs-root/ffmpeg/SOURCE.txt
           export LD_LIBRARY_PATH="$PWD/squashfs-root/_internal"
-          "$BIN/ffmpeg" -version >/dev/null
-          "$BIN/ffprobe" -version >/dev/null
-          echo "OK: 静态 ffmpeg 在污染 LD_LIBRARY_PATH 下正常运行"
+          for tool in ffmpeg ffprobe; do
+            "$BIN/$tool" -version >/dev/null
+            ldd "$BIN/$tool" > "$RUNNER_TEMP/maw-$tool.ldd"
+            CodecPath="$(awk '$1 ~ /^libavcodec\.so\./ && $2 == "=>" { print $3 }' "$RUNNER_TEMP/maw-$tool.ldd")"
+            [[ "$(realpath -e "$CodecPath")" == "$PWD/squashfs-root/ffmpeg/lib/"* ]]
+          done
+          printf '1\n00:00:00,000 --> 00:00:01,000\nMAW release check\n' > "$RUNNER_TEMP/maw-ffmpeg.srt"
+          (
+            cd "$RUNNER_TEMP"
+            "$BIN/ffmpeg" -nostdin -v error -f lavfi -i color=s=640x240:r=5 -t 1 \
+              -vf subtitles=filename=maw-ffmpeg.srt -c:v libx264 -pix_fmt yuv420p -y maw-ffmpeg.mp4
+            "$BIN/ffprobe" -v error -select_streams v:0 -show_entries stream=codec_name \
+              -of csv=p=0 maw-ffmpeg.mp4 | grep -Fx h264
+            "$BIN/ffmpeg" -nostdin -v error -f lavfi -i color=s=640x240:r=5 -frames:v 1 -f framemd5 -y plain.txt
+            "$BIN/ffmpeg" -nostdin -v error -f lavfi -i color=s=640x240:r=5 \
+              -vf subtitles=filename=maw-ffmpeg.srt -frames:v 1 -f framemd5 -y burned.txt
+            test "$(tail -n 1 plain.txt)" != "$(tail -n 1 burned.txt)"
+          )
           rm -r squashfs-root
 
       - name: Smoke AppImage (headless)
