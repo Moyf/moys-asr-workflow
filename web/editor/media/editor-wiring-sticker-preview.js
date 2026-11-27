@@ -1,3 +1,14 @@
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
+import { MawePreviewGeometry } from './editor-preview-geometry.js';
+import { MaweStickerOverlay } from './editor-sticker-overlay.js';
+export let MaweStickerPreviewWiring;
 export function initMaweStickerPreviewWiring() {
 // === 表情包预览（视频画面内）===
 // 层位置/尺寸由 preview.sticker 几何驱动（默认右上角）；点击后可拖动/缩放，与字幕预览同一套交互。
@@ -33,12 +44,13 @@ MaweStickerOverlay.stickerOverlayLayer.addEventListener('keydown', (event) => Ma
 let activeStickerHasOverlay = false;
 
 // 门面必须挂在本文件任何顶层 update 调用之前：applyStickerFeatureEnabled()
-// 经 MawePlaybackLoop.update() → sticker-overlay（init 模块）写回这个访问器，
-// classic 时代写共享 let 与位置无关，迁移后写路径经门面，挂载晚于调用即炸。
-window.MaweStickerPreviewWiring = window.MaweStickerPreviewWiring || Object.freeze({
+// 经 MawePlaybackLoop.update() → sticker-overlay（init 模块）写回这个访问器。
+MaweStickerPreviewWiring = Object.freeze({
   get activeStickerHasOverlay() { return activeStickerHasOverlay; },
   set activeStickerHasOverlay(value) { activeStickerHasOverlay = value; },
 });
+
+
 
 
 
@@ -51,14 +63,14 @@ MaweDom.stickerOverlayToggle?.addEventListener('change', () => {
   MawePreviewGeometry.refreshPreviewGeometryEditable();
   MawePlaybackLoop.update();
   // 实际画面窗口的表情包图层跟随同一开关（与烧录行为同源）。
-  window.MaweAssFrame?.syncWindowStickers?.();
+  MaweAssFrame?.syncWindowStickers?.();
 });
 
 // 表情包功能总开关：关闭时「预览表情包」不可用（强制关闭并禁用），
 // 右键菜单的分配入口由 context-menus 按同一设置隐藏；工程数据不受影响。
 function applyStickerFeatureEnabled() {
   const enabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
-  const featureToggle = document.getElementById('sticker-feature-toggle');
+  const featureToggle = /** @type {HTMLInputElement} */ (document.getElementById('sticker-feature-toggle'));
   if (featureToggle) featureToggle.checked = enabled;
   if (MaweDom.stickerOverlayToggle) {
     MaweDom.stickerOverlayToggle.disabled = !enabled;
@@ -70,14 +82,14 @@ function applyStickerFeatureEnabled() {
   MaweStickerOverlay.stickerOverlayLayer.classList.toggle('hidden', !enabled);
   MawePreviewGeometry.refreshPreviewGeometryEditable();
   // 程序化改 checked 不触发 change；实际画面窗口的表情包图层同步跟随。
-  window.MaweAssFrame?.syncWindowStickers?.();
+  MaweAssFrame?.syncWindowStickers?.();
   MawePlaybackLoop.update();
 }
 document.getElementById('sticker-feature-toggle')?.addEventListener('change', (event) => {
-  MaweSettings.updateEditorSettings({ stickersEnabled: event.target.checked });
+  MaweSettings.updateEditorSettings({ stickersEnabled: /** @type {HTMLInputElement} */ (event.target).checked });
   // 启用功能时自动打开「预览表情包」，省一次到预览页翻开关；只在用户开启
   // 的这一刻补默认值，启动时恢复已保存的「预览关闭」不被强行覆盖。
-  if (event.target.checked && MaweDom.stickerOverlayToggle && !MaweDom.stickerOverlayToggle.checked) {
+  if (/** @type {HTMLInputElement} */ (event.target).checked && MaweDom.stickerOverlayToggle && !MaweDom.stickerOverlayToggle.checked) {
     MaweDom.stickerOverlayToggle.checked = true;
     MaweSettings.updateEditorSettings({ stickerOverlayEnabled: true });
   }
@@ -172,5 +184,4 @@ MaweDom.overlayToggle.addEventListener('change', () => {
   MawePlaybackLoop.update();
 });
 
-// init 化模块经 window 延迟取用本文件的运行时状态（门面已在本文件前部挂载）。
 }

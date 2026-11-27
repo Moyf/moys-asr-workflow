@@ -1,8 +1,10 @@
 // 主题：明暗色应用。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweTheme 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// ESM init 模块：装配器在原清单位次调用；顶层无 DOM 绑定，
-// matchMedia 只读配置（G07 gate：监听挂载仍在显式初始化函数内）。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 主题监听在显式初始化时安装。
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from './editor-dom.js';
+export let MaweTheme;
 export function initMaweTheme() {
   'use strict';
 
@@ -118,7 +120,7 @@ export function initMaweTheme() {
     if (MaweSettings.EDITOR_SETTINGS.theme === 'system') MaweTheme.applyTheme('system');
   };
 
-  global.MaweTheme = Object.freeze({
+  MaweTheme = Object.freeze({
     EDITOR_THEME_VALUES,
     EDITOR_ACCENT_COLOR_DEBOUNCE_MS,
     normalizeEditorTheme,
@@ -136,4 +138,5 @@ export function initMaweTheme() {
     refreshEditorSystemTheme,
     applyTheme
   });
+
 }

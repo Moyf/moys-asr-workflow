@@ -255,7 +255,7 @@ async function copyErrorReport() {
 }
 async function openErrorFaq() {
   try {
-    const result = await window.MAWLauncher.callBackend("open_faq");
+    const result = await launcherRuntime.callBackend("open_faq");
     if (result?.ok) return;
     const detail = result?.detail || result?.error || t("error_open_faq_failed");
     setStatus(detail);
@@ -268,7 +268,7 @@ async function openErrorFaq() {
 }
 async function openErrorIssue() {
   try {
-    const result = await window.MAWLauncher.callBackend("open_url", { url: "https://github.com/Moyf/moys-asr-workflow" });
+    const result = await launcherRuntime.callBackend("open_url", { url: "https://github.com/Moyf/moys-asr-workflow" });
     if (result?.ok) return;
     const detail = result?.detail || result?.error || t("error_open_issue_failed");
     setStatus(detail);

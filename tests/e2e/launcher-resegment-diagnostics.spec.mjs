@@ -1,7 +1,8 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 
-const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
+const launcherUrl = launcherFixtureUrl();
 
 test('boundary retry shows logical batch with retry number and keeps actionable failure detail', async ({ page }, testInfo) => {
   await page.goto(launcherUrl);

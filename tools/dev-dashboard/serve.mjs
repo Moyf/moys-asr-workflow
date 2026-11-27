@@ -229,7 +229,7 @@ function sendError(res, status, message) {
 // 面板自身不加载外部资源，用最严策略。
 const STRICT_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'";
-// changelog-editor 是自包含工具页：主脚本与样式内联，粘贴图片预览用 blob:，
+// changelog-editor 使用本地主脚本及内联样式，粘贴图片预览用 blob:，
 // 归档图片引用 raw.githubusercontent.com，策略必须放行这三类资源。
 const EDITOR_CSP = "default-src 'self' 'unsafe-inline' data: blob: https:; connect-src 'self'";
 

@@ -1,6 +1,6 @@
 // Shared gap-remove data and playback helpers used by MAWE and the alignment UI.
 // Keep this module free of DOM, media elements, editor history, and rendering.
-(function initAsrGapRemoveCore(global) {
+export const AsrGapRemoveCore = (() => {
   'use strict';
 
   const GAP_REMOVE_SCHEMA = 'moy.asr.gap_remove.v1';
@@ -227,11 +227,22 @@
       && hasGapMoveTargetRanges(item);
   }
 
+  /**
+   * @typedef {{start: number, end: number}} GapRange
+   * @typedef {GapRange & {
+   *   id: string, source: string, removed?: boolean,
+   *   cleanup_scope?: ReturnType<typeof normalizeCleanupScope>, review_marker_id?: string,
+   *   operation?: string, edge?: string, base?: number, boundary?: number,
+   *   cleared_ranges?: GapRange[], base_start?: number, base_end?: number,
+   *   target_start?: number, target_end?: number, target_ranges?: GapRange[],
+   * }} ProvenanceRange
+   */
   function normalizeProvenanceRange(item, source, index, used) {
     if (!item || typeof item !== 'object' || !GAP_PROVENANCE_SOURCE_SET.has(source)) return null;
     const start = Math.max(0, Math.round(Number(item.start)));
     const end = Math.max(0, Math.round(Number(item.end)));
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    /** @type {ProvenanceRange} */
     const result = {
       ...unknownFields(item, PROVENANCE_RANGE_FIELDS),
       id: provenanceId(item.id, source, index, used),
@@ -1539,7 +1550,7 @@
     return createCleanupRetainedProjector(gapRemove)(segments);
   }
 
-  global.AsrGapRemoveCore = Object.freeze({
+  return Object.freeze({
     getCleanupScopeItems,
     createCleanupRetainedProjector,
     projectCleanupRetainedSegments,
@@ -1589,4 +1600,4 @@
     isRangeInsideRemovedGap,
     buildGapRemovedIntervals,
   });
-})(typeof window !== 'undefined' ? window : globalThis);
+})();

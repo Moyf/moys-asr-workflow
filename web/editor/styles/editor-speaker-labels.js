@@ -1,15 +1,25 @@
 // 说话人标签：设置应用、控件同步与导出选项。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSpeakerLabels 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweColors } from './editor-colors.js';
+import { MaweSpeakerManager } from './editor-speaker-manager.js';
 import { createProjectSpeaker, updateProjectSpeaker, bindProjectSpeakerShortcut, setProjectAnnotationMode, setProjectPaletteSize, assignProjectSpeakerShortcut, SPEAKER_SHORTCUT_COLORS } from '../../shared/utils/speaker-experience.js';
+export let MaweSpeakerLabels;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { getPreviewGeometry, getSubtitleAppearance, applySubtitleAppearance } from './editor-appearance.js';
 import { rebuildEditorColorPalette } from './editor-colors.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweSpeakerLabels() {
-(function initMaweSpeakerLabelsFacade(global) {
-  'use strict';
-  const ui = (zh, en) => global.MAWE_I18N?.language === 'en' ? en : zh;
+  const global = typeof window !== 'undefined' ? window : globalThis;
+  const ui = (zh, en) => MAWE_I18N?.language === 'en' ? en : zh;
 
 
   const speakerLabelUndoColors = new Set();
@@ -62,7 +72,7 @@ export function initMaweSpeakerLabels() {
   function getSpeakerLabelSettings(value = MaweBoot.DATA.preview?.subtitle?.speaker_labels) {
     // applySubtitleAppearance() runs during the early boot sequence, before the
     // preview-geometry section initializes its later GEO_UTILS alias.
-    return window.AsrEditorUtils.normalizeSpeakerLabelSettings(value);
+    return AsrEditorUtils.normalizeSpeakerLabelSettings(value);
   }
 
 
@@ -98,11 +108,11 @@ export function initMaweSpeakerLabels() {
       MaweDom.subtitleSpeakerLabelSeparatorInput.value = settings.separator;
     }
     document.querySelectorAll('[data-speaker-label-swatch]').forEach((swatch) => {
-      const color = swatch.dataset.speakerLabelSwatch;
+      const color = /** @type {HTMLElement} */ (swatch).dataset.speakerLabelSwatch;
       const value = MaweColors.COLOR_BY_NAME[color]?.value;
-      if (value) swatch.style.backgroundColor = value;
+      if (value) /** @type {HTMLElement} */ (swatch).style.backgroundColor = value;
     });
-    window.MaweSpeakerManager?.sync?.();
+    MaweSpeakerManager?.sync?.();
   }
 
 
@@ -138,11 +148,11 @@ export function initMaweSpeakerLabels() {
     const options = speakerLabelExportOptions();
     // 动态字幕 / Resolve JSON / OTIO 等 subtitleExportText 出口与 SRT/TXT 同
     // 链路剥离：句级 fade/shake + 成对 MASS 符号（ASS 导出不经过这里）。
-    const text = window.AsrEditorUtils.srtSentenceText(
+    const text = AsrEditorUtils.srtSentenceText(
       String(segment?.text || ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     return options.speakerLabelsEnabled
-      ? window.AsrEditorUtils.formatSpeakerLabelledText(
+      ? AsrEditorUtils.formatSpeakerLabelledText(
         text, segment, segments, options.speakerLabels, options.speakerLabelSeparator, options.speakerProject,
       )
       : text;
@@ -151,18 +161,18 @@ export function initMaweSpeakerLabels() {
   function runSpeakerCommand(label, operation) {
     const result = MaweCommands.run(label, operation,
       { captureView: true, invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
-    if (window.MaweColors?.rebuildEditorColorPalette) rebuildEditorColorPalette();
-    window.MaweSpeakerManager?.sync?.();
+    if (MaweColors?.rebuildEditorColorPalette) rebuildEditorColorPalette();
+    MaweSpeakerManager?.sync?.();
     return result;
   }
 
   function assignIdentity(refs, identity) {
     return runSpeakerCommand(identity === null ? '清除说话人' : '分配说话人',
-      () => window.AsrEditorUtils.assignProjectSpeaker(MaweBoot.DATA, refs, identity));
+      () => AsrEditorUtils.assignProjectSpeaker(MaweBoot.DATA, refs, identity));
   }
 
   function mergeIdentities(sourceIds, targetId) {
-    return runSpeakerCommand('合并说话人身份', () => window.AsrEditorUtils.mergeProjectSpeakers(MaweBoot.DATA, sourceIds, targetId));
+    return runSpeakerCommand('合并说话人身份', () => AsrEditorUtils.mergeProjectSpeakers(MaweBoot.DATA, sourceIds, targetId));
   }
 
   function createIdentity(options) {
@@ -188,7 +198,7 @@ export function initMaweSpeakerLabels() {
   function assignShortcut(refs, slot) {
     const name = SPEAKER_SHORTCUT_COLORS[slot - 1];
     return runSpeakerCommand('分配说话人', () => assignProjectSpeakerShortcut(MaweBoot.DATA, refs, slot,
-      { color: window.MaweColors?.COLOR_BY_NAME?.[name]?.value }));
+      { color: MaweColors?.COLOR_BY_NAME?.[name]?.value }));
   }
 
   function assignFromColorShortcut(track, indices, colorName) {
@@ -203,7 +213,7 @@ export function initMaweSpeakerLabels() {
     return true;
   }
 
-  global.MaweSpeakerLabels = Object.freeze({
+  MaweSpeakerLabels = Object.freeze({
     assignIdentity,
     clearIdentity: refs => assignIdentity(refs, null),
     mergeIdentities,
@@ -225,9 +235,9 @@ export function initMaweSpeakerLabels() {
     setSpeakerLabelSettings,
     speakerLabelExportOptions
   });
+
   global.document?.addEventListener?.('mawe:languagechange', () => syncSpeakerLabelControls());
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function getSpeakerLabelSettings(...args) { return window.MaweSpeakerLabels.getSpeakerLabelSettings(...args); }
-export function syncSpeakerLabelControls(...args) { return window.MaweSpeakerLabels.syncSpeakerLabelControls(...args); }
+export function getSpeakerLabelSettings(...args) { return MaweSpeakerLabels.getSpeakerLabelSettings(...args); }
+export function syncSpeakerLabelControls(...args) { return MaweSpeakerLabels.syncSpeakerLabelControls(...args); }

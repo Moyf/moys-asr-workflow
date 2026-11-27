@@ -602,9 +602,7 @@
 </main>
 <div id="dropOverlay" hidden>松开以添加文件</div>
 <div id="toast" role="status" aria-live="polite"></div>
-<script>
-'use strict';
-
+<script type="module">
 const PALETTE = Array.from({length:8}, (_, i) => `var(--series-${i + 1})`);
 const LCS_CELL_LIMIT = 4_000_000;
 const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
@@ -1275,9 +1273,11 @@ function renderTable(rows, overallByFile, sumsByFile) {
       timeCell.appendChild(chip);
     }
     const jump = document.createElement('button');
-    jump.className = 'btn jump-wave';
+    jump.className = 'btn jump-wave tool-icon-action';
     jump.type = 'button';
-    window.MAWToolPage.setActionIcon(jump, 'locate', '跳转到时间线位置');
+    jump.dataset.toolTip = '跳转到时间线位置';
+    jump.setAttribute('aria-label', jump.dataset.toolTip);
+    jump.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4m0 12v4M2 12h4m12 0h4 M19 12a7 7 0 1 1-14 0 7 7 0 1 1 14 0 M12 11v2"/></svg>';
     jump.addEventListener('click', () => jumpToWave(row.start));
     timeCell.appendChild(jump);
     grid.appendChild(timeCell);
@@ -1737,20 +1737,6 @@ window.addEventListener('resize', () => {
     if (state.files.length) renderWavePanel();
   }, 200);
 });
-
-window.MAWCompare = {
-  parseSrt,
-  parseProjectObject,
-  decodeSubtitleBytes,
-  buildFileEntry,
-  buildRows,
-  normTokens,
-  lcsCompare,
-  addFiles,
-  removeFile,
-  clearAll,
-  state,
-};
 
 // Launcher 原生窗口：pywebview 就绪后拉取预载文件。字节原样交给本页
 // 解析，离线双击打开时该入口不触发。

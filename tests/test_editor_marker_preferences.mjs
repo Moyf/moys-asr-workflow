@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 
 const utilsContext = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
@@ -17,7 +17,7 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
     };
   }
   const context = { window: { AsrEditorUtils: utilsContext.window.AsrEditorUtils,
-    AsrGapRemoveCore: utilsContext.window.AsrGapRemoveCore },
+    AsrGapRemoveCore: utilsContext.window.AsrGapRemoveCore }, AsrEditorUtils: utilsContext.window.AsrEditorUtils,
   MaweHost: { storage: { getItem: name => storage.get(name), setItem: (name, value) => storage.set(name, value) } },
   MaweState: { preferences: { editor: {} }, changes: {} },
   MaweCoreState: { waveformEditor: { refreshMarkerOverlay() {} } },
@@ -26,7 +26,7 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
   };
   vm.runInNewContext(invokedInitModuleSource('editor/state/editor-settings.js', 'initMaweSettings'), context);
   context.MaweSettings = context.window.MaweSettings;
-  vm.runInNewContext(invokedInitModuleSource('editor/markers/editor-marker-editing.js', 'initMaweMarkerEditing'), context);
+  vm.runInNewContext(plainModuleSource('editor/markers/editor-marker-editing.js'), context);
   context.MaweMarkerEditing = context.window.MaweMarkerEditing;
   vm.runInNewContext(invokedInitModuleSource('editor/markers/editor-wiring-markers.js', 'initMaweMarkersWiring'), context);
   return { storage, settings: context.MaweSettings, markers: context.MaweMarkerEditing, elements,

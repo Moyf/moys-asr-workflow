@@ -16,6 +16,13 @@ const assets = new Map(await Promise.all([
   body: await readFile(new URL(file, import.meta.url), 'utf8'),
   contentType,
 }])));
+assets.get('/app.js').body += `
+  Object.defineProperties(window, {
+    refresh: {get: () => refresh},
+    previewOpenTimer: {get: () => previewOpenTimer},
+    previewFocusFrame: {get: () => previewFocusFrame},
+  });
+`;
 const LONG_BODY = '# 改动说明\n\n保留换行与 Markdown 源文。\n'
   + '<img src="https://example.invalid/tracker" onerror="window.previewExecuted=true">\n'
   + '<script>window.previewExecuted=true</script>\n\n'

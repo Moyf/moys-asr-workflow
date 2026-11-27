@@ -1,5 +1,5 @@
 // 共享悬停 tooltip：接管原生 title 属性，替换为跟随明暗主题的自定义气泡。
-// Editor 与 Launcher 共用实现，由各自入口在装配时调用 MaweTooltip.start()；
+// Editor 与 Launcher 共用实现，由各自入口在装配时调用。
 // 样式位于 editor.css / launcher.css 末尾的 .mawe-tooltip 规则，只使用设计令牌。
 //
 // 设计要点：
@@ -10,9 +10,7 @@
 //   摘除来抑制原生气泡，必须让 DOM 里根本没有 title 可读；
 // - 空间不足时按 下 → 上 → 右 → 左 顺序换位，箭头随位置翻转；
 // - 下/上方向气泡与目标左对齐，箭头靠近目标左缘（锚点在左不在中间）。
-(function initMaweTooltip(global) {
-  'use strict';
-
+export function initMaweTooltip(global = window) {
   const FOCUS_SELECTOR = '[data-tooltip-focus][aria-label]';
   const ATTACH_SELECTOR = `:is([data-title],${FOCUS_SELECTOR}):not(iframe):not(object):not(embed)`;
   const FORCE_NATIVE_SELECTOR = '[data-tooltip-force-native]';
@@ -274,5 +272,5 @@
     global.addEventListener('blur', hideNow);
   }
 
-  global.MaweTooltip = Object.freeze({ start, hide: hideNow });
-})(window);
+  start();
+}

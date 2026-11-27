@@ -127,10 +127,10 @@ test('接线契约：创建空字幕改为弹出快速编辑气泡，聚焦面�
   assert.equal(addCue.split("editNewCue('extension'").length - 1, 2);
   const overlay = fs.readFileSync(
     path.join(root, 'web/editor/cues/overlay-track.js'), 'utf8');
-  assert.ok(overlay.includes("'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay')"));
+  assert.ok(overlay.includes("'overlay', index, () => focusCuePanelText(index, 'overlay')"));
   // 三处创建路径都不再直接/延迟聚焦面板文本框（聚焦只存在于回退 lambda）。
   assert.ok(!addCue.includes('setTimeout(() => focusCuePanelText(index), 0)'));
-  assert.ok(!overlay.includes("setTimeout(() => MaweCuePanel.focusCuePanelText(index, 'overlay'), 0)"));
+  assert.ok(!overlay.includes("setTimeout(() => focusCuePanelText(index, 'overlay'), 0)"));
 });
 
 test('接线契约：气泡内 Tab 切换字幕并阻断原生焦点移动', () => {
@@ -168,11 +168,11 @@ test('接线契约：选中后 Enter 与叠加轨菜单「编辑文本」也走�
   const shortcuts = fs.readFileSync(
     path.join(root, 'web/editor/cues/editor-wiring-edit-shortcuts.js'), 'utf8');
   assert.ok(shortcuts.includes('editor.openCueQuickEditAtIndex('));
-  assert.ok(shortcuts.includes("() => MaweCuePanel.focusCuePanelText(),"));
+  assert.ok(shortcuts.includes("() => focusCuePanelText(),"));
   const menus = fs.readFileSync(
     path.join(root, 'web/editor/ui/editor-context-menus.js'), 'utf8');
   assert.ok(menus.includes("openCueQuickEditAtIndex("));
-  assert.ok(menus.includes("'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay')"));
+  assert.ok(menus.includes("'overlay', index, () => focusCuePanelText(index, 'overlay')"));
 });
 
 test('接线契约：字词码模式放开字幕块编辑，双击字词块弹出字词气泡', () => {

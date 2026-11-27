@@ -19,14 +19,16 @@ class WorkflowCollectionTests(unittest.TestCase):
         launcher_paths = [
             "tests/e2e/launcher-interactions.spec.mjs", "tests/e2e/launcher-zoom.spec.mjs",
             "tests/e2e/launcher-script-match-cancel.spec.mjs", "tests/e2e/shared-tooltip.spec.mjs",
-            "tests/test_asr_presets_browser.mjs", "tests/test_launcher_bundle.mjs",
+            "tests/test_launcher_bundle.mjs",
         ]
         editor = "tests/e2e/filmstrip-real.spec.mjs"
         mixed = "tests/e2e/layout-feedback.spec.mjs"
-        static = ["tests/test_asr_presets.py", "tests/test_gui_web.py", "tests/test_packaging_contract.py"]
+        # The preset browser test builds its own temporary fixture.
+        no_prebuilt_bundle = ["tests/test_asr_presets.py", "tests/test_gui_web.py", "tests/test_packaging_contract.py",
+                              "tests/test_asr_presets_browser.mjs"]
         cases = [(path, {"build-launcher"}) for path in launcher_paths] + [
             (editor, {"build"}), (mixed, {"build", "build-launcher"}),
-            *((path, set()) for path in static),
+            *((path, set()) for path in no_prebuilt_bundle),
         ]
         for path, expected in cases:
             with self.subTest(path=path):

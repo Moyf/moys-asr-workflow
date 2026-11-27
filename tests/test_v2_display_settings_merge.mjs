@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 test('overlay controls reflect v2 main and overlay tracks, including an empty overlay', () => {
   const main = { role: 'main', segments: [] };
@@ -18,7 +19,7 @@ test('overlay controls reflect v2 main and overlay tracks, including an empty ov
     getMaweDomPanels: () => panels, getOverlayTrack: () => overlay,
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/ui/editor-display-settings.js', 'initMaweDisplaySettings'), context);
   context.MaweDisplaySettings.updateMultiSubtitleUi();
   assert.equal(panels.overlayTrackSeparator.hidden, true);

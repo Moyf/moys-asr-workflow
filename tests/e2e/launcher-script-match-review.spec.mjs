@@ -1,10 +1,11 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 
 test('complete comparison opens from the current preview without starting a write', async ({ page }, testInfo) => {
-  await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.locator('#toolboxFab').click();
   await page.locator('#toolboxMatchTab').click();
@@ -44,7 +45,7 @@ test('complete comparison opens from the current preview without starting a writ
 });
 
 test('match preview shows a pending hint until the current result is ready', async ({ page }, testInfo) => {
-  await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.locator('#toolboxFab').click();
   await page.locator('#toolboxMatchTab').click();
@@ -97,7 +98,7 @@ test('match preview shows a pending hint until the current result is ready', asy
 });
 
 test('script match completion points to the comparison tools and keeps diagnostics in the log', async ({ page }, testInfo) => {
-  await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.locator('#toolboxFab').click();
   await page.locator('#toolboxMatchTab').click();
@@ -145,7 +146,7 @@ test('script match completion points to the comparison tools and keeps diagnosti
 });
 
 async function openLauncherComparisonFixture(page) {
-  await page.goto(new URL('../../web/launcher/index.html', import.meta.url).href);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.locator('#toolboxFab').click();
   await page.locator('#toolboxMatchTab').click();

@@ -1,9 +1,21 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweSearch } from '../cues/editor-search.js';
+import { refreshMergeJoinModeHint } from '../cues/editor-split-mode.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { syncTrackControls } from '../state/editor-project-settings.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweSettingsPanels } from './editor-settings-panels.js';
 import { getMaweDomPanels } from './editor-dom-panels.js';
+export let MaweDisplaySettings;
 // 显示设置：字幕列表/编辑区显示项应用、多重字幕行高联动与平台按键标签。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweDisplaySettings 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 import { getOverlayTrack } from '../cues/overlay-track.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweDisplaySettings() {
   'use strict';
@@ -31,7 +43,7 @@ export function initMaweDisplaySettings() {
   // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
   // 分配首个表情包时由本函数根据最新数据直接恢复。
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some(segment => segment.sticker_group_id)
+  const projectHasStickers = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some(segment => segment.sticker_group_id)
     || overlaySegments.some(segment => segment.sticker_group_id);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
@@ -203,19 +215,18 @@ export function initMaweDisplaySettings() {
 
 
   function updateMultiSubtitleUi() {
-  window.MaweProjectSettings?.syncTrackControls();
+  syncTrackControls?.();
   // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
   // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
-  if (getMaweDomPanels().overlayTrackSeparator) getMaweDomPanels().overlayTrackSeparator.hidden = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;
+  if (getMaweDomPanels().overlayTrackSeparator) getMaweDomPanels().overlayTrackSeparator.hidden = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;
   if (getMaweDomPanels().overlayTrackToggle) getMaweDomPanels().overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
-  const hasMainSubtitle = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0;
+  const hasMainSubtitle = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0;
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
-  const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
-  syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
-  MaweSplitMode.refreshMergeJoinModeHint();
+  syncMultiSubtitleWaveformRowHeight(enabled);
+  refreshMergeJoinModeHint();
   if (MaweDom.multiSubtitleEmptyHint) {
     MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
@@ -240,7 +251,7 @@ export function initMaweDisplaySettings() {
     MaweDom.multiSubtitleDisplayMode.disabled = !enabled;
   }
   if (MaweDom.multiSubtitleMainLanguageMode) {
-    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]);
+    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]);
     MaweDom.multiSubtitleMainLanguageMode.hidden = false;
   }
   if (MaweDom.multiSubtitleExtensionLanguageMode) {
@@ -288,7 +299,7 @@ export function initMaweDisplaySettings() {
   }
   if (MaweDom.multiSubtitleSwapButton) {
     const canSwap = enabled
-      && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0 && (track?.segments || []).length > 0;
+      && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0 && (track?.segments || []).length > 0;
     MaweDom.multiSubtitleSwapButton.disabled = !canSwap;
     MaweDom.multiSubtitleSwapButton.title = canSwap
       ? '交换主字幕和副字幕的文本、时间与绑定关系'
@@ -323,8 +334,8 @@ export function initMaweDisplaySettings() {
   MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweBoot.DATA.bilingual.display_mode || 'both') : 'main';
   // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
   // 副字幕槽位），同步刷新它们的可见性与选项。
-  window.MaweAssManagerWiring.syncAssModeDependentControls();
-  window.MaweAssManagerWiring.syncAssStyleManager();
+  MaweAssManagerWiring.syncAssModeDependentControls();
+  MaweAssManagerWiring.syncAssStyleManager();
 }
 
 
@@ -387,7 +398,7 @@ export function initMaweDisplaySettings() {
 
   // macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
   function modKeyLabel() {
-    return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
+    return AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
   }
 
 
@@ -416,7 +427,7 @@ export function initMaweDisplaySettings() {
     }
   }
 
-  global.MaweDisplaySettings = Object.freeze({
+  MaweDisplaySettings = Object.freeze({
     applyCueListDisplaySettings,
     get previousMultiSubtitlePreviewEnabled() { return previousMultiSubtitlePreviewEnabled; },
     set previousMultiSubtitlePreviewEnabled(v) { previousMultiSubtitlePreviewEnabled = v; },
@@ -438,4 +449,5 @@ export function initMaweDisplaySettings() {
     confirmKeyLabel,
     applyPlatformKeyLabels
   });
+
 }

@@ -1,3 +1,5 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweStickerRoot } from './editor-sticker-root.js';
 export function initMaweStickerRootWiring() {
 MaweStickerRoot.syncControls();
 MaweStickerRoot.defaultButton.addEventListener('click', () =>

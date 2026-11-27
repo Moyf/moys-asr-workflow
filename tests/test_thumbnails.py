@@ -269,11 +269,13 @@ class ThumbnailIntegrationTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def video(self, name="video.mkv", *, rate="2", duration="4", filters=None, size="320x180"):
+    def video(self, name="video.mkv", *, rate="2", duration="4", filters=None, size="320x180", timestamp_offset=None):
         path = self.root / name
         command = ["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", f"testsrc2=size={size}:rate={rate}:duration={duration}"]
         if filters:
             command += ["-vf", filters, "-fps_mode", "passthrough"]
+        if timestamp_offset is not None:
+            command += ["-output_ts_offset", str(timestamp_offset)]
         subprocess.run([*command, "-c:v", "libx264", "-g", "120", "-threads", "2", "-y", str(path)], check=True, capture_output=True, timeout=15)
         return path
 
@@ -314,7 +316,8 @@ class ThumbnailIntegrationTests(unittest.TestCase):
                 self.assertEqual(cache.sample_manifest(path, [500])["samples"][0]["status"], "unavailable")
 
     def test_nonzero_start_pts_is_normalized(self):
-        path = self.video(filters="setpts=PTS+5/TB")
+        # Shift mux timestamps without clearing the final frame's duration on FFmpeg 7.0.
+        path = self.video(timestamp_offset=5)
         info = t.probe_video(path)
         self.assertEqual(info.start_ms, 5000)
         self.assertEqual(info.duration_ms, 4000)

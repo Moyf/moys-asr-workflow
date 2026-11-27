@@ -1,6 +1,5 @@
 /* Marked owns parsing; DOMPurify owns sanitization. This module has no viewer dependency. */
-(function () {
-  'use strict';
+export function createToolMarkdown({getMarked, getSanitizer, documentUrl}) {
   const allowedTags = ['a','p','br','hr','h1','h2','h3','h4','h5','h6','blockquote','ul','ol','li',
     'strong','em','del','mark','pre','code','table','thead','tbody','tr','th','td','input','span','div'];
   const allowedAttributes = ['href','title','class','id','target','rel','start','align','type','checked','disabled'];
@@ -33,7 +32,7 @@
     } catch (_) {return null;}
   }
 
-  function highlightExtension() {
+  function highlightExtension(marked) {
     return {
       name:'mawHighlight', level:'inline',
       start(src) {return src.indexOf('==');},
@@ -42,7 +41,7 @@
         const lineEnd = src.search(/[\r\n]/), line = src.slice(2, lineEnd === -1 ? undefined : lineEnd);
         // Marked's standard inline lexer identifies indivisible code/link/image tokens.
         // Only delimiter discovery is custom; neither inline grammar nor rendering is reimplemented.
-        const standard = new window.marked.Lexer({gfm:true, extensions:null});
+        const standard = new marked.Lexer({gfm:true, extensions:null});
         standard.tokens.links = this.lexer.tokens.links;
         let offset = 2;
         for (const token of standard.inlineTokens(line)) {
@@ -77,11 +76,12 @@
   }
 
   function render(markdown, options = {}) {
-    if (!window.marked?.Marked || !window.DOMPurify?.sanitize || window.DOMPurify.isSupported === false) throw new Error('Local Marked and DOMPurify resources are required in a supported browser');
-    const baseUrl = options.baseUrl || document.baseURI;
+    const marked = getMarked(), purifier = getSanitizer();
+    if (!marked?.Marked || !purifier?.sanitize || purifier.isSupported === false) throw new Error('Local Marked and DOMPurify resources are required in a supported browser');
+    const baseUrl = options.baseUrl || documentUrl;
     const ids = new Set();
-    const parser = new window.marked.Marked({gfm:true, breaks:false, async:false});
-    parser.use({extensions:options.highlight === false ? [] : [highlightExtension()], renderer:{
+    const parser = new marked.Marked({gfm:true, breaks:false, async:false});
+    parser.use({extensions:options.highlight === false ? [] : [highlightExtension(marked)], renderer:{
       html({text}) {return escape(text);}, // Raw HTML is visible text, never an active element.
       heading({tokens, depth}) {
         const slug = tokenText(tokens).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}_\s-]/gu, '').trim().replace(/\s+/g, '-') || 'section';
@@ -103,12 +103,12 @@
       },
     }});
     // The only HTML-to-DOM boundary. Nothing rewrites the sanitized HTML string.
-    return window.DOMPurify.sanitize(parser.parse(String(markdown ?? '')), {
+    return purifier.sanitize(parser.parse(String(markdown ?? '')), {
       ALLOWED_TAGS:allowedTags, ALLOWED_ATTR:allowedAttributes, ALLOW_DATA_ATTR:false,
       ALLOWED_URI_REGEXP:/^(?:(?:https?|mailto|file):|#)/i,
       ADD_URI_SAFE_ATTR:['type','target','rel','start','align','checked','disabled'],
       ALLOW_ARIA_ATTR:false, RETURN_DOM_FRAGMENT:true, SANITIZE_DOM:true,
     });
   }
-  window.MAWMarkdown = Object.freeze({render, resolveUrl});
-})();
+  return Object.freeze({render, resolveUrl});
+}

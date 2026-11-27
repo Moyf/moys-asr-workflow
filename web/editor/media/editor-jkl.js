@@ -1,12 +1,15 @@
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweGapPlayback } from './editor-gap-playback.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
+import { MaweStickerOverlay } from './editor-sticker-overlay.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+export let MaweJklPlayback;
 export function initJklModule() {
-// J/K/L 播放控制：双模式（速度/倒放）状态机与速率档位。editor.js 在加载期经本模块门面初始化 UI。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweJklPlayback 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweJklPlayback(global) {
-  'use strict';
-
-
+  // J/K/L 播放控制：双模式（速度/倒放）状态机与速率档位。editor.js 在加载期经本模块门面初始化 UI。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   let jklPlaybackRate = 1;
 
 
@@ -19,7 +22,7 @@ export function initJklModule() {
   let jklReverseLastTimestamp = 0;
 
 
-  const jklPlaybackModeSelect = document.getElementById('jkl-playback-mode');
+  const jklPlaybackModeSelect = /** @type {HTMLSelectElement} */ (document.getElementById('jkl-playback-mode'));
 
 
   const jklPlaybackModeHint = document.getElementById('jkl-playback-mode-hint');
@@ -42,7 +45,7 @@ export function initJklModule() {
 
 
   function refreshJklPlaybackModeUi() {
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+    const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
     const mode = MaweSettings.normalizeJklPlaybackMode(MaweSettings.EDITOR_SETTINGS.jklPlaybackMode);
     const text = JKL_MODE_UI_TEXT[language][mode];
     if (jklPlaybackModeSelect) jklPlaybackModeSelect.value = mode;
@@ -109,7 +112,7 @@ export function initJklModule() {
       return false;
     }
     jklReversePlaying = true;
-    window.MaweGapPlayback?.cancelPendingPlayback();
+    MaweGapPlayback?.cancelPendingPlayback();
     jklReverseLastTimestamp = 0;
     MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     if (!MaweCoreState.player.paused) MaweCoreState.player.pause();
@@ -127,7 +130,7 @@ export function initJklModule() {
     }
     stopJklReversePlayback({ render: false });
     MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
-    if (window.MaweGapPlayback?.pendingPlayback) return true;
+    if (MaweGapPlayback?.pendingPlayback) return true;
     const promise = MaweCoreState.player.play();
     if (promise && promise.catch) promise.catch(() => {});
     MaweMediaPlayback.syncMediaControls();
@@ -162,7 +165,7 @@ export function initJklModule() {
     return JKL_PLAYBACK_RATE_STEPS[Math.min(stepIndex + 1, JKL_PLAYBACK_RATE_STEPS.length - 1)];
   }
 
-  global.MaweJklPlayback = Object.freeze({
+  MaweJklPlayback = Object.freeze({
     get jklPlaybackRate() { return jklPlaybackRate; },
     set jklPlaybackRate(v) { jklPlaybackRate = v; },
     get jklReversePlaying() { return jklReversePlaying; },
@@ -184,5 +187,4 @@ export function initJklModule() {
     JKL_PLAYBACK_RATE_STEPS,
     nextJklDirectionRate
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }

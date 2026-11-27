@@ -1,4 +1,25 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweBurnVideoExport } from '../io/editor-wiring-burn-video.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { syncTrackControls } from '../state/editor-project-settings.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSettingsPanels } from '../ui/editor-settings-panels.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweAssCanvas } from './editor-wiring-ass-canvas.js';
+import { MaweAssFrame } from './editor-wiring-ass-frame.js';
+import { MaweFontGeometryWiring } from './editor-wiring-font-geometry.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MaweAssManagerWiring;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 import { getAssStyleLibrary, isAssStyleLibraryReady, hasAssStyleLibraryLoaded, canEditAssStyleLibrary, incrementAssStyleLibraryRevision,
   setAssStyleLibrary, updateAssStyleLibrarySummary, scheduleAssStyleLibrarySave,
   loadAssStyleLibrary, persistAssStyleLibrary } from './editor-wiring-ass-storage.js';
@@ -94,9 +115,9 @@ function updateAssStyleProjectHint() {
   if (!assStyleProjectHint) return;
   /** @type {any} */
   const project = MaweBoot.DATA;
-  const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
+  const snapshotKey = AsrEditorUtils.assStyleSnapshotKey;
   const styleKeys = new Map(getAssStyleLibrary().styles.map(style => [style.id, snapshotKey(style)]));
-  assStyleProjectHint.hidden = ![...window.AsrEditorUtils.iterSegments(project)].some(({ assStyle }) =>
+  assStyleProjectHint.hidden = ![...AsrEditorUtils.iterSegments(project)].some(({ assStyle }) =>
     assStyle && snapshotKey(assStyle) !== styleKeys.get(assStyle.id));
 }
 
@@ -107,7 +128,7 @@ function updateAssStyleLibraryStatus() {
     ? (isAssStyleLibraryReady() ? '已与用户级配置同步' : '使用本地副本，尚未同步')
     : '仅保存在当前浏览器（便携模式）';
   const status = assStyleLibraryStatusText || fallback;
-  assStyleLibraryStatus.textContent = window.MAWE_I18N?.translateText?.(status) || status;
+  assStyleLibraryStatus.textContent = MAWE_I18N?.translateText?.(status) || status;
   assStyleLibraryStatus.dataset.state = !usesServerStorage && assStyleLibraryStatusState === 'success'
     ? 'local' : assStyleLibraryStatusState;
   if (assStyleLibraryPathHint) {
@@ -119,7 +140,7 @@ function updateAssStyleLibraryStatus() {
     } else if (!canEditAssStyleLibrary()) {
       pathHint = assStyleLibraryStatusState === 'pending' ? '' : '尚未读取本机样式库，请重新加载';
     }
-    assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
+    assStyleLibraryPathHint.textContent = MAWE_I18N?.translateText?.(pathHint) || pathHint;
   }
   updateAssStyleProjectHint();
 }
@@ -147,14 +168,14 @@ function projectStyleTarget() {
 
 function selectedAssStyle() {
   const track = projectStyleTarget();
-  if (assProjectStyleTrackId) return track ? window.AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, getAssStyleLibrary()).style : null;
+  if (assProjectStyleTrackId) return track ? AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, getAssStyleLibrary()).style : null;
   const id = assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '';
-  return window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), id || 'ass');
+  return AsrEditorUtils.assStyleForId(getAssStyleLibrary(), id || 'ass');
 }
 
 function selectedAssProfile() {
   const id = assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '';
-  return window.AsrEditorUtils.assProfileForId(getAssStyleLibrary(), id || 'ass');
+  return AsrEditorUtils.assProfileForId(getAssStyleLibrary(), id || 'ass');
 }
 
 function assStyleManagerSetSelection(kind, id) {
@@ -180,13 +201,13 @@ function updateAssStylePreviewModeHints() {
   const prefix = '需要启用 ASS 字幕模式来预览效果。';
   const status = enabled ? '当前已启用。' : '当前未启用。';
   const text = assStylePreviewModeHintText();
-  const translated = window.MAWE_I18N?.translateText?.(text) || text;
+  const translated = MAWE_I18N?.translateText?.(text) || text;
   /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-ass-style-preview-hint]')).forEach((element) => {
     const prefixElement = element.querySelector('.ass-style-preview-mode-hint-prefix');
     const statusElement = /** @type {HTMLElement | null} */ (element.querySelector('.ass-style-preview-mode-hint-status'));
     if (prefixElement && statusElement) {
-      prefixElement.textContent = window.MAWE_I18N?.translateText?.(prefix) || prefix;
-      statusElement.textContent = window.MAWE_I18N?.translateText?.(status) || status;
+      prefixElement.textContent = MAWE_I18N?.translateText?.(prefix) || prefix;
+      statusElement.textContent = MAWE_I18N?.translateText?.(status) || status;
       statusElement.dataset.assPreviewMode = enabled ? 'enabled' : 'disabled';
     } else {
       element.textContent = translated;
@@ -251,7 +272,7 @@ function updateAssStyleManagerLibrary(mutator, { persist = true, recordProjectHi
   incrementAssStyleLibraryRevision();
   setAssStyleLibrary(next, { persistLocal: true });
   const history = MaweHistory.captureSegmentsRecord('更新联动样式');
-  if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, getAssStyleLibrary())) {
+  if (AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, getAssStyleLibrary())) {
     if (recordProjectHistory) MaweHistory.commitRecord(history);
     MaweState.markProjectDirty();
   }
@@ -271,7 +292,7 @@ function updateAssStyleField(field, value) {
   if (assProjectStyleTrackId && !track) return;
   if (track) {
     const history = MaweHistory.captureSegmentsRecord('编辑工程样式');
-    if (window.AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, track, { [field]: value })) {
+    if (AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, track, { [field]: value })) {
       MaweHistory.commitRecord(history);
       MaweState.markProjectDirty();
       syncAssStyleManager();
@@ -304,7 +325,7 @@ function updateAssProfileField(path, value) {
 function syncAssStyleForm(style) {
   if (!assStyleForm) return;
   const canEdit = canEditAssStyleLibrary();
-  const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
+  const safeStyle = AsrEditorUtils.normalizeAssStyle(style);
   const borderBox = Number(safeStyle.borderStyle) === 3;
   for (const [id, text] of [
     ['ass-style-outline-color-label', borderBox ? '底框颜色' : '描边颜色'],
@@ -312,7 +333,7 @@ function syncAssStyleForm(style) {
     ['ass-style-outline-opacity-label', borderBox ? '底框不透明度' : '描边不透明度'],
   ]) {
     const label = document.getElementById(id);
-    if (label) label.textContent = window.MAWE_I18N?.translateText?.(text) || text;
+    if (label) label.textContent = MAWE_I18N?.translateText?.(text) || text;
   }
   if (assStyleFormTitle) assStyleFormTitle.textContent = assProjectStyleTrackId ? `${safeStyle.name}（工程样式）` : safeStyle.name;
   if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
@@ -350,7 +371,7 @@ function syncAssStyleForm(style) {
   if (assStylePreviewSample) {
     // 样例与视频预览共用 Canvas 光栅管线：描边/底框/阴影观感一致。
     // style.fontSize 即样例画布上的字形高度（ascent+descent 语义）。
-    window.MaweAssCanvas?.renderSample(assStylePreviewSample, safeStyle, 'ASS 字幕预览 OwO');
+    MaweAssCanvas?.renderSample(assStylePreviewSample, safeStyle, 'ASS 字幕预览 OwO');
   }
   updateAssStylePreviewModeHints();
 }
@@ -358,7 +379,7 @@ function syncAssStyleForm(style) {
 function syncAssProfileForm(profile) {
   if (!assProfileForm) return;
   const canEdit = canEditAssStyleLibrary();
-  const safeProfile = window.AsrEditorUtils.normalizeAssProfile(profile);
+  const safeProfile = AsrEditorUtils.normalizeAssProfile(profile);
   if (assProfileFormTitle) assProfileFormTitle.textContent = safeProfile.name;
   if (assProfileBuiltinBadge) assProfileBuiltinBadge.hidden = !safeProfile.builtin;
   assProfileForm.querySelectorAll('[data-ass-profile-field]').forEach((field) => {
@@ -381,11 +402,11 @@ function syncAssProfileForm(profile) {
       && safeProfile.animations?.[group]?.enabled !== true);
   });
   if (assProfilePreviewSummary) {
-    const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
-    const style = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), safeProfile.styleId);
+    const tags = AsrEditorUtils.assAnimationOverrideTags(safeProfile);
+    const style = AsrEditorUtils.assStyleForId(getAssStyleLibrary(), safeProfile.styleId);
     // 逐字换色不是逐句时钟动画，不在 assAnimationOverrideTags 里；摘要按
     // 片段拼接翻译（整串动态拼接无法命中键），未唱颜色提示取自样式次色。
-    const translate = text => window.MAWE_I18N?.translateText?.(text) || text;
+    const translate = text => MAWE_I18N?.translateText?.(text) || text;
     const tagsLabel = tags || translate('无逐句动画');
     const karaokeLabel = safeProfile.animations?.karaoke?.enabled === true
       ? translate('逐字换色（未唱色 = 样式次色；仅有字词时间码的主字幕生效）') : '';
@@ -401,7 +422,7 @@ function syncAssStyleManager({ force = false } = {}) {
     assStyleSaveButton, assSrtDefaultStyleSelect, assDefaultProfileSelect, assProfileExtensionStyleSelect]) {
     if (control) control.disabled = !canEdit;
   }
-  setAssStyleLibrary(window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()));
+  setAssStyleLibrary(AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()));
   const styles = getAssStyleLibrary().styles || [];
   const profiles = getAssStyleLibrary().assProfiles || [];
   const selectedCollection = assStyleManagerSelection.kind === 'profile' ? profiles : styles;
@@ -415,7 +436,7 @@ function syncAssStyleManager({ force = false } = {}) {
   updateAssStyleLibrarySummary();
   const projectTrack = projectStyleTarget();
   const selectedStyleId = assProjectStyleTrackId
-    ? (projectTrack && window.AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, projectTrack, getAssStyleLibrary()).libraryStyle?.id) || ''
+    ? (projectTrack && AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, projectTrack, getAssStyleLibrary()).libraryStyle?.id) || ''
     : (assStyleManagerSelection.kind === 'style' ? assStyleManagerSelection.id : '');
   renderAssStyleList(assStyleList, styles, 'style', selectedStyleId);
   renderAssStyleList(assProfileList, profiles, 'profile', assStyleManagerSelection.kind === 'profile' ? assStyleManagerSelection.id : '');
@@ -476,7 +497,7 @@ function syncAssStyleManager({ force = false } = {}) {
   updateAssStyleLibraryStatus();
   // 样式库变化后，设置页「字幕样式」里的 ASS 样式选择器同步刷新。
   syncSubtitleStyleAssControls();
-  window.MaweProjectSettings?.syncTrackControls?.();
+  syncTrackControls?.();
   if (force) assStyleWindow.querySelector('.ass-style-editor')?.scrollTo({ top: 0 });
 }
 
@@ -488,7 +509,7 @@ function createAssStyle() {
   const id = assStyleManagerId('style', getAssStyleLibrary().styles);
   updateAssStyleManagerLibrary((library) => {
     library.styles.push({
-      ...assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE),
+      ...assStyleManagerClone(AsrEditorUtils.ASS_DEFAULT_ASS_STYLE),
       id, name: '新样式', builtin: false,
     });
   }, { persist: false });
@@ -535,9 +556,9 @@ function createAssProfile() {
   const id = assStyleManagerId('profile', getAssStyleLibrary().assProfiles);
   updateAssStyleManagerLibrary((library) => {
     library.assProfiles.push({
-      ...assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_PROFILE),
+      ...assStyleManagerClone(AsrEditorUtils.ASS_DEFAULT_PROFILE),
       id, name: '新 ASS 方案', builtin: false,
-      animations: assStyleManagerClone(window.AsrEditorUtils.ASS_DEFAULT_ANIMATIONS),
+      animations: assStyleManagerClone(AsrEditorUtils.ASS_DEFAULT_ANIMATIONS),
     });
   }, { persist: false });
   scheduleAssStyleLibrarySave();
@@ -549,13 +570,13 @@ function resetSelectedAssEntry() {
   // 重置恢复出厂默认值：三个内置样式各用专属默认，内置 ASS 方案连同逐句动画。
   const defaults = kind === 'style'
     ? {
-        default: window.AsrEditorUtils.ASS_DEFAULT_STYLE,
-        ass: window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE,
-        'ass-extension': window.AsrEditorUtils.ASS_DEFAULT_EXTENSION_STYLE,
+        default: AsrEditorUtils.ASS_DEFAULT_STYLE,
+        ass: AsrEditorUtils.ASS_DEFAULT_ASS_STYLE,
+        'ass-extension': AsrEditorUtils.ASS_DEFAULT_EXTENSION_STYLE,
       }[id]
-    : window.AsrEditorUtils.ASS_DEFAULT_PROFILE;
+    : AsrEditorUtils.ASS_DEFAULT_PROFILE;
   if (!defaults) return;
-  if (!confirm(`确定将「${defaults.name}」恢复为默认值吗？`)) return;
+  if (!editorDialogs.confirm(`确定将「${defaults.name}」恢复为默认值吗？`)) return;
   updateAssStyleManagerLibrary((library) => {
     // assStyleManagerClone 是深拷贝，动画等嵌套对象一并还原。
     const restored = assStyleManagerClone(defaults);
@@ -576,7 +597,7 @@ function deleteSelectedAssEntry() {
     MaweHint.flashHint('内置条目不能删除；可以直接修改其参数', 'warning');
     return;
   }
-  if (!confirm(`确定删除“${item.name}”吗？`)) return;
+  if (!editorDialogs.confirm(`确定删除“${item.name}”吗？`)) return;
   updateAssStyleManagerLibrary((library) => {
     if (kind === 'profile') {
       library.assProfiles = library.assProfiles.filter((profile) => profile.id !== id);
@@ -600,7 +621,7 @@ function updateAssStyleAssignment(slot, value) {
   MawePlaybackLoop.refreshSubtitlePreview?.();
 }
 
-const assStyleFloatingPanel = window.MaweFloatingPanel.createFloatingPanel({
+const assStyleFloatingPanel = MaweFloatingPanel.createFloatingPanel({
   panel: assStyleWindow,
   dragHandle: assStyleDragHandle,
   manageButton: assStyleManagerOpenButton,
@@ -625,7 +646,7 @@ assStyleDeleteButton?.addEventListener('click', deleteSelectedAssEntry);
 assStyleResetButton?.addEventListener('click', resetSelectedAssEntry);
 assStyleSettingsLink?.addEventListener('click', (event) => {
   event.preventDefault();
-  window.MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
 });
 assStyleSaveButton?.addEventListener('click', () => {
   setAssStyleLibraryStatus(
@@ -645,17 +666,17 @@ function initializeProjectStyles({ includeInCheckpoint = false } = {}) {
   if (!hasAssStyleLibraryLoaded()) return false;
   const trackIds = new Set((MaweBoot.DATA.tracks || []).filter(track => !track.style).map(track => track.id));
   if (!trackIds.size) return false;
-  const profile = window.AsrEditorUtils.assProfileForId(getAssStyleLibrary(), getAssStyleLibrary().assignments?.assExportProfileId || 'ass');
-  const main = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), profile.styleId);
-  const secondary = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), getAssStyleLibrary().assignments?.assExtensionStyleId || 'ass-extension');
+  const profile = AsrEditorUtils.assProfileForId(getAssStyleLibrary(), getAssStyleLibrary().assignments?.assExportProfileId || 'ass');
+  const main = AsrEditorUtils.assStyleForId(getAssStyleLibrary(), profile.styleId);
+  const secondary = AsrEditorUtils.assStyleForId(getAssStyleLibrary(), getAssStyleLibrary().assignments?.assExtensionStyleId || 'ass-extension');
   const applyDefaults = project => {
     let changed = false;
     for (const track of project.tracks || []) {
       if (track.style || !trackIds.has(track.id)) continue;
       const source = track.role === 'secondary' ? secondary : main;
-      if (window.AsrEditorUtils.applyTrackStyle(project, track, source)) {
+      if (AsrEditorUtils.applyTrackStyle(project, track, source)) {
         // Only the built-in system font is implicit, including in default styles.
-        if (source.fontName === window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName) track.style.font_default = true;
+        if (source.fontName === AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName) track.style.font_default = true;
         changed = true;
       }
     }
@@ -671,7 +692,7 @@ function applyProjectStyleSelection(role, styleId) {
   const style = getAssStyleLibrary().styles.find(item => item.id === styleId);
   if (!track || !style) return;
   const history = MaweHistory.captureSegmentsRecord('切换工程样式');
-  if (window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, style)) {
+  if (AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, style)) {
     MaweHistory.commitRecord(history);
     MaweState.markProjectDirty();
     syncAssStyleManager();
@@ -684,7 +705,7 @@ document.getElementById('overlay-ass-style-select')?.addEventListener('change', 
 
 function openProjectStyleEditor(role) {
   const track = projectStyleTrack(role);
-  const resolved = track && window.AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, getAssStyleLibrary());
+  const resolved = track && AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, getAssStyleLibrary());
   if (!resolved?.style) return;
   assStyleManagerSelection = { kind: 'style', id: resolved.libraryStyle?.id || getAssStyleLibrary().styles[0]?.id || 'ass' };
   assStyleFloatingPanel.open();
@@ -698,9 +719,9 @@ function saveProjectStyleToLibrary(role) {
   const track = projectStyleTrack(role);
   if (!track) return;
   const history = MaweHistory.captureSegmentsRecord('存回工程样式');
-  let result = window.AsrEditorUtils.saveTrackStyleToLibrary(MaweBoot.DATA, track, getAssStyleLibrary());
-  if (result.reason === 'conflict' && confirm('样式库中已有同名但参数不同的样式。要覆盖它吗？')) {
-    result = window.AsrEditorUtils.saveTrackStyleToLibrary(MaweBoot.DATA, track, getAssStyleLibrary(), { replace: true });
+  let result = AsrEditorUtils.saveTrackStyleToLibrary(MaweBoot.DATA, track, getAssStyleLibrary());
+  if (result.reason === 'conflict' && editorDialogs.confirm('样式库中已有同名但参数不同的样式。要覆盖它吗？')) {
+    result = AsrEditorUtils.saveTrackStyleToLibrary(MaweBoot.DATA, track, getAssStyleLibrary(), { replace: true });
   }
   if (!result.ok) {
     if (result.reason !== 'conflict') MaweHint.flashHint('无法存回样式库：请检查同名样式或样式数量。', 'warning');
@@ -738,7 +759,7 @@ assStyleLocalFontScanButton?.addEventListener('click', async () => {
   } finally {
     assStyleLocalFontScanButton.disabled = false;
   }
-  window.MaweFontGeometryWiring.rebuildAssFontNameOptions();
+  MaweFontGeometryWiring.rebuildAssFontNameOptions();
   const hintByState = {
     success: () => MaweHint.flashHint(`已读取 ${MaweAppearance.subtitleFontFamilyScanCount} 种本机字体`, 'success'),
     empty: () => MaweHint.flashHint('未读取到可用的本机字体', 'warning'),
@@ -853,13 +874,13 @@ function syncSubtitleStyleAssControls() {
   if (extensionAssStyleFields) extensionAssStyleFields.hidden = !assMode || !MaweMultiSubtitleCore.multiSubtitleVisible();
   const overlayAssStyleFields = document.getElementById('overlay-ass-style-fields');
   if (overlayAssStyleFields) overlayAssStyleFields.hidden = !assMode || !projectStyleTrack('overlay');
-  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
+  const library = AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
   const styles = library.styles || [];
   const canEdit = canEditAssStyleLibrary();
   const syncTrack = (role, select, prefix) => {
     if (!select) return;
     const track = projectStyleTrack(role);
-    const resolved = window.AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, library);
+    const resolved = AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, track, library);
     select.disabled = !canEdit;
     select.replaceChildren();
     if (resolved.style && !resolved.libraryStyle) appendAssStyleOption(select, '', `${resolved.style.name}（工程样式）`);
@@ -906,7 +927,7 @@ function syncAssSymbolRule() {
     const sentence = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
       : '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。';
     // 整句查翻译表：英文界面下动态重建也能得到英文提示。
-    formatHint.textContent = window.MAWE_I18N?.translateText?.(sentence) || sentence;
+    formatHint.textContent = MAWE_I18N?.translateText?.(sentence) || sentence;
     if (menuHint) menuHint.hidden = rule === 'none';
   }
   /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-ass-symbol]')).forEach((hint) => {
@@ -922,7 +943,7 @@ function syncAssSymbolRule() {
 assSpecialSymbolRule?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ assSpecialSymbolRule: assSpecialSymbolRule.value });
   // 字词块归位的 MASS 成对检测与识别规则保持同源（见 editor-wiring-initial-config）。
-  window.AsrEditorUtils.setMassSymbolRule(assSpecialSymbolRule.value);
+  AsrEditorUtils.setMassSymbolRule(assSpecialSymbolRule.value);
   syncAssSymbolRule();
   MawePlaybackLoop.refreshSubtitlePreview();
 });
@@ -935,9 +956,9 @@ function syncAssModeControl() {
   }
   const quickOpen = document.getElementById('ass-style-quick-open');
   if (quickOpen) quickOpen.hidden = !enabled;
-  window.MaweAssFrame?.syncAssFrameControls?.();
+  MaweAssFrame?.syncAssFrameControls?.();
   // 工具栏「烧录视频」按钮只在 ASS 字幕模式下显示。
-  window.MaweBurnVideoExport?.syncButton?.();
+  MaweBurnVideoExport?.syncButton?.();
   syncAssSymbolRule();
   syncAssModeDependentControls();
   updateAssStylePreviewModeHints();
@@ -955,7 +976,7 @@ assModeToggle?.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('切换 ASS 字幕模式', MaweHistory.snapshotPreviewState());
   MaweSettings.updateEditorSettings({ assMode: assModeToggle.checked });
   syncAssModeControl();
-  window.MawePreviewGeometry.refreshPreviewGeometryEditable();
+  MawePreviewGeometry.refreshPreviewGeometryEditable();
   MawePlaybackLoop.refreshSubtitlePreview();
   MaweHint.flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
 });
@@ -972,18 +993,13 @@ assInlineTextToggles.forEach((input) => {
     MawePlaybackLoop.refreshSubtitlePreview();
   });
 });
-// G07：init 化的 UI 模块经 window 延迟取用本文件的
-// 运行时入口；classic 调用方不受影响。
 managerService.usesServerStorage = assStyleLibraryUsesServerStorage;
 managerService.setStatus = setAssStyleLibraryStatus;
 managerService.sync = syncAssStyleManager;
 managerService.initializeProjectStyles = initializeProjectStyles;
-Object.defineProperty(window, 'assStyleManagerSetSelection', { value: assStyleManagerSetSelection, configurable: true, writable: true });
-Object.defineProperty(window, 'updateAssStyleManagerLibrary', { value: updateAssStyleManagerLibrary, configurable: true, writable: true });
-Object.defineProperty(window, 'syncAssStyleForm', { value: syncAssStyleForm, configurable: true, writable: true });
-window.MaweAssManagerWiring = window.MaweAssManagerWiring || Object.freeze({
+MaweAssManagerWiring = Object.freeze({
   initializeProjectStyles,
-  projectStyleOptions: role => ({ styles: getAssStyleLibrary().styles, ...window.AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, projectStyleTrack(role), getAssStyleLibrary()) }),
+  projectStyleOptions: role => ({ styles: getAssStyleLibrary().styles, ...AsrEditorUtils.resolveTrackStyle(MaweBoot.DATA, projectStyleTrack(role), getAssStyleLibrary()) }),
   applyProjectStyleSelection,
   openProjectStyleEditor,
   saveProjectStyleToLibrary,
@@ -993,4 +1009,6 @@ window.MaweAssManagerWiring = window.MaweAssManagerWiring || Object.freeze({
   updateAssStyleLibraryStatus,
   updateAssStylePreviewModeHints,
 });
+
+
 }

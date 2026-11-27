@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
+import { compileEditorFixture } from './helpers/editor-entry.mjs';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { initMaweMultiSubtitleCore } from '../web/editor/state/editor-multi-subtitle-core.js';
-import { initMaweSegmentOps } from '../web/editor/cues/editor-segment-ops.js';
-import { initMaweTextCleanup } from '../web/editor/cues/editor-text-cleanup.js';
-import { initMaweBoundDrag } from '../web/editor/cues/editor-bound-drag.js';
 import { createEditorCommands } from '../web/editor/state/editor-commands.js';
-import { mergeOverlaySegments } from '../web/editor/cues/overlay-track.js';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
 
 // Run real domain factories; only their UI/selection bridges are inert. Node
@@ -43,10 +40,14 @@ globalThis.MaweSettings = {
     multiSubtitleAutoSyncDuration: false,
   },
 };
-initMaweMultiSubtitleCore();
-initMaweSegmentOps();
-initMaweTextCleanup();
-initMaweBoundDrag();
+const fixture = await compileEditorFixture([
+  'editor/state/editor-multi-subtitle-core.js',
+  'editor/cues/editor-segment-ops.js',
+  'editor/cues/editor-text-cleanup.js',
+  'editor/cues/editor-bound-drag.js',
+], { exposed: { colorFixtureOverlay: 'editor/cues/overlay-track.js' } });
+vm.runInThisContext(fixture);
+const { mergeOverlaySegments } = globalThis.colorFixtureOverlay;
 
 let history = [];
 

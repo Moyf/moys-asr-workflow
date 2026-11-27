@@ -1,3 +1,4 @@
+import { handler } from './gap-export-handler.mjs';
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { initModuleSource, invokedInitModuleSource } from '../helpers/init-module-source.mjs';
@@ -6,10 +7,6 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { makeTempDir, cleanupTempDir, generateWav, generateProjectJson, startServer, findFreePort } from './helpers.mjs';
 
-const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
-const first = source.indexOf("document.getElementById('download-gap-removed-video')");
-const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
-const handler = source.slice(first, last);
 const projectLoad = invokedInitModuleSource('editor/io/editor-project-load.js', 'initMaweProjectLoad');
 const i18n = initModuleSource('shared/editor-i18n.js');
 

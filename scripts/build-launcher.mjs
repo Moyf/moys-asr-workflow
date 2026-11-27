@@ -34,7 +34,7 @@ export function readConfig(root = ROOT) {
   return JSON.parse(fs.readFileSync(path.join(root, 'web', CONFIG), 'utf8'));
 }
 
-export async function buildLauncher(root = ROOT) {
+export async function buildLauncher(root = ROOT, { transform } = {}) {
   const snapshot = captureBuildInputs(root, ['web/launcher-scripts.txt', 'web/'+CONFIG,
     ...BUILDERS, 'package.json', 'pnpm-lock.yaml']);
   const files = readSources(root);
@@ -45,9 +45,10 @@ export async function buildLauncher(root = ROOT) {
   const result = await compileSources(root, files, modules, file => {
     const source = fs.readFileSync(path.join(root, 'web', file), 'utf8');
     snapshot['web/'+file] = source;
-    inputHashes[file] = sha(source);
-    return source;
-  }, { bridges: config.externalBridges ?? [], transitionBindings, trace: true, onDependency: (relative, source) => {
+    const contents = transform ? transform(file, source) : source;
+    inputHashes[file] = sha(contents);
+    return contents;
+  }, { bridges: config.externalBridges ?? [], transitionBindings, onDependency: (relative, source) => {
     const key = 'web/' + relative;
     if (Object.hasOwn(snapshot, key) && snapshot[key] !== source) {
       throw new Error(`Build input changed during compilation: ${key}; retry the build`);

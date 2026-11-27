@@ -264,7 +264,7 @@
           input.addEventListener('keydown', event => { if (event.key === 'Escape') finish(false); });
           input.focus();
         });
-        window.MAWToolPage.setActionIcon(editButton, 'edit', text.edit);
+        setActionIcon(editButton, 'edit', text.edit);
         actions.append(editButton);
         node.append(actions);
       }
@@ -281,6 +281,25 @@
     if (isAdjusted(group)) tags.push(create('span', text.manual, 'badge manual'));
     stack.replaceChildren(...tags);
   }
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const actionPaths = {
+    locate: 'M12 2v4m0 12v4M2 12h4m12 0h4 M19 12a7 7 0 1 1-14 0 7 7 0 1 1 14 0 M12 11v2',
+    restore: 'M4 11V5m0 6h6M4 11l4-4a7 7 0 1 1 0 10',
+    adopt: 'M20 11V5m0 6h-6m6 0-4-4a7 7 0 1 0 0 10',
+    edit: 'M15 5l4 4M4 20l1-5L16.5 3.5a2.8 2.8 0 0 1 4 4L9 19z',
+  };
+  function setActionIcon(button, icon, label) {
+    const svg = document.createElementNS(svgNS, 'svg');
+    const path = document.createElementNS(svgNS, 'path');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    path.setAttribute('d', actionPaths[icon]);
+    svg.append(path);
+    button.classList.add('tool-icon-action');
+    button.setAttribute('aria-label', label);
+    button.dataset.toolTip = label;
+    button.replaceChildren(svg);
+  }
   function makeRow(group) {
     const row = create('tr');
     row.tabIndex = -1;
@@ -295,7 +314,7 @@
     range.append(create('span', `${time(group.start)}\n${time(group.end)}`, 'time range-text'), create('div', null, 'badges'));
     const actions = create('div', null, 'actions');
     const jump = button('', () => selectTimeline(group, group.start, { center: true, maxSpan: SEEK_MAX_TIMELINE_SPAN }), 'btn jump-timeline');
-    window.MAWToolPage.setActionIcon(jump, 'locate', text.jump);
+    setActionIcon(jump, 'locate', text.jump);
     actions.append(jump);
     range.append(actions);
     let action;
@@ -320,7 +339,7 @@
     function drawOutput() {
       if (action) {
         const restored = review.get(group.id)?.restore;
-        window.MAWToolPage.setActionIcon(action, restored ? 'adopt' : 'restore', restored ? text.adopt : text.restore);
+        setActionIcon(action, restored ? 'adopt' : 'restore', restored ? text.adopt : text.restore);
       }
       result.replaceChildren();
       showCues(result, output(group), group);

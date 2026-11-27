@@ -1,3 +1,4 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -35,22 +36,17 @@ test('existing take review exposes independent ASR confirmation and blocks uncon
     await expect(gapRange).toBeVisible();
     await gapRange.click({modifiers:['Alt']});
     await expect(gapRange).toHaveClass(/restored/);
-    await expect.poll(()=>page.evaluate(()=>window.MAWRecordingReview.snapshot().gapRemove?.gaps.some(g=>g.removed===false))).toBe(true);
-    await expect.poll(()=>page.evaluate(()=>{
-      const signature=window.MAWRecordingReview.snapshot().inputSignature;
-      return JSON.parse(localStorage.getItem('maw.recording.review.v1.'+signature))?.gapRemove?.gaps.some(g=>g.removed===false);
-    })).toBe(true);
+    const state=await(await page.request.get(server.url+'api/state')).json();
+    const storageKey='maw.recording.review.v1.'+state.recordingInputSignature;
+    await expect.poll(()=>page.evaluate(key=>
+      JSON.parse(localStorage.getItem(key))?.gapRemove?.gaps.some(g=>g.removed===false),storageKey)).toBe(true);
     await page.reload();
     await expect(page.locator('#recording-enable')).toBeChecked();
     await expect(page.locator('#recording-lines input[data-line-id="line-002"]')).toBeChecked();
     await expect(page.locator('#recording-generate')).toBeEnabled();
     await expect(page.locator('#skip-gap-playback')).not.toBeChecked();
     await expect(page.locator('#gap-overlay .gap-range.restored')).toHaveCount(1);
-    expect(await page.evaluate(()=>{
-      const signature=window.MAWRecordingReview.snapshot().inputSignature;
-      return JSON.parse(localStorage.getItem('maw.recording.review.v1.'+signature)).requestToken;
-    })).toBeUndefined();
-    const state=await(await page.request.get(server.url+'api/state')).json();
+    expect(await page.evaluate(key=>JSON.parse(localStorage.getItem(key)).requestToken,storageKey)).toBeUndefined();
     const noToken=await page.request.post(server.url+'api/recording/start',{data:{inputSignature:state.recordingInputSignature}});
     expect(noToken.status()).toBe(403);
   } finally {await server?.stop();cleanupTempDir(dir);}
@@ -108,7 +104,7 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
 });
 
 test('Launcher recording mode reuses selected ASR settings and opens its raw project',async({page})=>{
-  await page.goto(pathToFileURL(resolve('web/launcher/index.html')).href);
+  await page.goto(launcherFixtureUrl());
   await page.waitForFunction(()=>window.MAWLauncher?.config?.postprocessProviders?.length>0);
   await page.locator('#toolboxFab').click();await page.locator('#toolboxUtilitiesPrimaryTab').click();await page.locator('#toolboxAlignmentTab').click();
   await page.locator('#toolboxRecordingInputMode').selectOption('recording');

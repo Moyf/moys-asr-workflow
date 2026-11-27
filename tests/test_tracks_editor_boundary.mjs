@@ -5,13 +5,18 @@ import test from 'node:test';
 import { createUtilsModule as createProjectTracks } from '../web/shared/utils/project-tracks.js';
 const tracks = createProjectTracks();
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const canonical = () => JSON.parse(readFileSync(new URL('./fixtures/project-tracks/legacy-three-tracks.expected.json', import.meta.url), 'utf8'));
 function run(context, module) {
-  const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-load': 'initMaweProjectLoad', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-multi-import': 'initMaweMultiImport', 'io/editor-loading-progress': 'initLoadingProgressModule' };
-  const source = initializers[module] ? invokedInitModuleSource(`editor/${module}.js`, initializers[module]) : readFileSync(new URL(`../web/editor/${module}.js`, import.meta.url), 'utf8');
+  const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-load': 'initMaweProjectLoad', 'io/editor-multi-import': 'initMaweMultiImport', 'io/editor-loading-progress': 'initLoadingProgressModule' };
+  const sourcePath = `editor/${module}.js`;
+  const source = module === 'io/editor-json-repair' ? plainModuleSource(sourcePath)
+    : initializers[module] ? invokedInitModuleSource(sourcePath, initializers[module]) : readFileSync(new URL(`../web/${sourcePath}`, import.meta.url), 'utf8');
   vm.runInContext(source, context);
 }
 
@@ -20,7 +25,7 @@ test('invalid import is rejected before retiring the current media or file bindi
   const context = { AsrEditorUtils: tracks, MaweBoot: { DATA: current }, effects: 0 };
   context.window = context;
   context.MaweState = { beginProjectLoad() { context.effects++; } };
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   run(context, 'io/editor-project-load');
   for (const invalid of [
     { ...canonical(), schema: 'moy.asr.project.v99' },
@@ -55,7 +60,7 @@ test('the real editor projection preserves every track and extension field witho
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
 
   run(context, 'state/editor-state');
   run(context, 'io/editor-json-repair');
@@ -96,7 +101,7 @@ test('importing project subtitles keeps cue metadata and a detached source group
     MaweJsonRepair: { noteImportReport() {} },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   run(context, 'io/editor-loading-progress');
   const input = plain(source);
   const parsed = await context.MaweLoadingProgress.parseSubtitleImportFile(new File([JSON.stringify(source)], 'source.mosp'));
@@ -134,7 +139,7 @@ test('project and subtitle file imports repair numeric timing without accepting 
     MaweProjectMediaInputs: {}, MaweHint: { flashHint() {} }, console,
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   run(context, 'io/editor-loading-progress');
   run(context, 'io/editor-multi-import');
   const raw = { segments: [{ start: 0, end: 0, text: 'repair me' }] };

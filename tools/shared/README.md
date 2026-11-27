@@ -8,16 +8,20 @@
 目录的“使用说明”默认在页内弹窗阅读，保留“打开源文件”。退休、暂停维护、暂不处理状态不因
 阅读器接入而改变。其他工具尚未接入，不应据此认为它们已有说明弹窗。
 
-三个独立接口，均为普通本地脚本，不需要服务器、CDN 或 `file://` fetch：
+三个独立模块由工具目录注入依赖。生成器将模块工厂与说明数据放进同一个本地脚本，目录可在文件协议下直接打开：
 
 ```js
-// 先加载 vendor/marked-18.1.3/marked.umd.js、vendor/dompurify-3.4.17/purify.min.js。
-const fragment = MAWMarkdown.render(markdown, {baseUrl: documentUrl}); // 已净化的 DocumentFragment
+import {createToolMarkdown} from './markdown.js';
+import {createToolDocData} from './doc-data.js';
+import {createDocViewerFactory} from './doc-viewer.js';
+
+const markdown = createToolMarkdown({getMarked, getSanitizer, documentUrl});
+const fragment = markdown.render(text, {baseUrl: documentUrl}); // 已净化的 DocumentFragment
 // 远端 PR 正文等不可信上下文可选择：只保留明确绝对网址，且不提供图片入口。
-const strictFragment = MAWMarkdown.render(markdown, {baseUrl:documentUrl, absoluteOnly:true, noImages:true});
-const store = MAWToolDocData.create({data: MAWToolDocs, baseUrl: document.baseURI});
-const viewer = MAWDocViewer.create({
-  render: MAWMarkdown.render, loader: store.load, resolve: store.resolve,
+const strictFragment = markdown.render(text, {baseUrl:documentUrl, absoluteOnly:true, noImages:true});
+const store = createToolDocData({data, baseUrl: document.baseURI});
+const viewer = createDocViewerFactory().create({
+  render: markdown.render, loader: store.load, resolve: store.resolve,
 });
 await viewer.open(store.resolve('verification-checklist/README.md'), triggerButton);
 // 其他工具也可直接给文本，或给自己的异步 loader(request, {signal})。
@@ -74,7 +78,7 @@ native/fallback 混用与乱序关闭，只让顶层获得焦点；最后关闭�
    本地 vendor 并重生成文档。升级依赖时须同时重新确认版本、官方文件与脚本中的 SHA256。
 3. 生成器仅读取 `catalog.js` 中 `docs` 指定的工具文档和固定补充：工具 `README.md`、
    `TOOL_PAGE_GUIDE.md`、`AGENTS.md`、本文件。不会递归爬链接、扫描整个 `docs/` 或读取 `.env`。
-   内容作为转义 JSON 文本写入 `../tool-docs-data.js`，不是待执行 HTML。
+   内容作为转义 JSON 文本，与阅读器及目录模块装配到 `../tool-docs-data.js`。
 4. `postinstall` 自动执行 `--write`。文档或依赖变化后重生成，并运行 `pnpm run check:tool-docs`。
    vendor 与文档数据是本仓维护工具的受控生成源资产，需要入库；不加入生产包。
 

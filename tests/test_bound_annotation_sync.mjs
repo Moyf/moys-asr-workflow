@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import { createEditorCommands } from '../web/editor/state/editor-commands.js';
 import * as experience from '../web/shared/utils/speaker-experience.js';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const loaded = { window: {} };
 loadEditorModule(loaded, 'shared/editor-utils.js');
@@ -52,9 +55,9 @@ function fixture(mode = 'speaker') {
     hasChanges: snapshot => JSON.stringify(snapshot) !== JSON.stringify(data),
     publish(snapshot) { past.push(snapshot); future.length = 0; }, restore, refresh() {},
   });
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/styles/editor-speaker-labels.js', 'initMaweSpeakerLabels'), context);
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-sticker-picker.js', 'initMaweStickerPicker'), context);
+  vm.runInContext(plainModuleSource('editor/cues/editor-sticker-picker.js'), context);
   return { data, context, past, speakers: context.MaweSpeakerLabels, picker: context.MaweStickerPicker,
     cue: id => data.tracks.flatMap(track => track.segments).find(segment => segment.id === id),
     undo() { future.push(copy(data)); restore(past.pop()); },

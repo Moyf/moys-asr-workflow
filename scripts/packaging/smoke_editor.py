@@ -14,6 +14,10 @@ from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
 
+def is_inline_editor_bundle(script: str) -> bool:
+    return re.match(r"\s*/\* MAW ESM artifact: [0-9a-f]{64} \*/\s*\S", script) is not None
+
+
 def smoke(executable: Path, output: Path, timeout: int = 60) -> None:
     executable = executable.resolve(strict=True)
     output.mkdir(parents=True, exist_ok=True)
@@ -52,8 +56,7 @@ def smoke(executable: Path, output: Path, timeout: int = 60) -> None:
                 raise RuntimeError("Packaged response is not our PNG-capable editor project")
             assets = re.findall(r'<script\b[^>]*\bsrc="(/assets/[^"#]+)"', page)
             inline = re.findall(r"<script\b[^>]*>([\s\S]*?)</script>", page)
-            if not assets and not any("AsrEditorUtils" in script and "MAWE_I18N" in script
-                                      for script in inline):
+            if not assets and not any(is_inline_editor_bundle(script) for script in inline):
                 raise RuntimeError("Packaged editor has no application bundle")
             for asset in assets:
                 with opener.open(url + asset, timeout=5) as response:

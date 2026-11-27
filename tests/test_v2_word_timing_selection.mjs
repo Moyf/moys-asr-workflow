@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 test('word selection resolves the v2 main cue and uses imported panel actions', () => {
   const segment = { id: 'cue', text: 'hello', items: [{ text: 'hello', start: 0, end: 1000 }] };
@@ -18,7 +19,7 @@ test('word selection resolves the v2 main cue and uses imported panel actions', 
     timelineTimingAdapter: () => ({}),
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-word-timing.js', 'initMaweWordTiming'), context);
   context.MaweWordTiming.select(0, 0);
   assert.equal(calls.commit, 1);

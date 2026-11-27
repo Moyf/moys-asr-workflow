@@ -1,19 +1,36 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { renderCurrentCuePanel, renderAll } from '../cues/editor-cue-panel.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweAudioProcessing } from '../media/editor-audio-processing.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweAssCuePosition } from '../styles/editor-wiring-ass-cue-position.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweGapRemoveUi } from '../ui/editor-gap-remove-ui.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweCoreState } from './editor-core-state.js';
+import { MaweCuePanelState } from './editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from './editor-multi-subtitle-core.js';
+import { syncControls } from './editor-project-settings.js';
+import { MaweSettings } from './editor-settings.js';
+import { MaweState } from './editor-state.js';
+import { MaweViewUpdates } from './editor-view-updates.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MaweHistory;
 import { getOverlayTrack } from '../cues/overlay-track.js';
 import { afterExternalMarkersChange } from '../markers/editor-marker-editing.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweHistory() {
-'use strict';
-
-// 撤销/重做：历史栈、快照与各类型记录的入栈恢复。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweHistory 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweHistory(global) {
-  'use strict';
-
-
-
+  // 撤销/重做：历史栈、快照与各类型记录的入栈恢复。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // === 统一撤销/重做 ===
   // 四种记录 kind 共享一个历史栈：
   //   segments   —— 字幕增删改、拆分合并、表情包/颜色、批量替换等
@@ -25,7 +42,7 @@ export function initMaweHistory() {
   const UNDO_LIMIT = 100;
 
 
-  const editorHistory = window.AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
+  const editorHistory = AsrEditorUtils.createHistoryStack(UNDO_LIMIT);
 
 
 
@@ -34,7 +51,7 @@ export function initMaweHistory() {
   function snapshotSegments() {
   // 会话高亮可随快照保留，但不参与保存检查点；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return window.AsrEditorUtils.buildSegmentsHistorySnapshot(MaweBoot.DATA);
+  return AsrEditorUtils.buildSegmentsHistorySnapshot(MaweBoot.DATA);
 }
 
 
@@ -42,7 +59,7 @@ export function initMaweHistory() {
   const kind = MaweCuePanelState.currentCuePanelKind;
   const track = kind === 'extension'
     ? MaweMultiSubtitleCore.getExtensionTrack(MaweCuePanelState.currentCuePanelTrackId)
-    : kind === 'overlay' ? getOverlayTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    : kind === 'overlay' ? getOverlayTrack() : AsrEditorUtils.getMainTrack(MaweBoot.DATA);
   const segment = track?.segments?.[MaweCuePanelState.currentCuePanelIdx];
   return {
     selection: MaweState.selection.snapshot(),
@@ -54,7 +71,7 @@ export function initMaweHistory() {
   function captureSegmentsRecord(label, { captureView = true } = {}) {
     // snapshotSegments() 已是深克隆；让 buildHistoryRecord 跳过二次克隆，
     // 长工程下省掉一遍 O(工程体积) 的 JSON 序列化。
-    const record = window.AsrEditorUtils.buildHistoryRecord(
+    const record = AsrEditorUtils.buildHistoryRecord(
       'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
       { clone: false },
     );
@@ -70,13 +87,13 @@ export function initMaweHistory() {
 
   function pushLayoutUndo(label, snapshot) {
     if (!snapshot) return;
-    editorHistory.push(window.AsrEditorUtils.buildHistoryRecord('layout', label, snapshot));
+    editorHistory.push(AsrEditorUtils.buildHistoryRecord('layout', label, snapshot));
     updateUndoRedoButtons();
   }
 
 
   function pushGapRemoveUndo(label) {
-    editorHistory.push(window.AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
+    editorHistory.push(AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
       gapRemove: MaweBoot.DATA.gap_remove,
       gapRemoveDirty: MaweState.changes.gapRemoveDirty,
     }));
@@ -85,7 +102,7 @@ export function initMaweHistory() {
 
 
   function pushMarkersUndo(label, markersSnapshot = null) {
-    editorHistory.push(window.AsrEditorUtils.buildHistoryRecord(
+    editorHistory.push(AsrEditorUtils.buildHistoryRecord(
       // 撤销栈存「变更前」快照：performUndo 会把当前状态推入 redo 栈并应用本记录。
       'markers', label, markersSnapshot ?? (MaweBoot.DATA.markers || []),
     ));
@@ -94,7 +111,7 @@ export function initMaweHistory() {
 
 
   function pushPreviewUndo(label, preview) {
-    editorHistory.push(window.AsrEditorUtils.buildHistoryRecord('preview', label, preview));
+    editorHistory.push(AsrEditorUtils.buildHistoryRecord('preview', label, preview));
     updateUndoRedoButtons();
   }
 
@@ -125,7 +142,7 @@ export function initMaweHistory() {
     if (state.extensionSubtitle) MaweAppearance.restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
     if (state.sticker) MawePreviewGeometry.setStickerGeometry(state.sticker, { markDirty: true });
     if (typeof state.assMode === 'boolean') MaweSettings.updateEditorSettings({ assMode: state.assMode });
-    window.MaweProjectSettings?.syncControls();
+    syncControls?.();
     MawePreviewGeometry.refreshPreviewGeometryEditable();
     MawePlaybackLoop.update();
   }
@@ -134,26 +151,26 @@ export function initMaweHistory() {
   // 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
   function snapshotCurrentForKind(kind, label, sourceRecord = null) {
     if (kind === 'audio_processing') {
-      return { kind, label, audioProcessing: window.MaweAudioProcessing.settings() };
+      return { kind, label, audioProcessing: MaweAudioProcessing.settings() };
     }
     if (kind === 'layout') {
-      return window.AsrEditorUtils.buildHistoryRecord(
+      return AsrEditorUtils.buildHistoryRecord(
         'layout', label, MaweCoreState.waveformEditor?.getLayoutHistorySnapshot?.() || null,
       );
     }
     if (kind === 'gap_remove') {
-      return window.AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
+      return AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
         gapRemove: MaweBoot.DATA.gap_remove,
         gapRemoveDirty: MaweState.changes.gapRemoveDirty,
       });
     }
     if (kind === 'markers') {
-      return window.AsrEditorUtils.buildHistoryRecord(
-        'markers', label, window.AsrEditorUtils.cloneMarkerValue(MaweBoot.DATA.markers || []),
+      return AsrEditorUtils.buildHistoryRecord(
+        'markers', label, AsrEditorUtils.cloneMarkerValue(MaweBoot.DATA.markers || []),
       );
     }
     if (kind === 'preview') {
-      return window.AsrEditorUtils.buildHistoryRecord('preview', label, snapshotPreviewState());
+      return AsrEditorUtils.buildHistoryRecord('preview', label, snapshotPreviewState());
     }
     const current = captureSegmentsRecord(label, { captureView: Boolean(sourceRecord?.view) });
     if (sourceRecord?.fontPreview) current.fontPreview = snapshotPreviewState();
@@ -181,14 +198,14 @@ export function initMaweHistory() {
   });
   MaweSelection.updateMultiSelectionClasses();
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.renderCurrentCuePanel();
+  renderCurrentCuePanel();
 }
 
 
   function applyHistoryRecord(record) {
   MaweWordTiming.clearSelection();
   if (record.kind === 'audio_processing') {
-    window.MaweAudioProcessing.change(record.audioProcessing, { recordHistory: false });
+    MaweAudioProcessing.change(record.audioProcessing, { recordHistory: false });
     return true;
   }
   if (record.kind === 'layout') {
@@ -207,7 +224,7 @@ export function initMaweHistory() {
     return true;
   }
   if (record.kind === 'markers') {
-    MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(record.markers || []);
+    MaweBoot.DATA.markers = AsrEditorUtils.normalizeMarkers(record.markers || []);
     afterExternalMarkersChange();
     return true;
   }
@@ -219,7 +236,7 @@ export function initMaweHistory() {
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
   MaweState.rememberSessionHighlights();
-  window.AsrEditorUtils.restoreSegmentsHistorySnapshot(MaweBoot.DATA, snapshot);
+  AsrEditorUtils.restoreSegmentsHistorySnapshot(MaweBoot.DATA, snapshot);
   if (record.fontPreview) applyPreviewState(record.fontPreview);
   MaweState.restoreSessionHighlights();
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
@@ -236,15 +253,15 @@ export function initMaweHistory() {
   MawePlaybackLoop.lastActive = -1;
   const structureChanged = previousWaveformStructure
     !== MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
-  MaweCuePanel.renderAll({
+  renderAll({
     waveform: structureChanged ? 'full' : 'overlay',
     cueListAnchor,
   });
   // 暂停状态下撤销/重做不会触发播放器事件：与正向命令一致地刷新播放器
   // 字幕预览（SRT overlay），并通知 ASS 实际画面重查快照。
   MaweViewUpdates.invalidate({ preview: 'refresh' });
-  window.MaweAssManagerWiring?.syncAssStyleManager?.();
-  window.MaweAssFrame?.notifyProjectChanged?.();
+  MaweAssManagerWiring?.syncAssStyleManager?.();
+  MaweAssFrame?.notifyProjectChanged?.();
   if (record.view) restoreEditorSelection(record.view);
   return true;
 }
@@ -254,7 +271,7 @@ export function initMaweHistory() {
   // 避免恢复历史后旧拖动仍持有字幕对象，或把预览状态写入 redo。
   // 放在统一入口，同时覆盖快捷键、按钮和直接调用。
   function cancelActiveTimelineGesture() {
-    if (global.MaweAssCuePosition?.cancelDrag()) return true;
+    if (MaweAssCuePosition?.cancelDrag()) return true;
     const waveform = MaweCoreState.waveformEditor;
     if (waveform?.wordDrag) {
       waveform.cancelWordDrag();
@@ -306,7 +323,7 @@ export function initMaweHistory() {
 
   // modal 或文本输入聚焦时不触发全局撤销/重做（让浏览器/输入框自己处理）
   function historyGuarded() {
-  const a = document.activeElement;
+  const a = /** @type {HTMLElement} */ (document.activeElement);
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) {
     return true;
   }
@@ -320,10 +337,10 @@ export function initMaweHistory() {
 }
 
 
-  const undoBtn = document.getElementById('undo-btn');
+  const undoBtn = /** @type {HTMLButtonElement} */ (document.getElementById('undo-btn'));
 
 
-  const redoBtn = document.getElementById('redo-btn');
+  const redoBtn = /** @type {HTMLButtonElement} */ (document.getElementById('redo-btn'));
 
 
   function updateUndoRedoButtons() {
@@ -331,7 +348,7 @@ export function initMaweHistory() {
     if (redoBtn) redoBtn.disabled = !editorHistory.canRedo();
   }
 
-  global.MaweHistory = Object.freeze({
+  MaweHistory = Object.freeze({
     UNDO_LIMIT,
     editorHistory,
     get gapRemoveDirty() { return MaweState.changes.gapRemoveDirty; },
@@ -356,20 +373,17 @@ export function initMaweHistory() {
     redoBtn,
     updateUndoRedoButtons
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-// 以下函数可供其他模块导入；调用时通过 window.MaweHistory 找到原有实现。
-// 旧代码仍使用该对象，计划在 G16 退役。
-export function captureSegmentsRecord(...args) { return window.MaweHistory.captureSegmentsRecord(...args); }
-export function commitRecord(...args) { return window.MaweHistory.commitRecord(...args); }
-export function applyHistoryRecord(...args) { return window.MaweHistory.applyHistoryRecord(...args); }
-export function snapshotEditorSelection(...args) { return window.MaweHistory.snapshotEditorSelection(...args); }
-export function snapshotPreviewState(...args) { return window.MaweHistory.snapshotPreviewState(...args); }
-export function pushPreviewUndo(...args) { return window.MaweHistory.pushPreviewUndo(...args); }
-export function pushGapRemoveUndo(...args) { return window.MaweHistory.pushGapRemoveUndo(...args); }
-export function pushLayoutUndo(...args) { return window.MaweHistory.pushLayoutUndo(...args); }
-export function pushMarkersUndo(...args) { return window.MaweHistory.pushMarkersUndo(...args); }
-export function performUndo(...args) { return window.MaweHistory.performUndo(...args); }
-export function performRedo(...args) { return window.MaweHistory.performRedo(...args); }
-export function updateUndoRedoButtons(...args) { return window.MaweHistory.updateUndoRedoButtons(...args); }
+export function captureSegmentsRecord(...args) { return MaweHistory.captureSegmentsRecord(...args); }
+export function commitRecord(...args) { return MaweHistory.commitRecord(...args); }
+export function applyHistoryRecord(...args) { return MaweHistory.applyHistoryRecord(...args); }
+export function snapshotEditorSelection(...args) { return MaweHistory.snapshotEditorSelection(...args); }
+export function snapshotPreviewState(...args) { return MaweHistory.snapshotPreviewState(...args); }
+export function pushPreviewUndo(...args) { return MaweHistory.pushPreviewUndo(...args); }
+export function pushGapRemoveUndo(...args) { return MaweHistory.pushGapRemoveUndo(...args); }
+export function pushLayoutUndo(...args) { return MaweHistory.pushLayoutUndo(...args); }
+export function pushMarkersUndo(...args) { return MaweHistory.pushMarkersUndo(...args); }
+export function performUndo(...args) { return MaweHistory.performUndo(...args); }
+export function performRedo(...args) { return MaweHistory.performRedo(...args); }
+export function updateUndoRedoButtons(...args) { return MaweHistory.updateUndoRedoButtons(...args); }

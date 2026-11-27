@@ -1,3 +1,4 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
@@ -29,7 +30,8 @@ async function realMatchBridge(page) {
     const message = JSON.parse(line);
     if (message.fixtures) fixturesResolve(message.fixtures);
     else if (message.searchStarted) searchCount += 1;
-    else if (message.event) page.evaluate(event => window.MAWLauncher.onBackendEvents([event]), message.event).catch(() => {});
+    else if (message.event) page.evaluate(event => document.dispatchEvent(
+      new CustomEvent('maw:backend-events', { detail: [event] })), message.event).catch(() => {});
     else if (pending.has(message.id)) {
       const { resolve, reject } = pending.get(message.id);
       pending.delete(message.id);
@@ -59,7 +61,7 @@ async function realMatchBridge(page) {
 
 for (const group of ['plain', 'timed']) {
   test(`ordinary ${group} matching stops real computation without outputs and restarts`, async ({ page }) => {
-    await page.goto(`file://${path.join(root, 'web/launcher/index.html')}`);
+    await page.goto(launcherFixtureUrl());
     await completeStaticLauncherDiscovery(page);
     await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
     const backend = await realMatchBridge(page);
@@ -107,7 +109,9 @@ for (const group of ['plain', 'timed']) {
       await expect(run).toBeEnabled();
       await expect(stop).toBeHidden();
       expect((await backend.call('inspect', large)).files).toEqual(['script.txt', 'source.mosp']);
-      await page.evaluate(operationId => window.MAWLauncher.onBackendEvents([{ type: 'postprocess_status', key: 'toolbox_status_writing', operationId }]), firstId);
+      await page.evaluate(operationId => document.dispatchEvent(new CustomEvent('maw:backend-events', {
+        detail: [{ type: 'postprocess_status', key: 'toolbox_status_writing', operationId }],
+      })), firstId);
       await expect(page.locator('#toolboxResultText')).toHaveText('字幕处理已取消。');
       await page.locator('#toolboxInputPath').fill(small.projectPath);
       await page.locator('#postprocessScriptPath').fill(small.scriptPath);

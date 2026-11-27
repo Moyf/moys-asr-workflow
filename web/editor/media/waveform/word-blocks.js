@@ -1,3 +1,4 @@
+import { AsrEditorUtils } from '../../../shared/editor-utils.js';
 export function createWordBlocks(dependencies) {
   'use strict';
   const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage, wordTimingFullLane } = dependencies;
@@ -49,7 +50,7 @@ export function createWordBlocks(dependencies) {
       const segment = this.options.getSegments('main')[index];
       if (!segment || this.isSegmentHiddenForDisplay(segment)) return;
       const timing = resolveTiming(this.options.getCueTiming?.());
-      const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
+      const entries = AsrEditorUtils.getWordTimingEntries(segment, timing);
       const selection = this.options.wordTiming.getSelection(segment);
       // 与整句块采用相同分层条件，确保字词与整句的操作区域不重叠。
       // 判定真源：visibility.wordTimingFullLane。
@@ -149,7 +150,7 @@ export function createWordBlocks(dependencies) {
       const index = this.options.getSegments('main').indexOf(drag.segment);
       if (index < 0) return;
       const timing = drag.timing;
-      const entries = window.AsrEditorUtils.getWordTimingEntries(drag.segment, timing);
+      const entries = AsrEditorUtils.getWordTimingEntries(drag.segment, timing);
       const byIndex = new Map(entries.map(entry => [entry.index, entry]));
       const blockSelector = `.waveform-word-block[data-segment-idx="${index}"]`;
       const zoneSelector = `.waveform-word-boundary[data-segment-idx="${index}"]`;
@@ -283,7 +284,7 @@ export function createWordBlocks(dependencies) {
       this.options.wordTiming.select(index, itemIndex, event);
       if (event.ctrlKey || event.metaKey || event.shiftKey) return;
       const segment = this.options.getSegments('main')[index];
-      const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
+      const entries = AsrEditorUtils.getWordTimingEntries(segment, timing);
       const entry = entries.find(e => e.index === itemIndex);
       if (!entry) return;
       const edge = seam || handle?.classList.contains('right') ? 'end' : 'start';
@@ -322,7 +323,7 @@ export function createWordBlocks(dependencies) {
       const target = drag.timing.fromMs(row ? this.pointerTimeMs(event, row)
         : this.pointerTimeMs(event, drag.row, drag.geometry, true));
       const linked = drag.seam ? !event.altKey : !this.isSharedBoundaryHandleIndependent(event.altKey);
-      const items = window.AsrEditorUtils.editWordTiming(drag.original, drag.indices,
+      const items = AsrEditorUtils.editWordTiming(drag.original, drag.indices,
         drag.resize ? { kind: 'resize', edge: drag.edge, target, linked }
           : { kind: 'move', delta: target - drag.pointer }, drag.timing);
       if (!items) return;
@@ -555,7 +556,7 @@ export function createWordBlocks(dependencies) {
         if (segment.start >= unionEnd) break;
         if (segment.end <= unionStart) continue;
         if (this.isSegmentHiddenForDisplay(segment)) continue;
-        entriesByIndex.set(index, window.AsrEditorUtils.getWordTimingEntries(segment, timing));
+        entriesByIndex.set(index, AsrEditorUtils.getWordTimingEntries(segment, timing));
       }
       const blocks = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-word-block'))];
       for (const block of blocks) {
@@ -566,7 +567,7 @@ export function createWordBlocks(dependencies) {
           // 句消失/隐藏才视为结构变化。
           const segment = segments[index];
           if (!segment || this.isSegmentHiddenForDisplay(segment)) return false;
-          entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
+          entries = AsrEditorUtils.getWordTimingEntries(segment, timing);
           entriesByIndex.set(index, entries);
         }
         const entry = entries.find(candidate => candidate.index === Number(block.dataset.itemIdx));
@@ -604,7 +605,7 @@ export function createWordBlocks(dependencies) {
           if (!entriesByIndex.has(index)) {
             const segment = segments[index];
             if (!segment || this.isSegmentHiddenForDisplay(segment)) return false;
-            entriesByIndex.set(index, window.AsrEditorUtils.getWordTimingEntries(segment, timing));
+            entriesByIndex.set(index, AsrEditorUtils.getWordTimingEntries(segment, timing));
           }
           const entries = entriesByIndex.get(index) || [];
           const left = entries.find(candidate => candidate.index === Number(zone.dataset.leftIdx));

@@ -3,6 +3,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const fixtureUtils = { window: {}, TextDecoder };
 loadEditorModule(fixtureUtils, 'shared/editor-utils.js');
@@ -17,7 +18,7 @@ function fixture(count = 5) {
     segments: [{ id: 'overlay-cue', start: 10000, end: 11000, text: 'Overlay' }] });
   const context = { AsrEditorUtils: utils, MaweBoot: { DATA: data } };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
   return { data, main, overlay, context, api: context.MaweSegmentOps };
 }

@@ -1,55 +1,57 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweServerSave } from '../io/editor-server-save.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
 import { renderAll } from './editor-cue-panel.js';
+export let MaweTimeline;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 时间基准与时间线：帧/毫秒换算、时码格式化、工程时间基准同步与步长取值。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweTimeline 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-// 时间基准与时间线：帧/毫秒换算、时码格式化、工程时间基准同步与步长取值。 ESM init 模块：initMaweTimeline 在原清单位次执行原 IIFE 体（挂
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweTimeline 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+// 时间基准与时间线：帧/毫秒换算、时码格式化、工程时间基准同步与步长取值。
+// 由 split-cluster codemod 自 editor.js 拆出。
 
-// window.MaweTimeline 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweTimeline() {
-(function initMaweTimeline(global) {
-  'use strict';
+  const normalizeTimelineTimebase = AsrEditorUtils.normalizeTimelineTimebase;
 
 
-  const normalizeTimelineTimebase = window.AsrEditorUtils.normalizeTimelineTimebase;
+  const normalizeTimelineFps = AsrEditorUtils.normalizeTimelineFps;
 
 
-  const normalizeTimelineFps = window.AsrEditorUtils.normalizeTimelineFps;
+  const normalizeTimelineTimecodeSeparator = AsrEditorUtils.normalizeTimelineTimecodeSeparator;
 
 
-  const normalizeTimelineTimecodeSeparator = window.AsrEditorUtils.normalizeTimelineTimecodeSeparator;
+  const normalizeMediaMetadata = AsrEditorUtils.normalizeMediaMetadata;
 
 
-  const normalizeMediaMetadata = window.AsrEditorUtils.normalizeMediaMetadata;
+  const DEFAULT_TIMELINE_FPS = AsrEditorUtils.DEFAULT_TIMELINE_FPS;
 
 
-  const DEFAULT_TIMELINE_FPS = window.AsrEditorUtils.DEFAULT_TIMELINE_FPS;
+  const frameNumberFromMilliseconds = AsrEditorUtils.frameNumberFromMilliseconds;
 
 
-  const frameNumberFromMilliseconds = window.AsrEditorUtils.frameNumberFromMilliseconds;
+  const millisecondsFromFrameNumber = AsrEditorUtils.millisecondsFromFrameNumber;
 
 
-  const millisecondsFromFrameNumber = window.AsrEditorUtils.millisecondsFromFrameNumber;
+  const formatFrameTimecode = AsrEditorUtils.formatFrameTimecode;
 
 
-  const formatFrameTimecode = window.AsrEditorUtils.formatFrameTimecode;
+  const formatTimelineTimecode = AsrEditorUtils.formatTimelineTimecode;
 
 
-  const formatTimelineTimecode = window.AsrEditorUtils.formatTimelineTimecode;
+  const parseFrameTimecode = AsrEditorUtils.parseFrameTimecode;
 
 
-  const parseFrameTimecode = window.AsrEditorUtils.parseFrameTimecode;
+  const MIN_TIMELINE_FPS = AsrEditorUtils.MIN_TIMELINE_FPS;
 
 
-  const MIN_TIMELINE_FPS = window.AsrEditorUtils.MIN_TIMELINE_FPS;
-
-
-  const MAX_TIMELINE_FPS = window.AsrEditorUtils.MAX_TIMELINE_FPS;
+  const MAX_TIMELINE_FPS = AsrEditorUtils.MAX_TIMELINE_FPS;
 
 
 
@@ -138,7 +140,7 @@ export function initMaweTimeline() {
       syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds, allowZero: true });
     });
     if (timebase.unit === 'frames') {
-      window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);
+      AsrEditorUtils.normalizeFrameItemTimingRanges(segment);
     }
     return range;
   }
@@ -243,7 +245,7 @@ export function initMaweTimeline() {
   function syncProjectTimebaseAndBindingOffsets(project = MaweBoot.DATA, options = {}) {
     const timebase = syncProjectTimebase(project, options);
     if (project && typeof project === 'object') {
-      window.AsrEditorUtils.rebuildBindingOffsets(project);
+      AsrEditorUtils.rebuildBindingOffsets(project);
     }
     return timebase;
   }
@@ -376,7 +378,7 @@ export function initMaweTimeline() {
 
 
   function timelineUiText(zh, en) {
-    return window.MAWE_I18N?.language === 'en' ? en : zh;
+    return MAWE_I18N?.language === 'en' ? en : zh;
   }
 
 
@@ -388,7 +390,7 @@ export function initMaweTimeline() {
 
 
   function timelineHasSubtitleData() {
-    return (Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA)?.segments) && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0)
+    return (Array.isArray(AsrEditorUtils.getMainTrack(MaweBoot.DATA)?.segments) && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0)
       || (Array.isArray(MaweBoot.DATA?.tracks)
         && MaweBoot.DATA.tracks.some((track) => Array.isArray(track?.segments)
           && track.segments.length > 0));
@@ -409,7 +411,7 @@ export function initMaweTimeline() {
         `将 FPS 从 ${current.fps} 改为 ${nextFps} 会批量重新映射当前工程的所有字幕段、字词和副字幕时间，并重写毫秒兼容值。原始的非帧对齐毫秒值无法恢复。是否继续？`,
         `Changing FPS from ${current.fps} to ${nextFps} will remap all subtitle segments, word timings, and secondary subtitle timings and rewrite the compatible millisecond values. Original non-frame-aligned millisecond values cannot be restored. Continue?`,
       );
-    return window.confirm(message);
+    return editorDialogs.confirm(message);
   }
 
 
@@ -554,7 +556,7 @@ export function initMaweTimeline() {
     if (MaweDom.adjacentBoundaryModeHintDual) MaweDom.adjacentBoundaryModeHintDual.style.display = isDual ? '' : 'none';
   }
 
-  global.MaweTimeline = Object.freeze({
+  MaweTimeline = Object.freeze({
     normalizeTimelineTimebase,
     normalizeTimelineFps,
     normalizeTimelineTimecodeSeparator,
@@ -599,43 +601,42 @@ export function initMaweTimeline() {
     setTimelineTimebase,
     refreshAdjacentBoundaryModeUi
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function normalizeTimelineTimebase(...args) { return window.MaweTimeline.normalizeTimelineTimebase(...args); }
-export function normalizeTimelineFps(...args) { return window.MaweTimeline.normalizeTimelineFps(...args); }
-export function normalizeTimelineTimecodeSeparator(...args) { return window.MaweTimeline.normalizeTimelineTimecodeSeparator(...args); }
-export function normalizeMediaMetadata(...args) { return window.MaweTimeline.normalizeMediaMetadata(...args); }
-export function frameNumberFromMilliseconds(...args) { return window.MaweTimeline.frameNumberFromMilliseconds(...args); }
-export function millisecondsFromFrameNumber(...args) { return window.MaweTimeline.millisecondsFromFrameNumber(...args); }
-export function formatFrameTimecode(...args) { return window.MaweTimeline.formatFrameTimecode(...args); }
-export function formatTimelineTimecode(...args) { return window.MaweTimeline.formatTimelineTimecode(...args); }
-export function parseFrameTimecode(...args) { return window.MaweTimeline.parseFrameTimecode(...args); }
-export function roundTimelineMilliseconds(...args) { return window.MaweTimeline.roundTimelineMilliseconds(...args); }
-export function hasValidFramePair(...args) { return window.MaweTimeline.hasValidFramePair(...args); }
-export function syncTimeRangeObjectTimebase(...args) { return window.MaweTimeline.syncTimeRangeObjectTimebase(...args); }
-export function syncSegmentTimebase(...args) { return window.MaweTimeline.syncSegmentTimebase(...args); }
-export function syncTrackTimebase(...args) { return window.MaweTimeline.syncTrackTimebase(...args); }
-export function projectTimebase(...args) { return window.MaweTimeline.projectTimebase(...args); }
-export function hasExplicitTimelineFps(...args) { return window.MaweTimeline.hasExplicitTimelineFps(...args); }
-export function projectMediaVideoFps(...args) { return window.MaweTimeline.projectMediaVideoFps(...args); }
-export function captureProjectVideoDimensions(...args) { return window.MaweTimeline.captureProjectVideoDimensions(...args); }
-export function clearProjectVideoDimensions(...args) { return window.MaweTimeline.clearProjectVideoDimensions(...args); }
-export function syncProjectTimebase(...args) { return window.MaweTimeline.syncProjectTimebase(...args); }
-export function syncProjectTimebaseAndBindingOffsets(...args) { return window.MaweTimeline.syncProjectTimebaseAndBindingOffsets(...args); }
-export function timelineIsFrameMode(...args) { return window.MaweTimeline.timelineIsFrameMode(...args); }
-export function timelineMinimumDurationMs(...args) { return window.MaweTimeline.timelineMinimumDurationMs(...args); }
-export function timelineMinimumDurationValue(...args) { return window.MaweTimeline.timelineMinimumDurationValue(...args); }
-export function timelineTimingAdapter(...args) { return window.MaweTimeline.timelineTimingAdapter(...args); }
-export function formatTimelineMilliseconds(...args) { return window.MaweTimeline.formatTimelineMilliseconds(...args); }
-export function timelineMediaSeekStepValue(...args) { return window.MaweTimeline.timelineMediaSeekStepValue(...args); }
-export function timelineCueMoveStepValue(...args) { return window.MaweTimeline.timelineCueMoveStepValue(...args); }
-export function timelineValueToMilliseconds(...args) { return window.MaweTimeline.timelineValueToMilliseconds(...args); }
-export function timelineFrameAlignedMilliseconds(...args) { return window.MaweTimeline.timelineFrameAlignedMilliseconds(...args); }
-export function timelineUiText(...args) { return window.MaweTimeline.timelineUiText(...args); }
-export function timelineMediaSeekStepMilliseconds(...args) { return window.MaweTimeline.timelineMediaSeekStepMilliseconds(...args); }
-export function timelineHasSubtitleData(...args) { return window.MaweTimeline.timelineHasSubtitleData(...args); }
-export function confirmTimelineFrameRemap(...args) { return window.MaweTimeline.confirmTimelineFrameRemap(...args); }
-export function refreshTimelineSettingsUi(...args) { return window.MaweTimeline.refreshTimelineSettingsUi(...args); }
-export function setTimelineTimebase(...args) { return window.MaweTimeline.setTimelineTimebase(...args); }
-export function refreshAdjacentBoundaryModeUi(...args) { return window.MaweTimeline.refreshAdjacentBoundaryModeUi(...args); }
+export function normalizeTimelineTimebase(...args) { return MaweTimeline.normalizeTimelineTimebase(...args); }
+export function normalizeTimelineFps(...args) { return MaweTimeline.normalizeTimelineFps(...args); }
+export function normalizeTimelineTimecodeSeparator(...args) { return MaweTimeline.normalizeTimelineTimecodeSeparator(...args); }
+export function normalizeMediaMetadata(...args) { return MaweTimeline.normalizeMediaMetadata(...args); }
+export function frameNumberFromMilliseconds(...args) { return MaweTimeline.frameNumberFromMilliseconds(...args); }
+export function millisecondsFromFrameNumber(...args) { return MaweTimeline.millisecondsFromFrameNumber(...args); }
+export function formatFrameTimecode(...args) { return MaweTimeline.formatFrameTimecode(...args); }
+export function formatTimelineTimecode(...args) { return MaweTimeline.formatTimelineTimecode(...args); }
+export function parseFrameTimecode(...args) { return MaweTimeline.parseFrameTimecode(...args); }
+export function roundTimelineMilliseconds(...args) { return MaweTimeline.roundTimelineMilliseconds(...args); }
+export function hasValidFramePair(...args) { return MaweTimeline.hasValidFramePair(...args); }
+export function syncTimeRangeObjectTimebase(...args) { return MaweTimeline.syncTimeRangeObjectTimebase(...args); }
+export function syncSegmentTimebase(...args) { return MaweTimeline.syncSegmentTimebase(...args); }
+export function syncTrackTimebase(...args) { return MaweTimeline.syncTrackTimebase(...args); }
+export function projectTimebase(...args) { return MaweTimeline.projectTimebase(...args); }
+export function hasExplicitTimelineFps(...args) { return MaweTimeline.hasExplicitTimelineFps(...args); }
+export function projectMediaVideoFps(...args) { return MaweTimeline.projectMediaVideoFps(...args); }
+export function captureProjectVideoDimensions(...args) { return MaweTimeline.captureProjectVideoDimensions(...args); }
+export function clearProjectVideoDimensions(...args) { return MaweTimeline.clearProjectVideoDimensions(...args); }
+export function syncProjectTimebase(...args) { return MaweTimeline.syncProjectTimebase(...args); }
+export function syncProjectTimebaseAndBindingOffsets(...args) { return MaweTimeline.syncProjectTimebaseAndBindingOffsets(...args); }
+export function timelineIsFrameMode(...args) { return MaweTimeline.timelineIsFrameMode(...args); }
+export function timelineMinimumDurationMs(...args) { return MaweTimeline.timelineMinimumDurationMs(...args); }
+export function timelineMinimumDurationValue(...args) { return MaweTimeline.timelineMinimumDurationValue(...args); }
+export function timelineTimingAdapter(...args) { return MaweTimeline.timelineTimingAdapter(...args); }
+export function formatTimelineMilliseconds(...args) { return MaweTimeline.formatTimelineMilliseconds(...args); }
+export function timelineMediaSeekStepValue(...args) { return MaweTimeline.timelineMediaSeekStepValue(...args); }
+export function timelineCueMoveStepValue(...args) { return MaweTimeline.timelineCueMoveStepValue(...args); }
+export function timelineValueToMilliseconds(...args) { return MaweTimeline.timelineValueToMilliseconds(...args); }
+export function timelineFrameAlignedMilliseconds(...args) { return MaweTimeline.timelineFrameAlignedMilliseconds(...args); }
+export function timelineUiText(...args) { return MaweTimeline.timelineUiText(...args); }
+export function timelineMediaSeekStepMilliseconds(...args) { return MaweTimeline.timelineMediaSeekStepMilliseconds(...args); }
+export function timelineHasSubtitleData(...args) { return MaweTimeline.timelineHasSubtitleData(...args); }
+export function confirmTimelineFrameRemap(...args) { return MaweTimeline.confirmTimelineFrameRemap(...args); }
+export function refreshTimelineSettingsUi(...args) { return MaweTimeline.refreshTimelineSettingsUi(...args); }
+export function setTimelineTimebase(...args) { return MaweTimeline.setTimelineTimebase(...args); }
+export function refreshAdjacentBoundaryModeUi(...args) { return MaweTimeline.refreshAdjacentBoundaryModeUi(...args); }

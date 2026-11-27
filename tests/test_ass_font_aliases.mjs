@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 test('ASS export keeps distinct renderable family names while replacing typographic aliases', async () => {
   const config = {};
@@ -22,7 +23,7 @@ test('ASS export keeps distinct renderable family names while replacing typograp
     }) }),
   };
   loadEditorModule(context, 'shared/editor-utils.js');
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
   config.assFontAliasesUrl = '/api/ass-font-aliases';
   const aliases = context.window.MaweAssFontAliases;
   await aliases.reload();
@@ -71,8 +72,8 @@ test('loaded font aliases invalidate the paused preview plan before its first re
       schema: 'moy.asr.font_aliases.v1', fonts: [{ canonical: 'Example', names: ['Example'] }],
     }) }),
   };
-  vm.createContext(context);
-  vm.runInContext(initModuleSource('editor/styles/editor-wiring-ass-preview.js'), context);
+  vm.createContext(exposeWindowGlobals(context));
+  vm.runInContext(initModuleSource('editor/styles/editor-wiring-ass-preview.js', { isolate: false }), context);
   vm.runInContext("cachedAssStackKey = 'old'; assPreviewFontMetrics.set('old', 1)", context);
   let refreshed = false;
   context.window.MawePlaybackLoop = { refreshSubtitlePreview() {
@@ -113,7 +114,7 @@ test('legacy dirty font names stay out of the dropdown while still resolving to 
     }) }),
   };
   loadEditorModule(context, 'shared/editor-utils.js');
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
   config.assFontAliasesUrl = '/api/ass-font-aliases';
   const aliases = context.window.MaweAssFontAliases;
   await aliases.reload();
@@ -152,7 +153,7 @@ async function managedFonts(coverage) {
     }) }),
   };
   loadEditorModule(context, 'shared/editor-utils.js');
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
   config.assFontAliasesUrl = '/api/ass-font-aliases';
   config.assFontCoverageUrl = '/api/ass-font-coverage';
   await context.window.MaweAssFontAliases.reload();
@@ -275,7 +276,7 @@ test('font inventory readiness settles on success and failure and resumes consum
       CustomEvent: class { constructor(type) { this.type = type; } }, URL,
       fetch: () => new Promise(resolve => { release = resolve; }),
     };
-    vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+    vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
     const aliases = context.window.MaweAssFontAliases;
     assert.equal(aliases.pending(), true);
     let done = false;
@@ -307,7 +308,7 @@ test('stalled font request or JSON body times out, settles and can retry', async
           : Promise.resolve({ schema: 'moy.asr.font_aliases.v1', fonts: [{ canonical: 'Primary', names: ['Primary'], family: ['Primary'] }] }),
       }),
     };
-    vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+    vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
     const aliases = context.window.MaweAssFontAliases;
     await Promise.resolve();
     expire();
@@ -335,7 +336,7 @@ test('startup loads aliases only; concurrent ASS consumers share one lazy covera
         : new Promise(resolve => { release = resolve; });
     },
   };
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
   const aliases = context.window.MaweAssFontAliases;
   await aliases.whenReady();
   assert.deepEqual(calls, ['/aliases']);
@@ -368,7 +369,7 @@ test('lazy coverage deadline includes JSON, settles legacy fallback and does not
       ? { ok: true, json: async () => ({ schema: 'moy.asr.font_aliases.v1', fonts: [{ canonical: 'Primary', names: ['Primary'], family: ['Primary'] }] }) }
       : (++coverageCalls, { ok: true, json: () => new Promise(() => {}) }),
   };
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
   const aliases = context.window.MaweAssFontAliases;
   await aliases.whenReady();
   const loading = aliases.ensureCoverage();
@@ -400,7 +401,7 @@ test('project rescan refreshes aliases and an already loaded coverage inventory 
     },
   };
   loadEditorModule(context, 'shared/editor-utils.js');
-  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), context);
+  vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-font-aliases.js'), exposeWindowGlobals(context));
   const aliases = context.window.MaweAssFontAliases;
   await aliases.whenReady();
   await aliases.ensureCoverage();

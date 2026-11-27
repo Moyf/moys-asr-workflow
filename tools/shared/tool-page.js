@@ -25,27 +25,6 @@
     updateControls();
     document.dispatchEvent(new CustomEvent('tool-theme-change'));
   }
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const actionPaths = {
-    locate: 'M12 2v4m0 12v4M2 12h4m12 0h4 M19 12a7 7 0 1 1-14 0 7 7 0 1 1 14 0 M12 11v2',
-    restore: 'M4 11V5m0 6h6M4 11l4-4a7 7 0 1 1 0 10',
-    adopt: 'M20 11V5m0 6h-6m6 0-4-4a7 7 0 1 0 0 10',
-    edit: 'M15 5l4 4M4 20l1-5L16.5 3.5a2.8 2.8 0 0 1 4 4L9 19z',
-  };
-  function setActionIcon(button, icon, label) {
-    const svg = document.createElementNS(svgNS, 'svg');
-    const path = document.createElementNS(svgNS, 'path');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    path.setAttribute('d', actionPaths[icon]);
-    svg.append(path);
-    button.classList.add('tool-icon-action');
-    button.setAttribute('aria-label', label);
-    button.dataset.toolTip = label;
-    button.replaceChildren(svg);
-  }
-  window.MAWToolPage = Object.freeze({ setActionIcon });
-
   function initTooltips() {
     const bubble = document.createElement('div');
     bubble.className = 'tool-tooltip';

@@ -1,3 +1,12 @@
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweJklPlayback } from '../media/editor-jkl.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweBehaviorHints } from './editor-behavior-hints.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweGapRemoveData } from './editor-gap-remove-data.js';
+import { MaweGapRemoveUi } from './editor-gap-remove-ui.js';
 export function initMaweGapPanelWiring() {
 MaweBehaviorHints.refreshClickBehaviorHint();
 document.addEventListener('mawe:languagechange', MaweBehaviorHints.refreshClickBehaviorHint);
@@ -137,7 +146,7 @@ MaweDom.gapRemoveClearAllButton?.addEventListener('click', MaweGapRemoveUi.clear
 MaweDom.gapRemoveCloseButton?.addEventListener('click', MaweGapRemoveUi.closeGapRemovePanel);
 MaweDom.gapRemoveOperationMode?.addEventListener('change', () => {
   const state = MaweGapRemoveData.getGapRemoveData(true);
-  const nextMode = window.AsrGapRemoveCore.normalizeGapOperationMode(MaweDom.gapRemoveOperationMode.value);
+  const nextMode = AsrGapRemoveCore.normalizeGapOperationMode(MaweDom.gapRemoveOperationMode.value);
   if (state.operation_mode === nextMode) return;
   MaweHistory.pushGapRemoveUndo('切换空隙操作方式');
   state.operation_mode = nextMode;

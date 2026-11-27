@@ -690,11 +690,9 @@
     <div id="lines"></div>
   </section>
 </main>
-<script>
-/* Injected by server-align/serve.py from web/shared/gap-remove-core.js. */
-/* __GAP_REMOVE_CORE_JS__ */
-</script>
-<script>
+<script type="module">
+import { AsrGapRemoveCore } from '../web/shared/gap-remove-core.js';
+/* __RECORDING_REVIEW_JS__ */
   let state = null;
   let alignment = null;
   let selectedByLine = {};
@@ -732,8 +730,7 @@
   const TIMELINE_WAVEFORM_SCALE = 2.2;
   const TIMELINE_MULTI_ROW_GAP = 10;
   const TIMELINE_MAX_CANVAS_DIMENSION = 32767;
-  const GAP_REMOVE_CORE = window.AsrGapRemoveCore;
-  if (!GAP_REMOVE_CORE) throw new Error('AsrGapRemoveCore must load before the alignment UI');
+  const GAP_REMOVE_CORE = AsrGapRemoveCore;
   const DEFAULT_GAP_OPERATION_MODE = GAP_REMOVE_CORE.DEFAULT_GAP_REMOVE_OPERATION_MODE;
   const MIN_GAP_RANGE_MS = 10;
 
@@ -891,7 +888,7 @@
     gapPreviewRange = null;
     render();
     if (message) $('#status').textContent = message;
-    void window.MAWRecordingReview.refresh();
+    void recordingReview.refresh();
     return true;
   }
 
@@ -912,7 +909,7 @@
     gapPreviewRange = null;
     render();
     if (message) $('#status').textContent = message;
-    void window.MAWRecordingReview.refresh();
+    void recordingReview.refresh();
     return true;
   }
 
@@ -1436,7 +1433,7 @@
       selectionPreview.extraActions = {...extraActions};
       render();
       updateStatus();
-      void window.MAWRecordingReview.refresh();
+      void recordingReview.refresh();
     } catch (error) {
       if (serial === previewSerial) {
         $('#status').textContent = `预览失败：${error.message}`;
@@ -3120,7 +3117,7 @@
     state = await (await fetch('/api/state')).json();
     alignment = state.alignment;
     selectedByLine = {...alignment.defaultSelection};
-    const recordingRestored = window.MAWRecordingReview.mount({
+    const recordingRestored = recordingReview.mount({
       state:()=>state,
       selection:()=>({selectedByLine:{...selectedByLine},candidateActions:{...candidateActions},extraActions:{...extraActions},
         ...(gapRemoveDirty?{gapRemove:gapRemovePayload()}: {})}),
@@ -3172,7 +3169,7 @@
     });
     renderPaths();
     await refreshPreview({preserveActions: recordingRestored});
-    await window.MAWRecordingReview.resume();
+    await recordingReview.resume();
     await loadWaveform();
     render();
   }
@@ -3193,7 +3190,7 @@
     };
     if (!event.target.checked) gapPreviewRange = null;
     updateTimelinePlayhead();
-    void window.MAWRecordingReview.refresh();
+    void recordingReview.refresh();
   });
   $('#gap-operation-mode').addEventListener('change', (event) => {
     const next = normalizeGapOperationMode(event.target.value);
@@ -3205,7 +3202,7 @@
     };
     gapRemoveDirty = true;
     render();
-    void window.MAWRecordingReview.refresh();
+    void recordingReview.refresh();
   });
   $('#follow-playhead').addEventListener('change', updateTimelinePlayhead);
   document.addEventListener('pointerdown', (event) => {
@@ -3218,9 +3215,6 @@
   document.addEventListener('click', releasePlaybackFocus, true);
   document.addEventListener('keydown', handleSpacebar);
   init().catch((error) => { $('#meta').textContent = `加载失败：${error.message}`; });
-</script>
-<script>
-/* __RECORDING_REVIEW_JS__ */
 </script>
 </body>
 </html>

@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const utilsContext = { window: {}, TextDecoder };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
@@ -39,11 +40,14 @@ function compositionFixture() {
     getOverlayTrack: () => null,
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   for (const file of ['state/editor-state', 'media/editor-audio-processing',
     'io/editor-json-repair', 'io/editor-project-save']) {
-    const initializers = { 'media/editor-audio-processing': 'initEditorAudioProcessing', 'state/editor-state': 'initMaweState', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-project-save': 'initMaweProjectSave' };
-    vm.runInContext(initializers[file] ? invokedInitModuleSource(`editor/${file}.js`, initializers[file]) : read(file), context, { filename: file });
+    const initializers = { 'media/editor-audio-processing': 'initEditorAudioProcessing', 'state/editor-state': 'initMaweState', 'io/editor-project-save': 'initMaweProjectSave' };
+    const sourcePath = `editor/${file}.js`;
+    const source = file === 'io/editor-json-repair' ? plainModuleSource(sourcePath)
+      : initializers[file] ? invokedInitModuleSource(sourcePath, initializers[file]) : read(file);
+    vm.runInContext(source, context, { filename: file });
   }
   context.MaweAudioProcessing.loadProject({ gain_db: 1, target_lufs: -16, peak_ceiling_dbtp: -1 });
   context.MaweState.setSnapshotReader(context.MaweJsonRepair.projectSnapshot);

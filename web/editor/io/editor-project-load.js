@@ -1,22 +1,53 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { renderAll, commitCuePanelEdit } from '../cues/editor-cue-panel.js';
+import { MaweNavPreview } from '../cues/editor-nav-preview.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { syncTimelineGroupRanges } from '../cues/editor-text-cleanup.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweAudioProcessing } from '../media/editor-audio-processing.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweWaveformInit } from '../media/editor-waveform-init.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { syncControls } from '../state/editor-project-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweAppearance } from '../styles/editor-appearance.js';
+import { MaweProjectFontCheck } from '../styles/editor-project-font-check.js';
+import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
+import { MaweDisplaySettings } from '../ui/editor-display-settings.js';
+import { MaweGapRemoveUi } from '../ui/editor-gap-remove-ui.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweWorkspaces } from '../ui/editor-workspaces.js';
+import { MaweDynamicExports } from './editor-dynamic-exports.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweJsonRepair } from './editor-json-repair.js';
+import { MaweProjectMediaInputs } from './editor-project-media-inputs.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweServerSave } from './editor-server-save.js';
+import { MaweStickerRoot } from './editor-sticker-root.js';
+import { MaweBurnVideoExport } from './editor-wiring-burn-video.js';
+import { MaweGapRemovedMediaExport } from './editor-wiring-export-actions.js';
 import { enableForProjectMarkers } from '../markers/editor-marker-editing.js';
+export let MaweProjectLoad;
 import { resetSelection } from '../markers/editor-markers-panel.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 工程加载：规范化应用、检查点、SRT 解析与主轨替换。
-// ESM init 模块：initMaweProjectLoad 在原清单位次执行原 IIFE 体（挂
-// window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
 export function initMaweProjectLoad() {
   // The classic editor.js binding is local to initializeLegacy, not visible to ESM modules.
-  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
-(function initMaweProjectLoad(global) {
-  'use strict';
-
+  const MULTI_SUBTITLE_UTILS = AsrEditorUtils;
   // Page-local project changes invalidate export operations waiting on a picker.
   let projectBindingEpoch = 0;
 
 
 
   function updateUnloadedMediaLabel(mediaPath) {
-    const mediaName = window.AsrEditorUtils.fileBasename(mediaPath);
+    const mediaName = AsrEditorUtils.fileBasename(mediaPath);
     const mediaNameEl = document.getElementById('media-name');
     if (!mediaNameEl) return;
     if (!mediaName) {
@@ -56,7 +87,7 @@ export function initMaweProjectLoad() {
 
 
   function buildBlankProject() {
-    return window.AsrEditorUtils.makeProject([], {
+    return AsrEditorUtils.makeProject([], {
       projectFields: { media: '', timebase: { unit: 'milliseconds', fps: 30 } },
     });
   }
@@ -70,8 +101,8 @@ export function initMaweProjectLoad() {
 
 
 function applyCanonicalProject(data, filename, { repaired = false, loadGeneration = null,
-  requiresMigrationSaveAs = data?.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(data?.speakers) } = {}) {
-  const imported = window.AsrEditorUtils.importProject(data);
+  requiresMigrationSaveAs = data?.schema !== AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(data?.speakers) } = {}) {
+  const imported = AsrEditorUtils.importProject(data);
   data = imported.project;
   repaired ||= imported.changes.length > 0;
   const timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
@@ -100,13 +131,13 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   // Retain the project object's identity while replacing its sole track tree.
   for (const key of Object.keys(MaweBoot.DATA)) delete MaweBoot.DATA[key];
   Object.assign(MaweBoot.DATA, data, { timebase });
-  window.MaweAudioProcessing?.loadProject(data.audio_processing);
+  MaweAudioProcessing?.loadProject(data.audio_processing);
   // A browser-imported project is not the server's native media binding.
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
   MaweJsonRepair.setMarkerContainer(data.markers);
   MaweState.changes.processingOverridesDirty = false;
-  MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
+  MaweBoot.DATA.markers = AsrEditorUtils.normalizeMarkers(data.markers);
   enableForProjectMarkers(MaweBoot.DATA.markers);
   resetSelection();
   MaweHistory.gapRemoveDirty = false;
@@ -124,7 +155,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
   // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
   // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
-  MaweTextCleanup.syncTimelineGroupRanges();
+  syncTimelineGroupRanges();
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection();
@@ -140,16 +171,16 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness, { render: false });
   }
   MaweGapRemoveUi.updateGapRemoveUi();
-  window.MaweAssManagerWiring?.initializeProjectStyles?.();
-  window.MaweAssManagerWiring?.syncAssStyleManager?.();
-  MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
-  MaweProjectSettings.syncControls();
-  window.MaweAssManagerWiring?.updateAssStyleLibraryStatus();
+  MaweAssManagerWiring?.initializeProjectStyles?.();
+  MaweAssManagerWiring?.syncAssStyleManager?.();
+  renderAll({ waveform: 'full', preserveCueListScroll: false });
+  syncControls();
+  MaweAssManagerWiring?.updateAssStyleLibraryStatus();
   MaweStickerRoot.activateProjectRoot();
   MaweState.establishProjectCheckpoint({ repaired });
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
-  window.MaweGapRemovedMediaExport?.updateButton();
+  MaweGapRemovedMediaExport?.updateButton();
   MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
   MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
   const jsonEl = document.getElementById('json-name');
@@ -163,7 +194,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweServerSave.projectCheckpointed = true;
   MaweServerSave.configureServerSaveControls();
   MaweServerSave.scheduleAutoSave();
-  if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
+  if (!MaweState.projectLoadPending) MaweProjectFontCheck?.schedule();
 }
 
 
@@ -258,8 +289,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
       MaweBoot.SERVER_CONFIG.sourceMediaId = null;
     }
-    window.MaweBurnVideoExport?.invalidateBinding();
-    window.MaweGapRemovedMediaExport?.updateButton();
+    MaweBurnVideoExport?.invalidateBinding();
+    MaweGapRemovedMediaExport?.updateButton();
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();
     MaweDynamicExports.updateOgrafExportButton();
@@ -283,7 +314,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
 
 
   function isMawProject(data) {
-    try { window.AsrEditorUtils.importProject(data); return true; }
+    try { AsrEditorUtils.importProject(data); return true; }
     catch { return false; }
   }
 
@@ -342,19 +373,19 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
   // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板
   // 文本时，会把旧字幕写回新导入的同一下标，表现为“导入后又变回旧值”。
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   MaweCuePanelState.currentCuePanelIdx = -1;
   MaweCuePanelState.currentCuePanelKind = 'main';
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState();
   return MaweCommands.run('替换字幕', (command) => {
-    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length = 0;
-    (segments || []).forEach((segment) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({ ...segment }));
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length = 0;
+    (segments || []).forEach((segment) => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({ ...segment }));
     // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；
     // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
     const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
-    const overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
-    window.MaweAssManagerWiring?.initializeProjectStyles?.();
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.segments = overlayLayer.map(segment => ({ ...segment }));
     overlay.enabled = overlayLayer.length > 0;
     overlay._dirty = true;
@@ -362,10 +393,10 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     MaweBoot.DATA.bindings = [];
     MaweBoot.DATA.bilingual = { display_mode: 'both' };
     MaweBoot.DATA.subtitle_groups = { next_id: 1, color: [], sticker: [] };
-    const cues = [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)];
+    const cues = [...AsrEditorUtils.iterSegments(MaweBoot.DATA)];
     const used = new Set();
     for (const track of MaweBoot.DATA.tracks) for (const [index, cue] of track.segments.entries()) {
-      if (!cue.id || used.has(cue.id)) cue.id = window.AsrEditorUtils.uniqueStableSegmentId(cues, `${track.id}-${index + 1}`, track.id);
+      if (!cue.id || used.has(cue.id)) cue.id = AsrEditorUtils.uniqueStableSegmentId(cues, `${track.id}-${index + 1}`, track.id);
       used.add(cue.id);
     }
     MaweBoot.DATA.gap_remove = null;
@@ -386,7 +417,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     }
     MaweServerSave.configureServerSaveControls();
     MaweServerSave.scheduleAutoSave();
-    MaweHint.flashHint(`已导入字幕：${displayName}（${window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条）`, 'success');
+    MaweHint.flashHint(`已导入字幕：${displayName}（${AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条）`, 'success');
     return true;
   });
 }
@@ -395,7 +426,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   // 顶层 const）原本位于 editor.js 两次 syncProjectTimebaseAndBindingOffsets 之间，
   // 必须留在 editor.js 原位执行，不随本模块迁移。
 
-  global.MaweProjectLoad = Object.freeze({
+  MaweProjectLoad = Object.freeze({
     get projectBindingEpoch() { return projectBindingEpoch; },
     updateUnloadedMediaLabel,
     resetLoadedMedia,
@@ -410,13 +441,12 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
     parseSrtSegments,
     replaceMainTrack
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function replaceMainTrack(...args) { return window.MaweProjectLoad.replaceMainTrack(...args); }
-export function parseSrtSegments(...args) { return window.MaweProjectLoad.parseSrtSegments(...args); }
-export function ensureProjectCheckpointForImport(...args) { return window.MaweProjectLoad.ensureProjectCheckpointForImport(...args); }
-export function detachServerProjectSaving(...args) { return window.MaweProjectLoad.detachServerProjectSaving(...args); }
-export function suggestedProjectName(...args) { return window.MaweProjectLoad.suggestedProjectName(...args); }
-export function isMawProject(...args) { return window.MaweProjectLoad.isMawProject(...args); }
-export function createProjectCheckpoint(...args) { return window.MaweProjectLoad.createProjectCheckpoint(...args); }
+export function replaceMainTrack(...args) { return MaweProjectLoad.replaceMainTrack(...args); }
+export function parseSrtSegments(...args) { return MaweProjectLoad.parseSrtSegments(...args); }
+export function ensureProjectCheckpointForImport(...args) { return MaweProjectLoad.ensureProjectCheckpointForImport(...args); }
+export function detachServerProjectSaving(...args) { return MaweProjectLoad.detachServerProjectSaving(...args); }
+export function suggestedProjectName(...args) { return MaweProjectLoad.suggestedProjectName(...args); }
+export function isMawProject(...args) { return MaweProjectLoad.isMawProject(...args); }
+export function createProjectCheckpoint(...args) { return MaweProjectLoad.createProjectCheckpoint(...args); }

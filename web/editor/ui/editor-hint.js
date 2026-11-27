@@ -1,8 +1,8 @@
 // 提示卡系统（flashHint / dismissHintCard）与波形缩放限位提示状态。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweHint 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { createUtilsModule as createConsoleMirrorModule } from '../../shared/utils/console-mirror.js';
+export let MaweHint;
 
 export function initMaweHint() {
   'use strict';
@@ -142,7 +142,8 @@ export function initMaweHint() {
       document.body.appendChild(stack);
     }
     // 永久提示以及正在阅读的提示不能被后来的普通消息挤掉。
-    const transient = Array.from(stack.children).filter(card => !card.dataset.persistent && !card.dataset.paused);
+    const cards = /** @type {HTMLCollectionOf<HTMLElement>} */ (stack.children);
+    const transient = Array.from(cards).filter(card => !card.dataset.persistent && !card.dataset.paused);
     while (transient.length >= HINT_MAX_VISIBLE) {
       const oldest = transient.shift();
       const timer = hintTimers.get(oldest);
@@ -169,7 +170,7 @@ export function initMaweHint() {
       close.type = 'button';
       close.className = 'hint-close';
       close.textContent = '×';
-      close.setAttribute('aria-label', global.MAWE_I18N?.translateText?.('关闭') || '关闭');
+      close.setAttribute('aria-label', MAWE_I18N?.translateText?.('关闭') || '关闭');
       close.addEventListener('click', () => dismissHintCard(card));
       card.appendChild(close);
     }
@@ -200,7 +201,7 @@ export function initMaweHint() {
       card.addEventListener('mouseleave', () => { hovering = false; resume(); });
       card.addEventListener('focusin', () => { focused = true; pause(); });
       card.addEventListener('focusout', event => {
-        if (event.relatedTarget && card.contains(event.relatedTarget)) return;
+        if (event.relatedTarget && card.contains(/** @type {Node} */ (event.relatedTarget))) return;
         focused = false; resume();
       });
       resume();
@@ -216,7 +217,7 @@ export function initMaweHint() {
 
   let lastScaleLimitAt = 0;
 
-  global.MaweHint = Object.freeze({
+  MaweHint = Object.freeze({
     HINT_MAX_VISIBLE,
     HINT_DURATION_MS,
     HINT_FADE_OUT_MS,
@@ -229,4 +230,5 @@ export function initMaweHint() {
     get lastScaleLimitAt() { return lastScaleLimitAt; },
     set lastScaleLimitAt(v) { lastScaleLimitAt = v; }
   });
+
 }

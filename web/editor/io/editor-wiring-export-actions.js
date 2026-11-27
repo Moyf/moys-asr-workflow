@@ -1,3 +1,30 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { commitCuePanelEdit } from '../cues/editor-cue-panel.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweAssFontAliases } from '../styles/editor-wiring-ass-font-aliases.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweDomPanelsWiring } from '../ui/editor-wiring-dom-panels.js';
+import { MaweDynamicExports } from './editor-dynamic-exports.js';
+import { MaweExportSrt } from './editor-export-srt.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweStickerOtioExport } from './editor-sticker-otio-export.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweGapRemovedMediaExport;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+let activeGapRemovedVideoTask;
+
 export function initMaweExportActionsWiring() {
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
 
@@ -61,14 +88,14 @@ function flushInlineEditsForSave() {
     // edit; otherwise stale display values can rewrite externally changed
     // timing and schedule a second save.
     if (!MaweDom.cuePanel?.contains(document.activeElement) && MaweCuePanelState.cuePanelUndoPushed) {
-      MaweCuePanel.commitCuePanelEdit();
+      commitCuePanelEdit();
     }
     return;
   }
   const extension = Boolean(MaweInlineEdit.extensionEditingState);
   const index = extension ? state.index : state.idx;
   const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(state.trackId) : null;
-  const segment = extension ? track?.segments[index] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+  const segment = extension ? track?.segments[index] : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
   const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
   if (!segment || text === segment.text) return;
   return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
@@ -154,7 +181,7 @@ const DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS = { min: 16, max: 7680 };
 // 命中预设选项就选中，否则落到自定义并预填媒体尺寸；没有元数据时保持现状。
 function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightInput) {
   if (!select) return;
-  const size = window.AsrEditorUtils?.exportVideoSize?.(MaweBoot.DATA) || null;
+  const size = AsrEditorUtils?.exportVideoSize?.(MaweBoot.DATA) || null;
   if (size && widthInput && heightInput) {
     widthInput.value = size.width;
     heightInput.value = size.height;
@@ -199,7 +226,7 @@ function bindResolutionCustomSizeToggle(select, customRow) {
 
 
 document.getElementById('download-lottie')?.addEventListener('click', MaweDynamicExports.openLottieExportModal);
-bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomSize);
+bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, MaweDomPanelsWiring.lottieExportCustomSize);
 MaweDom.lottieExportCancel?.addEventListener('click', MaweDynamicExports.closeLottieExportModal);
 MaweDom.lottieExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportLottieDynamicCaptions(); });
 MaweDom.lottieExportModal?.addEventListener('click', (event) => {
@@ -227,7 +254,7 @@ document.addEventListener('keydown', (event) => {
 
 
 document.getElementById('download-ograf')?.addEventListener('click', MaweDynamicExports.openOgrafExportModal);
-bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomSize);
+bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, MaweDomPanelsWiring.ografExportCustomSize);
 MaweDom.ografExportCancel?.addEventListener('click', MaweDynamicExports.closeOgrafExportModal);
 MaweDom.ografExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportOgrafDynamicCaptions(); });
 MaweDom.ografExportModal?.addEventListener('click', (event) => {
@@ -251,12 +278,12 @@ MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
   });
 });
 function subtitleExportBlocked() {
-  try { window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA); return false; }
+  try { AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA); return false; }
   catch (error) { MaweHint.flashHint(error.message, 'warning'); return true; }
 }
 document.getElementById('download-bilingual-srt')?.addEventListener('click', async (event) => {
   if (subtitleExportBlocked()) return;
-  if (event.currentTarget.classList.contains('disabled')
+  if (/** @type {Element} */ (event.currentTarget).classList.contains('disabled')
       || MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
@@ -276,15 +303,15 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
 // ASS 导出里的 Fontname 可能被本机字体别名表改写（libass 只按 nameID1 匹配）：
 // 在捕获窗口内构建，导出后用 flashHint 提示一次替换结果。
 function buildAssWithFontAliasCapture(build) {
-  window.MaweAssFontAliases?.beginReplacementCapture?.();
+  MaweAssFontAliases?.beginReplacementCapture?.();
   try {
     return build();
   } finally {
-    window.MaweAssFontAliases?.endReplacementCapture?.();
+    MaweAssFontAliases?.endReplacementCapture?.();
   }
 }
 function announceAssFontAliasReplacements() {
-  const replacements = window.MaweAssFontAliases?.takeReplacementNotice?.() || [];
+  const replacements = MaweAssFontAliases?.takeReplacementNotice?.() || [];
   if (replacements.length) {
     MaweHint.flashHint(`字体名已按本机字体归一化：${
       replacements.map(({ from, to }) => `${from} → ${to}`).join('、')
@@ -294,9 +321,9 @@ function announceAssFontAliasReplacements() {
 // A cold coverage request may outlive browser transient activation. Acquire
 // the handle on the original click, not after awaiting the font inventory.
 async function downloadPreparedAss(build, filename, desc) {
-  window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
-  const bindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
-  const fonts = window.MaweAssFontAliases;
+  AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
+  const bindingEpoch = MaweProjectLoad?.projectBindingEpoch;
+  const fonts = MaweAssFontAliases;
   const loading = fonts?.ensureCoverage?.();
   const defer = fonts?.pending?.();
   const accept = { desc, types: { 'text/plain': ['.ass'] } };
@@ -315,7 +342,7 @@ async function downloadPreparedAss(build, filename, desc) {
   }
   await loading;
   await fonts?.whenReady?.();
-  if (bindingEpoch !== window.MaweProjectLoad?.projectBindingEpoch) {
+  if (bindingEpoch !== MaweProjectLoad?.projectBindingEpoch) {
     throw new Error('工程已切换，请重新导出 ASS 字幕。');
   }
   const payload = buildAssWithFontAliasCapture(build);
@@ -339,9 +366,9 @@ document.getElementById('download-full-ass')?.addEventListener('click', async ()
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
-  const segments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : [];
-  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(segments, {
+  const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const segments = AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : [];
+  await MaweExportTimeline.downloadFile(AsrEditorUtils.buildPlainTextPayload(segments, {
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   }), `${MaweBoot.FILENAME_BASE}.txt`, 'text/plain', {
@@ -387,7 +414,7 @@ document.getElementById('download-sticker-otio')?.addEventListener('click', () =
   if (subtitleExportBlocked()) return;
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otio')) return;
   MaweStickerOtioExport.exportStickerOtio(
-    'stickers', MaweExportTimeline.buildStickerOtio, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
+    'stickers', MaweExportTimeline.buildStickerOtio, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, 'OTIO 工程文件'
   );
 });
 document.getElementById('download-gap-removed-srt')?.addEventListener('click', async () => {
@@ -395,7 +422,7 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedSrt();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
       desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
     });
   }
@@ -407,7 +434,7 @@ document.getElementById('download-gap-removed-ass')?.addEventListener('click', a
     // Preserve the no-gap early return without opening an empty save dialog.
     if (!MaweGapRemoveData.getRemovedGapRanges().length) { MaweExportSrt.buildGapRemovedAss(); return; }
     await downloadPreparedAss(() => MaweExportSrt.buildGapRemovedAss(),
-      `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, '去空隙带样式 ASS 字幕');
+      `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, '去空隙带样式 ASS 字幕');
   } catch (error) {
     MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
@@ -448,13 +475,13 @@ document.getElementById('download-gap-removed-otio')?.addEventListener('click', 
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const payload = MaweExportTimeline.buildGapRemovedOtio();
   if (!payload) return;
-  await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
+  await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otio`, 'application/vnd.opentimelineio+json', {
     desc: '去空隙 OTIO 工程', types: { 'application/vnd.opentimelineio+json': ['.otio'] }
   });
   if (MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
     const srtPayload = MaweExportSrt.buildGapRemovedSrt();
     if (srtPayload) {
-      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
       });
     }
@@ -466,13 +493,13 @@ document.getElementById('download-gap-removed-otioz')?.addEventListener('click',
   const saved = await MaweExportTimeline.exportTimelineOtioz(
     'gap-removed',
     MaweExportTimeline.buildGapRemovedOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
+    `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.otioz`,
     '去空隙时间线 OTIOZ 打包工程',
   );
   if (saved && MaweSettings.EDITOR_SETTINGS.otioExportIncludeSrt) {
     const srtPayload = MaweExportSrt.buildGapRemovedSrt();
     if (srtPayload) {
-      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
+      await MaweExportTimeline.downloadFile(srtPayload, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.srt`, 'text/plain', {
         desc: '去空隙字幕 SRT', types: { 'text/plain': ['.srt'] }
       });
     }
@@ -482,15 +509,15 @@ document.getElementById('download-gap-removed-ffconcat')?.addEventListener('clic
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedFfconcat();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
       desc: 'FFconcat 剪辑计划', types: { 'text/plain': ['.ffconcat'] }
     });
   }
 });
 document.getElementById('download-gap-removed-video')?.addEventListener('click', async () => {
-  if (window.__maweGapRemovedVideoTask) return;
+  if (activeGapRemovedVideoTask) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const tr = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+  const tr = (text) => MAWE_I18N?.translateText?.(text) || text;
   const config = MaweBoot.SERVER_CONFIG;
   const isAudio = config?.gapRemovedMediaKind === 'audio';
   const mediaText = (text) => tr(isAudio ? text.replaceAll('视频', '音频') : text);
@@ -526,7 +553,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   if (!context) return;
   const bindingGeneration = config.bindingGeneration;
   const sourceMediaId = config.sourceMediaId;
-  const projectBindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
+  const projectBindingEpoch = MaweProjectLoad?.projectBindingEpoch;
   const exportUrl = config.gapRemovedVideoExportUrl;
   const jobsUrl = config.gapRemovedVideoJobsUrl;
   const requestToken = config.requestToken;
@@ -560,12 +587,12 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     && (!isAudio || (config.gapRemovedMediaAudioTrack === initialConfiguredAudioTrack
       && currentAudioTrack() === selectedAudioTrack))
     && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
-    && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
+    && config.requestToken === requestToken && MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
   MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'info');
 
   let handle;
   try {
-    const suggestedName = `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}${outputExtension}`;
+    const suggestedName = `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}${outputExtension}`;
     handle = await MaweHost.files.pickSaveFile({
       suggestedName,
       types: [{ description: mediaText('重组后视频'), accept: { [outputMime]: [outputExtension] } }],
@@ -621,7 +648,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   void stopped.catch(() => {});
   const raceStop = (promise) => task ? Promise.race([promise, stopped]) : promise;
   const pause = () => new Promise(resolve => setTimeout(resolve, 250));
-  const button = document.getElementById('download-gap-removed-video');
+  const button = /** @type {HTMLElement & {disabled?: boolean}} */ (document.getElementById('download-gap-removed-video'));
   const setProgress = (text, value = null) => {
     if (!panel) return;
     statusLabel.textContent = text;
@@ -838,12 +865,12 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   };
   try {
     // A second picker can resume while another export is already running.
-    if (window.__maweGapRemovedVideoTask) return;
+    if (activeGapRemovedVideoTask) return;
     if (typeof jobsUrl === 'string' && jobsUrl) {
       const random = crypto.getRandomValues(new Uint8Array(32));
       const admissionToken = Array.from(random, value => value.toString(16).padStart(2, '0')).join('');
       task = { id: null, admissionToken, controller: new AbortController(), stopRequested: false, cancelRequest: null };
-      window.__maweGapRemovedVideoTask = task;
+      activeGapRemovedVideoTask = task;
       button.disabled = true;
       document.querySelectorAll('.gap-video-job[data-completed]').forEach(previous => previous.remove());
       panel = document.createElement('div');
@@ -1051,13 +1078,13 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     if (task) {
       window.removeEventListener('pagehide', requestStop);
       if (!transferComplete && !noOutputComplete) panel.remove();
-      if (window.__maweGapRemovedVideoTask === task) window.__maweGapRemovedVideoTask = null;
+      if (activeGapRemovedVideoTask === task) activeGapRemovedVideoTask = null;
       button.disabled = false;
     }
   }
 });
 // Refresh both initial server media and browser-local project/media changes.
-window.MaweGapRemovedMediaExport = Object.freeze({
+MaweGapRemovedMediaExport = Object.freeze({
   applyMediaSizeToResolutionModal,
   dynamicExportCanvasSize,
   updateButton() {
@@ -1071,23 +1098,25 @@ window.MaweGapRemovedMediaExport = Object.freeze({
     const knownAudio = /\.(wav|mp3|m4a|aac|flac|ogg|opus|wma|aiff?|ape)$/i.test(mediaName);
     const audio = config?.gapRemovedMediaKind === 'audio'
       || (!config?.gapRemovedMediaKind && (knownAudio || (!knownVideo && hasPlayerSource && player?.tagName === 'AUDIO')));
-    const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+    const translate = (text) => MAWE_I18N?.translateText?.(text) || text;
     button.textContent = translate(audio ? '重组后音频' : '重组后视频');
     button.title = translate(audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。');
     // 烧录需要视频画面；音频工程隐藏去空隙菜单里的烧录入口。
     const burnItem = document.getElementById('download-gap-removed-burn-video');
     if (burnItem) burnItem.hidden = audio || !config?.canBurnVideoExport || !config?.burnVideoJobsUrl
-      || window.MaweSettings?.EDITOR_SETTINGS?.assMode !== true;
+      || MaweSettings?.EDITOR_SETTINGS?.assMode !== true;
   },
 });
-window.MaweGapRemovedMediaExport.updateButton();
-document.addEventListener('mawe:languagechange', () => window.MaweGapRemovedMediaExport.updateButton());
+
+
+MaweGapRemovedMediaExport.updateButton();
+document.addEventListener('mawe:languagechange', () => MaweGapRemovedMediaExport.updateButton());
 
 document.getElementById('download-gap-removed-regions-json')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedRegionsJson();
   if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.keep-regions.json`, 'application/json', {
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.keep-regions.json`, 'application/json', {
       desc: '去空隙保留区域 JSON', types: { 'application/json': ['.json'] }
     });
   }
@@ -1097,7 +1126,7 @@ document.getElementById('download-gap-removed-sticker-otio')?.addEventListener('
   if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otio')) return;
   await MaweStickerOtioExport.exportStickerOtio(
     'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
+    `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otio`, '去空隙表情包 OTIO 工程'
   );
 });
 document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener('click', async () => {
@@ -1106,12 +1135,12 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
     const msg = '没有已移除的静音空隙；请先在「静音空隙」中扫描';
-    MaweHint.flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
+    MaweHint.flashHint(MAWE_I18N?.translateText?.(msg) || msg);
     return;
   }
   await MaweExportTimeline.exportStickerOtoz(
     'gap-removed-stickers', MaweExportTimeline.buildGapRemovedStickerOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
+    `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}-${MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '去空隙表情包 OTIOZ 打包工程'
   );
 });
 document.getElementById('download-sticker-otioz')?.addEventListener('click', async () => {
@@ -1119,7 +1148,7 @@ document.getElementById('download-sticker-otioz')?.addEventListener('click', asy
   if (MaweExportTimeline.stickerExportBlocked('download-sticker-otioz')) return;
   await MaweExportTimeline.exportStickerOtoz(
     'stickers', MaweExportTimeline.buildStickerOtio,
-    `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
+    `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('stickers') || 'stickers'}.otioz`, '表情包 OTIOZ 打包工程'
   );
 });
 

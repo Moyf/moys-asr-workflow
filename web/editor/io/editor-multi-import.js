@@ -1,17 +1,30 @@
 // 多重字幕导入：导入选择弹窗、预览渲染与主副轨交换。
-// ESM init 模块：initMaweMultiImport 在原清单位次执行原 IIFE 体（挂
-// window.MaweMultiImport 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
+import { MaweProjectValidation } from '../../shared/utils/project-validation.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweProjectFontCheck } from '../styles/editor-project-font-check.js';
+import { MaweAssManagerWiring } from '../styles/editor-wiring-ass-manager.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweDragDrop } from './editor-drag-drop.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweJsonRepair } from './editor-json-repair.js';
+import { MaweLoadingProgress } from './editor-loading-progress.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweProjectMediaInputs } from './editor-project-media-inputs.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweServerSave } from './editor-server-save.js';
 import { prepareImportedSpeakerIdentities } from '../../shared/utils/speaker-project-import.js';
+export let MaweMultiImport;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweMultiImport() {
   // Preserve the classic editor.js alias inside this module's own closure.
-  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
-(function initMaweMultiImport(global) {
-  'use strict';
-
-
-
+  const MULTI_SUBTITLE_UTILS = AsrEditorUtils;
   let pendingMultiImport = null;
 
 
@@ -118,8 +131,8 @@ export function initMaweMultiImport() {
     const pending = pendingMultiImport;
     if (!pending) return;
     pending.choice = pending.existingTrackId ? 'replace-extension' : 'extension';
-    const match = window.AsrEditorUtils.matchSubtitleSegments(
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    const match = AsrEditorUtils.matchSubtitleSegments(
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       pending.segments,
       MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
     );
@@ -146,32 +159,32 @@ export function initMaweMultiImport() {
     MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
     return false;
   }
-  const match = pending.match || window.AsrEditorUtils.matchSubtitleSegments(
-    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
+  const match = pending.match || AsrEditorUtils.matchSubtitleSegments(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
   );
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const replacing = Boolean(pending.existingTrackId);
   const oldTrack = replacing ? MaweMultiSubtitleCore.getExtensionTrack(pending.existingTrackId) : null;
-  const trackId = oldTrack?.id || window.AsrEditorUtils.uniqueStableSegmentId(
+  const trackId = oldTrack?.id || AsrEditorUtils.uniqueStableSegmentId(
     multi.tracks || [], 'extension-1', 'extension',
   );
   const extensionSegments = importedIdentities.segments.map((segment, index) => ({
-    ...window.AsrEditorUtils.cloneJsonValue(segment),
-    id: window.AsrEditorUtils.uniqueStableSegmentId(
-      [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
+    ...AsrEditorUtils.cloneJsonValue(segment),
+    id: AsrEditorUtils.uniqueStableSegmentId(
+      [...AsrEditorUtils.iterSegments(MaweBoot.DATA), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
     _dirty: true,
   }));
   const track = {
-    ...window.AsrEditorUtils.cloneJsonValue(oldTrack || {}),
-    ...window.AsrEditorUtils.cloneJsonValue(pending.segments.sourceTrack || {}),
+    ...AsrEditorUtils.cloneJsonValue(oldTrack || {}),
+    ...AsrEditorUtils.cloneJsonValue(pending.segments.sourceTrack || {}),
     id: trackId,
     role: 'secondary',
     enabled: true,
     name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
     language: pending.segments.sourceTrack?.language || '',
     source_name: pending.file.name,
-    split_mode: pending.segments.sourceTrack?.split_mode || window.AsrEditorUtils.detectSubtitleSplitMode(
+    split_mode: pending.segments.sourceTrack?.split_mode || AsrEditorUtils.detectSubtitleSplitMode(
       extensionSegments.map((segment) => segment.text).join('\n'),
     ),
     segments: extensionSegments,
@@ -192,38 +205,38 @@ export function initMaweMultiImport() {
     if (pending.segments.sourceTrack?.style) {
       delete track.style;
       if (pending.segments.sourceStyle) {
-        if (oldTrack?.style) track.style = window.AsrEditorUtils.cloneJsonValue(oldTrack.style);
-        window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, pending.segments.sourceStyle);
+        if (oldTrack?.style) track.style = AsrEditorUtils.cloneJsonValue(oldTrack.style);
+        AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, pending.segments.sourceStyle);
         const newId = track.style.style_id;
         const snapshot = MaweBoot.DATA.styles.find(style => style.id === newId);
         Object.assign(snapshot, { ...pending.segments.sourceStyle, ...snapshot });
         track.style = { ...pending.segments.sourceTrack.style, style_id: newId };
       }
     }
-    window.MaweAssManagerWiring?.initializeProjectStyles?.();
+    MaweAssManagerWiring?.initializeProjectStyles?.();
     extensionSegments.forEach(segment => { delete segment.color_group_id; delete segment.sticker_group_id; });
     for (const kind of ['color', 'sticker']) {
       for (const group of pending.segments.subtitle_groups?.[kind] || []) {
         const indexes = pending.segments.flatMap((segment, index) => segment[`${kind}_group_id`] === group.id ? [index] : []);
         if (!indexes.length) continue;
-        window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, extensionSegments, indexes, kind, group.value);
+        AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, extensionSegments, indexes, kind, group.value);
         for (const index of indexes) {
           const metadata = pending.segments[index][`${kind}_group_metadata`];
-          if (metadata !== undefined) extensionSegments[index][`${kind}_group_metadata`] = window.AsrEditorUtils.cloneJsonValue(metadata);
+          if (metadata !== undefined) extensionSegments[index][`${kind}_group_metadata`] = AsrEditorUtils.cloneJsonValue(metadata);
         }
       }
     }
     match.matches.forEach((candidate) => {
-      const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[candidate.mainIndex];
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[candidate.mainIndex];
       const extension = extensionSegments[candidate.extensionIndex];
       if (main && extension) multi.bindings.push(
-        window.AsrEditorUtils.buildSubtitleBinding(main, extension, trackId, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id, multi.bindings),
+        AsrEditorUtils.buildSubtitleBinding(main, extension, trackId, null, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id, multi.bindings),
       );
     });
     track.enabled = true;
     multi.bilingual ||= { display_mode: 'both' };
     multi.bilingual.active_track_id = track.id;
-    MaweMultiSubtitleCore.markMainSegmentsDirty(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
+    MaweMultiSubtitleCore.markMainSegmentsDirty(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     closeMultiSubtitleImportModal();
     MaweSelection.clearSelection();
@@ -244,19 +257,19 @@ export function initMaweMultiImport() {
     MaweHint.flashHint('请先开启双语字幕', 'invalid');
     return false;
   }
-  if (!track?.segments?.length || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
+  if (!track?.segments?.length || !AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
     MaweHint.flashHint('主字幕和副字幕都不能为空', 'invalid');
     return false;
   }
   return MaweCommands.run('交换主副字幕', (command) => {
-    const result = window.AsrEditorUtils.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
+    const result = AsrEditorUtils.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
     if (!result.swapped) {
       MaweHint.flashHint(result.reason === 'unmapped-bindings'
         ? `另有 ${result.unmappedBindingCount} 条副轨绑定无法随主轨交换，请先解除相关绑定`
         : '交换主副字幕失败', 'warning');
       return false;
     }
-    MaweMultiSubtitleCore.markMainSegmentsDirty(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+    MaweMultiSubtitleCore.markMainSegmentsDirty(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweSelection.clearSelection();
     command.commit({ cueList: true, waveform: 'full', preview: 'update' });
@@ -274,7 +287,7 @@ export function initMaweMultiImport() {
   try {
     const text = await MaweLoadingProgress.readFileTextWithProgress(file);
     const segments = MaweDragDrop.isLrcFile(file)
-      ? window.AsrEditorUtils.parseLrcSegments(text)
+      ? AsrEditorUtils.parseLrcSegments(text)
       : MaweProjectLoad.parseSrtSegments(text);
     MaweLoadingProgress.updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
     if (!await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return false;
@@ -302,16 +315,16 @@ export function initMaweMultiImport() {
       if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
       const rawProject = JSON.parse(text);
-      const imported = window.MaweProjectValidation.prepareProject(rawProject);
+      const imported = MaweProjectValidation.prepareProject(rawProject);
       if (!imported.ok) throw new Error(imported.errors.map(error => `${error.path}: ${error.message}`).join('; '));
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
-  requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(rawProject.speakers) });
+  requiresMigrationSaveAs: rawProject.schema !== AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(rawProject.speakers) });
       applied = true;
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
-const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
+const expectedName = AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       // 服务器版：浏览器拿不到工程真实路径，但工程记录的媒体是绝对路径。
       // 先让服务器按它定位同目录同名工程并接管（自动加载媒体、允许 Ctrl(Cmd)+S 保存）；
       // 接管失败（媒体已移动 / 同名工程缺失 / 内容不一致）再回退为手动选择媒体。
@@ -329,7 +342,7 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       }
       MaweHint.flashHint(expectedName
         ? `已加载工程：${file.name}（${suppressMediaPrompt ? '正在加载关联媒体' : `等待选择关联媒体：${expectedName}`}）`
-        : `已加载工程：${file.name}（${window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条字幕）`);
+        : `已加载工程：${file.name}（${AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条字幕）`);
       return true;
     } catch (error) {
       if (!current()) return false;
@@ -341,13 +354,13 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       return false;
     } finally {
       MaweState.finishProjectLoad(generation);
-      if (current() && applied) window.MaweProjectFontCheck?.schedule();
+      if (current() && applied) MaweProjectFontCheck?.schedule();
       if (current()) MaweServerSave.configureServerSaveControls();
       finishLoading();
     }
   }
 
-  global.MaweMultiImport = Object.freeze({
+  MaweMultiImport = Object.freeze({
     get pendingMultiImport() { return pendingMultiImport; },
     set pendingMultiImport(v) { pendingMultiImport = v; },
     closeMultiSubtitleImportModal,
@@ -361,13 +374,12 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
     openSubtitleFile,
     openProjectFile
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function showMultiSubtitleImportChoice(...args) { return window.MaweMultiImport.showMultiSubtitleImportChoice(...args); }
-export function closeMultiSubtitleImportModal(...args) { return window.MaweMultiImport.closeMultiSubtitleImportModal(...args); }
-export function prepareMultiSubtitleImport(...args) { return window.MaweMultiImport.prepareMultiSubtitleImport(...args); }
-export function renderProjectImportPreview(...args) { return window.MaweMultiImport.renderProjectImportPreview(...args); }
-export function renderMainImportPreview(...args) { return window.MaweMultiImport.renderMainImportPreview(...args); }
-export function swapMainAndExtensionSubtitles(...args) { return window.MaweMultiImport.swapMainAndExtensionSubtitles(...args); }
-export function openProjectFile(...args) { return window.MaweMultiImport.openProjectFile(...args); }
+export function showMultiSubtitleImportChoice(...args) { return MaweMultiImport.showMultiSubtitleImportChoice(...args); }
+export function closeMultiSubtitleImportModal(...args) { return MaweMultiImport.closeMultiSubtitleImportModal(...args); }
+export function prepareMultiSubtitleImport(...args) { return MaweMultiImport.prepareMultiSubtitleImport(...args); }
+export function renderProjectImportPreview(...args) { return MaweMultiImport.renderProjectImportPreview(...args); }
+export function renderMainImportPreview(...args) { return MaweMultiImport.renderMainImportPreview(...args); }
+export function swapMainAndExtensionSubtitles(...args) { return MaweMultiImport.swapMainAndExtensionSubtitles(...args); }
+export function openProjectFile(...args) { return MaweMultiImport.openProjectFile(...args); }

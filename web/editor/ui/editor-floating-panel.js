@@ -1,7 +1,10 @@
 // 非模态浮层前置栈：层级管理、激活绑定与通用浮动面板工厂（settings-panels 加载期依赖）。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweFloatingPanel 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { releaseClosedUiFocus } from '../cues/editor-keyboard-targets.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweSubtitleJoinSettings } from './editor-wiring-theme-split-settings.js';
+export let MaweFloatingPanel;
 export function initMaweFloatingPanel() {
   'use strict';
 
@@ -93,7 +96,7 @@ export function initMaweFloatingPanel() {
 
   // 可拖动非模态工具窗（静音空隙 / 拼合字幕共用模式）：
   // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
-  function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen, onClose }) {
+  function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen = undefined, onClose = undefined }) {
     if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false, reclamp() {} };
     bindFloatingSurfaceActivation(panel);
     let drag = null;
@@ -176,7 +179,7 @@ export function initMaweFloatingPanel() {
       drag = null;
       manageButton?.classList.remove('active');
       manageButton?.setAttribute('aria-expanded', 'false');
-      MaweKeyboardTargets.releaseClosedUiFocus(panel, manageButton);
+      releaseClosedUiFocus(panel, manageButton);
       syncFloatingSurfaceLayers();
     }
 
@@ -237,7 +240,7 @@ export function initMaweFloatingPanel() {
     manageButton: MaweDom.autoMergeManageButton,
     anchorButton: MaweDom.autoMergeManageButton,
     positionKey: MaweDom.AUTO_MERGE_PANEL_POSITION_KEY,
-    onOpen: () => window.MaweSubtitleJoinSettings.open(),
+    onOpen: () => MaweSubtitleJoinSettings.open(),
   });
 
 
@@ -249,7 +252,7 @@ export function initMaweFloatingPanel() {
     positionKey: MaweDom.SUBTITLE_EXTEND_PANEL_POSITION_KEY,
   });
 
-  global.MaweFloatingPanel = Object.freeze({
+  MaweFloatingPanel = Object.freeze({
     autoMergeFloatingPanel,
     subtitleExtendFloatingPanel,
     FLOATING_SURFACE_Z_INDEX_BASE,
@@ -264,4 +267,5 @@ export function initMaweFloatingPanel() {
     bindFloatingSurfaceActivation,
     createFloatingPanel
   });
+
 }

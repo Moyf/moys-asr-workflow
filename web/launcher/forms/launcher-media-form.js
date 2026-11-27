@@ -99,7 +99,7 @@ function getDefaultAudioTrackForMedia(path) {
   const defaultTrack = state.audioTracks.find(audioTrackIsDefault) || state.audioTracks[0];
   return audioTrackIndex(defaultTrack) ?? 0;
 }
-function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
+function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path); launcherRuntime?.onMediaPathChanged?.({ refreshOcrVideo }); }
 function setDroppedPath(field, path, eventType = "input") {
   const value = String(path || "").trim();
   const input = $(field);
@@ -118,7 +118,7 @@ function setServerMedia(path) {
   return setDroppedPath("serverMediaPath", value);
 }
 function resetServerMediaSelection() { $("serverMediaPath").value = ""; $("serverRememberMedia").checked = true; syncFlvHints(); }
-function setJsonPath(path) { if ($("jsonPath").value !== path) resetServerMediaSelection(); $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
+function setJsonPath(path) { if ($("jsonPath").value !== path) resetServerMediaSelection(); $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); launcherRuntime?.onProjectPathChanged?.(); }
 function applyErrorResult(result, logDetail = true, noticeOptions) {
   const detail = result.detail || result.error || "";
   const diagnostics = diagnosticText(result.diagnostics);
@@ -126,7 +126,7 @@ function applyErrorResult(result, logDetail = true, noticeOptions) {
   const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message);
   if (result.field) setError(result.field, fieldMessage);
   if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer();
-  if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field);
+  if (result.postprocessStep) launcherRuntime?.openAutoPostprocessStep?.(result.postprocessStep, result.field);
   else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
   setStatus(message);
   if (logDetail && detail) appendLog(`[detail] ${detail}`);

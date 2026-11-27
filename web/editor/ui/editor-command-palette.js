@@ -1,4 +1,13 @@
+import { MaweHint } from './editor-hint.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweProjectSave } from '../io/editor-project-save.js';
+import { MaweServerSave } from '../io/editor-server-save.js';
+import { MaweSettingsPanels } from './editor-settings-panels.js';
+import { MaweHelpPanel } from './editor-help-panel.js';
 import { registerBuiltinCommands } from './editor-command-defs.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 
 const RECENTS_KEY = 'mawe-command-palette-recents';
 const RECENTS_LIMIT = 8;
@@ -104,6 +113,8 @@ export function createCommandRegistry({ storage, translate = text => text, repor
   return Object.freeze({ register, unregister, registerProvider, list, available, markUsed });
 }
 
+export let MaweCommandPalette;
+
 export function initMaweCommandPalette() {
   const button = document.getElementById('command-palette-open');
   const dialog = document.getElementById('command-palette');
@@ -111,7 +122,7 @@ export function initMaweCommandPalette() {
   const input = document.getElementById('command-palette-query');
   const list = document.getElementById('command-palette-results');
   const empty = document.getElementById('command-palette-empty');
-  const translate = (text, language) => window.MAWE_I18N?.translateText(text, language) ?? text;
+  const translate = (text, language) => MAWE_I18N?.translateText(text, language) ?? text;
   let storage;
   try { storage = window.localStorage; } catch { /* Storage is optional. */ }
   const registry = createCommandRegistry({ storage, translate: text => translate(text, 'en') });
@@ -198,7 +209,7 @@ export function initMaweCommandPalette() {
       // Invoke before awaiting to preserve native picker/fullscreen user activation.
       if (await command.run() !== false) registry.markUsed(command.id);
     } catch (error) {
-      window.MaweHint.flashHint(translate('无法执行命令'), 'warning', { error });
+      MaweHint.flashHint(translate('无法执行命令'), 'warning', { error });
     }
   }
 
@@ -244,6 +255,8 @@ export function initMaweCommandPalette() {
   }, true);
   window.addEventListener('keyup', event => { if (dialog.open) event.stopImmediatePropagation(); }, true);
 
-  registerBuiltinCommands(registry, window, document);
-  window.MaweCommandPalette = Object.freeze({ ...registry, open, close });
+  registerBuiltinCommands(registry, {
+    MaweCoreState, MaweState, MaweMediaPlayback, MaweProjectSave, MaweServerSave, MaweSettingsPanels, MaweHelpPanel,
+  }, document);
+  MaweCommandPalette = Object.freeze({ ...registry, open, close });
 }

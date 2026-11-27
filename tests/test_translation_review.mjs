@@ -1,12 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { webcrypto, createHash } from 'node:crypto';
-
-const context = vm.createContext({ crypto: webcrypto, TextEncoder });
-vm.runInContext(readFileSync(new URL('../web/shared/templates/ai-translation-review.js', import.meta.url), 'utf8'), context);
-const adapter = context.MAWTranslationReview;
+import { createHash } from 'node:crypto';
+import { translationReview as adapter } from '../web/shared/templates/ai-translation-review.js';
 const main = project => project.tracks.find(track => track.role === 'main');
 const extension = project => project.tracks.find(track => track.role === 'secondary');
 const makeProject = (segments, extra = {}) => ({

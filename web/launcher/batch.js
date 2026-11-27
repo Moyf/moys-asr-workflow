@@ -1,4 +1,4 @@
-(function () {
+export function initLauncherBatch(launcherRuntime) {
   "use strict";
 
   const $ = (id) => document.getElementById(id);
@@ -6,7 +6,7 @@
   const state = { mode: "single", running: false, cancelling: false, items: [], nextId: 1, progress: { total: 0, finished: 0, done: 0, failed: 0 } };
 
   function t(key) {
-    return window.MAWLauncher.translate(key);
+    return launcherRuntime.translate(key);
   }
 
   function extension(path) {
@@ -41,7 +41,7 @@
 
   function itemErrorText(code, detail) {
     const raw = String(detail || "");
-    const translate = window.MAWLauncher?.errorText;
+    const translate = launcherRuntime?.errorText;
     if (!code || typeof translate !== "function") return raw;
     return translate(code, raw) || raw;
   }
@@ -68,7 +68,7 @@
       const name = fileName(item.mediaPath);
       const key = item.status === "done" ? "batch_item_done" : item.status === "failed" ? "batch_item_failed" : "batch_item_cancelled";
       const message = t(key).replace("{index}", String(index)).replace("{name}", name);
-      window.MAWLauncher.appendLog?.(message);
+      launcherRuntime.appendLog?.(message);
     }
     renderQueue();
   }
@@ -147,11 +147,11 @@
 
       const actions = document.createElement("div");
       actions.className = "batch-row-actions";
-      if (item.result?.jsonPath) actions.append(actionButton("batch_open_project", () => window.MAWLauncher.callBackend("open_file", { path: item.result.jsonPath })));
-      if (item.result?.videoPath) actions.append(actionButton("batch_open_video", () => window.MAWLauncher.callBackend("open_file", { path: item.result.videoPath })));
+      if (item.result?.jsonPath) actions.append(actionButton("batch_open_project", () => launcherRuntime.callBackend("open_file", { path: item.result.jsonPath })));
+      if (item.result?.videoPath) actions.append(actionButton("batch_open_video", () => launcherRuntime.callBackend("open_file", { path: item.result.videoPath })));
       if (item.result?.srtPath || item.result?.jsonPath || item.result?.videoPath) {
         const resultPath = item.result.videoPath || item.result.jsonPath || item.result.srtPath;
-        actions.append(actionButton("batch_open_folder", () => window.MAWLauncher.callBackend("open_containing_folder", { path: resultPath })));
+        actions.append(actionButton("batch_open_folder", () => launcherRuntime.callBackend("open_containing_folder", { path: resultPath })));
       }
       if (!state.running) {
         actions.append(actionButton("batch_remove", () => {
@@ -214,7 +214,7 @@
     $("progress").classList.toggle("hidden", !locked);
     renderQueue();
     // 解锁后恢复模式相关禁用态（如批量模式下的文稿匹配），上面的批量解锁不能覆盖它们。
-    if (!locked) window.MAWLauncher.onBatchModeChanged?.(state.mode === "batch");
+    if (!locked) launcherRuntime.onBatchModeChanged?.(state.mode === "batch");
   }
 
   function setMode(mode) {
@@ -232,22 +232,22 @@
     $("modeHint").textContent = t(batch ? "mode_batch_hint" : "mode_single_hint");
     $("dropZone").textContent = t(batch ? "batch_drop_zone" : "drop_hint");
     $("batchManuscriptNotice").classList.toggle("hidden", !batch);
-    window.MAWLauncher.onBatchModeChanged?.(batch);
+    launcherRuntime.onBatchModeChanged?.(batch);
     renderQueue();
   }
 
   async function chooseFiles() {
-    const result = await window.MAWLauncher.callBackend("choose_file", { kind: "media", multiple: true });
+    const result = await launcherRuntime.callBackend("choose_file", { kind: "media", multiple: true });
     if (!result.ok) return;
     addPaths(Array.isArray(result.paths) ? result.paths : [result.path]);
   }
 
   async function startBatch() {
     if (!state.items.length || state.running) return;
-    if (window.MAWLauncher.validateApiKey?.() === false) return;
+    if (launcherRuntime.validateApiKey?.() === false) return;
     const completed = state.items.filter((item) => item.status === "done");
     let itemsToRun = state.items;
-    if (completed.length && await window.MAWLauncher.confirm(t("batch_skip_completed_confirm"))) {
+    if (completed.length && await launcherRuntime.confirm(t("batch_skip_completed_confirm"))) {
       itemsToRun = state.items.filter((item) => item.status !== "done");
     }
     if (!itemsToRun.length) {
@@ -258,23 +258,23 @@
     state.progress = { total: itemsToRun.length, finished: 0, done: 0, failed: 0 };
     state.running = true;
     state.cancelling = false;
-    window.MAWLauncher.onBatchStart?.();
+    launcherRuntime.onBatchStart?.();
     lockControls(true);
     $("status").textContent = t("batch_starting");
     // 单文件的媒体/输出路径不进批量载荷：每个条目的输出由后端按媒体权威分配。
-    const { mediaPath: _singleMediaPath, srtPath: _singleSrtPath, audioTrack: _singleAudioTrack, defaultAudioTrack: _singleDefaultAudioTrack, audioTrackCount: _singleAudioTrackCount, ...settings } = window.MAWLauncher.getTranscriptionPayload();
+    const { mediaPath: _singleMediaPath, srtPath: _singleSrtPath, audioTrack: _singleAudioTrack, defaultAudioTrack: _singleDefaultAudioTrack, audioTrackCount: _singleAudioTrackCount, ...settings } = launcherRuntime.getTranscriptionPayload();
     settings.generateHtml = false;
     settings.batchSrtOnly = Boolean($("batchSrtOnly")?.checked);
     const items = itemsToRun.map((item) => ({ id: item.id, mediaPath: item.mediaPath }));
     const payload = { items, settings };
-    const result = await window.MAWLauncher.callBackend("start_batch_transcription", payload);
+    const result = await launcherRuntime.callBackend("start_batch_transcription", payload);
     if (!result.ok) {
       state.running = false;
       lockControls(false);
       const detail = result.detail ? `${result.error || t("failed")} ${result.detail}` : (result.error || t("failed"));
       $("status").textContent = detail;
       appendBatchError(detail);
-      window.MAWLauncher.onBatchError?.(result);
+      launcherRuntime.onBatchError?.(result);
     }
   }
 
@@ -288,7 +288,7 @@
     state.cancelling = true;
     lockControls(true);
     $("status").textContent = t("batch_stopping");
-    const result = await window.MAWLauncher.callBackend("cancel_batch_transcription");
+    const result = await launcherRuntime.callBackend("cancel_batch_transcription");
     if (!result.ok) {
       state.cancelling = false;
       lockControls(true);
@@ -303,7 +303,7 @@
       state.progress.total = Number(event.total) || state.progress.total || state.items.length;
       lockControls(true);
       $("status").textContent = t("batch_progress").replace("{current}", "1").replace("{total}", String(state.progress.total)).replace("{name}", fileName(state.items[0]?.mediaPath));
-      window.MAWLauncher.appendLog?.($("status").textContent);
+      launcherRuntime.appendLog?.($("status").textContent);
       return;
     }
     if (event.type === "batchItemLog") {
@@ -313,7 +313,7 @@
       const message = String(event.message || event.log || event.item?.message || "");
       if (message) {
         item.logs.push(message);
-        window.MAWLauncher.appendLog?.(`[${message}]`, { inline: true });
+        launcherRuntime.appendLog?.(`[${message}]`, { inline: true });
       }
       renderQueue();
       return;
@@ -329,7 +329,7 @@
       const nextStatus = event.status || nested.status || (item.result ? "done" : item.status);
       if (nextStatus === "running") {
         $("status").textContent = t("batch_progress").replace("{current}", String(item.index + 1)).replace("{total}", String(state.progress.total)).replace("{name}", fileName(item.mediaPath));
-        window.MAWLauncher.appendLog?.($("status").textContent);
+        launcherRuntime.appendLog?.($("status").textContent);
       }
       setItemStatus(item, nextStatus, detail, code);
       return;
@@ -364,7 +364,7 @@
         state.progress.done = state.items.filter((item) => item.status === "done").length;
         state.progress.failed = state.items.filter((item) => item.status === "failed").length;
         $("status").textContent = t("batch_progress_done").replace("{done}", String(state.progress.done)).replace("{failed}", String(state.progress.failed));
-        window.MAWLauncher.appendLog?.($("status").textContent);
+        launcherRuntime.appendLog?.($("status").textContent);
       } else {
         $("status").textContent = t("batch_cancelled");
       }
@@ -376,7 +376,7 @@
     // pywebview sends the authoritative absolute paths asynchronously through
     // the Python bridge. Do not enqueue browser-only file.name values first,
     // or the later full-path event will be treated as a duplicate.
-    if (window.MAWLauncher.backend === "real") return;
+    if (launcherRuntime.backend === "real") return;
     event.preventDefault();
     event.stopImmediatePropagation();
     const files = Array.from(event.dataTransfer?.files || []);
@@ -392,19 +392,19 @@
     $("startBatch").addEventListener("click", startBatch);
     $("stopBatch").addEventListener("click", stopBatch);
     $("mediaCard").addEventListener("drop", handleDrop, true);
-    window.MAWLauncher.onBatchEvent = handleBatchEvent;
-    window.MAWLauncher.onBatchDrop = (path) => {
+    launcherRuntime.onBatchEvent = handleBatchEvent;
+    launcherRuntime.onBatchDrop = (path) => {
       if (state.mode !== "batch" || state.running || !path) return false;
       addPaths([path]);
       return true;
     };
-    window.MAWLauncher.onBatchDropReject = (path) => {
+    launcherRuntime.onBatchDropReject = (path) => {
       if (state.mode !== "batch" || state.running) return false;
       showDropNotice(t("batch_rejected").replace("{count}", "1"));
       return true;
     };
-    const previousLanguageChanged = window.MAWLauncher.onLanguageChanged;
-    window.MAWLauncher.onLanguageChanged = () => {
+    const previousLanguageChanged = launcherRuntime.onLanguageChanged;
+    launcherRuntime.onLanguageChanged = () => {
       previousLanguageChanged?.();
       setMode(state.mode);
       renderQueue();
@@ -413,4 +413,4 @@
   }
 
   window.addEventListener("mawlauncherready", initialize, { once: true });
-}());
+}

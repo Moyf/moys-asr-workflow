@@ -10,10 +10,13 @@ import json
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from edit import ninja_sfx_base_url, render_empty_editor_page
+import edit
 
 output = Path(sys.argv[1])
+if len(sys.argv) > 2:
+    bundle = Path(sys.argv[2]).read_text(encoding="utf-8").rstrip()
+    edit.build_editor_scripts = lambda: bundle
 output.write_text(
-    render_empty_editor_page(json.dumps(ninja_sfx_base_url(output))),
+    edit.render_empty_editor_page(json.dumps(edit.ninja_sfx_base_url(output))),
     encoding="utf-8", newline="\n",
 )

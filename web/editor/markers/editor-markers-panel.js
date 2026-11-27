@@ -1,19 +1,25 @@
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweGapRemoveUi } from '../ui/editor-gap-remove-ui.js';
+import { MaweHint } from '../ui/editor-hint.js';
 import * as markerEditing from './editor-marker-editing.js';
+export let MaweMarkersPanel;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 「标记与区段」管理窗：搜索、过滤、定位试听与逐项编辑。
 // 列表与编辑卡片全部由本模块渲染（textContent 组装，不拼 HTML 字符串）；
 // 数据变更一律经 MaweMarkerEditing，撤销/重做、保存脏标记与波形轨道刷新
 // 都由那一层统一处理，这里只负责展示与输入采集。
 export function initMaweMarkersPanel() {
-(function initMaweMarkersPanel(global) {
-  'use strict';
-
   // 管理窗私有 UI 状态：过滤条件、选中高亮项与展开编辑项（不进工程数据）。
   const filter = { query: '', kind: 'all', color: 'all', review: 'all' };
   let selectedMarkerId = null;
   let editingMarkerId = null;
   let colorFilterSynced = false;
   let batchMode = false;
-  const showNotesToggle = document.getElementById('markers-show-notes');
+  const showNotesToggle = /** @type {HTMLInputElement} */ (document.getElementById('markers-show-notes'));
   const checkedMarkerIds = new Set();
 
   function renderBatchActions(visible = filteredMarkers()) {
@@ -40,7 +46,7 @@ export function initMaweMarkersPanel() {
   }
 
   function markerUtils() {
-    return window.AsrEditorUtils;
+    return AsrEditorUtils;
   }
 
 
@@ -237,8 +243,8 @@ export function initMaweMarkersPanel() {
       const removed = status.removed || status.partiallyRemoved;
       const label = removed ? '恢复' : '移除';
       const title = removed ? '恢复此区段声音；字幕启用状态单独设置' : '移除此区段声音';
-      button.textContent = window.MAWE_I18N?.translateText(label) || label;
-      button.title = window.MAWE_I18N?.translateText(title) || title;
+      button.textContent = MAWE_I18N?.translateText(label) || label;
+      button.title = MAWE_I18N?.translateText(title) || title;
       button.setAttribute('aria-pressed', String(removed));
       button.classList.toggle('is-muted', removed);
       return;
@@ -252,8 +258,8 @@ export function initMaweMarkersPanel() {
         ? '取消会仅撤销此 AI 复核项的静音来源'
         : '此复核区段已被编辑；点击仅撤销旧范围的 AI 静音来源'
       : '静音此 AI 复核项对应的媒体区段';
-    button.textContent = window.MAWE_I18N?.translateText(label) || label;
-    button.title = window.MAWE_I18N?.translateText(title) || title;
+    button.textContent = MAWE_I18N?.translateText(label) || label;
+    button.title = MAWE_I18N?.translateText(title) || title;
     button.setAttribute('aria-pressed', String(status.owned));
     button.classList.toggle('is-muted', status.owned);
   }
@@ -294,7 +300,7 @@ export function initMaweMarkersPanel() {
       : partiallyRemoved ? '部分移除'
         : restored ? '已恢复'
         : markerUtils().markerReviewStatusLabel(marker);
-    button.textContent = window.MAWE_I18N?.translateText(label) || label;
+    button.textContent = MAWE_I18N?.translateText(label) || label;
     button.classList.toggle('pending', !removed && !partiallyRemoved && marker.review?.status === 'pending');
     button.classList.toggle('confirmed', !removed && !partiallyRemoved && marker.review?.status === 'confirmed');
     button.classList.toggle('removed', removed);
@@ -305,7 +311,7 @@ export function initMaweMarkersPanel() {
       : removed || partiallyRemoved
       ? (removed ? 'AI 复核区段已移除' : 'AI 复核区段已部分移除')
       : String(marker.review?.reason || '');
-    button.title = window.MAWE_I18N?.translateText(title) || title;
+    button.title = MAWE_I18N?.translateText(title) || title;
     if (marker.review?.reason && !removed && !partiallyRemoved && !status.automatic) {
       button.dataset.markerProjectReason = 'true';
     } else {
@@ -542,7 +548,7 @@ export function initMaweMarkersPanel() {
     editor.append(nameLabel, colorRow, noteLabel, timeRow, actions);
     // 记录各控件展开时的初值：点「完成」时只提交真正改过的字段。
     editor.querySelectorAll('input, textarea').forEach((control) => {
-      control.dataset.editorInit = control.value;
+      /** @type {HTMLElement} */ (control).dataset.editorInit = /** @type {HTMLInputElement} */ (control).value;
     });
     return editor;
   }
@@ -715,7 +721,7 @@ export function initMaweMarkersPanel() {
 
 
   // 工具窗控制器：复用浮动面板工厂（层级栈、拖动、位置持久化、Esc、工具栏按钮 active 态）。
-  const panelController = global.MaweFloatingPanel?.createFloatingPanel?.({
+  const panelController = MaweFloatingPanel?.createFloatingPanel?.({
     panel: MaweDom.markersPanel,
     dragHandle: MaweDom.markersDragHandle,
     manageButton: MaweDom.markersManageButton,
@@ -792,7 +798,7 @@ export function initMaweMarkersPanel() {
     render();
   });
 
-  global.MaweMarkersPanel = Object.freeze({
+  MaweMarkersPanel = Object.freeze({
     render,
     openPanel,
     closePanel,
@@ -806,9 +812,9 @@ export function initMaweMarkersPanel() {
     updateAiCleanupReviewStatusButton,
     getSelectedMarkerId: () => selectedMarkerId,
   });
+
   document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
-})(window);
 }
 
-export function resetSelection(...args) { return window.MaweMarkersPanel?.resetSelection?.(...args); }
-export function refreshAiCleanupReviewMuteButtons(...args) { return window.MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.(...args); }
+export function resetSelection(...args) { return MaweMarkersPanel?.resetSelection?.(...args); }
+export function refreshAiCleanupReviewMuteButtons(...args) { return MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.(...args); }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 const require = createRequire(import.meta.url);
@@ -13,8 +14,8 @@ test('export capability changes preserve stored tooltips after title migration',
     await page.setContent(ids.map(id => `<button id="${id}" title="${id} help">Export</button>`).join('')
       + '<select id="fcp7-export-format"><option value="native">Native text</option></select>'
       + '<select id="fcp7-export-resolution"></select><input id="fcp7-export-custom-width"><input id="fcp7-export-custom-height">');
-    await page.addScriptTag({ path: 'web/shared/tooltip.js' });
-    await page.evaluate(() => window.MaweTooltip.start());
+    const tooltip = readFileSync('web/shared/tooltip.js', 'utf8').replace('export function', 'function');
+    await page.addScriptTag({ content: `(() => {${tooltip}\ninitMaweTooltip();})()` });
     await page.addScriptTag({ content: initModuleSource('editor/io/editor-export-timeline.js') });
     await page.addScriptTag({ content: initModuleSource('editor/io/editor-dynamic-exports.js') });
     await page.evaluate(() => {

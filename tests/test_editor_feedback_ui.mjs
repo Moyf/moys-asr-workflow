@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const read = path => fs.readFileSync(new URL(`../web/${path}`, import.meta.url), 'utf8');
 const factory = (source, dependencies, globals = {}) => vm.runInNewContext(

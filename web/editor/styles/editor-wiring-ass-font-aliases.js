@@ -1,17 +1,20 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweAssCanvas } from './editor-wiring-ass-canvas.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweAssFontAliases;
 export function initMaweAssFontAliases() {
-// 服务端 ASS 字体别名表：libass（Windows directwrite/GDI 提供器）只按字体
-// nameID1（GDI 兼容 family）匹配，样式里存的排版名（nameID16，如
-// "Smiley Sans"）会被静默回退。启动时拉取本机字体别名表，供导出归一化
-// （ass-export）、ASS 字体下拉（font-geometry）与预览别名链（ass-preview /
-// ass-canvas）共用。
-//
-// 便携模式（无 SERVER_CONFIG）、旧服务器（端点不存在）与请求失败时保持
-// 未加载状态：所有消费点降级为现状行为。
-(function initMaweAssFontAliases(global) {
-  'use strict';
-
+  // 服务端 ASS 字体别名表：libass（Windows directwrite/GDI 提供器）只按字体
+  // nameID1（GDI 兼容 family）匹配，样式里存的排版名（nameID16，如
+  // "Smiley Sans"）会被静默回退。启动时拉取本机字体别名表，供导出归一化
+  // （ass-export）、ASS 字体下拉（font-geometry）与预览别名链（ass-preview /
+  // ass-canvas）共用。
+  //
+  // 便携模式（无 SERVER_CONFIG）、旧服务器（端点不存在）与请求失败时保持
+  // 未加载状态：所有消费点降级为现状行为。
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const SCHEMA = 'moy.asr.font_aliases.v1';
-  const config = global.MaweBoot?.SERVER_CONFIG;
+  const config = MaweBoot?.SERVER_CONFIG;
   const entries = [];
   const canonicalByFold = new Map();
   const renderableFamilies = new Set();
@@ -91,7 +94,7 @@ export function initMaweAssFontAliases() {
         result.push({ ...run, fontFallbackStatus: 'unknown-primary' });
         continue;
       }
-      if (!global.AsrEditorUtils?.assManagedFontText?.(run.text) || !segmenter) {
+      if (!AsrEditorUtils?.assManagedFontText?.(run.text) || !segmenter) {
         result.push({ ...run, fontFallbackStatus: 'unmanaged-shaping' });
         continue;
       }
@@ -230,7 +233,7 @@ export function initMaweAssFontAliases() {
   function chainCssFor(name, options) {
     const chain = aliasChainFor(name);
     if (!chain) return '';
-    return global.AsrEditorUtils?.assFontFamilyAliasChainCss?.(name, chain, options) || '';
+    return AsrEditorUtils?.assFontFamilyAliasChainCss?.(name, chain, options) || '';
   }
 
   function beginReplacementCapture() {
@@ -275,7 +278,7 @@ export function initMaweAssFontAliases() {
           coverage = payload;
           faceCache.clear();
           // Same invalidation contract as alias changes, including stack plans.
-          global.MaweAssCanvas?.clearCaches?.();
+          MaweAssCanvas?.clearCaches?.();
           document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
         }
       } catch (_) {
@@ -285,7 +288,7 @@ export function initMaweAssFontAliases() {
         global.clearTimeout?.(timeout);
         coveragePending = false;
         document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-settled'));
-        global.MawePlaybackLoop?.refreshSubtitlePreview?.();
+        MawePlaybackLoop?.refreshSubtitlePreview?.();
       }
     })();
     return coverageSettled;
@@ -329,9 +332,9 @@ export function initMaweAssFontAliases() {
       if (!ingest(payload)) throw new Error('font scan unavailable');
       // 别名链改变预览字体匹配结果：清掉画布行/字体度量缓存并刷新预览与
       // 下拉；导出排版计划缓存经 mawe:ass-font-aliases-loaded 事件失效。
-      global.MaweAssCanvas?.clearCaches?.();
+      MaweAssCanvas?.clearCaches?.();
       document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
-      global.MawePlaybackLoop?.refreshSubtitlePreview?.();
+      MawePlaybackLoop?.refreshSubtitlePreview?.();
       return true;
     } catch (_) {
       ready = false;
@@ -347,7 +350,7 @@ export function initMaweAssFontAliases() {
     return result;
   }
 
-  global.MaweAssFontAliases = Object.freeze({
+  MaweAssFontAliases = Object.freeze({
     loaded: () => ready,
     pending: () => Boolean(loading) || coveragePending,
     whenReady: async () => { if (loading) await loading; await coverageSettled; },
@@ -365,6 +368,6 @@ export function initMaweAssFontAliases() {
     takeReplacementNotice,
     reload: loadAliases,
   });
+
   void loadAliases();
-})(typeof window !== 'undefined' ? window : globalThis);
 }

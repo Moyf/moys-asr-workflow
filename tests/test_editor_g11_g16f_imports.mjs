@@ -23,10 +23,22 @@ const g16f = [
   'editor-wiring-ass-manager.js', 'editor-wiring-ass-preview.js',
   'editor-wiring-ass-storage.js', 'editor-wiring-font-geometry.js',
 ].map(file => `editor/styles/${file}`);
+const eager = new Map([
+  ['editor/media/editor-media-load.js', 'MaweMediaLoad'],
+  ['editor/media/editor-media-playback.js', 'MaweMediaPlayback'],
+  ['editor/media/editor-media-step.js', 'MaweMediaStep'],
+  ['editor/media/editor-playback-loop.js', 'MawePlaybackLoop'],
+  ['editor/media/editor-preview-geometry.js', 'MawePreviewGeometry'],
+  ['editor/media/editor-waveform-init.js', 'MaweWaveformInit'],
+]);
 
-test('G11 and G16-F initialize every planned module from the production entry', () => {
+test('G11 and G16-F keep explicitly initialized modules in the production entry', () => {
   const files = editorInitializers.map(item => item.file);
   for (const file of [...g11, ...g16f]) {
+    if (eager.has(file)) {
+      assert.ok(!files.includes(file), `${file} initializes during import`);
+      continue;
+    }
     const entry = editorInitializers.find(item => item.file === file);
     assert.equal(typeof entry.exportName, 'string');
     assert.ok(files.includes(file), `${file} missing from source order`);
@@ -55,6 +67,10 @@ test('G11 and G16-F modules are safe to import before browser initialization', a
   assert.equal(globalThis.window, undefined);
   for (const file of [...g11, ...g16f]) {
     const module = await import(`../web/${file}`);
+    if (eager.has(file)) {
+      assert.ok(Object.isFrozen(module[eager.get(file)]) && module[eager.get(file)], file);
+      continue;
+    }
     const initializer = editorInitializers.find(item => item.file === file).exportName;
     assert.equal(typeof module[initializer], 'function', file);
   }

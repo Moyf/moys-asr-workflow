@@ -261,7 +261,7 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
   const vm = await import('node:vm');
   const utilsWindow = loadEditorModule({ window: {}, TextDecoder, TextEncoder, Uint8Array }, 'shared/editor-utils.js');
   const context = {
-    window: { AsrEditorUtils: utilsWindow.AsrEditorUtils, AsrGapRemoveCore: utilsWindow.AsrGapRemoveCore },
+    window: { AsrEditorUtils: utilsWindow.AsrEditorUtils, AsrGapRemoveCore: utilsWindow.AsrGapRemoveCore }, AsrEditorUtils: utilsWindow.AsrEditorUtils,
     document: { querySelectorAll: () => [] },
     MaweBoot: { DATA: runtimeProject([], { markers: [] }) },
     MaweSettings: { EDITOR_SETTINGS: {}, GAP_REMOVE_SCHEMA: 'moy.asr.gap_remove.v1' },

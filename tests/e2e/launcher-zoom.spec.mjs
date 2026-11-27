@@ -1,12 +1,12 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
 test('Launcher theme choice remains selected after reload', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
 
@@ -23,7 +23,7 @@ test('Launcher theme choice remains selected after reload', async ({ page }) => 
 });
 
 test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel alone', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
 
@@ -64,7 +64,7 @@ test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel 
 test('Launcher action footer remains flush with the viewport after zoom changes', async ({ page }) => {
   // Given: the Launcher has completed initialization at a regular desktop viewport.
   await page.setViewportSize({ width: 884, height: 630 });
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
 
@@ -86,7 +86,7 @@ test('Launcher action footer remains flush with the viewport after zoom changes'
 
 test('Launcher keyboard zoom supports equals, plus, minus, and reset without stealing native controls', async ({ page }) => {
   // Given: a fresh Launcher at the default zoom.
-  await page.goto(`file://${launcherPath}`);
+  await page.goto(launcherFixtureUrl());
   await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
 

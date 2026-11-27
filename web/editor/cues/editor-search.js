@@ -1,22 +1,18 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweColorFilter } from './editor-color-filter.js';
 import { buildSearchRegex, calcCharWidth, cueElementHasTemporarySplitVisibility, getCharCountThreshold, setTextHtml } from './editor-cue-elements.js';
 import { captureCueListRenderAnchor, restoreCueListRenderAnchor } from './editor-cue-list-anchor.js';
 import { colorFilterSuspended, effectiveCueColorKey, speakerMatches } from './editor-color-filter.js';
 import { getOverlayTrack } from './overlay-track.js';
-
-export function initMaweSearch() {
-'use strict';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 搜索：过滤应用与防抖。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSearch 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweSearch(global) {
-  'use strict';
-
-
-
   // === 搜索 ===
-  function applySearch(query, { refreshText = true, preserveCueListScroll = true } = {}) {
+export function applySearch(query, { refreshText = true, preserveCueListScroll = true } = {}) {
   const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   try {
     const trimmed = query.trim();
@@ -33,7 +29,7 @@ export function initMaweSearch() {
         : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
       const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
       const overlayIdx = el.dataset.overlayIdx != null ? Number(el.dataset.overlayIdx) : -1;
-      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIdx] : null;
+      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIdx] : null;
       const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
         ? extensionTrack.segments[extIdx] : null;
       const overlaySeg = Number.isInteger(overlayIdx) && overlayIdx >= 0
@@ -83,15 +79,12 @@ export function initMaweSearch() {
 }
 
 
-  let searchDebounce = null;
+let searchDebounce = null;
 
 
-  global.MaweSearch = Object.freeze({
-    applySearch,
-    get searchDebounce() { return searchDebounce; },
-    set searchDebounce(v) { searchDebounce = v; },
-  });
-})(typeof window !== 'undefined' ? window : globalThis);
-}
-
-export function applySearch(...args) { return window.MaweSearch.applySearch(...args); }
+export const MaweSearch = {
+  applySearch,
+  get searchDebounce() { return searchDebounce; },
+  set searchDebounce(v) { searchDebounce = v; },
+};
+Object.freeze(MaweSearch);

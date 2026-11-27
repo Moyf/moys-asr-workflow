@@ -1,30 +1,51 @@
+import { AsrWaveform } from './waveform.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { addCueRangeFromWaveform } from '../cues/editor-add-cue.js';
+import { selectCueByClick } from '../cues/editor-binding-align.js';
+import { MaweBoundDrag } from '../cues/editor-bound-drag.js';
+import { getConfiguredEnterAction } from '../cues/editor-cue-events.js';
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { setCurrentCuePanelIndex, setCurrentCuePanelExtensionIndex, setCuePanelTarget } from '../cues/editor-cue-panel.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { splitFromContextMenu } from '../cues/editor-split-context.js';
+import { MaweSplitCore } from '../cues/editor-split-core.js';
+import { MaweStickerPicker } from '../cues/editor-sticker-picker.js';
+import { seekFromWaveform, syncTimelineGroupRanges } from '../cues/editor-text-cleanup.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweContextMenus } from '../ui/editor-context-menus.js';
+import { MaweDisplaySettings } from '../ui/editor-display-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweGapRemoveUi } from '../ui/editor-gap-remove-ui.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 import { openOverlaySplitModal } from '../cues/editor-split-core.js';
 import { showOverlayContextMenu } from '../ui/editor-context-menus.js';
 import { selectOverlayCueRow, selectOverlayRange, toggleOverlaySelection } from '../cues/editor-overlay-cue-selection.js';
 import { isPlaybackActive } from './editor-media-playback.js';
 import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
 import * as markerEditing from '../markers/editor-marker-editing.js';
-
-export function initMaweWaveformInit() {
-'use strict';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 // 波形初始化：WaveformEditor 装配与 reapeaks 懒加载。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweWaveformInit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweWaveformInit(global) {
-  'use strict';
-
-
-
-  function initWaveformEditor() {
+function initWaveformEditor() {
   let timingCommand = null;
   let boundDrag = null;
-  if (!window.AsrWaveform) {
+  if (!AsrWaveform) {
     MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
     return;
   }
-  MaweCoreState.waveformEditor = window.AsrWaveform.create({
+  MaweCoreState.waveformEditor = AsrWaveform.create({
     // A failed/cancelled load intent must not invalidate edits in the project
     // that remains installed. projectEpoch advances on actual replacement.
     getProjectSession: () => MaweState.projectEpoch,
@@ -38,7 +59,7 @@ export function initMaweWaveformInit() {
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
       : track === 'overlay'
         ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
-        : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+        : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
     getCrossTrackSnapTargets: (track = 'main', excludedSegments = new Set()) => {
       if (!MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
@@ -49,7 +70,7 @@ export function initMaweWaveformInit() {
         .map((timeMs) => Number(timeMs));
       // 叠加轨与主轨互为吸附参照；多重字幕开启时副轨边界同样参与。
       if (track === 'overlay') {
-        const targets = collectEdges(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+        const targets = collectEdges(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (MaweMultiSubtitleCore.multiSubtitleVisible()) targets.push(...collectEdges(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments));
         return targets;
       }
@@ -59,7 +80,7 @@ export function initMaweWaveformInit() {
           : [];
       }
       const otherSegments = track === 'extension'
-        ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
+        ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
       const targets = collectEdges(otherSegments);
       if (track === 'main' && overlayTrackVisible()) targets.push(...collectEdges(getOverlayTrack()?.segments));
       return targets;
@@ -72,9 +93,9 @@ export function initMaweWaveformInit() {
     multiSubtitleVisible: () => MaweMultiSubtitleCore.multiSubtitleVisible(),
     // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
     // 避免联动选中主副字幕后点击另一条字幕时编辑区不切换。
-    activateCue: (idx) => MaweCuePanel.setCurrentCuePanelIndex(idx),
+    activateCue: (idx) => setCurrentCuePanelIndex(idx),
     activateExtensionCue: (idx) => {
-      MaweCuePanel.setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
+      setCurrentCuePanelExtensionIndex(idx, MaweMultiSubtitleCore.getActiveExtensionTrack());
     },
     selectOverlayCue: (idx) => {
       selectOverlayCueRow(idx);
@@ -87,9 +108,9 @@ export function initMaweWaveformInit() {
       MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
-      MaweCuePanel.setCuePanelTarget('overlay', idx);
+      setCuePanelTarget('overlay', idx);
     },
-    getQuickEditEnterAction: (event) => MaweCueEvents.getConfiguredEnterAction(event),
+    getQuickEditEnterAction: (event) => getConfiguredEnterAction(event),
     onCueQuickEditSplit: (track, index, offset, popupState) => {
       const waveform = MaweCoreState.waveformEditor;
       const projectEpoch = MaweState.projectEpoch;
@@ -100,7 +121,7 @@ export function initMaweWaveformInit() {
         && trackTree === MaweBoot.DATA.tracks;
       if (popupState.isCurrent && !popupState.isCurrent()) return false;
       const segments = track === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
-        : track === 'overlay' ? getOverlayTrack()?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+        : track === 'overlay' ? getOverlayTrack()?.segments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       const segment = segments?.[index];
       if (!segment || offset <= 0 || offset >= String(segment.text || '').length) {
         MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
@@ -154,7 +175,7 @@ export function initMaweWaveformInit() {
         ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
         : track === 'overlay'
           ? (getOverlayTrack()?.segments || [])
-          : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+          : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       const segment = segments[index];
       if (!segment || segment.text === text) return;
       const label = track === 'extension'
@@ -181,10 +202,10 @@ export function initMaweWaveformInit() {
     // 变更落在单字词区间内同样支持）。打开期间句文本变了则重新解析区间，
     // 解析失败提示改从字幕列表编辑。
     onWordQuickEditText: (segmentIndex, itemIndex, text) => {
-      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[segmentIndex];
+      const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[segmentIndex];
       if (!segment) return;
       const previousText = String(segment.text ?? '');
-      const ranges = window.AsrEditorUtils.wordCharRanges(previousText, segment.items || []);
+      const ranges = AsrEditorUtils.wordCharRanges(previousText, segment.items || []);
       const range = ranges?.[itemIndex];
       if (!range) {
         MaweHint.flashHint('字词与句文本暂无法对应，请从字幕列表编辑该句', 'warning');
@@ -194,7 +215,7 @@ export function initMaweWaveformInit() {
       const previousWord = sourceChars.slice(range.start, range.end).join('');
       if (text === previousWord) return;
       // 字词至少保留一个发音字符：清空/仅剩中性符号会让句↔字词映射失效。
-      if (!Array.from(text).some((ch) => !window.AsrEditorUtils.isTimedTextNeutralToken(ch, true))) {
+      if (!Array.from(text).some((ch) => !AsrEditorUtils.isTimedTextNeutralToken(ch, true))) {
         MaweHint.flashHint('字词需要保留至少一个发音字符', 'warning');
         return;
       }
@@ -212,7 +233,7 @@ export function initMaweWaveformInit() {
     convertOverlayCueToMainDrag: (idx) => convertOverlayCueToMainForDrag(idx),
     showOverlayContextMenu: (x, y, idx) => showOverlayContextMenu(x, y, idx),
     selectCue: (idx) => {
-      MaweBindingAlign.selectCueByClick(idx);
+      selectCueByClick(idx);
       MaweSelection.lastClickedIdx = idx;
       const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
       if (cue) MaweCueListAnchor.scrollCueIntoViewIfNeeded(cue);
@@ -250,7 +271,7 @@ export function initMaweWaveformInit() {
       MaweSelection.addManyToExtensionSelection(idxs, track);
     },
     seek: (timeSec, options = {}) => {
-      MaweTextCleanup.seekFromWaveform(timeSec, options);
+      seekFromWaveform(timeSec, options);
       if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
     },
     isPlaybackActive,
@@ -284,7 +305,7 @@ export function initMaweWaveformInit() {
     showExtensionContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showExtensionContextMenu(x, y, idx, timeMs),
     showBlankWaveformMenu: (timeMs, x, y, track) => MaweContextMenus.showWaveformBlankMenu(timeMs, x, y, track),
     addCueRange: (startMs, endMs, x, y, track = 'main') => (
-      MaweAddCue.addCueRangeFromWaveform(startMs, endMs, x, y, track)
+      addCueRangeFromWaveform(startMs, endMs, x, y, track)
     ),
     // 叠加轨启用（勾选「叠加字幕」）时，主轨占用位置按 Ctrl(Cmd)+拖动可
     // 直接创建叠加字幕；由波形侧改道创建轨道，这里只提供开关状态。
@@ -298,7 +319,7 @@ export function initMaweWaveformInit() {
     // 字词时间码显示时双击波形主字幕块的拦截提示（列表行内编辑不受影响）。
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
-    splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),
+    splitCueAtTime: (idx, timeMs) => splitFromContextMenu(idx, 0, 0, timeMs),
     splitOverlayCueAtTime: (idx, timeMs) => openOverlaySplitModal(
       idx, Number.isFinite(timeMs) ? MaweTimeline.timelineFrameAlignedMilliseconds(timeMs) : timeMs,
     ),
@@ -339,7 +360,7 @@ export function initMaweWaveformInit() {
       boundDrag = null;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
-        const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
+        const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
         const original = details?.original;
         if (main && original) {
           const patch = {
@@ -352,13 +373,13 @@ export function initMaweWaveformInit() {
           syncImpact = { squeezedCount: patch.syncSqueezedCount, removedCount: patch.syncRemovedCount, unboundCount: patch.syncUnboundCount };
         }
       }
-      MaweTextCleanup.syncTimelineGroupRanges();
+      syncTimelineGroupRanges();
       // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
       // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
       if (MaweMultiSubtitleCore.multiSubtitleVisible() && editedTracks.some((entry) => entry.track !== 'overlay')) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweMultiSubtitleCore.syncBindingOffsets();
       const mainIndices = editedTracks.find((entry) => entry.track === 'main')?.indices || [];
-      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]).filter(Boolean));
+      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]).filter(Boolean));
       const overlayIndices = editedTracks.find((entry) => entry.track === 'overlay')?.indices;
       if (overlayIndices) {
         const overlay = getOverlayTrack();
@@ -424,50 +445,49 @@ export function initMaweWaveformInit() {
   // 但服务器的 /api/waveform 仍描述它自己绑定的旧工程。每次 applyCanonicalProject
   // 递增该纪元；在途的延迟加载响应据此作废并终止轮询，旧工程的
   // spectral / 波形 / 响度载荷绝不会套到新工程的波形上。
-  let deferredReapeaksEpoch = 0;
+let deferredReapeaksEpoch = 0;
 
   // 重试必须绑定发起时的工程纪元：排期期间原地切换了工程，这次重试就该取消。
   // 否则新纪元的调用会原样接受旧工程的服务器载荷。
-  function scheduleDeferredReapeaksRetry(delayMs, epoch) {
-    window.setTimeout(() => {
-      if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
-    }, delayMs);
-  }
-
-  async function loadDeferredReapeaks() {
-    const url = MaweBoot.SERVER_CONFIG?.waveformUrl;
-    if (!url || !MaweCoreState.waveformEditor) return;
-    const epoch = deferredReapeaksEpoch;
-    try {
-      const response = await fetch(url, { cache: 'no-store' });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
-      if (result.status === 'loading' || result.status === 'pending') {
-        scheduleDeferredReapeaksRetry(500, epoch);
-        return;
-      }
-      if (epoch !== deferredReapeaksEpoch) return;
-      if (result.status !== 'ready') return;
-      const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
-      if (!hasPayload) return;
-      MaweBoot.DATA.spectral = result.spectral || null;
-      MaweBoot.DATA.waveform_reapeaks = result.waveform_reapeaks || null;
-      MaweBoot.DATA.loudness = result.loudness || null;
-      MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
-      MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
-      // 响度标量可能先于/后于波形到达，setLoudnessStats 自己会决定要不要重绘。
-      MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness);
-      MaweCoreState.waveformEditor.renderSegments();
-    } catch (_error) {
-      scheduleDeferredReapeaksRetry(1000, epoch);
-    }
-  }
-
-  global.MaweWaveformInit = Object.freeze({
-    initWaveformEditor,
-    loadDeferredReapeaks,
-    get deferredReapeaksEpoch() { return deferredReapeaksEpoch; },
-    set deferredReapeaksEpoch(v) { deferredReapeaksEpoch = v; }
-  });
-})(typeof window !== 'undefined' ? window : globalThis);
+function scheduleDeferredReapeaksRetry(delayMs, epoch) {
+  window.setTimeout(() => {
+    if (epoch === deferredReapeaksEpoch) void loadDeferredReapeaks();
+  }, delayMs);
 }
+
+async function loadDeferredReapeaks() {
+  const url = MaweBoot.SERVER_CONFIG?.waveformUrl;
+  if (!url || !MaweCoreState.waveformEditor) return;
+  const epoch = deferredReapeaksEpoch;
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok !== true) throw new Error(result.error || `服务器返回 ${response.status}`);
+    if (result.status === 'loading' || result.status === 'pending') {
+      scheduleDeferredReapeaksRetry(500, epoch);
+      return;
+    }
+    if (epoch !== deferredReapeaksEpoch) return;
+    if (result.status !== 'ready') return;
+    const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
+    if (!hasPayload) return;
+    MaweBoot.DATA.spectral = result.spectral || null;
+    MaweBoot.DATA.waveform_reapeaks = result.waveform_reapeaks || null;
+    MaweBoot.DATA.loudness = result.loudness || null;
+    MaweCoreState.waveformEditor.setSpectralPayload(MaweBoot.DATA.spectral, { render: false });
+    MaweCoreState.waveformEditor.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks, { render: false });
+    // 响度标量可能先于/后于波形到达，setLoudnessStats 自己会决定要不要重绘。
+    MaweCoreState.waveformEditor.setLoudnessStats(MaweBoot.DATA.loudness);
+    MaweCoreState.waveformEditor.renderSegments();
+  } catch (_error) {
+    scheduleDeferredReapeaksRetry(1000, epoch);
+  }
+}
+
+export const MaweWaveformInit = {
+  initWaveformEditor,
+  loadDeferredReapeaks,
+  get deferredReapeaksEpoch() { return deferredReapeaksEpoch; },
+  set deferredReapeaksEpoch(v) { deferredReapeaksEpoch = v; }
+};
+Object.freeze(MaweWaveformInit);

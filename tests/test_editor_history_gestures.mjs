@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import { createUtilsModule } from '../web/shared/utils/history.js';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const clone = value => JSON.parse(JSON.stringify(value));
 

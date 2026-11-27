@@ -131,7 +131,7 @@ function ffmpegSaveError(result) { if (result.code) return errText(result.code, 
 // 最近工程：读取编辑器持久化的 recent_projects，点击条目即填入工程文件输入框
 // 并走 setJsonPath 既有的 refreshServerMedia 流程；失效条目置灰但仍可点击尝试。
 // 失效徽标挂 data-i18n：语言切换由 renderLanguage() 的通用扫描接管
-//（MAWLauncher.onLanguageChanged 会被 batch.js/postprocess.js 覆盖，不能依赖）。
+//（launcherRuntime.onLanguageChanged 由批量与后处理的初始化接线维护）。
 function renderRecentProjects(projects) {
   const list = $("recentProjectsList");
   const field = $("recentProjectsField");

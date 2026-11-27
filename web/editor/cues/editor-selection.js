@@ -1,21 +1,22 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
 import { syncOverlaySelectionClasses, updateSelectionCountText } from './editor-overlay-cue-selection.js';
+export let MaweSelection;
 import { releaseTemporaryVisibleSplitCuesUnless } from './editor-cue-elements.js';
 import { hideCueSplitPreview } from './editor-nav-preview.js';
 import { commitCuePanelEdit, renderCurrentCuePanel, setCurrentCuePanelExtensionIndex, setCurrentCuePanelIndex } from './editor-cue-panel.js';
 import { getOverlayTrack } from './overlay-track.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweSelection() {
-'use strict';
-
-// 选择状态：主/副选中集、点击锚点与多选类刷新。
-// 状态由 MaweState 持有；保留旧接口供尚未迁移的消费者使用，外部仅经
-// window.MaweSelection 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweSelection(global) {
-  'use strict';
-
-
-
+  // 选择状态：主/副选中集、点击锚点与多选类刷新。
   //   1) sticker.rel + STICKER_ROOT  - 拼出服务器或 file:// URL
   //   2) sticker.path  - 兼容老版工程
   function stickerUrl(sticker) {
@@ -75,10 +76,11 @@ export function initMaweSelection() {
 
 
   // 隐藏开关开启时，禁用项视为"不可选"（Shift 范围选 / Ctrl 切换都跳过）
+  /** @param {number} idx @param {string | {segments: ProjectSegment[]}} [track] */
   function isHiddenDisabled(idx, track = 'main') {
     const segments = track === 'extension'
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-      : (track?.segments || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+      : (typeof track === 'object' && track?.segments || AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     return MaweDom.hideDisabled && !!(segments[idx] && segments[idx].disabled);
   }
 
@@ -165,7 +167,7 @@ export function initMaweSelection() {
 
 
   function addMainIndexToSelection(index, options) {
-    if (!Number.isInteger(index) || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] || isHiddenDisabled(index)) return;
+    if (!Number.isInteger(index) || !AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] || isHiddenDisabled(index)) return;
     MaweState.selection.add('main', index, options);
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
     if (el) el.classList.add('selected');
@@ -197,7 +199,7 @@ export function initMaweSelection() {
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
     if (!binding) return;
     (binding.source?.segment_id ? [binding.source.segment_id] : []).forEach((id) => {
-      const mainIndex = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id);
+      const mainIndex = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id);
       if (mainIndex >= 0) addMainIndexToSelection(mainIndex, { activate: false });
     });
   }
@@ -373,7 +375,7 @@ export function initMaweSelection() {
   function addManyToSelection(idxs) {
   const added = [];
   (Array.isArray(idxs) ? idxs : []).forEach((idx) => {
-    if (!Number.isInteger(idx) || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] || isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+    if (!Number.isInteger(idx) || !AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] || isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
     MaweState.selection.add('main', idx);
     added.push(idx);
   });
@@ -408,7 +410,7 @@ export function initMaweSelection() {
   function selectAll() {
   commitCuePanelEdit();
   clearSelection({ silent: true });
-  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((_, idx) => {
+  AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx)) return;
     MaweState.selection.add('main', idx);
     syncBoundSelection('main', idx);
@@ -428,7 +430,7 @@ export function initMaweSelection() {
   updateMultiSelectionClasses();
   updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  const last = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length - 1;
+  const last = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {
     MaweState.selection.add('main', last);
     setCurrentCuePanelIndex(last);
@@ -455,7 +457,7 @@ export function initMaweSelection() {
   setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
 }
 
-  global.MaweSelection = Object.freeze({
+  MaweSelection = Object.freeze({
     stickerUrl,
     stickerAbsPath,
     selectedIdxs,
@@ -486,29 +488,28 @@ export function initMaweSelection() {
     addManyToExtensionSelection,
     selectAll
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function stickerUrl(...args) { return window.MaweSelection.stickerUrl(...args); }
-export function stickerAbsPath(...args) { return window.MaweSelection.stickerAbsPath(...args); }
-export function selectedIdxs(...args) { return window.MaweSelection.selectedIdxs(...args); }
-export function selectedExtensionIdxs(...args) { return window.MaweSelection.selectedExtensionIdxs(...args); }
-export function temporaryVisibleSplitCueKeys(...args) { return window.MaweSelection.temporaryVisibleSplitCueKeys(...args); }
-export function isHiddenDisabled(...args) { return window.MaweSelection.isHiddenDisabled(...args); }
-export function cancelPendingExtensionBinding(...args) { return window.MaweSelection.cancelPendingExtensionBinding(...args); }
-export function clearSelection(...args) { return window.MaweSelection.clearSelection(...args); }
-export function updateMultiSelectionClasses(...args) { return window.MaweSelection.updateMultiSelectionClasses(...args); }
-export function addMainIndexToSelection(...args) { return window.MaweSelection.addMainIndexToSelection(...args); }
-export function addExtensionIndexToSelection(...args) { return window.MaweSelection.addExtensionIndexToSelection(...args); }
-export function syncBoundSelection(...args) { return window.MaweSelection.syncBoundSelection(...args); }
-export function selectOnlyExtension(...args) { return window.MaweSelection.selectOnlyExtension(...args); }
-export function toggleExtensionSelection(...args) { return window.MaweSelection.toggleExtensionSelection(...args); }
-export function selectExtensionRange(...args) { return window.MaweSelection.selectExtensionRange(...args); }
-export function toggleSel(...args) { return window.MaweSelection.toggleSel(...args); }
-export function selectRange(...args) { return window.MaweSelection.selectRange(...args); }
-export function selectOnly(...args) { return window.MaweSelection.selectOnly(...args); }
-export function addToSelection(...args) { return window.MaweSelection.addToSelection(...args); }
-export function addManyToSelection(...args) { return window.MaweSelection.addManyToSelection(...args); }
-export function addExtensionToSelection(...args) { return window.MaweSelection.addExtensionToSelection(...args); }
-export function addManyToExtensionSelection(...args) { return window.MaweSelection.addManyToExtensionSelection(...args); }
-export function selectAll(...args) { return window.MaweSelection.selectAll(...args); }
+export function stickerUrl(...args) { return MaweSelection.stickerUrl(...args); }
+export function stickerAbsPath(...args) { return MaweSelection.stickerAbsPath(...args); }
+export function selectedIdxs(...args) { return MaweSelection.selectedIdxs(...args); }
+export function selectedExtensionIdxs(...args) { return MaweSelection.selectedExtensionIdxs(...args); }
+export function temporaryVisibleSplitCueKeys(...args) { return MaweSelection.temporaryVisibleSplitCueKeys(...args); }
+export function isHiddenDisabled(...args) { return MaweSelection.isHiddenDisabled(...args); }
+export function cancelPendingExtensionBinding(...args) { return MaweSelection.cancelPendingExtensionBinding(...args); }
+export function clearSelection(...args) { return MaweSelection.clearSelection(...args); }
+export function updateMultiSelectionClasses(...args) { return MaweSelection.updateMultiSelectionClasses(...args); }
+export function addMainIndexToSelection(...args) { return MaweSelection.addMainIndexToSelection(...args); }
+export function addExtensionIndexToSelection(...args) { return MaweSelection.addExtensionIndexToSelection(...args); }
+export function syncBoundSelection(...args) { return MaweSelection.syncBoundSelection(...args); }
+export function selectOnlyExtension(...args) { return MaweSelection.selectOnlyExtension(...args); }
+export function toggleExtensionSelection(...args) { return MaweSelection.toggleExtensionSelection(...args); }
+export function selectExtensionRange(...args) { return MaweSelection.selectExtensionRange(...args); }
+export function toggleSel(...args) { return MaweSelection.toggleSel(...args); }
+export function selectRange(...args) { return MaweSelection.selectRange(...args); }
+export function selectOnly(...args) { return MaweSelection.selectOnly(...args); }
+export function addToSelection(...args) { return MaweSelection.addToSelection(...args); }
+export function addManyToSelection(...args) { return MaweSelection.addManyToSelection(...args); }
+export function addExtensionToSelection(...args) { return MaweSelection.addExtensionToSelection(...args); }
+export function addManyToExtensionSelection(...args) { return MaweSelection.addManyToExtensionSelection(...args); }
+export function selectAll(...args) { return MaweSelection.selectAll(...args); }

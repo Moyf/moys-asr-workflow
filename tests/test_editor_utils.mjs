@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { TextDecoder, TextEncoder } from 'node:util';
 import vm from 'node:vm';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 
 const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
@@ -17,7 +18,7 @@ const gapCore = context.window.AsrGapRemoveCore;
 const helpers = context.window.AsrEditorUtils;
 const i18nSource = initModuleSource('shared/editor-i18n.js');
 const i18nContext = { window: {} };
-vm.runInNewContext(i18nSource, i18nContext);
+vm.runInNewContext(i18nSource, exposeWindowGlobals(i18nContext));
 const i18n = i18nContext.window.MAWE_I18N;
 
 test('legacy full ASS library retains its 65th style and references', () => {

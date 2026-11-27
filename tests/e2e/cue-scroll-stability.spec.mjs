@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { startScrollFixture } from './cue-scroll-fixture.mjs';
+import { disableOnboarding } from './helpers.mjs';
 
 let server;
 let pageErrors;
@@ -20,19 +21,22 @@ async function open(page, options = {}) {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({
     cueListAutoScrollOnClick: false, clickBehavior: 'select-only', splitAutoSubmit: false,
   })));
+  await disableOnboarding(page);
   await page.goto(server.url);
-  await page.waitForFunction(() => typeof MaweCuePanel.renderAll === 'function' && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0);
-  await page.locator('#editor-loading').waitFor({ state: 'hidden' }).catch(() => {});
+  await expect(page.locator('#editor-loading')).toBeHidden();
+  await expect(page.locator('#cues-container .cue').first()).toBeVisible();
 }
 
 const undoKey = process.platform === 'darwin' ? 'Meta+z' : 'Control+z';
 const redoKey = process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z';
+// Instrumented source cases also probe state that the production bundle keeps private.
+const sourceTest = process.env.MAW_SCROLL_APP ? test.skip : test;
 
 function textSelector(index, kind = 'main') {
   return `.cue[data-${kind === 'main' ? 'idx' : 'ext-idx'}="${index}"] > .text`;
 }
 
-test('near-end extension editing stays anchored at 1920px', async ({ page }, info) => {
+sourceTest('near-end extension editing stays anchored at 1920px', async ({ page }, info) => {
   const index = 100;
   const kind = 'extension';
   await open(page, { mode: kind });
@@ -138,7 +142,7 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
 // 重矩阵（视口/行位置/轨道模式组合、30s 自动保存、备份、配对双轨等）如需恢复，
 // 从本文件的 git 历史取回。
 
-test('undo after browsing keeps current viewport and restores selection identity', async ({ page }, info) => {
+sourceTest('undo after browsing keeps current viewport and restores selection identity', async ({ page }, info) => {
   await open(page);
   await position(page, 75);
   await page.evaluate(() => MaweSegmentOps.mergeSegments([75, 76]));
@@ -154,7 +158,7 @@ test('undo after browsing keeps current viewport and restores selection identity
   expect(state.selected.every(Boolean)).toBe(true);
 });
 
-test('save in flight retains newer edits and inline caret', async ({ page }, info) => {
+sourceTest('save in flight retains newer edits and inline caret', async ({ page }, info) => {
   await open(page);
   await position(page, 75);
   const text = page.locator('.cue[data-idx="75"] .text');
@@ -211,7 +215,7 @@ async function playbackState(page) {
   });
 }
 
-test('space input text and inline editing', async ({ page }, info) => {
+sourceTest('space input text and inline editing', async ({ page }, info) => {
   await open(page);
   const row = page.locator(textSelector(0));
   await row.click();
@@ -252,39 +256,51 @@ async function visual(page, index, kind = 'main') {
 }
 
 async function stable(page, before, index, label, info, kind = 'main') {
+  return checkStable(page, () => visual(page, index, kind), before, label, info);
+}
+
+async function checkStable(page, readCue, before, label, info) {
   await page.waitForTimeout(350);
-  const after = await visual(page, index, kind);
+  const after = await readCue();
   await page.waitForTimeout(2100);
-  const late = await visual(page, index, kind);
+  const late = await readCue();
   await info.attach(label, { body: JSON.stringify({ before, after, late }), contentType: 'application/json' });
   expect(Math.abs(after.top - before.top), `${label}: initial drift`).toBeLessThan(1.5);
   expect(Math.abs(late.top - after.top), `${label}: delayed drift`).toBeLessThan(1.5);
   return after;
 }
 
-test('original near-end merge and undo regression', async ({ page }, info) => {
-  await open(page);
+test('production near-end merge and undo keep the cue anchored', async ({ page }, info) => {
+  await open(page, { production: true });
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await position(page);
-  await page.locator('.cue[data-idx="100"] .text').click();
-  await page.locator('.cue[data-idx="101"] .text').click({ modifiers: ['Shift'] });
-  const before = await visual(page, 100);
+  const row = page.locator('#cues-container > .cue[data-idx="100"]');
+  const next = page.locator('#cues-container > .cue[data-idx="101"]');
+  const readCue = () => row.evaluate(element => ({
+    id: element.dataset.mainId,
+    top: element.getBoundingClientRect().top - element.parentElement.getBoundingClientRect().top,
+    text: element.querySelector('.text').textContent,
+    start: element.dataset.mainStart,
+    end: element.querySelector('.time-end').textContent,
+  }));
+  await row.evaluate(element => element.scrollIntoView({ block: 'center' }));
+  await row.locator('.text').click();
+  await next.locator('.text').click({ modifiers: ['Shift'] });
+  const before = await readCue();
+  const nextEnd = await next.locator('.time-end').textContent();
   await page.screenshot({ path: `${server.directory}/original-before-${info.project.name}.png` });
   await page.keyboard.press('c');
-  const merged = await stable(page, before, 100, 'merge', info);
+  const merged = await checkStable(page, readCue, before, 'merge', info);
+  expect(merged).toMatchObject({ id: before.id, start: before.start, end: nextEnd });
   await page.screenshot({ path: `${server.directory}/original-merged-${info.project.name}.png` });
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
-  await stable(page, merged, 100, 'undo', info);
+  await page.keyboard.press(undoKey);
+  const restored = await checkStable(page, readCue, merged, 'undo', info);
   await page.screenshot({ path: `${server.directory}/original-undo-${info.project.name}.png` });
-  const restored = await visual(page, 100);
-  expect(restored.id).toBe(before.id);
-  expect(restored.text).toBe(before.text);
-  expect([restored.start, restored.end]).toEqual([before.start, before.end]);
+  expect(restored).toMatchObject({ id: before.id, text: before.text, start: before.start, end: before.end });
 });
 
 test.describe('touch interruption', () => {
   test.use({ hasTouch: true });
-  test('trusted touch cancels pending layout compensation', async ({ page }, info) => {
+  sourceTest('trusted touch cancels pending layout compensation', async ({ page }, info) => {
     await open(page);
     await position(page, 75);
     const list = await page.locator('#cues-container').boundingBox();

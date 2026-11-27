@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function fixture(segments, overlaySegments = [], alignFirstStart = false, colorGroups = []) {
   const saves = [];
@@ -30,8 +31,8 @@ function fixture(segments, overlaySegments = [], alignFirstStart = false, colorG
   loadEditorModule(context, 'shared/editor-utils.js');
   context.MULTI_SUBTITLE_UTILS = context.window.AsrEditorUtils;
   context.document = { getElementById: () => null };
-  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), context);
-  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), exposeWindowGlobals(context));
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), exposeWindowGlobals(context));
   return { saves, api: context.window.MaweExportSrt, context };
 }
 

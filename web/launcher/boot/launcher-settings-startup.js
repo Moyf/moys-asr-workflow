@@ -96,7 +96,7 @@ function closeSettings() {
     $("settingsButton").focus({ preventScroll: true });
     revealErrorNotice(notice);
   }
-  window.MAWLauncher?.onSettingsClosed?.();
+  launcherRuntime?.onSettingsClosed?.();
 }
 async function openServerEditor() {
   clearErrors();
@@ -179,12 +179,12 @@ async function init() {
   const realApi = await waitForBackend();
   api = realApi || mockApi();
   window.addEventListener("focus", () => { void loadRecentProjects(); });
-  window.MAWLauncher.backend = realApi ? "real" : "mock";
+  launcherRuntime.backend = realApi ? "real" : "mock";
   const savedTheme = readStoredTheme();
   state.theme = savedTheme;
   applyTheme();
   $("lengthLimitField")?.classList.toggle("hidden", !SHOW_LENGTH_LIMIT_FIELD);
-  $("demoBadge").classList.toggle("hidden", window.MAWLauncher.backend !== "mock");
+  $("demoBadge").classList.toggle("hidden", launcherRuntime.backend !== "mock");
   state.config = await bridge("get_config");
   state.localModelPaths = { ...(state.config.localModelPaths || {}) };
   const configuredServerPort = Number(state.config.serverPort);
@@ -195,7 +195,7 @@ async function init() {
   else if (savedTheme !== "system") { state.config.theme = savedTheme; void bridge("save_prefs", { theme: savedTheme }); }
   applyTheme();
   state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
-  window.MAWLauncher.config = state.config;
+  launcherRuntime.config = state.config;
   syncHtmlMenu();
   state.lang = state.config.guiLang || systemLanguage();
   if (!state.config.guiLang) {
@@ -212,7 +212,7 @@ async function init() {
   $("minWords").value = state.config.minWords || "";
   $("maxWords").value = state.config.maxWords || "";
   syncTestRun(); syncThumbnailFields(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
-  appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
+  appendLog(launcherRuntime.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
   setStatus(t("ready"));
   revealLauncher();
   window.dispatchEvent(new CustomEvent("mawlauncherready"));

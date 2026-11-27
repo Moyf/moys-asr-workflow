@@ -1,0 +1,13 @@
+export function mountToolCatalog({data, docs, viewer}) {
+  const labels={maintained:'持续维护',experimental:'实验验证',paused:'暂停维护',retired:'已过期，不再维护',deferred:'暂不处理',cli:'CLI 专用'};
+  const root=document.getElementById('tools'),search=document.getElementById('search'),status=document.getElementById('status');
+  function node(tag,className,text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
+  function link(href,label,primary){const el=node('a','link-btn'+(primary?' primary':''),label);el.href=href;return el;}
+  function docButton(t){const el=node('button','link-btn','使用说明');el.type='button';el.dataset.toolDoc=t.docs;el.dataset.docTitle=t.name+' · 使用说明';return el;}
+  function render(){root.replaceChildren();const query=search.value.trim().toLowerCase();const filtered=data.filter(t=>(status.value==='all'||t.status===status.value)&&[t.name,t.summary,t.category,...t.features].join(' ').toLowerCase().includes(query));
+  for(const t of filtered){const card=node('article','card'),head=node('div','card-head');head.append(node('h2','',t.name),node('span','badge '+t.status,labels[t.status]));card.append(head,node('div','category',t.category),node('p','',t.summary));const features=node('ul');t.features.forEach(f=>features.append(node('li','',f)));card.append(features);const io=node('dl','io');io.append(node('dt','','输入'),node('dd','',t.input),node('dt','','输出'),node('dd','',t.output));card.append(io,node('p','boundary',t.boundary));if(t.command)card.append(node('code','',t.command));const actions=node('div','actions');if(t.entry)actions.append(link(t.entry,t.status==='retired'?'查看历史页面':'打开工具',t.status!=='retired'));actions.append(docButton(t));card.append(actions);root.append(card);}
+  if(!filtered.length)root.append(node('p','tool-empty','当前筛选下没有工具。'));
+  const stats=document.getElementById('stats');stats.replaceChildren();for(const [value,label]of[[data.length,'个工具'],[filtered.length,'当前显示'],[data.filter(t=>t.status==='maintained').length,'持续维护']]){const item=node('span');item.append(node('b','',String(value)),' '+label);stats.append(item);}}
+  search.addEventListener('input',render);status.addEventListener('change',render);document.getElementById('reset').addEventListener('click',()=>{search.value='';status.value='all';render();});render();
+  document.addEventListener('click',event=>{const button=event.target.closest('[data-tool-doc]');if(!button)return;const request=docs.resolve(button.dataset.toolDoc)||{path:button.dataset.toolDoc,sourceUrl:new URL(button.dataset.toolDoc,document.baseURI).href};void viewer.open({...request,title:button.dataset.docTitle||button.textContent},button);});
+}

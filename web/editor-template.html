@@ -3005,10 +3005,7 @@ __WAVEFORM_CSS__
 <!-- 字幕忍者刀光：默认不参与布局与鼠标交互，仅在成功拆分时短暂显示。 -->
 <div id="ninja-slash-flash" aria-hidden="true"></div>
 
-<script>
-// 调色板单一来源：maw/speaker.py SPEAKER_COLOR_PALETTE，由 edit.py / serve.py 渲染时注入。
-window.ASR_EDITOR_PALETTE = __PALETTE_JSON__;
-</script>
+<script id="maw-editor-palette" type="application/json">__PALETTE_JSON__</script>
 
 <script>
 __EDITOR_SCRIPTS_JS__

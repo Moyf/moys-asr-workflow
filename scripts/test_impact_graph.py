@@ -13,7 +13,7 @@ import sys
 # alone does not establish that every shell test exercises each imported feature.
 PYTHON_SHELLS = {'edit.py', 'maw_gui.py', 'maw/cli.py', 'maw/gui_web.py',
                  'maw/gui_workflow.py', 'server-editor/serve.py'}
-READ = re.compile(r'\b(?:read_text|read_bytes|readFileSync|readFile|loadEditorModule|invokedInitModuleSource|import|require)\b')
+READ = re.compile(r'\b(?:read_text|read_bytes|readFileSync|readFile|loadEditorModule|(?:invokedInit|init|plain)ModuleSource|import|require)\b')
 
 
 @lru_cache(maxsize=128)
@@ -460,7 +460,7 @@ def bundles_consumed(root: Path, tests: set[str]) -> set[str]:
                         or any(re.search(r"(?:join|resolve)\s*\(\s*" + re.escape(var) + r"\s*,\s*" + bundle, source)
                                for var in roots)):
                     needed.add(component)
-            if _js_opens_launcher(source):
+            if _js_opens_launcher(name, source):
                 needed.add('launcher')
     return needed
 
@@ -586,12 +586,19 @@ def _js_launcher_path(tokens: list[str]) -> bool:
 
 
 @lru_cache(maxsize=128)
-def _js_opens_launcher(source: str) -> bool:
-    """Recognize page navigation to Launcher, via a literal or local URL binding."""
+def _js_opens_launcher(name: str, source: str) -> bool:
+    """Recognize Launcher navigation through a path or the browser fixture URL."""
     if 'launcher' not in source or 'goto' not in source:
         return False
     tokens = _js_tokens(source)
-    bindings = {name for name, argument in _js_const_bindings(tokens) if _js_launcher_path(argument)}
+    imports, _, _ = _js_fixture_calls(name, source)
+    url_helpers = {alias for alias, target in imports.items()
+                   if target == ('tests/helpers/launcher-browser-fixture.mjs', 'launcherFixtureUrl')}
+
+    def launcher_url(argument):
+        return _js_launcher_path(argument) or bool(url_helpers & _js_call_names(argument))
+
+    bindings = {variable for variable, argument in _js_const_bindings(tokens) if launcher_url(argument)}
     for i, token in enumerate(tokens[:-3]):
         if token != 'page' or tokens[i + 1:i + 4] != ['.', 'goto', '(']:
             continue
@@ -599,7 +606,7 @@ def _js_opens_launcher(source: str) -> bool:
         fragments = [part for item in argument if item.startswith('`')
                      for expression in re.findall(r'\$\{([^{}]+)\}', item)
                      for part in _js_tokens(expression)]
-        if _js_launcher_path(argument + fragments) or bindings.intersection(argument + fragments):
+        if launcher_url(argument + fragments) or bindings.intersection(argument + fragments):
             return True
     return False
 
@@ -733,9 +740,23 @@ def node_python_dependencies(root: Path, tests: set[str]) -> bool:
     return False
 
 
+# The overlay spec dispatches Ctrl/Cmd+Shift+D through the installed shortcut
+# handler, so it has no source-level reference to either module in that path.
+EDITOR_SHORTCUT_SPECS = {
+    'web/editor/cues/editor-merge-adjacent.js': 'tests/e2e/overlay-track.spec.mjs',
+    'web/editor/cues/editor-wiring-edit-shortcuts.js': 'tests/e2e/overlay-track.spec.mjs',
+}
+
+
 def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]]:
-    """Discover tests exercising a module's DOM IDs or published facade."""
+    """Find tests exercising browser interactions or a published facade."""
     tests = root / 'tests'
+    fixture_bindings = tests / 'helpers/editor-fixture-bindings.mjs'
+    try:
+        fixture_facades = dict(re.findall(r"\['(editor/[^']+\.js)', '(Mawe\w+)'\]",
+                                          fixture_bindings.read_text(encoding='utf-8')))
+    except (OSError, UnicodeError):
+        fixture_facades = {}
     paths = list(tests.glob('test_*.mjs')) + list((tests / 'e2e').glob('*.spec.mjs')) if tests.is_dir() else []
     texts = _texts(root, paths)
     selected = {path: set() for path in changed}
@@ -748,8 +769,17 @@ def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]
             source = file.read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             continue
-        ids = set(re.findall(r'''(?:const|let|var)\s+\w+\s*=\s*document\.getElementById\(\s*["']([\w-]+)["']''', source))
-        facades = set(re.findall(r'\b(?:global|window)\.(Mawe\w+)\s*=\s*Object\.freeze', source))
+        shortcut_spec = EDITOR_SHORTCUT_SPECS.get(path)
+        if shortcut_spec in texts:
+            consumers.add(shortcut_spec)
+        ids = set(re.findall(
+            r'''(?:const|let|var)\s+\w+\s*=\s*(?:/\*\*\s*@type[^\n]*?\*/\s*\(\s*)?'''
+            r'''document\.getElementById\(\s*["']([\w-]+)["']''', source))
+        facades = set(re.findall(r'\b(?:global|window)\.(Mawe\w+)\s*=\s*(?:Object\.freeze\(|\1\b)', source))
+        facades.update(re.findall(r'^(?:export\s+)?(?:const|let)\s+(Mawe\w+)\b', source, flags=re.M))
+        fixture_facade = fixture_facades.get(path.removeprefix('web/'))
+        if fixture_facade:
+            facades.add(fixture_facade)
         # Shared ESM factories publish their returned methods through an
         # aggregate facade. Match actual calls, not every test loading it.
         exposed = set()

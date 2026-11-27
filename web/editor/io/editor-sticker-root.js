@@ -1,15 +1,21 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { renderAll } from '../cues/editor-cue-panel.js';
+import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweServerSave } from './editor-server-save.js';
+export let MaweStickerRoot;
 export function initStickerRootModule() {
-// Personal default directory and project override share the existing validated server endpoint.
-(function initStickerRoot(global) {
-  'use strict';
+  // Personal default directory and project override share the existing validated server endpoint.
   const DEFAULT_ROOT_KEY = 'moy.asr.editor.sticker-root.v1';
-  const defaultInput = document.getElementById('sticker-root-input');
-  const defaultButton = document.getElementById('sticker-root-read');
+  const defaultInput = /** @type {HTMLInputElement} */ (document.getElementById('sticker-root-input'));
+  const defaultButton = /** @type {HTMLButtonElement} */ (document.getElementById('sticker-root-read'));
   const defaultStatus = document.getElementById('sticker-root-status');
-  const projectInput = document.getElementById('project-sticker-root-input');
-  const projectButton = document.getElementById('project-sticker-root-read');
+  const projectInput = /** @type {HTMLInputElement} */ (document.getElementById('project-sticker-root-input'));
+  const projectButton = /** @type {HTMLButtonElement} */ (document.getElementById('project-sticker-root-read'));
   const projectStatus = document.getElementById('project-sticker-root-status');
-  const overrideToggle = document.getElementById('project-sticker-root-override');
+  const overrideToggle = /** @type {HTMLInputElement} */ (document.getElementById('project-sticker-root-override'));
   const serverEnabled = Boolean(MaweBoot.SERVER_CONFIG?.stickerRootUrl);
   let epoch = 0, busy = false, pending = Promise.resolve();
   function normalizeRoot(value) {
@@ -50,8 +56,8 @@ export function initStickerRootModule() {
       MaweBoot.SERVER_CONFIG.initialStickerCount = result.count;
     }
     MaweStickerOverlay.stickerAssetRevision += 1;
-    global.MaweAssFrame?.syncWindowStickers?.();
-    MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
+    MaweAssFrame?.syncWindowStickers?.();
+    MaweExportTimeline.updateStickerExportButtons(); renderAll();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }
   async function applyRoot(scope, value) {
@@ -91,9 +97,8 @@ export function initStickerRootModule() {
     });
   }
   if (typeof MaweBoot.DATA.sticker_root !== 'string') MaweBoot.DATA.sticker_root = '';
-  global.MaweStickerRoot = Object.freeze({
+  MaweStickerRoot = Object.freeze({
     getDefaultRoot, projectRoot, syncControls, applyRoot, activateProjectRoot,
     defaultInput, defaultButton, projectInput, projectButton, overrideToggle,
   });
-})(window);
 }

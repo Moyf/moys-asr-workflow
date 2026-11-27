@@ -8,6 +8,13 @@ export const fixtureNames = fs.readdirSync(fixtureRoot).filter(n => n.endsWith('
 export const readFixture = name => JSON.parse(fs.readFileSync(new URL(`${name}.input.json`, fixtureRoot), 'utf8'));
 const sourceGroups = {
   project: new Set([
+    // 门面在同一 bundle 内初始化：fixture 内的模块直接 import
+    // AsrEditorUtils 时读到的是已填充的门面，而不是空对象。
+    // 顺序即 init 顺序：gap-core 无 init，host 先于 utils。
+    'shared/gap-remove-core.js',
+    'editor/boot/editor-host.js',
+    'shared/editor-utils.js',
+    'shared/utils/project-validation.js',
     'editor/state/editor-state.js',
     'editor/state/editor-multi-subtitle-core.js',
     'editor/cues/editor-timeline.js',
@@ -15,7 +22,15 @@ const sourceGroups = {
     'editor/io/editor-wiring-export-context.js',
     'editor/io/editor-json-repair.js',
   ]),
-  stickers: new Set(['editor/media/editor-sticker-overlay.js']),
+  stickers: new Set([
+    // 与 project 组同因：sticker-overlay 直接 import AsrEditorUtils，
+    // 门面需在同一个 bundle 内初始化。
+    'shared/gap-remove-core.js',
+    'editor/boot/editor-host.js',
+    'shared/editor-utils.js',
+    'shared/utils/project-validation.js',
+    'editor/media/editor-sticker-overlay.js',
+  ]),
 };
 const compiled = new Map(await Promise.all(Object.entries(sourceGroups).map(async ([name, selected]) => {
   return [name, await compileEditorFixture([...selected], {

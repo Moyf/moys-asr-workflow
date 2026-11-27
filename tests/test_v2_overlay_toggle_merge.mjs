@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 
-const source = fs.readFileSync(new URL('../web/editor/ui/editor-wiring-settings-init.js', import.meta.url), 'utf8');
+const source = plainModuleSource('editor/ui/editor-wiring-settings-init.js');
 let callback;
 walk.simple(acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module' }), {
   CallExpression(node) {
@@ -33,7 +34,7 @@ test('overlay toggle creates or updates the canonical track inside an undoable c
     MaweHint: { flashHint() {} },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   const change = vm.runInContext(`(${source.slice(callback.start, callback.end)})`, context);
   change();
   const overlay = project.tracks.find(track => track.role === 'overlay');

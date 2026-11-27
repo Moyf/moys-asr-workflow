@@ -1,18 +1,33 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
 // 工程保存：服务器、文件句柄、另存为路径与脏标记清理。
-// ESM init 模块：initMaweProjectSave 在原清单位次执行原 IIFE 体（挂
-// window.MaweProjectSave 冻结门面——classic 侧出接口）；底部具名导出经门面
-// 在调用时转发，兄弟模块可静态 import。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { commitCuePanelEdit, getCurrentCuePanelTarget, captureCuePanelTextEditSnapshot } from '../cues/editor-cue-panel.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweViewUpdates } from '../state/editor-view-updates.js';
+import { MaweAssCuePosition } from '../styles/editor-wiring-ass-cue-position.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweJsonRepair } from './editor-json-repair.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweServerSave } from './editor-server-save.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweProjectSave;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initMaweProjectSave() {
-(function initMaweProjectSave(global) {
-  'use strict';
-
-
-
 function inlineEditHasUncommittedText() {
 if (MaweCoreState.waveformEditor?.hasUncommittedCueQuickEdit?.()) return true;
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) return false;
-const segment = MaweInlineEdit.editingState ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.idx]
+const segment = MaweInlineEdit.editingState ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.idx]
 : MaweMultiSubtitleCore.getExtensionTrack(state.trackId)?.segments[state.index];
 return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd() !== segment.text);
 }
@@ -24,11 +39,11 @@ function flushInlineEditsForSave() {
 MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) {
-if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
+if (!MaweDom.cuePanel?.contains(document.activeElement)) commitCuePanelEdit();
 else {
 // Live panel text is already in the project, but timed labels are deferred until
 // commit. Sync them before replacing the snapshot, while keeping the caret intact.
-const target = MaweCuePanel.getCurrentCuePanelTarget();
+const target = getCurrentCuePanelTarget();
 const snapshot = MaweCuePanelState.cuePanelTextEditSnapshot;
 if (target?.kind === 'main' && snapshot?.kind === target.kind
     && snapshot.index === target.index && snapshot.trackId === target.trackId
@@ -38,14 +53,14 @@ MaweViewUpdates.invalidate({ waveform: 'overlay', preview: 'update' });
 }
 // Finalize the current transaction; subsequent typing begins a new one.
 MaweCuePanelState.resetCuePanelEditState();
-MaweCuePanel.captureCuePanelTextEditSnapshot();
+captureCuePanelTextEditSnapshot();
 }
 return;
 }
 const extension = Boolean(MaweInlineEdit.extensionEditingState);
 const index = extension ? state.index : state.idx;
 const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(state.trackId) : null;
-const segment = extension ? track?.segments[index] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+const segment = extension ? track?.segments[index] : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
 const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
 if (!segment || text === segment.text) return;
 return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
@@ -61,7 +76,9 @@ return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
 });
 }
 
-function markProjectSaved(filename, backupName, { silent = false, contentFingerprint, epoch = MaweState.projectEpoch } = {}) {
+/** @param {{silent?: boolean, contentFingerprint?: string, epoch?: number}} [options] */
+function markProjectSaved(filename, backupName, options = {}) {
+const { silent = false, contentFingerprint, epoch = MaweState.projectEpoch } = options;
 // A success acknowledges exactly the bytes sent, never later edits or another project.
 if (epoch !== MaweState.projectEpoch) return false;
 MaweState.noteSavedSegments(contentFingerprint);
@@ -91,7 +108,7 @@ jsonEl.classList.toggle('dirty', dirty);
 const filename = String(jsonEl.textContent || '').trim();
 if (!filename) return;
 const text = dirty ? `有未保存的修改；点击复制工程文件名：${filename}` : `点击复制工程文件名：${filename}`;
-jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
+jsonEl.title = MAWE_I18N?.translateText?.(text) || text;
 }
 
 
@@ -159,7 +176,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
       // completed edits, while making clear that the bound JSON was not overwritten.
       if (!silent && error instanceof TypeError
-          && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
+          && editorDialogs.confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
         prepareWaveformDragForSave(false);
         const saved = await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
           desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -235,9 +252,9 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     }
     // ASS positioning has its own preview and history transaction. The selected
     // writer handles any held waveform gesture before flushing inline edits.
-    if (global.MaweAssCuePosition?.dragging) {
+    if (MaweAssCuePosition?.dragging) {
       if (silent) return false;
-      global.MaweAssCuePosition.commitDrag();
+      MaweAssCuePosition.commitDrag();
     }
     if (MaweServerSave.projectFileHandle) return saveProjectToHandle({ silent });
     return saveProjectToServer({ silent });
@@ -266,7 +283,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     prepareWaveformDragForSave(false);
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     // 波形快速编辑气泡的待提交文字先落盘提交（幂等）；原生保存路径的
     // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
     MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
@@ -332,7 +349,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
 
 
   function translatedEditorText(text) {
-    return window.MAWE_I18N?.translateText?.(text) || text;
+    return MAWE_I18N?.translateText?.(text) || text;
   }
 
   // 脏态指示：事件驱动 + O(1) 轮询兜底 + 语言切换重译标题。dirty 事件由
@@ -357,7 +374,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
   }
 
-global.MaweProjectSave = Object.freeze({
+MaweProjectSave = Object.freeze({
 markProjectSaved,
 saveProjectToServer,
 saveProjectToHandle,
@@ -370,12 +387,11 @@ mediaNameEl,
 jsonNameEl,
 translatedEditorText
 });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function translatedEditorText(...args) { return window.MaweProjectSave.translatedEditorText(...args); }
-export function saveCurrentProject(...args) { return window.MaweProjectSave.saveCurrentProject(...args); }
-export function saveProjectAsToFile(...args) { return window.MaweProjectSave.saveProjectAsToFile(...args); }
-export function updateProjectDirtyIndicator(...args) { return window.MaweProjectSave.updateProjectDirtyIndicator(...args); }
-export function saveProjectToServer(...args) { return window.MaweProjectSave.saveProjectToServer(...args); }
-export function inlineEditHasUncommittedText(...args) { return window.MaweProjectSave.inlineEditHasUncommittedText(...args); }
+export function translatedEditorText(...args) { return MaweProjectSave.translatedEditorText(...args); }
+export function saveCurrentProject(...args) { return MaweProjectSave.saveCurrentProject(...args); }
+export function saveProjectAsToFile(...args) { return MaweProjectSave.saveProjectAsToFile(...args); }
+export function updateProjectDirtyIndicator(...args) { return MaweProjectSave.updateProjectDirtyIndicator(...args); }
+export function saveProjectToServer(...args) { return MaweProjectSave.saveProjectToServer(...args); }
+export function inlineEditHasUncommittedText(...args) { return MaweProjectSave.inlineEditHasUncommittedText(...args); }

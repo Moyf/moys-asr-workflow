@@ -1,11 +1,12 @@
 // User library I/O and per-project values shared by the two processing tools.
-// User library I/O and per-project values shared by the two processing tools. ESM init 模块：initMaweTextPresets 在原清单位次执行原 IIFE 体（挂
 
-// window.MaweProcessing 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweProcessing;
 export function initMaweTextPresets() {
-(function initProcessing(global) {
-  'use strict';
   const schema = 'moy.asr.text_processing_presets.v2';
   const key = 'moy.asr.text_processing_presets.v1';
   const joinDefaults = Object.freeze({
@@ -21,7 +22,7 @@ export function initMaweTextPresets() {
   const simpleSteps = ['stripMarkdown', 'trim', 'capitalize', 'convertChineseNumbers'];
   const text = (value, max = 512 * 1024) => typeof value === 'string' && value.length <= max;
   const flag = (value) => typeof value === 'boolean';
-  const wrapIds = new Set(['custom', ...global.AsrEditorUtils.WRAP_CHAR_PRESETS.map(({ id }) => id)]);
+  const wrapIds = new Set(['custom', ...AsrEditorUtils.WRAP_CHAR_PRESETS.map(({ id }) => id)]);
 
   function normalizeSteps(steps) {
     if (!Array.isArray(steps) || steps.length > 110) throw new Error('预设操作格式无效');
@@ -153,7 +154,7 @@ export function initMaweTextPresets() {
     try {
       const old = JSON.parse(MaweHost.storage.getItem(MaweSettings.EDITOR_SETTINGS_KEY) || '{}');
       if (!Object.keys(old).some((name) => name.startsWith('autoMerge'))) return null;
-      const settings = window.AsrEditorUtils.normalizeEditorSettings(old);
+      const settings = AsrEditorUtils.normalizeEditorSettings(old);
       const join = {
         gapMs: settings.autoMergeGapMs, snapDirection: settings.autoMergeSnapDirection,
         absorbShort: settings.autoMergeAbsorbShort, shortCount: settings.autoMergeShortCount,
@@ -227,17 +228,16 @@ export function initMaweTextPresets() {
     MaweState.changes.processingOverridesDirty = true;
   }
 
-  global.MaweProcessing = Object.freeze({
+  MaweProcessing = Object.freeze({
     refresh, update, validateImport, projectOverride, setProjectOverride,
     get library() { return library; },
     get portable() { return !endpoint(); },
     get effectiveJoin() { return projectOverride('join') || library.join || legacyJoin() || joinDefaults; },
   });
-})(window);
 }
 
-export function refresh(...args) { return window.MaweProcessing.refresh(...args); }
-export function update(...args) { return window.MaweProcessing.update(...args); }
-export function validateImport(...args) { return window.MaweProcessing.validateImport(...args); }
-export function projectOverride(...args) { return window.MaweProcessing.projectOverride(...args); }
-export function setProjectOverride(...args) { return window.MaweProcessing.setProjectOverride(...args); }
+export function refresh(...args) { return MaweProcessing.refresh(...args); }
+export function update(...args) { return MaweProcessing.update(...args); }
+export function validateImport(...args) { return MaweProcessing.validateImport(...args); }
+export function projectOverride(...args) { return MaweProcessing.projectOverride(...args); }
+export function setProjectOverride(...args) { return MaweProcessing.setProjectOverride(...args); }

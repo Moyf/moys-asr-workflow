@@ -1,11 +1,7 @@
+import { handler } from './gap-export-handler.mjs';
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs';
 import http from 'node:http';
 
-const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
-const first = source.indexOf("document.getElementById('download-gap-removed-video')");
-const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
-const handler = source.slice(first, last);
 
 for (const mode of ['headers', 'json-body']) {
 test(`cancel endpoint pending ${mode} obeys the declared cleanup deadline`, async ({ page }) => {

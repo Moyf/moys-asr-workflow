@@ -11,7 +11,7 @@ const { createEditorState } = (() => {
   const context = { window: {} };
   const stripped = STATE_SRC
     .replace(/^import .*$/gm, '')
-    .replace(/^export function/gm, 'function');
+    .replace(/^export (?=(?:function|const|let)\b)/gm, '');
   return vm.runInNewContext(`(function () { ${stripped}\nreturn { createEditorState }; })()`, context);
 })();
 

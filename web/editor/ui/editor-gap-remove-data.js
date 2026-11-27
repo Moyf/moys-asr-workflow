@@ -1,7 +1,9 @@
 // 空隙移除数据层：默认参数、规范化缓存与空隙/移除区间派生。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweGapRemoveData 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweGapRemoveData;
 export function initMaweGapRemoveData() {
   'use strict';
 
@@ -25,13 +27,13 @@ export function initMaweGapRemoveData() {
   const DEFAULT_GAP_REMOVE_LEAD_OUT_MS = 80;
 
 
-  const DEFAULT_GAP_REMOVE_OPERATION_MODE = window.AsrGapRemoveCore.DEFAULT_GAP_REMOVE_OPERATION_MODE;
+  const DEFAULT_GAP_REMOVE_OPERATION_MODE = AsrGapRemoveCore.DEFAULT_GAP_REMOVE_OPERATION_MODE;
 
 
-  const DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT = window.AsrEditorUtils.GAP_REMOVE_DISABLE_COVERAGE_DEFAULT ?? 80;
+  const DEFAULT_GAP_REMOVE_DISABLE_COVERAGE_PERCENT = AsrEditorUtils.GAP_REMOVE_DISABLE_COVERAGE_DEFAULT ?? 80;
 
 
-  const DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS = window.AsrEditorUtils.GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS ?? 300;
+  const DEFAULT_GAP_REMOVE_DISABLE_REMAINING_MS = AsrEditorUtils.GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS ?? 300;
 
 
   const GAP_REMOVE_ADVANCED_OPEN_KEY = 'moy.asr.gap_remove.advanced_open.v1';
@@ -41,13 +43,13 @@ export function initMaweGapRemoveData() {
 
 
 
-  const normalizedGapRemoveData = window.AsrEditorUtils.normalizeGapRemoveData;
+  const normalizedGapRemoveData = AsrEditorUtils.normalizeGapRemoveData;
 
 
-  const clampGapRemoveDisableCoverage = window.AsrEditorUtils.clampGapRemoveDisableCoverage;
+  const clampGapRemoveDisableCoverage = AsrEditorUtils.clampGapRemoveDisableCoverage;
 
 
-  const clampGapRemoveDisableRemaining = window.AsrEditorUtils.clampGapRemoveDisableRemaining;
+  const clampGapRemoveDisableRemaining = AsrEditorUtils.clampGapRemoveDisableRemaining;
 
 
 
@@ -107,7 +109,7 @@ export function initMaweGapRemoveData() {
         && state.gaps === gapRemoveDisplayCacheSource) return gapRemoveDisplayCache;
     gapRemoveDisplayCacheState = state;
     gapRemoveDisplayCacheSource = state.gaps;
-    gapRemoveDisplayCache = window.AsrGapRemoveCore.getGapRemoveDisplayGaps(state.gaps);
+    gapRemoveDisplayCache = AsrGapRemoveCore.getGapRemoveDisplayGaps(state.gaps);
     return gapRemoveDisplayCache;
   }
 
@@ -118,12 +120,12 @@ export function initMaweGapRemoveData() {
     if (!state) return [];
     if (removedGapRangesCacheState !== state) {
       removedGapRangesCacheState = state;
-      removedGapRangesCache = window.AsrEditorUtils.getRemovedGapRanges(state.gaps);
+      removedGapRangesCache = AsrEditorUtils.getRemovedGapRanges(state.gaps);
     }
     return removedGapRangesCache;
   }
 
-  global.MaweGapRemoveData = Object.freeze({
+  MaweGapRemoveData = Object.freeze({
     DEFAULT_GAP_REMOVE_MIN_MS,
     DEFAULT_GAP_REMOVE_THRESHOLD_DB,
     DEFAULT_GAP_REMOVE_HYSTERESIS_DB,
@@ -155,4 +157,5 @@ export function initMaweGapRemoveData() {
     getGapRemoveGaps,
     getRemovedGapRanges
   });
+
 }

@@ -1,5 +1,20 @@
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { getCurrentCuePanelTarget } from '../cues/editor-cue-panel.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { isTextEditingTarget, isPlaybackKeyboardTarget, isNativeKeyboardControl, isPlayerKeyboardTarget, switchMultiSubtitleTrack } from '../cues/editor-keyboard-targets.js';
+import { MaweNavPreview } from '../cues/editor-nav-preview.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAudioProcessing } from './editor-audio-processing.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MaweMediaPlayback } from './editor-media-playback.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 export function initMaweMediaControlsWiring() {
-window.MaweAudioProcessing?.init();
+MaweAudioProcessing?.init();
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
 MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
 MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
@@ -40,7 +55,7 @@ document.addEventListener('fullscreenchange', MaweMediaPlayback.syncMediaControl
 // Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-  if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
+  if (MaweInlineEdit.editingState || isTextEditingTarget(e)) return;
   // 拆分弹窗内方向键用于移动 ✂️ 断点，不再 seek 媒体或微调字幕时间。
   if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
   // 文本处理弹窗内方向键用于移动光标/滚动预览，绝不能误改字幕时间或 seek。
@@ -48,11 +63,11 @@ document.addEventListener('keydown', (e) => {
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
   if (target?.closest?.('[role="menu"]')) return;
-  if (!MaweKeyboardTargets.isPlaybackKeyboardTarget(e) && MaweKeyboardTargets.isNativeKeyboardControl(e)) return;
-  if (MaweKeyboardTargets.isPlayerKeyboardTarget(e)) return;
+  if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
+  if (isPlayerKeyboardTarget(e)) return;
   const commandKey = e.ctrlKey || e.metaKey;
   const direction = e.key === 'ArrowLeft' ? -1 : 1;
-  const panelTarget = MaweCuePanel.getCurrentCuePanelTarget();
+  const panelTarget = getCurrentCuePanelTarget();
   const extensionTarget = panelTarget?.kind === 'extension';
   const overlayTarget = panelTarget?.kind === 'overlay';
   const activeTrack = extensionTarget ? 'extension'
@@ -99,8 +114,8 @@ document.addEventListener('keydown', (e) => {
 // 确定区域时跳转媒体首尾。文本输入、普通按钮和模态窗口保留原生行为。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Home' && e.key !== 'End') return;
-  if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
-  if (!MaweKeyboardTargets.isPlaybackKeyboardTarget(e) && MaweKeyboardTargets.isNativeKeyboardControl(e)) return;
+  if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || isTextEditingTarget(e)) return;
+  if (!isPlaybackKeyboardTarget(e) && isNativeKeyboardControl(e)) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
@@ -143,14 +158,14 @@ document.addEventListener('keydown', (e) => {
 // 选择时间范围重叠最多、否则距离最近的另一轨字幕，不改变播放头位置。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-  if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
+  if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || isTextEditingTarget(e)) return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-  if (MaweKeyboardTargets.isNativeKeyboardControl(e) || MaweKeyboardTargets.isPlayerKeyboardTarget(e)) return;
+  if (isNativeKeyboardControl(e) || isPlayerKeyboardTarget(e)) return;
   if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
-  if (!MaweKeyboardTargets.switchMultiSubtitleTrack(e.key === 'ArrowUp' ? -1 : 1)) return;
+  if (!switchMultiSubtitleTrack(e.key === 'ArrowUp' ? -1 : 1)) return;
   e.preventDefault();
   e.stopPropagation();
 }, true);

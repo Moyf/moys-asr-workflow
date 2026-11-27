@@ -32,8 +32,9 @@ test('transcript compare preloads Launcher bytes without touching the offline fl
       warning: '已跳过：别的.txt',
     });
     await page.goto(pageUrl('compare.html'));
-    await page.waitForFunction(() => window.MAWCompare && window.MAWCompare.state.files.length === 2);
-    assert.deepEqual(await page.evaluate(() => window.MAWCompare.state.files.map(file => file.name)), ['原始.mosp', '结果.srt']);
+    await page.waitForFunction(() => document.querySelectorAll('#cards .card').length === 2);
+    assert.deepEqual(await page.locator('#cards .name').evaluateAll(names => names.map(name => name.title)), ['原始.mosp', '结果.srt']);
+    assert.equal(await page.evaluate(() => Object.hasOwn(window, 'MAWCompare')), false);
     assert.equal(await page.locator('#empty').isVisible(), false);
     assert.equal(await page.locator('#cards .card').count(), 2);
     await page.getByRole('button', { name: '设为基准' }).first().click();
@@ -106,13 +107,14 @@ test('timestamp compare preloads Launcher projects and keeps the file picker usa
       warning: '',
     });
     await page.goto(pageUrl('timestamp-compare.html'));
-    await page.waitForFunction(() => window.MAWTsCompare && window.MAWTsCompare.state.files.length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('#cards .file-card').length === 2);
     assert.equal(await page.locator('#empty').isVisible(), false);
     assert.equal(await page.locator('.file-cards .card, #cards > *').count(), 2);
     await page.waitForFunction(() => document.querySelectorAll('#tableWrap tr, .row-grid').length > 0);
     const summaryVisible = await page.locator('#summary').isVisible();
     assert.equal(summaryVisible, true);
-    assert.equal(await page.evaluate(() => window.MAWTsCompare.state.files[0].segments.length), 2);
+    assert.equal(await page.locator('.file-card').first().locator('.stat-value').first().textContent(), '2');
+    assert.equal(await page.evaluate(() => Object.hasOwn(window, 'MAWTsCompare')), false);
     assert.match(await page.locator('.card-timebase').first().innerText(), /25 fps/);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

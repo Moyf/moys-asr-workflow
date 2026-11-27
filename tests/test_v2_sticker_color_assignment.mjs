@@ -3,8 +3,11 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createUtilsModule as createGroups } from '../web/shared/utils/subtitle-groups.js';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
-import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 import { expandMainBoundCueRefs } from '../web/shared/utils/speaker-identity.js';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 function fixture() {
   const main = [0, 1, 2].map(index => ({ id: `m${index}`, start: index * 1000, end: (index + 1) * 1000,
@@ -31,8 +34,8 @@ function fixture() {
     refreshColorAssignmentUi() {}, refreshStickerAssignmentUi() {},
   };
   context.window = context;
-  vm.createContext(context);
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-sticker-picker.js', 'initMaweStickerPicker'), context);
+  vm.createContext(exposeWindowGlobals(context));
+  vm.runInContext(plainModuleSource('editor/cues/editor-sticker-picker.js'), context);
   return { context, project, main, overlay, secondary, groups };
 }
 

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import edit  # noqa: E402
+from scripts.packaging.smoke_editor import is_inline_editor_bundle  # noqa: E402
 
 
 class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
@@ -63,6 +64,10 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         page = edit.render_empty_editor_page()
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
+        scripts = re.findall(r"<script\b[^>]*>([\s\S]*?)</script>", page)
+        self.assertEqual(sum(is_inline_editor_bundle(script) for script in scripts), 1)
+        self.assertFalse(is_inline_editor_bundle(payload.splitlines()[0]))
+        self.assertFalse(is_inline_editor_bundle("window.AsrEditorUtils; window.MAWE_I18N;"))
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
         self.assertEqual(metadata["entry"], "editor/boot/editor-entry.mjs")
         self.assertEqual(set(metadata["sourceFiles"]), set(metadata["inputs"]))
@@ -376,15 +381,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
-        markers = (
-            r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
-            r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
-            r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
-            r'\bwindow\.MAWE_ONBOARDING\s*=',
-        )
-        for marker in markers:
-            self.assertRegex(page, marker)
-        self.assertIn('window.AsrWaveform=', page)
+        self.assertNotRegex(page, r'\bwindow\.(?:MAWE_I18N|MAWE_EDITOR_BRIDGE|MAWE_ONBOARDING|AsrWaveform|AsrGapRemoveCore)\s*=')
 
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:

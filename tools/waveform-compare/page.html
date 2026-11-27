@@ -83,11 +83,11 @@
   <p class="intro">切换采样率、声道和编码，比较旧版单声道、新版保留原声道的轻量波形；有 Rust 内核时也显示实际 quapeaks。图像共用时间窗与固定振幅刻度，点波形可定位播放。</p>
   <div id="app"></div>
 </main>
-<script>
-/* COMPARISON_DATA */
+<script id="waveform-comparison-data" type="application/json"></script>
+<script type="module">
 (function () {
-  "use strict";
-  const data = window.__WAVEFORM_COMPARISON__;
+  const payload = document.getElementById("waveform-comparison-data").textContent;
+  const data = payload ? JSON.parse(payload) : null;
   const app = document.getElementById("app");
   if (!data) {
     const empty = document.createElement("div");

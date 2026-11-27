@@ -1,27 +1,33 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweExportSrt } from '../io/editor-export-srt.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweColors } from '../styles/editor-colors.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSelection } from './editor-selection.js';
 import { updateSelectionCountText } from './editor-overlay-cue-selection.js';
+export let MaweColorFilter;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { speakerName, updateCueColorPresentation, updateCueStickerPresentation } from './editor-cue-elements.js';
 import { commitCuePanelEdit, renderCurrentCuePanel } from './editor-cue-panel.js';
 import { applySearch } from './editor-search.js';
 import { clearSelection, isHiddenDisabled, updateMultiSelectionClasses } from './editor-selection.js';
 import { getOverlayTrack } from './overlay-track.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweColorFilter() {
-'use strict';
-
-// 颜色筛选：配色下拉、用量缓存与行色刷新。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweColorFilter 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweColorFilter(global) {
-  'use strict';
-
-
-
+  // 颜色筛选：配色下拉、用量缓存与行色刷新。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // === 颜色过滤 ===
   // 工程中存在彩色字幕时，在过滤输入框右侧显示 🎨 按钮：
   // 点击行（非 checkbox）= 只显示该颜色；勾选 checkbox = 多选；清除 = 全部显示。
   const COLOR_FILTER_DEFAULT_KEY = '__default__';
-  const ui = text => window.MAWE_I18N?.translateText?.(text) || text;
+  const ui = text => MAWE_I18N?.translateText?.(text) || text;
 
 
   const colorFilterDropdown = document.getElementById('color-filter-dropdown');
@@ -64,7 +70,7 @@ export function initMaweColorFilter() {
 
   function effectiveCueColorKey(mainSeg) {
     if (!mainSeg) return COLOR_FILTER_DEFAULT_KEY;
-    return window.AsrEditorUtils.effectiveColorName(mainSeg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) || COLOR_FILTER_DEFAULT_KEY;
+    return AsrEditorUtils.effectiveColorName(mainSeg, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) || COLOR_FILTER_DEFAULT_KEY;
   }
 
 
@@ -81,7 +87,7 @@ export function initMaweColorFilter() {
 
   function collectProjectColorUsage() {
     const counts = new Map();
-    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg) => {
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg) => {
       const key = effectiveCueColorKey(seg);
       counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -131,7 +137,7 @@ export function initMaweColorFilter() {
     speakerHeading.className = 'dropdown-item';
     speakerHeading.textContent = ui('按说话人筛选');
     colorFilterMenu.appendChild(speakerHeading);
-    const tracks = [window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), MaweMultiSubtitleCore.getActiveExtensionTrack(), getOverlayTrack()].filter(Boolean);
+    const tracks = [AsrEditorUtils.getMainTrack(MaweBoot.DATA), MaweMultiSubtitleCore.getActiveExtensionTrack(), getOverlayTrack()].filter(Boolean);
     const segments = [...new Set(tracks)].flatMap(track => track.segments || []);
     const speakerCounts = new Map();
     segments.forEach(segment => {
@@ -165,7 +171,7 @@ export function initMaweColorFilter() {
       name.dataset.speakerProjectContent = '';
       name.textContent = speaker.id === null ? speakerName(null) : `${speakerName(speaker)}（${speaker.id}）`;
       label.dataset.speakerProjectContent = '';
-      label.title = window.MAWE_I18N?.language === 'en'
+      label.title = MAWE_I18N?.language === 'en'
         ? `${name.textContent}: ${count} subtitles` : `${name.textContent}：${count} 条字幕`;
       const total = document.createElement('span');
       total.className = 'color-count';
@@ -229,7 +235,7 @@ export function initMaweColorFilter() {
   }
   commitCuePanelEdit();
   clearSelection({ silent: true });
-  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg, idx) => {
+  AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg, idx) => {
     if (isHiddenDisabled(idx)) return;
     if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
     MaweState.selection.add('main', idx);
@@ -288,7 +294,7 @@ export function initMaweColorFilter() {
   }
 
   document.addEventListener('mawe:languagechange', () => {
-    if (window.MaweBoot?.DATA && window.MaweMultiSubtitleCore) renderColorFilterMenu();
+    if (MaweBoot?.DATA && MaweMultiSubtitleCore) renderColorFilterMenu();
   });
 
 
@@ -319,7 +325,7 @@ export function initMaweColorFilter() {
       ? Number(el.dataset.idx)
       : (el.dataset.mainIdx != null ? Number(el.dataset.mainIdx) : -1);
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
-      ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]
+      ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]
       : null;
     if (segment) updateCueColorPresentation(el, colorBar, segment);
   });
@@ -345,7 +351,7 @@ export function initMaweColorFilter() {
     const index = Number(isExtension ? el.dataset.extIdx : (el.dataset.idx ?? el.dataset.mainIdx));
     const segment = isExtension
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
-      : (Number.isInteger(index) && index >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] : null);
+      : (Number.isInteger(index) && index >= 0 ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] : null);
     if (segment) {
       updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
@@ -361,7 +367,7 @@ export function initMaweColorFilter() {
   // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
   refreshCueStickerRows();
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)
+  const projectHasStickers = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)
     || overlaySegments.some((segment) => segment.sticker_group_id);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
@@ -415,7 +421,7 @@ export function initMaweColorFilter() {
     colorFilterMenu.style.top = `${top}px`;
   }
 
-  global.MaweColorFilter = Object.freeze({
+  MaweColorFilter = Object.freeze({
     COLOR_FILTER_DEFAULT_KEY,
     colorFilterDropdown,
     colorFilterButton,
@@ -444,27 +450,26 @@ export function initMaweColorFilter() {
     refreshColorAssignmentUi,
     positionColorFilterMenu
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function COLOR_FILTER_DEFAULT_KEY(...args) { return window.MaweColorFilter.COLOR_FILTER_DEFAULT_KEY(...args); }
-export function speakerMatches(...args) { return window.MaweColorFilter.speakerMatches(...args); }
-export function colorFilterDropdown(...args) { return window.MaweColorFilter.colorFilterDropdown(...args); }
-export function colorFilterButton(...args) { return window.MaweColorFilter.colorFilterButton(...args); }
-export function colorFilterMenu(...args) { return window.MaweColorFilter.colorFilterMenu(...args); }
-export function effectiveCueColorKey(...args) { return window.MaweColorFilter.effectiveCueColorKey(...args); }
-export function colorFilterSuspended(...args) { return window.MaweColorFilter.colorFilterSuspended(...args); }
-export function collectProjectColorUsage(...args) { return window.MaweColorFilter.collectProjectColorUsage(...args); }
-export function colorFilterLabelFor(...args) { return window.MaweColorFilter.colorFilterLabelFor(...args); }
-export function colorFilterValueFor(...args) { return window.MaweColorFilter.colorFilterValueFor(...args); }
-export function syncColorFilterControls(...args) { return window.MaweColorFilter.syncColorFilterControls(...args); }
-export function renderColorFilterMenu(...args) { return window.MaweColorFilter.renderColorFilterMenu(...args); }
-export function setColorFilterSelection(...args) { return window.MaweColorFilter.setColorFilterSelection(...args); }
-export function selectAllFilteredCues(...args) { return window.MaweColorFilter.selectAllFilteredCues(...args); }
-export function buildColorFilterItem(...args) { return window.MaweColorFilter.buildColorFilterItem(...args); }
-export function refreshColorFilterUi(...args) { return window.MaweColorFilter.refreshColorFilterUi(...args); }
-export function refreshCueColorRows(...args) { return window.MaweColorFilter.refreshCueColorRows(...args); }
-export function refreshCueStickerRows(...args) { return window.MaweColorFilter.refreshCueStickerRows(...args); }
-export function refreshStickerAssignmentUi(...args) { return window.MaweColorFilter.refreshStickerAssignmentUi(...args); }
-export function refreshColorAssignmentUi(...args) { return window.MaweColorFilter.refreshColorAssignmentUi(...args); }
-export function positionColorFilterMenu(...args) { return window.MaweColorFilter.positionColorFilterMenu(...args); }
+export function COLOR_FILTER_DEFAULT_KEY(...args) { return MaweColorFilter.COLOR_FILTER_DEFAULT_KEY(...args); }
+export function speakerMatches(...args) { return MaweColorFilter.speakerMatches(...args); }
+export function colorFilterDropdown(...args) { return MaweColorFilter.colorFilterDropdown(...args); }
+export function colorFilterButton(...args) { return MaweColorFilter.colorFilterButton(...args); }
+export function colorFilterMenu(...args) { return MaweColorFilter.colorFilterMenu(...args); }
+export function effectiveCueColorKey(...args) { return MaweColorFilter.effectiveCueColorKey(...args); }
+export function colorFilterSuspended(...args) { return MaweColorFilter.colorFilterSuspended(...args); }
+export function collectProjectColorUsage(...args) { return MaweColorFilter.collectProjectColorUsage(...args); }
+export function colorFilterLabelFor(...args) { return MaweColorFilter.colorFilterLabelFor(...args); }
+export function colorFilterValueFor(...args) { return MaweColorFilter.colorFilterValueFor(...args); }
+export function syncColorFilterControls(...args) { return MaweColorFilter.syncColorFilterControls(...args); }
+export function renderColorFilterMenu(...args) { return MaweColorFilter.renderColorFilterMenu(...args); }
+export function setColorFilterSelection(...args) { return MaweColorFilter.setColorFilterSelection(...args); }
+export function selectAllFilteredCues(...args) { return MaweColorFilter.selectAllFilteredCues(...args); }
+export function buildColorFilterItem(...args) { return MaweColorFilter.buildColorFilterItem(...args); }
+export function refreshColorFilterUi(...args) { return MaweColorFilter.refreshColorFilterUi(...args); }
+export function refreshCueColorRows(...args) { return MaweColorFilter.refreshCueColorRows(...args); }
+export function refreshCueStickerRows(...args) { return MaweColorFilter.refreshCueStickerRows(...args); }
+export function refreshStickerAssignmentUi(...args) { return MaweColorFilter.refreshStickerAssignmentUi(...args); }
+export function refreshColorAssignmentUi(...args) { return MaweColorFilter.refreshColorAssignmentUi(...args); }
+export function positionColorFilterMenu(...args) { return MaweColorFilter.positionColorFilterMenu(...args); }

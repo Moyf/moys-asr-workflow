@@ -1,4 +1,5 @@
 // gap-drag: waveform class methods with explicit dependencies.
+import { AsrEditorUtils } from '../../../shared/editor-utils.js';
 export function createWaveformModule(dependencies) {
   'use strict';
   const { POINTER_DRAG_THRESHOLD_PX, ROUND_MS, clamp, gapOperationAllowsBoundary, roundMs } = dependencies;
@@ -90,10 +91,10 @@ export function createWaveformModule(dependencies) {
       drag.targetGap = this.gapMoveTarget(drag.originalGaps[drag.index], deltaMs);
       drag.deltaMs = drag.targetGap.start - drag.originalGaps[drag.index].start;
       drag.nextGaps = drag.mode === 'copy'
-        ? window.AsrEditorUtils.copyGapRemoveRange(
+        ? AsrEditorUtils.copyGapRemoveRange(
           drag.originalGaps, drag.index, drag.deltaMs, this.durationMs,
         )
-        : window.AsrEditorUtils.moveGapRemoveRange(
+        : AsrEditorUtils.moveGapRemoveRange(
           drag.originalGaps, drag.index, drag.deltaMs, this.durationMs,
         );
       drag.changed = JSON.stringify(drag.nextGaps) !== JSON.stringify(drag.originalGaps);
@@ -269,7 +270,7 @@ export function createWaveformModule(dependencies) {
         0,
         Math.max(0, this.durationMs),
       );
-      drag.nextGaps = window.AsrEditorUtils.resizeGapRemoveBoundary(
+      drag.nextGaps = AsrEditorUtils.resizeGapRemoveBoundary(
         drag.originalGaps,
         drag.index,
         drag.edge,

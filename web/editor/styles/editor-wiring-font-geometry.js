@@ -1,6 +1,20 @@
+import { getCurrentCuePanelTarget } from '../cues/editor-cue-panel.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweColors } from './editor-colors.js';
+import { MaweAssFontAliases } from './editor-wiring-ass-font-aliases.js';
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export let MaweFontGeometryWiring;
 import { getAssBuiltinFontSuggestions } from './editor-wiring-ass-storage.js';
 import { scheduleAssSubtitlePreviewRefresh } from '../media/editor-ass-preview-refresh.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initFontGeometryWiring() {
 const { assStyleFontOptions, assStyleFontToggle, assStyleForm, subtitleFontFamilyInput, subtitleFontFamilyOptions, subtitleFontFamilyToggle } = getMaweDomPanels();
@@ -11,10 +25,12 @@ const { assStyleFontOptions, assStyleFontToggle, assStyleForm, subtitleFontFamil
 
 
 // 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
-window.MaweFontGeometryWiring = window.MaweFontGeometryWiring || Object.freeze({
+MaweFontGeometryWiring = Object.freeze({
   rebuildSubtitleFontFamilyOptions,
   rebuildAssFontNameOptions,
 });
+
+
 MaweAppearance.relabelSubtitleFontFamilyOptions();
 
 
@@ -104,8 +120,8 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
     return entries.findIndex((entry) => entry.label.toLocaleLowerCase() === current);
   }
   function render(query = '') {
-    entries = window.AsrEditorUtils.filterFontFamilyOptions(
-      window.AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
+    entries = AsrEditorUtils.filterFontFamilyOptions(
+      AsrEditorUtils.mergeFontFamilyOptions(getEntries()),
       query,
     );
     options.replaceChildren();
@@ -215,7 +231,7 @@ function createFontFamilyCombobox({ input, toggle, options, getEntries }) {
   };
 }
 function subtitleFontFamilyComboboxEntries() {
-  const entries = window.AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
+  const entries = AsrEditorUtils.SUBTITLE_FONT_FAMILY_PRESETS.map((preset) => {
     const label = MaweAppearance.subtitleFontFamilyPresetLabel(preset);
     return { value: label, label };
   });
@@ -231,7 +247,7 @@ function assFontNameComboboxEntries() {
   // 之前：merge 按 label 去重保留先出现项，与内置建议同名时保留带别名的版本。
   // 本机扫描结果与别名表按名字归并——扫描名命中别名表任一名字时不单列。
   const aliasNames = new Set();
-  window.MaweAssFontAliases?.entries?.().forEach((entry) => {
+  MaweAssFontAliases?.entries?.().forEach((entry) => {
     if (!entry?.canonical) return;
     entries.push({ value: entry.canonical, label: entry.canonical, aliases: entry.names });
     (entry.names || []).forEach((name) => aliasNames.add(String(name).toLocaleLowerCase()));
@@ -256,10 +272,10 @@ function getSubtitleFontFamilyCombobox() {
 }
 function getAssFontNameCombobox() {
   if (!getMaweDomPanels().assFontNameCombobox) {
-    const assStyleFontNameInput = document.getElementById('ass-style-font-name');
+    const assStyleFontNameInput = /** @type {HTMLInputElement} */ (document.getElementById('ass-style-font-name'));
     // 占位符跟随按操作系统选择的 ASS 默认字体，不再固定 Arial。
     if (assStyleFontNameInput) {
-      const assDefaultFontName = window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
+      const assDefaultFontName = AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
       if (assDefaultFontName) assStyleFontNameInput.placeholder = assDefaultFontName;
     }
     getMaweDomPanels().assFontNameCombobox = createFontFamilyCombobox({
@@ -379,7 +395,7 @@ MaweDom.playerStage.addEventListener('click', (event) => {
   const press = previewBackgroundPress;
   previewBackgroundPress = null;
   if (!press || event.defaultPrevented || event.detail === 0 || !isPreviewStageBackground(event.target)) return;
-  const hasCueSelection = MaweCuePanel.getCurrentCuePanelTarget()
+  const hasCueSelection = getCurrentCuePanelTarget()
     || ['main', 'extension', 'overlay'].some(track => MaweState.selection.indices(track).size > 0);
   if (!hasCueSelection && !press.hadBoxSelection) return;
   // 视频的 click 播放处理器会跳过已消费的点击。

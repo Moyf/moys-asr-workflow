@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
 
 let directory, server;
-const identity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
+const productionIdentity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
 test.beforeAll(async () => {
   directory = makeTempDir('editor-bundle');
   server = await startBlankServer(await findFreePort(), join(directory, 'settings'));
@@ -25,8 +25,10 @@ test('HTTP starts the editor once per page and preserves project/export/undo beh
   });
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
-  expect(await page.content()).toContain(identity);
   expect(await page.evaluate(() => typeof window.MAWE)).toBe('undefined');
+  expect(await page.evaluate(() => [
+    window.MaweBoot, window.MaweState, window.MaweInlineEdit, window.MaweHost,
+  ].every(Object.isFrozen))).toBe(true);
   // Startup guards unsaved edits and ASS storage guards its own pending writes.
   expect(await page.evaluate(() => window.mawStartupUnloadListeners)).toBe(2);
   const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
@@ -65,4 +67,26 @@ test('HTTP starts the editor once per page and preserves project/export/undo beh
     await other.close();
   }
   expect(errors).toEqual([]);
+});
+
+test('production starts and opens the command palette without publishing editor services', async ({page}) => {
+  const settings = join(directory, 'production-settings');
+  const production = await startBlankServer(await findFreePort(), settings, { production: true });
+  try {
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await disableOnboarding(page);
+    await page.goto(production.url);
+    expect(await page.content()).toContain(productionIdentity);
+    expect(errors).toEqual([]);
+    await page.locator('#command-palette-open').click();
+    await expect(page.locator('#command-palette')).toBeVisible();
+    const globals = await page.evaluate(() => Object.getOwnPropertyNames(window)
+      .filter(name => /^(?:Mawe[A-Z]|MAWE_|Asr(?:EditorUtils|Waveform|GapRemoveCore)|ASR_EDITOR_PALETTE|ASS_STYLE_LIBRARY|__mawe[A-Z])/.test(name)
+        || ['assStyleManagerSetSelection', 'updateAssStyleManagerLibrary', 'syncAssStyleForm', 'loadAssStyleLibrary'].includes(name)));
+    expect(globals).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally {
+    await production.stop();
+  }
 });

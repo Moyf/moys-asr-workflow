@@ -151,6 +151,12 @@ test('English preset editing, confirmations and rule errors remain understandabl
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('文本处理');
+  page.once('dialog', async dialog => {
+    const preset = [dialog.message(), dialog.defaultValue()];
+    await dialog.dismiss();
+    expect(preset).toEqual(['Preset name', '文本处理']);
+  });
+  await page.locator('#text-preset-rename').click();
   page.once('dialog', dialog => { expect(dialog.message()).toBe('Delete this preset?'); return dialog.dismiss(); });
   await page.locator('#text-preset-delete').click();
   await page.locator('#text-preset-import').setInputFiles({ name: 'preset.json', mimeType: 'application/json', buffer: Buffer.from('{') });

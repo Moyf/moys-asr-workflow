@@ -1,18 +1,21 @@
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweProjectSave } from '../io/editor-project-save.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MawePlaybackLoop } from '../media/editor-playback-loop.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweNavPreview } from './editor-nav-preview.js';
 import { pausePlaybackAfterMouseClick } from '../media/editor-media-playback.js';
+let MaweTextCleanup;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 export function initMaweTextCleanup() {
-'use strict';
-
-// 文本清理与 seek：分组时间同步、媒体 seek 助手。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweTextCleanup 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweTextCleanup(global) {
-  'use strict';
-
+  // 文本清理与 seek：分组时间同步、媒体 seek 助手。
+  // 由 split-cluster codemod 自 editor.js 拆出。
   // Explicit normalization remains available to callers; opening a project
   // keeps the original text and does not invoke this operation.
   function cleanPunctuation() {
-    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
     if (main.preserve_punctuation === true) return;
     const PUNCT_REPL = '  ';
     const REPLACE_INSIDE = /[，。]/g;
@@ -20,7 +23,7 @@ export function initMaweTextCleanup() {
       if (!seg.text) continue;
       const aiRanges = MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup;
       const validScopes = (Array.isArray(aiRanges) ? aiRanges : [])
-        .filter((range) => window.AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
+        .filter((range) => AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
       let text = seg.text;
       while (text.length && (text.endsWith('，') || text.endsWith('。'))) text = text.slice(0, -1);
       seg.text = text.replace(REPLACE_INSIDE, PUNCT_REPL).replace(/[ \t]+$/, '');
@@ -46,7 +49,7 @@ export function initMaweTextCleanup() {
   function syncTimelineGroupRanges() {
     // Ranges are derived from all canonical track members, not cached on
     // legacy color/sticker heads. This also covers the active secondary track.
-    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
+    AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
   }
 
   function seekFromWaveform(timeSec, { dragPreview = false, mouseClick = false } = {}) {
@@ -90,17 +93,15 @@ export function initMaweTextCleanup() {
     seekFromWaveform(timeSec);
   }
 
-  global.MaweTextCleanup = Object.freeze({
+  MaweTextCleanup = Object.freeze({
     syncTimelineGroupRanges,
     seekFromWaveform,
     notifyAutoLoadedMediaReady,
     flushPendingMediaSeek
   });
-})(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function cleanPunctuation(...args) { return window.MaweTextCleanup.cleanPunctuation(...args); }
-export function syncTimelineGroupRanges(...args) { return window.MaweTextCleanup.syncTimelineGroupRanges(...args); }
-export function seekFromWaveform(...args) { return window.MaweTextCleanup.seekFromWaveform(...args); }
-export function notifyAutoLoadedMediaReady(...args) { return window.MaweTextCleanup.notifyAutoLoadedMediaReady(...args); }
-export function flushPendingMediaSeek(...args) { return window.MaweTextCleanup.flushPendingMediaSeek(...args); }
+export function syncTimelineGroupRanges(...args) { return MaweTextCleanup.syncTimelineGroupRanges(...args); }
+export function seekFromWaveform(...args) { return MaweTextCleanup.seekFromWaveform(...args); }
+export function notifyAutoLoadedMediaReady(...args) { return MaweTextCleanup.notifyAutoLoadedMediaReady(...args); }
+export function flushPendingMediaSeek(...args) { return MaweTextCleanup.flushPendingMediaSeek(...args); }

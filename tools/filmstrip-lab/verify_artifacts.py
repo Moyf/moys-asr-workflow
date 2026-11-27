@@ -24,7 +24,7 @@ class PortableParser(HTMLParser):
         attrs = dict(attrs)
         if tag == "script":
             self.in_script = True
-            self.scripts.append("")
+            self.scripts.append((attrs, ""))
             if "src" in attrs:
                 self.external.append(attrs["src"])
         if tag == "link" and attrs.get("rel") == "stylesheet":
@@ -34,7 +34,8 @@ class PortableParser(HTMLParser):
             self.in_script = False
     def handle_data(self, data):
         if self.in_script:
-            self.scripts[-1] += data
+            attrs, source = self.scripts[-1]
+            self.scripts[-1] = attrs, source + data
 
 
 def main():
@@ -44,18 +45,19 @@ def main():
     art = ROOT / ".artifacts/filmstrip"
     page = PortableParser()
     page.feed(args.portable.read_text(encoding="utf-8"))
-    assert len(page.scripts) == 3, "Expected payload, gap core and bundled lab"
+    assert len(page.scripts) == 2, "Expected a JSON payload and bundled lab module"
     assert not page.external, "Portable page must have inline JS and CSS"
-    assignment = page.scripts[0]
-    assert assignment.startswith("window.FILMSTRIP_PORTABLE=")
-    payload = json.loads(assignment.split("=", 1)[1].rstrip(";"))
+    (data_attrs, data), (code_attrs, code) = page.scripts
+    assert data_attrs == {"id": "filmstrip-portable-data", "type": "application/json"}
+    assert code_attrs == {"type": "module"}
+    payload = json.loads(data)
     image = base64.b64decode(payload["sprite"]["dataUrl"].split(",", 1)[1], validate=True)
     assert hashlib.sha256(image).hexdigest() == payload["sprite"]["sha256"]
-    script_path = art / "portable-scripts.js"
-    script_path.write_text("\n".join(page.scripts), encoding="utf-8", newline="\n")
+    script_path = art / "portable-script.mjs"
+    script_path.write_text(code, encoding="utf-8", newline="\n")
     result = {"portableBytes": args.portable.stat().st_size, "spriteBytes": len(image),
               "inlineScripts": len(page.scripts), "externalScriptStyleLinks": page.external,
-              "offlineBrowserReopen": "not verified: browser tool permits HTTP/HTTPS only"}
+              "offlineBrowserReopen": "not covered by this structural check"}
     media = art / "media"
     ffprobe = str(resolve_ffmpeg_tools().ffprobe)
     info = probe(media / "rotated.mp4")
@@ -74,7 +76,7 @@ def main():
     (art / "artifact-validation.json").write_text(json.dumps(result, indent=2) + "\n",
                                                encoding="utf-8", newline="\n")
     print(json.dumps(result, ensure_ascii=False))
-    print("Syntax-only check next: node --check .artifacts/filmstrip/portable-scripts.js")
+    print("Syntax-only check next: node --check .artifacts/filmstrip/portable-script.mjs")
 
 
 if __name__ == "__main__":

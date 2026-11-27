@@ -1,8 +1,23 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
+import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweStickerPicker } from '../cues/editor-sticker-picker.js';
+import { MaweAudioProcessing } from '../media/editor-audio-processing.js';
+import { MaweGapPlayback } from '../media/editor-gap-playback.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweFloatingPanel } from './editor-floating-panel.js';
+import { MaweGapRemoveData } from './editor-gap-remove-data.js';
+import { MaweHint } from './editor-hint.js';
 import { refreshAiCleanupReviewMuteButtons } from '../markers/editor-markers-panel.js';
+export let MaweGapRemoveUi;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 空隙移除 UI：列表渲染、总时长统计、扫描移除与面板状态。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweGapRemoveUi 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 export function initMaweGapRemoveUi() {
   'use strict';
 
@@ -18,11 +33,11 @@ export function initMaweGapRemoveUi() {
   ) {
     const payload = next && typeof next === 'object' ? { ...next } : {};
     if (clearProvenance) {
-      payload.provenance = window.AsrGapRemoveCore.normalizeGapRemoveProvenance(null, []);
+      payload.provenance = AsrGapRemoveCore.normalizeGapRemoveProvenance(null, []);
     } else if (provenance) {
       payload.provenance = provenance;
     } else if (manualOverrides) {
-      payload.provenance = window.AsrGapRemoveCore.appendGapRemoveManualOverrides(
+      payload.provenance = AsrGapRemoveCore.appendGapRemoveManualOverrides(
         payload.provenance,
         manualOverrides,
         payload.gaps,
@@ -32,16 +47,16 @@ export function initMaweGapRemoveUi() {
     MaweCuePanelState.gapPreviewRange = null;
     if (dirty) MaweHistory.gapRemoveDirty = true;
     updateGapRemoveUi();
-    window.MaweGapPlayback?.refresh();
+    MaweGapPlayback?.refresh();
     if (MaweCoreState.player && !MaweCoreState.player.paused) {
-      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
+      void MaweAudioProcessing?.applyPreview({ gesture: true });
     }
   }
 
 
 
   function commitManualGapRemoveChange(state, overrides) {
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const currentGaps = core.normalizeGapRemoveGaps(state?.gaps);
     const provenance = core.appendGapRemoveManualOverrides(
       state?.provenance,
@@ -66,9 +81,9 @@ export function initMaweGapRemoveUi() {
       return { changed: false, muted: false };
     }
 
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const state = MaweGapRemoveData.getGapRemoveData(true);
-    if (window.AsrEditorUtils.isAiCleanupRemovalMarker(marker)) {
+    if (AsrEditorUtils.isAiCleanupRemovalMarker(marker)) {
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
         return { changed: false, muted: false };
       }
@@ -135,13 +150,13 @@ export function initMaweGapRemoveUi() {
 
 
   function formatGapRemoveTotal(totalMs) {
-    return window.AsrEditorUtils.formatGapRemoveDuration(totalMs, gapRemoveMediaDurationMs());
+    return AsrEditorUtils.formatGapRemoveDuration(totalMs, gapRemoveMediaDurationMs());
   }
 
 
 
   function getRemovedGapRangesFrom(gaps) {
-    return window.AsrEditorUtils.getRemovedGapRanges(gaps);
+    return AsrEditorUtils.getRemovedGapRanges(gaps);
   }
 
 
@@ -180,15 +195,15 @@ export function initMaweGapRemoveUi() {
 
   function updateGapRemoveDisableHint() {
     if (!MaweDom.gapRemoveDisableHint) return;
-    const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    const matches = AsrEditorUtils.findGapRemoveDisableMatches(
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       MaweGapRemoveData.getGapRemoveGaps(),
       {
         coveragePercent: MaweGapRemoveData.clampGapRemoveDisableCoverage(MaweDom.gapRemoveDisableCoverage?.value),
         remainingMs: MaweGapRemoveData.clampGapRemoveDisableRemaining(MaweDom.gapRemoveDisableRemaining?.value),
       },
     );
-    const count = matches.filter(({ index }) => !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled).length;
+    const count = matches.filter(({ index }) => !AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled).length;
     MaweDom.gapRemoveDisableHint.textContent = `禁用位于空隙范围内的字幕（当前有 ${count} 条未禁用）`;
   }
 
@@ -243,14 +258,14 @@ export function initMaweGapRemoveUi() {
       return;
     }
     const previousState = MaweGapRemoveData.getGapRemoveData(false);
-    const gaps = window.AsrEditorUtils.detectAudioGapRemoveGaps(waveform, {
+    const gaps = AsrEditorUtils.detectAudioGapRemoveGaps(waveform, {
       minimumMs,
       thresholdDb,
       hysteresisDb,
       leadInMs,
       leadOutMs,
     });
-    const provenance = window.AsrGapRemoveCore.replaceGapRemoveProvenanceSource(
+    const provenance = AsrGapRemoveCore.replaceGapRemoveProvenanceSource(
       previousState?.provenance,
       'audio_gate',
       gaps,
@@ -268,7 +283,7 @@ export function initMaweGapRemoveUi() {
       operation_mode: previousState?.operation_mode,
       disable_coverage_percent: previousState?.disable_coverage_percent,
       disable_remaining_ms: previousState?.disable_remaining_ms,
-      gaps: window.AsrGapRemoveCore.gapRangesFromProvenance(provenance),
+      gaps: AsrGapRemoveCore.gapRangesFromProvenance(provenance),
     }, { provenance });
     MaweHint.flashHint(
       gaps.length
@@ -296,7 +311,7 @@ export function initMaweGapRemoveUi() {
 
   function shrinkExistingGaps() {
     const state = MaweGapRemoveData.getGapRemoveData(false);
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const audioGaps = core.normalizeGapRemoveGaps(
       state?.provenance?.sources?.audio_gate,
     );
@@ -305,7 +320,7 @@ export function initMaweGapRemoveUi() {
       return;
     }
     const { leadInMs, leadOutMs } = readGapRemoveLeadPadding();
-    const nextAudioGaps = window.AsrEditorUtils.shrinkGapRemoveGaps(audioGaps, leadInMs, leadOutMs);
+    const nextAudioGaps = AsrEditorUtils.shrinkGapRemoveGaps(audioGaps, leadInMs, leadOutMs);
     if (JSON.stringify(nextAudioGaps) === JSON.stringify(audioGaps)) {
       MaweHint.flashHint('当前空隙无法按预留量继续收缩', 'invalid');
       return;
@@ -366,18 +381,18 @@ export function initMaweGapRemoveUi() {
 
   function disableSubtitlesInRemovedGaps() {
     const settings = commitGapRemoveDisableSettings();
-    const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    const matches = AsrEditorUtils.findGapRemoveDisableMatches(
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       MaweGapRemoveData.getGapRemoveGaps(),
       settings,
     );
     const targetIndexes = matches
       .map((match) => match.index)
-      .filter((index) => !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled);
+      .filter((index) => !AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled);
     if (!targetIndexes.length) {
       const message = matches.length ? '符合条件的字幕已全部禁用' : '没有符合条件的字幕';
       MaweHint.flashHint(
-        window.MAWE_I18N?.translateText?.(message) || message,
+        MAWE_I18N?.translateText?.(message) || message,
         matches.length ? 'success' : 'invalid',
       );
       return;
@@ -408,7 +423,7 @@ export function initMaweGapRemoveUi() {
     const gaps = MaweGapRemoveData.getGapRemoveGaps();
     const gap = gaps[index];
     if (!gap) return;
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const provenance = core.removeGapRemoveProvenanceRange(
       state?.provenance,
       gap.start,
@@ -428,8 +443,8 @@ export function initMaweGapRemoveUi() {
 
   function applyManualGapRange(startMs, endMs, removed) {
     const state = MaweGapRemoveData.getGapRemoveData(true);
-    const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
-    const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, startMs, endMs, removed);
+    const sourceGaps = AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+    const nextGaps = AsrEditorUtils.applyGapRemoveRange(sourceGaps, startMs, endMs, removed);
     if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
       MaweHint.flashHint(removed ? '所选范围已经处于移除状态' : '所选范围内没有已移除的静音空隙', 'invalid');
       return;
@@ -454,7 +469,7 @@ export function initMaweGapRemoveUi() {
     const point = Number(timeMs);
     if (!Number.isFinite(point)) return false;
     const state = MaweGapRemoveData.getGapRemoveData(true);
-    const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+    const sourceGaps = AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
     const requestedLength = MaweSettings.clampGapRemoveMinimum(state.minimum_ms);
     const length = Math.min(duration, requestedLength);
     const snappedPoint = Math.max(0, Math.min(duration, Math.round(point / 10) * 10));
@@ -464,7 +479,7 @@ export function initMaweGapRemoveUi() {
       MaweHint.flashHint('媒体时长不足，无法添加空隙', 'warning');
       return false;
     }
-    const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, start, end, true);
+    const nextGaps = AsrEditorUtils.applyGapRemoveRange(sourceGaps, start, end, true);
     if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
       MaweHint.flashHint('该位置已经是已移除的空隙', 'invalid');
       return false;
@@ -485,7 +500,7 @@ export function initMaweGapRemoveUi() {
   function translateManualGap(index, deltaMs, mode = 'move') {
     const state = MaweGapRemoveData.getGapRemoveData(false);
     if (!state) return false;
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const gaps = MaweGapRemoveData.getGapRemoveGaps();
     const original = gaps[index];
     if (!original) return false;
@@ -510,8 +525,8 @@ export function initMaweGapRemoveUi() {
     }
     if (mode !== 'copy') return false;
     const nextGaps = mode === 'copy'
-      ? window.AsrEditorUtils.copyGapRemoveRange(gaps, index, deltaMs, duration)
-      : window.AsrEditorUtils.moveGapRemoveRange(gaps, index, deltaMs, duration);
+      ? AsrEditorUtils.copyGapRemoveRange(gaps, index, deltaMs, duration)
+      : AsrEditorUtils.moveGapRemoveRange(gaps, index, deltaMs, duration);
     if (JSON.stringify(nextGaps) === JSON.stringify(gaps)) return false;
     const length = original.end - original.start;
     const maxStart = Number.isFinite(duration) && duration > 0
@@ -531,7 +546,7 @@ export function initMaweGapRemoveUi() {
   function resizeManualGapBoundary(index, edge, valueMs) {
     const state = MaweGapRemoveData.getGapRemoveData(false);
     if (!state) return;
-    const core = window.AsrGapRemoveCore;
+    const core = AsrGapRemoveCore;
     const gaps = MaweGapRemoveData.getGapRemoveGaps();
     const result = core.resizeGapRemoveProvenanceBoundary(
       state.provenance,
@@ -555,7 +570,7 @@ export function initMaweGapRemoveUi() {
   function clearAllGaps() {
     const state = MaweGapRemoveData.getGapRemoveData(false);
     if (!state?.gaps?.length) return;
-    if (!confirm(
+    if (!editorDialogs.confirm(
       `确定要清理全部 ${state.gaps.length} 个空隙区段吗？\n\n这会删除当前所有已移除和已恢复的区段记录。`
     )) return;
     MaweHistory.pushGapRemoveUndo('清理全部空隙区段');
@@ -756,14 +771,14 @@ export function initMaweGapRemoveUi() {
       MaweHint.flashHint('当前没有已激活的空隙，无法填充区间空隙', 'invalid');
       return false;
     }
-    const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, MaweGapRemoveUi.gapRemoveMediaDurationMs());
+    const range = AsrEditorUtils.resolveGapFillRange(gaps, timeMs, MaweGapRemoveUi.gapRemoveMediaDurationMs());
     if (!range) {
       MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再填充区间空隙', 'invalid');
       return false;
     }
     const state = MaweGapRemoveData.getGapRemoveData(true);
-    const sourceGaps = window.AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
-    const nextGaps = window.AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
+    const sourceGaps = AsrGapRemoveCore.normalizeGapRemoveGaps(state.gaps);
+    const nextGaps = AsrEditorUtils.applyGapRemoveRange(sourceGaps, range.start, range.end, true);
     if (JSON.stringify(nextGaps) === JSON.stringify(sourceGaps)) {
       MaweHint.flashHint('该位置已经是已移除的空隙', 'invalid');
       return false;
@@ -778,7 +793,7 @@ export function initMaweGapRemoveUi() {
     return true;
   }
 
-  global.MaweGapRemoveUi = Object.freeze({
+  MaweGapRemoveUi = Object.freeze({
     fillGapRangeAtWaveformTime,
     setGapRemoveData,
     commitManualGapRemoveChange,
@@ -819,4 +834,5 @@ export function initMaweGapRemoveUi() {
     toggleGapRemovePanel,
     finishGapRemovePanelDrag
   });
+
 }

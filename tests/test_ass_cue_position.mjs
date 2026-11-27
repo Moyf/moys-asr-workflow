@@ -7,6 +7,7 @@ import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import { createProjectHarness } from './helpers/track-golden.mjs';
 import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
 const h = context.window.AsrEditorUtils;
@@ -233,21 +234,21 @@ test('secondary scale without a position keeps its fixed automatic placement', (
 
 test('copy split makes independent overrides and merge preserves the leftmost value', () => {
   const original = { id: 'a', start: 0, end: 2000, text: 'AB', assOverride: { pos: { x: 100, y: 200 } } };
-  const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h,
+  const splitContext = { window: { AsrEditorUtils: h }, AsrEditorUtils: h, MULTI_SUBTITLE_UTILS: h,
     MaweBoot: { DATA: runtimeProject([original]) }, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), splitContext);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), exposeWindowGlobals(splitContext));
   const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'a', false, 'continuous', { headIndex: 0, duplicateText: true });
   parts.left.assOverride.pos.x = 111;
   assert.equal(parts.right.assOverride.pos.x, 100);
   assert.equal(original.assOverride.pos.x, 100);
   const segs = [parts.left, parts.right];
   const mergeProject = runtimeProject(segs);
-  const mergeContext = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: mergeProject },
+  const mergeContext = { window: { AsrEditorUtils: h }, AsrEditorUtils: h, MaweBoot: { DATA: mergeProject },
     MaweMultiSubtitleCore: { getMultiSubtitleState: () => mergeProject, multiSubtitleVisible: () => false,
       getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '', removeBindingsForSegmentIds() {} },
     MaweTextCleanup: { syncTimelineGroupRanges() {} },
     MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } } };
-  vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), mergeContext);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), exposeWindowGlobals(mergeContext));
   const merged = mergeContext.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
   assert.deepEqual(plain(merged.assOverride), plain(parts.left.assOverride));
   merged.assOverride.pos.x = 333;
@@ -354,10 +355,10 @@ test('overlay overrides normalize strictly and invalid values are rejected', () 
 
 test('overlay merge keeps the leftmost override and split copies it to both halves', () => {
   const original = { id: 'o1', start: 0, end: 2000, text: 'AB', assOverride: { scale: 1.22, pos: { x: 100, y: 200 } } };
-  const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h,
+  const splitContext = { window: { AsrEditorUtils: h }, AsrEditorUtils: h, MULTI_SUBTITLE_UTILS: h,
     MaweBoot: { DATA: runtimeProject([], { overlay: { segments: [original] } }) },
     MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), splitContext);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), exposeWindowGlobals(splitContext));
   const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'o1', false, 'continuous', { headIndex: 0, duplicateText: true });
   assert.deepEqual(plain(parts.left.assOverride), plain(original.assOverride));
   assert.deepEqual(plain(parts.right.assOverride), plain(original.assOverride));
@@ -372,7 +373,7 @@ test('real overlay merge retains only leftmost override as an independent copy',
     const right = { id: 'overlay-right', start: 1000, end: 2000, text: 'B', assOverride: { scale: 2, pos: { x: 900, y: 800 } } };
     const project = runtimeProject([], { overlay: { segments: [left, right] } });
     const track = h.getOverlayTrack(project);
-    const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: project }, MULTI_SUBTITLE_UTILS: h, getOverlayTrack: () => track,
+    const context = { window: { AsrEditorUtils: h }, AsrEditorUtils: h, MaweBoot: { DATA: project }, MULTI_SUBTITLE_UTILS: h, getOverlayTrack: () => track,
       MaweCoreState: { container: { querySelector: () => null } },
       MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
       MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({}), getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
@@ -381,10 +382,10 @@ test('real overlay merge retains only leftmost override as an independent copy',
       MaweState: { selection: { clear() {}, add() {} } }, MaweCuePanel: { setCuePanelTarget() {} },
       MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
     // Overlay merges use the real group-splitting helper with the overlay array.
-    vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
+    vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), exposeWindowGlobals(context));
     context.MaweSegmentOps = context.window.MaweSegmentOps;
-    vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), context);
-    vm.runInNewContext(initModuleSource('editor/cues/editor-wiring-overlay-split-merge.js'), context);
+    vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), exposeWindowGlobals(context));
+    vm.runInNewContext(initModuleSource('editor/cues/editor-wiring-overlay-split-merge.js'), exposeWindowGlobals(context));
     assert.equal(context.mergeOverlaySegments([1, 0]), true);
     assert.equal(track.segments.length, 1);
     const merged = track.segments[0];
@@ -406,7 +407,7 @@ function mergeOverlayForSpeakerTest(segments, colors = [], projectFields = {}) {
   }
   let history = 0;
   const hints = [];
-  const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: project },
+  const context = { window: { AsrEditorUtils: h }, AsrEditorUtils: h, MaweBoot: { DATA: project },
     MaweCoreState: { container: { querySelector: () => null } },
     MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
     MaweMultiSubtitleCore: { getMultiSubtitleState: () => project, getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
@@ -415,7 +416,7 @@ function mergeOverlayForSpeakerTest(segments, colors = [], projectFields = {}) {
     MaweState: { selection: { clear() {}, add() {} }, markProjectDirty() {} }, MaweCuePanel: { setCuePanelTarget() {} },
     MaweSegmentOps: { splitGroupsAtCutPoints: (indexes, kind, _ref, target) => h.clearSubtitleGroupMembers(project, target, indexes, kind) },
     MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint(text) { hints.push(text); } } };
-  vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), context);
+  vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), exposeWindowGlobals(context));
   const before = plain(project);
   const result = context.mergeOverlaySegments([1, 0]);
   if ((segments[0].speaker ?? null) !== (segments[1]?.speaker ?? null) && !result) {
@@ -484,7 +485,7 @@ test('rejected mixed overlay merge preserves identities through save, reopen, an
 
 
 test('overlay scale field resets when selecting an unscaled cue or clearing scale', () => {
-  const source = fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-cue-position.js', import.meta.url), 'utf8');
+  const source = initModuleSource('editor/styles/editor-wiring-ass-cue-position.js');
   const start = source.indexOf('  function sync() {');
   const end = source.indexOf('  for (const [input, axis]', start);
   let current = { kind: 'overlay', segment: { assOverride: { scale: 1.5 } } };
@@ -493,7 +494,7 @@ test('overlay scale field resets when selecting an unscaled cue or clearing scal
     panel: element, positionControls: {}, scaleControls: {}, scaleInput, xInput: {}, yInput: {},
     anchorFor: () => ({ x: 0, y: 0 }), currentScale: segment => segment.assOverride?.scale || 1,
     translated: text => text, trackLabel: () => 'overlay', boxes: new Map(), handles: new Map(),
-    global: { MaweAssCanvas: {}, MaweDom: { overlayToggle: { checked: false } } },
+    MaweAssCanvas: {}, MaweDom: { overlayToggle: { checked: false } },
     document: { activeElement: null, getElementById: () => element } };
   vm.runInNewContext(source.slice(start, end), context);
   context.sync(); assert.equal(scaleInput.value, '1.50');

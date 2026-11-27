@@ -218,8 +218,13 @@ def _taskkill_process_tree(pid: int) -> bool:
     return result.returncode == 0
 
 
-def terminate_process_tree(process: subprocess.Popen[Any], *, timeout: float = 5.0) -> None:
-    """Terminate a MAW-owned process and descendants, then reap the root."""
+def terminate_process_tree(process: subprocess.Popen[Any], *, timeout: float = 5.0,
+                           prefer_registered_job: bool = False) -> None:
+    """Terminate a MAW-owned process tree and reap the root.
+
+    Direct media tools can use the registered job first. Other callers scan the
+    tree first to catch children created before Windows job registration.
+    """
     running = process.poll() is None
     pid = getattr(process, "pid", None)
     if sys.platform != "win32":
@@ -244,8 +249,10 @@ def terminate_process_tree(process: subprocess.Popen[Any], *, timeout: float = 5
         process.wait(timeout=timeout)
         return
 
-    terminated = _taskkill_process_tree(pid) if running else False
-    job_terminated = _terminate_registered_job(process)
+    job_terminated = prefer_registered_job and _terminate_registered_job(process)
+    terminated = running and not job_terminated and _taskkill_process_tree(pid)
+    if not prefer_registered_job:
+        job_terminated = _terminate_registered_job(process)
     if not terminated and not job_terminated and process.poll() is None:
         process.terminate()
 

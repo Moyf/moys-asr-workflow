@@ -91,9 +91,10 @@ for (const adjusted of [true, false]) {
 
 for (const finish of ['commit', 'cancel', 'no movement']) {
   test(`autosave waits for the held boundary and saves ${finish}`, async ({ page }) => {
+    const clockStart = Date.now();
+    await page.clock.install({time: clockStart});
     await openProject(page);
-    await page.clock.install();
-    await page.clock.pauseAt(new Date());
+    await page.clock.pauseAt(clockStart + 60_000);
     await page.evaluate(label => {
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].text = `Prior edit: ${label}`;
       MaweState.markProjectDirty();

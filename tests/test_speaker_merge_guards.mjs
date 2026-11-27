@@ -6,6 +6,9 @@ import { initModuleSource, plainModuleSource } from './helpers/init-module-sourc
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import * as identity from '../web/shared/utils/speaker-identity.js';
 import { createEditorCommands } from '../web/editor/state/editor-commands.js';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const loaded = { window: {} };
 loadEditorModule(loaded, 'shared/editor-utils.js');
@@ -49,10 +52,10 @@ function fixture({ main = [], secondary = [], overlay = [], bindings = [], langu
     MaweHint: { flashHint(text) { effects.hints.push(text); } },
   };
   context.window = context;
-  vm.runInNewContext(initModuleSource('shared/editor-i18n.js'), context);
+  vm.runInNewContext(initModuleSource('shared/editor-i18n.js'), exposeWindowGlobals(context));
   const translateText = context.MAWE_I18N.translateText;
   context.MAWE_I18N.translateText = text => translateText(text, language);
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
   vm.runInContext(plainModuleSource('editor/cues/overlay-track.js'), context);
   return { data, context, effects, utils, api: context.MaweSegmentOps };

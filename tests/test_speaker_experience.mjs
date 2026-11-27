@@ -6,6 +6,9 @@ import * as identity from '../web/shared/utils/speaker-identity.js';
 import { createEditorCommands } from '../web/editor/state/editor-commands.js';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const cue = id => ({ id, start: 0, end: 1000, text: id, items: [{ start: 0, end: 1000, text: id }], color_group_id: 'group' });
@@ -31,7 +34,7 @@ function fixture() {
     hasChanges: snapshot => JSON.stringify(snapshot) !== JSON.stringify(data),
     publish(snapshot) { past.push(snapshot); future.length = 0; }, restore, refresh() {},
   });
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/styles/editor-speaker-labels.js', 'initMaweSpeakerLabels'), context);
   return { data, api: context.MaweSpeakerLabels, past,
     undo() { future.push(copy(data)); restore(past.pop()); },

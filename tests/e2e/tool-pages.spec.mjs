@@ -3,6 +3,8 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {toolCatalog} from '../../tools/catalog.js';
+import {exposeChangelogFixture} from '../helpers/changelog-browser-fixture.mjs';
 
 const fileUrl = path => pathToFileURL(resolve(path)).href;
 const widths = [320,375,414,768,959,960,979,980,981,1100,1440];
@@ -77,14 +79,16 @@ test('transcript compare retains reference and data across filter reset and them
   await expect(page.locator('.tool-empty')).toBeVisible();
   await page.locator('.tool-empty button').click();
   await expect(page.locator('#search')).toHaveValue('');
-  expect(await page.evaluate(()=>window.MAWCompare.state.refId)).not.toBeNull();
+  await expect(page.getByRole('button',{name:'取消基准'})).toHaveCount(1);
   await captureStates(page,testInfo,'compare');
   expect(errors).toEqual([]);
 });
 
 test('timestamp detail focus, density and reset preserve loaded projects',async({page},testInfo)=>{
   await page.goto(fileUrl('tools/timestamp-compare.html'));
-  await page.evaluate(project=>window.MAWTsCompare.loadProjectObjects([{name:'a',project},{name:'b',project}]),project);
+  await page.locator('#fileInput').setInputFiles(['a.mosp','b.mosp'].map(name=>({
+    name,mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project)),
+  })));
   await page.locator('.row-grid').first().click();
   await expect(page.locator('.details')).toBeVisible();
   expect(await page.locator('.row-grid').first().evaluate(el=>el===document.activeElement)).toBe(true);
@@ -169,7 +173,11 @@ test('generated checklist is standalone, preserves legacy progress and expands n
 
 test('changelog editor preserves edit/preview behavior without writing repository files',async({page},testInfo)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(fileUrl('tools/changelog-editor/index.html'));
+  const url = fileUrl('tools/changelog-editor/index.html');
+  await page.goto(url);
+  expect(await page.evaluate(()=>['CLLib','S','loadClText'].some(name=>Object.hasOwn(window,name)))).toBe(false);
+  await exposeChangelogFixture(page, url);
+  await page.reload();
   await page.evaluate(async text=>{await loadClText(text,'测试载入');},readFileSync(resolve('CHANGELOG.md'),'utf8'));
   await expect(page.locator('#split-wrap')).toBeVisible();
   const input=page.locator('#cards textarea').first();
@@ -212,7 +220,9 @@ test('narrow checklist exposes storage warnings outside its collapsed actions',a
 });
 
 test('pending image conversion cannot commit through an opened and closed modal',async({page})=>{
-  await page.goto(fileUrl('tools/changelog-editor/index.html'));
+  const url = fileUrl('tools/changelog-editor/index.html');
+  await exposeChangelogFixture(page, url);
+  await page.goto(url);
   const result=await page.evaluate(async()=>{
     await loadClText('## [未发布]\n\n### 提升\n\n- **测试** ： 文本\n','fixture');
     const parsed=S.parsed.get(S.selected),card=parsed.cards.find(c=>c.kind==='entry');
@@ -231,7 +241,7 @@ test('pending image conversion cannot commit through an opened and closed modal'
 
 test('catalog lists tools, filters maintenance states and provides valid page links',async({page},testInfo)=>{
   await page.goto(fileUrl('tools/index.html'));
-  const tools=await page.evaluate(()=>window.MAWToolCatalog.map(({name,status,entry})=>({name,status,entry})));
+  const tools=toolCatalog;
   expect(tools.length).toBeGreaterThan(0);
   const names=page.locator('.card h2');
   await expect(names).toHaveText(tools.map(tool=>tool.name));
@@ -289,6 +299,7 @@ test('dashboard uses CSP-compatible shared assets and preserves board status on 
   });
   await page.goto('http://127.0.0.1:8262/');
   await expect(page.locator('.card')).toHaveCount(1);
+  expect(await page.evaluate(()=>Object.hasOwn(window,'refresh'))).toBe(false);
   await page.locator('#search').fill('no-match');
   await expect(page.locator('.card')).toHaveCount(0);
   await page.locator('#reset-filters').click();

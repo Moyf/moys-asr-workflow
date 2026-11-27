@@ -979,9 +979,8 @@
 <div id="dropOverlay" hidden>松开以添加文件</div>
 <div id="toast" aria-live="polite"></div>
 
-<script>
-'use strict';
-
+<script id="timestamp-compare-data" type="application/json"></script>
+<script type="module">
 const PALETTE = ['var(--series-1)', 'var(--series-2)'];
 const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
 const GRANULARITY_LABELS = {
@@ -1306,8 +1305,7 @@ function assignColors() {
   });
 }
 
-function loadProjectObjects(source) {
-  const payload = source === undefined ? window.__MAW_TS_EMBED__ : source;
+function loadProjectObjects(payload) {
   const values = Array.isArray(payload) ? payload : payload && Array.isArray(payload.files) ? payload.files : null;
   if (!values) throw new Error('嵌入数据必须包含 files 数组');
   const entries = values.slice(0, 2).map(entryFromEmbedded);
@@ -2071,19 +2069,11 @@ window.addEventListener('drop', function onDrop(event) {
   if (event.dataTransfer && event.dataTransfer.files) void addFiles(event.dataTransfer.files);
 });
 
-window.MAWTsCompare = {
-  state: state,
-  loadProjectObjects: loadProjectObjects,
-  parseSrt: parseSrt,
-  parseProjectObject: normaliseProjectObject,
-  buildRows: buildRows,
-  comparePair: comparePair,
-};
-
 render();
-if (window.__MAW_TS_EMBED__) {
+const embedded = document.getElementById('timestamp-compare-data').textContent.trim();
+if (embedded) {
   try {
-    loadProjectObjects(window.__MAW_TS_EMBED__);
+    loadProjectObjects(JSON.parse(embedded));
   } catch (error) {
     toast((error && error.message) || String(error), 'error');
   }

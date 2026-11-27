@@ -1,27 +1,42 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { MaweExportSrt } from '../io/editor-export-srt.js';
+import { MaweProjectLoad } from '../io/editor-project-load.js';
+import { MaweStickerBurnPlan } from '../io/editor-sticker-burn-plan.js';
+import { MawePreviewGeometry } from '../media/editor-preview-geometry.js';
+import { MaweStickerOverlay } from '../media/editor-sticker-overlay.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweFloatingPanel } from '../ui/editor-floating-panel.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweAssFontAliases } from './editor-wiring-ass-font-aliases.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+export let MaweAssFrame;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 export function initWiringAssFrameModule() {
-// Paused Server media previews use the same native libass frame as the floating
-// comparison window. Playback/file:// keep the immediate CSS approximation.
-(function initMaweAssFrame(global) {
-  'use strict';
-
+  // Paused Server media previews use the same native libass frame as the floating
+  // comparison window. Playback/file:// keep the immediate CSS approximation.
+  const global = typeof window !== 'undefined' ? window : globalThis;
   const openButton = document.getElementById('ass-frame-preview-open');
   const quickOpenButton = document.getElementById('ass-frame-quick-open');
   const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
   const emojiWarning = document.getElementById('ass-emoji-warning');
   const windowEl = document.getElementById('ass-frame-window');
   if (!openButton || !windowEl) return;
-  const imageEl = document.getElementById('ass-frame-image');
-  const stageImage = document.getElementById('ass-stage-frame');
+  const imageEl = /** @type {HTMLImageElement} */ (document.getElementById('ass-frame-image'));
+  const stageImage = /** @type {HTMLImageElement} */ (document.getElementById('ass-stage-frame'));
   const stageStatus = document.getElementById('ass-stage-status');
-  const stage = global.MaweDom?.playerStage;
+  const stage = MaweDom?.playerStage;
   // player 元素会被媒体加载整体替换（editor-media-load.js 的 replaceChild），
   // 这里只保留可变引用；事件与帧回调的换绑见下方 bindPlayer()。
-  let player = global.MaweCoreState?.player;
-  const renderButton = document.getElementById('ass-frame-render');
+  let player = MaweCoreState?.player;
+  const renderButton = /** @type {HTMLButtonElement} */ (document.getElementById('ass-frame-render'));
   const windowStatus = document.getElementById('ass-frame-window-status');
   const staleEl = document.getElementById('ass-frame-stale');
-  const stageToggle = document.getElementById('ass-frame-stage-toggle');
-  const autoToggle = document.getElementById('ass-frame-auto-toggle');
+  const stageToggle = /** @type {HTMLInputElement} */ (document.getElementById('ass-frame-stage-toggle'));
+  const autoToggle = /** @type {HTMLInputElement} */ (document.getElementById('ass-frame-auto-toggle'));
   // 实际画面窗口的表情包图层（模板默认存在；缺失时整组逻辑静默跳过）。
   const stickerLayer = document.getElementById('ass-frame-sticker-layer');
   const stickerGeometry = document.getElementById('ass-frame-sticker-geometry');
@@ -44,12 +59,12 @@ export function initWiringAssFrameModule() {
   const GREEN_SCREEN_HINT = '当前缺少视频画面，使用绿幕预览，可在「更多导出」中导出绿幕视频';
   const EMOJI = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3/u;
 
-  const translate = (text) => global.MAWE_I18N?.translateText?.(text) || text;
-  const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
-    && global.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
+  const translate = (text) => MAWE_I18N?.translateText?.(text) || text;
+  const enabled = () => Boolean(MaweBoot?.SERVER_CONFIG?.assFrameUrl)
+    && MaweSettings?.EDITOR_SETTINGS?.assMode === true;
 
   function hasProjectEmoji() {
-    for (const segment of global.AsrEditorUtils.iterSegments(global.MaweBoot?.DATA)) {
+    for (const segment of AsrEditorUtils.iterSegments(MaweBoot?.DATA)) {
       if (EMOJI.test(segment.text)) return true;
     }
     return false;
@@ -60,9 +75,9 @@ export function initWiringAssFrameModule() {
   }
   // 暂停时把实际帧叠加到播放器画面：默认关闭，窗口内开关控制。
   const stageOverlayEnabled = () => autoRenderEnabled()
-    && global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+    && MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
   // 自动渲染：默认开启；关闭后仅在点击「渲染当前帧」时更新。
-  const autoRenderEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
+  const autoRenderEnabled = () => MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
   // Avoid serializing the project or spawning FFmpeg when neither view needs it.
   const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
@@ -105,7 +120,7 @@ export function initWiringAssFrameModule() {
   }
 
   function snapshot() {
-    if (!enabled() || !frameAvailable() || global.MaweAssFontAliases?.pending?.()) return null;
+    if (!enabled() || !frameAvailable() || MaweAssFontAliases?.pending?.()) return null;
     const greenScreen = greenScreenPreview();
     // currentTime can sit between two frames. Seek at/before the presented
     // frame's PTS; rounding up can make FFmpeg discard it and choose the next.
@@ -114,7 +129,7 @@ export function initWiringAssFrameModule() {
     const frameTime = presentedCursor === player.currentTime ? presentedTime : null;
     const frameTimeMs = Math.max(0, (frameTime ?? (Number(player.currentTime) || 0)) * 1000);
     const timeMs = Math.floor(frameTimeMs + 0.000001);
-    const ass = global.MaweExportSrt.buildAss({ preview: true });
+    const ass = MaweExportSrt.buildAss({ preview: true });
     return { ass, timeMs, frameTimeMs, greenScreen, generation: mediaGeneration, seek: seekGeneration, source: player.currentSrc,
       key: JSON.stringify([mediaGeneration, player.currentSrc, greenScreen, ass, timeMs]) };
   }
@@ -193,8 +208,8 @@ export function initWiringAssFrameModule() {
     stickerLayer.style.width = `${width}px`;
     stickerLayer.style.height = `${height}px`;
     // 与舞台层同一几何换算（GEO_UTILS.previewGeometryToCss：钳制 + 百分比）。
-    const css = global.MaweAppearance?.GEO_UTILS?.previewGeometryToCss
-      ? global.MaweAppearance.GEO_UTILS.previewGeometryToCss(global.MawePreviewGeometry.getStickerGeometry())
+    const css = MaweAppearance?.GEO_UTILS?.previewGeometryToCss
+      ? MaweAppearance.GEO_UTILS.previewGeometryToCss(MawePreviewGeometry.getStickerGeometry())
       : null;
     if (css) {
       stickerGeometry.style.left = css.left;
@@ -206,9 +221,9 @@ export function initWiringAssFrameModule() {
 
   function syncWindowStickers() {
     if (!stickerLayer || !stickerGeometry || !stickerContent) return;
-    const enabled = Boolean(global.MaweStickerBurnPlan?.stickerBurnEnabled?.());
+    const enabled = Boolean(MaweStickerBurnPlan?.stickerBurnEnabled?.());
     const stickers = enabled && cached && !imageEl.hidden
-      ? (global.MaweStickerOverlay?.activeStickersAt(cached.timeMs) || []) : [];
+      ? (MaweStickerOverlay?.activeStickersAt(cached.timeMs) || []) : [];
     if (!enabled || !stickers.length) {
       windowStickerSignature = null;
       if (!stickerLayer.hidden || stickerContent.childElementCount) {
@@ -220,14 +235,14 @@ export function initWiringAssFrameModule() {
     }
     positionWindowStickerLayer();
     // Include the asset revision carried by stickerUrl when a directory changes.
-    const overlayActive = Boolean(global.MaweStickerOverlay?.activeStickerHasOverlay);
+    const overlayActive = Boolean(MaweStickerOverlay?.activeStickerHasOverlay);
     const signature = `${overlayActive ? 'O' : ''}\u0001${
-      stickers.map((sticker) => global.MaweSelection.stickerUrl(sticker)).join('\u0001')}`;
+      stickers.map((sticker) => MaweSelection.stickerUrl(sticker)).join('\u0001')}`;
     if (windowStickerSignature !== signature) {
       stickerContent.classList.toggle('has-overlay-sticker', overlayActive);
       stickerContent.replaceChildren(...stickers.map((sticker) => {
         const img = document.createElement('img');
-        img.src = global.MaweSelection.stickerUrl(sticker);
+        img.src = MaweSelection.stickerUrl(sticker);
         img.alt = sticker.name;
         img.title = sticker.name;
         return img;
@@ -287,7 +302,7 @@ export function initWiringAssFrameModule() {
   function refreshDesired() {
     // Do not create a partial-font snapshot or throw from the timer callback.
     // The inventory-settled event below resumes automatic rendering.
-    if (global.MaweAssFontAliases?.pending?.()) return;
+    if (MaweAssFontAliases?.pending?.()) return;
     if (!enabled() || !previewNeeded() || !frameAvailable() || !player.paused || player.seeking) return;
     if (autoRenderEnabled() && capabilityFailure) {
       hideStage();
@@ -341,8 +356,8 @@ export function initWiringAssFrameModule() {
     const controller = new AbortController();
     const timeout = global.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const requestToken = global.MaweBoot.SERVER_CONFIG.requestToken || '';
-      const response = await fetch(global.MaweBoot.SERVER_CONFIG.assFrameUrl, {
+      const requestToken = MaweBoot.SERVER_CONFIG.requestToken || '';
+      const response = await fetch(MaweBoot.SERVER_CONFIG.assFrameUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-MAW-Request-Token': requestToken },
         signal: controller.signal,
@@ -389,7 +404,7 @@ export function initWiringAssFrameModule() {
         : `渲染失败：${error instanceof Error ? error.message : error}`;
       failedKey = request.key;
       setWindowStatus(failureMessage, 'error');
-      if (manual) global.MaweHint?.flashHint?.(failureMessage, 'invalid');
+      if (manual) MaweHint?.flashHint?.(failureMessage, 'invalid');
     } finally {
       global.clearTimeout(timeout);
       pending = false;
@@ -406,11 +421,11 @@ export function initWiringAssFrameModule() {
     // A pending manual capture belongs to the window and project that requested it.
     const waitGeneration = ++fontWaitGeneration;
     const generation = mediaGeneration;
-    const bindingEpoch = global.MaweProjectLoad?.projectBindingEpoch;
-    await global.MaweAssFontAliases?.ensureCoverage?.();
-    await global.MaweAssFontAliases?.whenReady?.();
+    const bindingEpoch = MaweProjectLoad?.projectBindingEpoch;
+    await MaweAssFontAliases?.ensureCoverage?.();
+    await MaweAssFontAliases?.whenReady?.();
     if (waitGeneration !== fontWaitGeneration || generation !== mediaGeneration
-      || bindingEpoch !== global.MaweProjectLoad?.projectBindingEpoch || !previewNeeded()) return;
+      || bindingEpoch !== MaweProjectLoad?.projectBindingEpoch || !previewNeeded()) return;
     const request = snapshot();
     if (!request) {
       setWindowStatus('请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。', 'error');
@@ -423,7 +438,7 @@ export function initWiringAssFrameModule() {
     await capture(request, true);
   }
 
-  const floatingPanel = global.MaweFloatingPanel.createFloatingPanel({
+  const floatingPanel = MaweFloatingPanel.createFloatingPanel({
     panel: windowEl,
     dragHandle: document.getElementById('ass-frame-drag-handle'),
     manageButton: quickOpenButton || openButton,
@@ -446,8 +461,8 @@ export function initWiringAssFrameModule() {
 
   function syncAssFrameControls() {
     syncEmojiWarning();
-    if (global.MaweSettings?.EDITOR_SETTINGS?.assMode === true) {
-      void global.MaweAssFontAliases?.ensureCoverage?.();
+    if (MaweSettings?.EDITOR_SETTINGS?.assMode === true) {
+      void MaweAssFontAliases?.ensureCoverage?.();
     }
     openButton.hidden = !enabled();
     if (quickOpenButton) quickOpenButton.hidden = !enabled();
@@ -456,7 +471,7 @@ export function initWiringAssFrameModule() {
     // 自动渲染开启时「渲染当前帧」没有意义，隐藏；关闭后作为手动更新入口显示。
     if (renderButton) renderButton.hidden = autoRenderEnabled();
     if (stageToggle) {
-      stageToggle.checked = global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+      stageToggle.checked = MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
       stageToggle.closest('label').hidden = !autoRenderEnabled();
     }
     if (autoToggle) autoToggle.checked = autoRenderEnabled();
@@ -569,20 +584,20 @@ export function initWiringAssFrameModule() {
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
   document.getElementById('ass-frame-window-close')?.addEventListener('click', () => floatingPanel.close());
   stageToggle?.addEventListener('change', () => {
-    global.MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });
+    MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });
     syncAssFrameControls();
   });
   autoToggle?.addEventListener('change', () => {
-    global.MaweSettings?.updateEditorSettings({ assFrameAutoRender: autoToggle.checked });
+    MaweSettings?.updateEditorSettings({ assFrameAutoRender: autoToggle.checked });
     syncAssFrameControls();
   });
   document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
     const native = document.querySelector('.ass-frame-image-wrap')?.classList.toggle('ass-frame-native');
-    event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
+    /** @type {Element} */ (event.currentTarget).setAttribute('aria-pressed', String(Boolean(native)));
     positionWindowStickerLayer();
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, notifyProjectChanged, bindPlayer, syncWindowStickers });
+  MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, notifyProjectChanged, bindPlayer, syncWindowStickers });
+
   syncAssFrameControls();
-})(typeof window !== 'undefined' ? window : globalThis);
 }

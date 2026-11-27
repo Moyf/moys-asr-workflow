@@ -1,17 +1,27 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweCuePanelState } from '../state/editor-cue-panel-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDisplaySettings } from '../ui/editor-display-settings.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweSelection } from './editor-selection.js';
 import { commitCuePanelEdit } from './editor-cue-panel.js';
+export let MaweWordTiming;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { clearSelection as clearCueSelection, selectOnly } from './editor-selection.js';
 import { syncTimelineGroupRanges } from './editor-text-cleanup.js';
 import { timelineTimingAdapter } from './editor-timeline.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
-// 字词时间码：字词对齐数据与行渲染。 ESM init 模块：initMaweWordTiming 在原清单位次执行原 IIFE 体（挂
-// window.MaweWordTiming 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
+// 字词时间码：字词对齐数据与行渲染。
 export function initMaweWordTiming() {
-(function initWordTiming(global) {
-  'use strict';
   let enabled = false, selection = null, conversionTarget = null;
-  const ui = (zh, en) => global.MAWE_I18N?.language === 'en' ? en : zh;
-  const dialog = () => document.getElementById('word-conversion-dialog');
+  const ui = (zh, en) => MAWE_I18N?.language === 'en' ? en : zh;
+  const dialog = () => /** @type {HTMLDialogElement} */ (document.getElementById('word-conversion-dialog'));
   const refresh = () => MaweCoreState.waveformEditor?.refreshCueOverlay();
   const clock = () => timelineTimingAdapter();
   const conversionFingerprint = plan => JSON.stringify([plan, MaweMultiSubtitleCore.getMultiSubtitleState()?.bindings]);
@@ -23,7 +33,7 @@ export function initMaweWordTiming() {
       .forEach(block => block.classList.remove('selected'));
   }
   function getSelection(segment) {
-    if (selection && (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.includes(selection.segment)
+    if (selection && (!AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.includes(selection.segment)
         || selection.segment.items !== selection.items || selection.segment.text !== selection.text)) clearSelection();
     return selection?.segment === segment ? selection.indices : new Set();
   }
@@ -31,7 +41,7 @@ export function initMaweWordTiming() {
     MaweCoreState.waveformEditor?.cancelWordDrag();
     enabled = Boolean(value);
     clearSelection();
-    const toggle = document.getElementById('word-timing-toggle');
+    const toggle = /** @type {HTMLInputElement} */ (document.getElementById('word-timing-toggle'));
     if (toggle) toggle.checked = enabled;
     syncQuickToggle();
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
@@ -46,7 +56,7 @@ export function initMaweWordTiming() {
       quick.classList.toggle('active', enabled);
       quick.setAttribute('aria-pressed', String(enabled));
     }
-    const mirror = document.getElementById('project-word-timing-toggle');
+    const mirror = /** @type {HTMLInputElement} */ (document.getElementById('project-word-timing-toggle'));
     if (mirror && mirror.checked !== enabled) mirror.checked = enabled;
   }
   function reset() {
@@ -56,9 +66,9 @@ export function initMaweWordTiming() {
   }
   function select(index, itemIndex, event = {}) {
     commitCuePanelEdit();
-    const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
     if (!segment) return;
-    const entries = global.AsrEditorUtils.getWordTimingEntries(segment, clock());
+    const entries = AsrEditorUtils.getWordTimingEntries(segment, clock());
     if (!entries.some(e => e.index === itemIndex)) return;
     const previous = getSelection(segment);
     const same = selection?.segment === segment;
@@ -87,7 +97,7 @@ export function initMaweWordTiming() {
   // quietMismatch 供仍然逐键处理的旧调用路径抑制重复提示。
   function syncTextChange(segment, previousText, { quietMismatch = false } = {}) {
     if (!segment || typeof segment.text !== 'string') return;
-    const result = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
+    const result = AsrEditorUtils.planWordTimingTextSync(segment, previousText);
     if (!result) return;
     if (result.items) {
       segment.items = result.items;
@@ -111,7 +121,7 @@ export function initMaweWordTiming() {
   function merge() {
     if (!enabled || !selection || !getSelection(selection.segment).size) return false;
     const segment = selection.segment;
-    const items = global.AsrEditorUtils.mergeWordTimingItems(segment, [...selection.indices], clock());
+    const items = AsrEditorUtils.mergeWordTimingItems(segment, [...selection.indices], clock());
     if (!items) {
       MaweHint.flashHint(ui('请选择同一句内连续且说话人一致的字词块', 'Select consecutive timed text blocks with the same speaker in one sentence'), 'warning');
       return false;
@@ -126,13 +136,13 @@ export function initMaweWordTiming() {
   }
   function auditionWords(segment, indices) {
     const timing = clock();
-    const entries = global.AsrEditorUtils.getWordTimingEntries(segment, timing)
+    const entries = AsrEditorUtils.getWordTimingEntries(segment, timing)
       .filter(entry => indices.includes(entry.index));
     if (!entries.length) return;
     MaweMediaPlayback.auditionRange(timing.toMs(entries[0].start), timing.toMs(entries[entries.length - 1].end));
   }
   function showMenu(x, y, index, itemIndex) {
-    const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
     if (!getSelection(segment).has(itemIndex)) select(index, itemIndex);
     const menu = MaweDom.ctxmenu;
     menu.replaceChildren();
@@ -159,7 +169,7 @@ export function initMaweWordTiming() {
     const entryKbd = document.createElement('kbd');
     entryKbd.textContent = 'C';
     entry.appendChild(entryKbd);
-    if (!global.AsrEditorUtils.mergeWordTimingItems(segment, indices, clock())) entry.classList.add('disabled');
+    if (!AsrEditorUtils.mergeWordTimingItems(segment, indices, clock())) entry.classList.add('disabled');
     else entry.addEventListener('click', () => { menu.classList.remove('show'); merge(); });
     menu.append(entry);
     menu.classList.add('show');
@@ -169,10 +179,10 @@ export function initMaweWordTiming() {
   }
 
   function conversionPlan() {
-    if (!conversionTarget || conversionTarget.project !== window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) return null;
-    const indices = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
-    return global.AsrEditorUtils.planWordTimingConversion(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, indices, clock(), {
-      reservedSegments: [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)],
+    if (!conversionTarget || conversionTarget.project !== AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) return null;
+    const indices = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
+    return AsrEditorUtils.planWordTimingConversion(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, indices, clock(), {
+      reservedSegments: [...AsrEditorUtils.iterSegments(MaweBoot.DATA)],
       // 转换产物对跨行 MASS 对做两侧补齐（账本 #21），预览与确认同一计划。
       rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     });
@@ -199,13 +209,13 @@ export function initMaweWordTiming() {
       item.textContent = ui(`第 ${row.index + 1} 句：${reasons[row.reason]}`, `Sentence ${row.index + 1}: ${reasons[row.reason]}`);
       list.append(item);
     });
-    document.getElementById('word-conversion-confirm').disabled = !plan?.conversions.length;
+    /** @type {HTMLButtonElement} */ (document.getElementById('word-conversion-confirm')).disabled = !plan?.conversions.length;
     return plan;
   }
   function openConversion(indices) {
     commitCuePanelEdit();
     MaweCoreState.waveformEditor?.cancelWordDrag();
-    conversionTarget = { project: window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, ids: indices.map(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]?.id).filter(Boolean) };
+    conversionTarget = { project: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, ids: indices.map(i => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]?.id).filter(Boolean) };
     conversionTarget.fingerprint = conversionFingerprint(renderConversion());
     dialog().showModal();
   }
@@ -223,7 +233,7 @@ export function initMaweWordTiming() {
       clearCueSelection({ commitCuePanel: false });
       clearSelection();
       MaweMultiSubtitleCore.removeBindingsForSegmentIds(plan.conversions.map(c => c.id), []);
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length, ...plan.segments);
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length, ...plan.segments);
       syncTimelineGroupRanges();
       MaweMultiSubtitleCore.markMainSegmentsDirty(plan.conversions.flatMap(c => c.segments));
       MaweMultiSubtitleCore.syncBindingOffsets();
@@ -234,14 +244,14 @@ export function initMaweWordTiming() {
     conversionTarget = null;
   }
   function bind() {
-    document.getElementById('word-timing-toggle')?.addEventListener('change', event => setEnabled(event.target.checked));
+    document.getElementById('word-timing-toggle')?.addEventListener('change', event => setEnabled(/** @type {HTMLInputElement} */ (event.target).checked));
     document.getElementById('word-timing-quick-toggle')?.addEventListener('click', () => setEnabled(!enabled));
     // Q：全局切换字词时间码（与波形设置/工具栏按钮互为镜像）。
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'q' && event.key !== 'Q') return;
       if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
       if (dialog()?.open) return;
-      const target = event.target;
+      const target = /** @type {HTMLElement} */ (event.target);
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
         || target.tagName === 'SELECT' || target.isContentEditable)) return;
       if (MaweCoreState.waveformEditor?.wordDrag) return;
@@ -258,7 +268,7 @@ export function initMaweWordTiming() {
   // Capture before subtitle hotkeys: unsupported actions cannot hit the parent cue.
   document.addEventListener('keydown', event => {
     if (dialog()?.open) { event.stopImmediatePropagation(); return; }
-    if (!enabled || event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    if (!enabled || /** @type {Element} */ (event.target).closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const waveform = MaweCoreState.waveformEditor;
     if (waveform?.wordDrag) {
       const key = event.key.toLowerCase();
@@ -277,7 +287,7 @@ export function initMaweWordTiming() {
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && key === 'a' && !event.shiftKey) {
       event.preventDefault(); event.stopImmediatePropagation();
-      selection.indices = new Set(global.AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
+      selection.indices = new Set(AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
       refresh();
     } else if (key === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
         && !event.repeat && !MaweDom.ctxmenu.classList.contains('show')) {
@@ -297,21 +307,20 @@ export function initMaweWordTiming() {
     }
   }, true);
   document.addEventListener('pointerdown', event => {
-    if (!event.target.closest?.('.waveform-word-block, .waveform-word-boundary, #ctxmenu') && !MaweCoreState.waveformEditor?.wordDrag) clearSelection();
+    if (!/** @type {Element} */ (event.target).closest?.('.waveform-word-block, .waveform-word-boundary, #ctxmenu') && !MaweCoreState.waveformEditor?.wordDrag) clearSelection();
   }, true);
-  global.MaweWordTiming = Object.freeze({ get enabled() { return enabled; }, setEnabled, reset, bind,
+  MaweWordTiming = Object.freeze({ get enabled() { return enabled; }, setEnabled, reset, bind,
     select, getSelection, clearSelection, previewItems, merge, showMenu, openConversion, syncTextChange });
-})(window);
 }
 
-export function setEnabled(...args) { return window.MaweWordTiming.setEnabled(...args); }
-export function reset(...args) { return window.MaweWordTiming.reset(...args); }
-export function bind(...args) { return window.MaweWordTiming.bind(...args); }
-export function select(...args) { return window.MaweWordTiming.select(...args); }
-export function getSelection(...args) { return window.MaweWordTiming.getSelection(...args); }
-export function clearSelection(...args) { return window.MaweWordTiming.clearSelection(...args); }
-export function previewItems(...args) { return window.MaweWordTiming.previewItems(...args); }
-export function merge(...args) { return window.MaweWordTiming.merge(...args); }
-export function showMenu(...args) { return window.MaweWordTiming.showMenu(...args); }
-export function openConversion(...args) { return window.MaweWordTiming.openConversion(...args); }
-export function syncTextChange(...args) { return window.MaweWordTiming.syncTextChange(...args); }
+export function setEnabled(...args) { return MaweWordTiming.setEnabled(...args); }
+export function reset(...args) { return MaweWordTiming.reset(...args); }
+export function bind(...args) { return MaweWordTiming.bind(...args); }
+export function select(...args) { return MaweWordTiming.select(...args); }
+export function getSelection(...args) { return MaweWordTiming.getSelection(...args); }
+export function clearSelection(...args) { return MaweWordTiming.clearSelection(...args); }
+export function previewItems(...args) { return MaweWordTiming.previewItems(...args); }
+export function merge(...args) { return MaweWordTiming.merge(...args); }
+export function showMenu(...args) { return MaweWordTiming.showMenu(...args); }
+export function openConversion(...args) { return MaweWordTiming.openConversion(...args); }
+export function syncTextChange(...args) { return MaweWordTiming.syncTextChange(...args); }

@@ -5,6 +5,11 @@
 // 按指针所在行换算，支持视口边缘自动滚动。预览裁剪到可见行。
 // 数据变更不在这里发生：拖动只更新 DOM 预览，提交经 options 回调进入
 // MaweMarkerEditing（撤销/重做与保存状态统一在那一层处理）。
+import { MaweMarkerEditing } from '../../markers/editor-marker-editing.js';
+import { MaweMarkersPanel } from '../../markers/editor-markers-panel.js';
+import { MaweSettings } from '../../state/editor-settings.js';
+import { AsrEditorUtils } from '../../../shared/editor-utils.js';
+import { MAWE_I18N } from '../../../shared/editor-i18n.js';
 export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, roundMs } = dependencies;
@@ -16,7 +21,7 @@ export function createWaveformModule(dependencies) {
   const MARKER_REGION_MIN_SPAN_MS = 150;
 
   function markerEditingEnabled() {
-    return window.MaweMarkerEditing?.isEditingEnabled?.()
+    return MaweMarkerEditing?.isEditingEnabled?.()
       ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
   }
 
@@ -60,7 +65,7 @@ export function createWaveformModule(dependencies) {
       if (!markerEditingEnabled()) return;
       const markers = this.getMarkers();
       // 行时间标签是否需要给标记轨道让位：仅当该行可见范围内确有标记时下移。
-      const hasVisibleMarkers = markers.some((marker) => window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
+      const hasVisibleMarkers = markers.some((marker) => AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
       row.classList.toggle('waveform-row-has-markers', hasVisibleMarkers);
       // 启用标记编辑就始终渲染轨道（即使还没有任何标记）：
       // 空轨道也要能点击添加 / 拖出 Region，而不是等第一个标记出现才显示。
@@ -90,9 +95,9 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     appendMarkerElement(track, row, marker, startMs, endMs) {
-      const visible = window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs);
+      const visible = AsrEditorUtils.markerVisibleRange(marker, startMs, endMs);
       if (!visible) return;
-      const isRegion = window.AsrEditorUtils.markerKind(marker) === 'region';
+      const isRegion = AsrEditorUtils.markerKind(marker) === 'region';
       const element = document.createElement('div');
       element.className = `waveform-marker-item ${isRegion ? 'region' : 'point'}`;
       element.dataset.markerId = marker.id;
@@ -100,7 +105,7 @@ export function createWaveformModule(dependencies) {
       const duration = Math.max(1, endMs - startMs);
       const left = ((visible.start - startMs) / duration) * 100;
       const widthPercent = Math.max(
-        window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+        AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
         ((visible.end - visible.start) / duration) * 100,
       );
       element.style.left = `${left}%`;
@@ -114,7 +119,7 @@ export function createWaveformModule(dependencies) {
       const timeLabel = isRegion
         ? `${marker.start} → ${marker.end}`
         : String(marker.start);
-      const kindLabel = window.MAWE_I18N?.translateText(isRegion ? '区段' : '标记') || (isRegion ? '区段' : '标记');
+      const kindLabel = MAWE_I18N?.translateText(isRegion ? '区段' : '标记') || (isRegion ? '区段' : '标记');
       element.title = `${marker.name || kindLabel} · ${timeLabel}${marker.note ? `\n${marker.note}` : ''}`;
       element.setAttribute('aria-label', element.title);
       element.dataset.markerProjectReason = 'true';
@@ -189,7 +194,7 @@ export function createWaveformModule(dependencies) {
     // 数据变更经 options.onMarkerQuickEditFields 进入 MaweMarkerEditing。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     openMarkerQuickEdit(markerId, anchorElement) {
-      const utils = window.AsrEditorUtils;
+      const utils = AsrEditorUtils;
       const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
       if (!marker) return;
       this.closeMarkerQuickEdit();
@@ -244,7 +249,7 @@ export function createWaveformModule(dependencies) {
       const actionsRow = document.createElement('div');
       actionsRow.className = 'markers-item-actions';
       actionsRow.appendChild(reviewToggle);
-      const muteButton = window.MaweMarkersPanel?.createAiCleanupReviewMuteButton?.(markerId);
+      const muteButton = MaweMarkersPanel?.createAiCleanupReviewMuteButton?.(markerId);
       if (muteButton) actionsRow.appendChild(muteButton);
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
@@ -295,7 +300,7 @@ export function createWaveformModule(dependencies) {
     syncMarkerQuickEdit() {
       const popup = this.markerQuickEdit?.element;
       if (!popup || !popup.isConnected) return;
-      const utils = window.AsrEditorUtils;
+      const utils = AsrEditorUtils;
       const marker = this.getMarkers().find((candidate) => candidate?.id === this.markerQuickEdit.markerId);
       if (!marker) {
         this.closeMarkerQuickEdit();
@@ -307,7 +312,7 @@ export function createWaveformModule(dependencies) {
       });
       const reviewToggle = (/** @type {HTMLElement} */ (popup.querySelector('.markers-review-toggle')));
       if (reviewToggle) {
-        const updateReviewStatus = window.MaweMarkersPanel?.updateAiCleanupReviewStatusButton;
+        const updateReviewStatus = MaweMarkersPanel?.updateAiCleanupReviewStatusButton;
         if (typeof updateReviewStatus === 'function') updateReviewStatus(reviewToggle, marker);
         else {
           // 管理面板模块未加载时保留普通标记的复核状态呈现。
@@ -325,7 +330,7 @@ export function createWaveformModule(dependencies) {
         }
       }
       const muteButton = /** @type {HTMLElement|null} */ (popup.querySelector('[data-ai-cleanup-review-mute]'));
-      if (muteButton) window.MaweMarkersPanel?.updateAiCleanupReviewMuteButton?.(muteButton, marker.id);
+      if (muteButton) MaweMarkersPanel?.updateAiCleanupReviewMuteButton?.(muteButton, marker.id);
     }
 
 
@@ -528,7 +533,7 @@ export function createWaveformModule(dependencies) {
       const duration = Math.max(0, this.durationMs);
       if (drag.mode === 'move') {
         const deltaMs = roundMs(pointerMs - drag.pointerStartMs);
-        const length = window.AsrEditorUtils.markerKind(drag.original) === 'region'
+        const length = AsrEditorUtils.markerKind(drag.original) === 'region'
           ? drag.original.end - drag.original.start : 0;
         const maxStart = length ? duration - length : Math.round(duration) - 1;
         const start = clamp(drag.original.start + deltaMs, 0, Math.max(0, maxStart));
@@ -607,7 +612,7 @@ export function createWaveformModule(dependencies) {
         if (drag.moved && end - start >= 1) range = { start, end, region: true };
       } else {
         const pending = drag.pending;
-        if (window.AsrEditorUtils.markerKind(pending) === 'region') {
+        if (AsrEditorUtils.markerKind(pending) === 'region') {
           range = { start: pending.start, end: pending.end, region: true };
         } else {
           range = { start: pending.start, end: pending.start + 1, region: false };
@@ -632,7 +637,7 @@ export function createWaveformModule(dependencies) {
         preview.style.setProperty('--marker-color', drag.original?.color || drag.pending?.color || '#3e63dd');
         preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
         preview.style.width = range.region ? `${Math.max(
-          window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+          AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
           ((visibleEnd - visibleStart) / duration) * 100,
         )}%` : '8px';
         if (!range.region) {

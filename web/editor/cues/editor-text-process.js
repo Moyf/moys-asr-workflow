@@ -1,45 +1,55 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweCommands } from '../state/editor-commands.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweInlineEdit } from './editor-inline-edit.js';
+import { MaweSelection } from './editor-selection.js';
+import { MaweProcessing } from './editor-text-presets.js';
 import { projectOverride, update, refresh, validateImport, setProjectOverride } from './editor-text-presets.js';
+export let MaweTextProcess;
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 import { finishEdit } from './editor-inline-edit.js';
 import { commitCuePanelEdit } from './editor-cue-panel.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
+import { editorDialogs } from '../../shared/editor-dialogs.js';
 // Ordered subtitle processing, including the existing right-click wrapper.
-// Ordered subtitle processing, including the existing right-click wrapper. ESM init 模块：initMaweTextProcess 在原清单位次执行原 IIFE 体（挂
 
-// window.MaweTextProcess 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
-// 兄弟模块可静态 import。
 export function initMaweTextProcess() {
-(function initMaweTextProcess(global) {
-  'use strict';
   const $ = (id) => document.getElementById(id);
   const modal = $('text-process-modal');
   const preview = $('text-process-preview');
-  const apply = $('text-process-confirm');
-  const selectedOnly = $('text-process-selected-only');
+  const apply = /** @type {HTMLButtonElement} */ ($('text-process-confirm'));
+  const selectedOnly = /** @type {HTMLInputElement} */ ($('text-process-selected-only'));
   const scopeInfo = $('text-process-scope-info');
   const stepList = $('text-preset-rules');
-  const stepType = $('text-process-step-type');
-  const presetSelect = $('text-preset-select');
+  const stepType = /** @type {HTMLSelectElement} */ ($('text-process-step-type'));
+  const presetSelect = /** @type {HTMLSelectElement} */ ($('text-preset-select'));
   const storageStatus = $('text-preset-status');
-  const presetDefault = $('text-preset-default');
-  const presetFileMenu = $('text-preset-file-menu');
-  const projectMenu = $('text-process-project-menu');
-  const importFile = $('text-preset-import');
-  const importDialog = $('text-preset-import-dialog');
+  const presetDefault = /** @type {HTMLButtonElement} */ ($('text-preset-default'));
+  const presetFileMenu = /** @type {HTMLDetailsElement} */ ($('text-preset-file-menu'));
+  const projectMenu = /** @type {HTMLDetailsElement} */ ($('text-process-project-menu'));
+  const importFile = /** @type {HTMLInputElement} */ ($('text-preset-import'));
+  const importDialog = /** @type {HTMLDialogElement} */ ($('text-preset-import-dialog'));
   const importStatus = $('text-preset-import-status');
   const importPreview = $('text-preset-import-preview');
   const importTitle = $('text-preset-import-title');
   const importWarning = $('text-preset-import-warning');
-  const importConfirm = $('text-preset-import-confirm');
-  const importCancel = $('text-preset-import-cancel');
+  const importConfirm = /** @type {HTMLButtonElement} */ ($('text-preset-import-confirm'));
+  const importCancel = /** @type {HTMLButtonElement} */ ($('text-preset-import-cancel'));
   const projectStatus = $('text-process-project-status');
   const maxSteps = 110;
-  const wrapPresets = global.AsrEditorUtils.WRAP_CHAR_PRESETS;
+  const wrapPresets = AsrEditorUtils.WRAP_CHAR_PRESETS;
   const emptyPreview = '在左侧添加处理步骤，即可查看字幕改动。';
   const stepLabels = Object.fromEntries([...stepType.options].map(({ value, text }) => [value, text]));
-  const translate = (value) => global.MAWE_I18N?.translateText(value) ?? value;
+  const translate = (value) => MAWE_I18N?.translateText(value) ?? value;
 
   const wrapCharsModal = $('wrap-chars-modal');
-  const wrapCharsLeftInput = $('wrap-chars-left');
-  const wrapCharsRightInput = $('wrap-chars-right');
+  const wrapCharsLeftInput = /** @type {HTMLInputElement} */ ($('wrap-chars-left'));
+  const wrapCharsRightInput = /** @type {HTMLInputElement} */ ($('wrap-chars-right'));
   let wrapCharsScope = [];
 
   let steps = [];
@@ -152,7 +162,7 @@ export function initMaweTextProcess() {
         const next = index + offset;
         [steps[next], steps[index]] = [steps[index], steps[next]];
         renderSteps();
-        stepList.children[next]?.querySelector('button:not(:disabled)')?.focus();
+        /** @type {HTMLButtonElement} */ (stepList.children[next]?.querySelector('button:not(:disabled)'))?.focus();
       };
       const iconButton = (symbol, name, click) => {
         const control = button(symbol, click);
@@ -169,7 +179,7 @@ export function initMaweTextProcess() {
       header.append(label, enabled, up, down, iconButton('×', '删除步骤', () => {
         steps.splice(index, 1);
         renderSteps();
-        (stepList.children[index]?.querySelector('button:not(:disabled)') || $('text-preset-add-rule')).focus();
+        (/** @type {HTMLElement} */ (stepList.children[index]?.querySelector('button:not(:disabled)') || $('text-preset-add-rule'))).focus();
       }));
       row.append(header);
       const fields = document.createElement('div');
@@ -204,7 +214,7 @@ export function initMaweTextProcess() {
   function prepareStep(step, assMode = true) {
     if (step.type === 'replace') {
       if (!step.find) throw new IncompleteStepError('请输入查找内容');
-      const compiled = global.AsrEditorUtils.compileTextSearchPattern(step.find,
+      const compiled = AsrEditorUtils.compileTextSearchPattern(step.find,
         { useRegex: step.regex, caseSensitive: step.caseSensitive });
       if (compiled.error) throw new Error('正则表达式无效 ' + compiled.error);
       return compiled.regex;
@@ -225,31 +235,34 @@ export function initMaweTextProcess() {
   }
 
   function refreshActions() {
-    const { defaultPresetId, presets } = window.MaweProcessing.library;
+    const { defaultPresetId, presets } = MaweProcessing.library;
     const saved = presets.some(({ id }) => id === selectedPreset);
     const available = !reading && !writing;
     const valid = steps.length > 0 && !hasUntouchedPrefill();
     presetSelect.disabled = !available;
     importCancel.disabled = writing;
-    $('text-preset-export-current').disabled = !available || !saved;
-    for (const id of ['text-preset-export-library', 'text-preset-import-button', 'text-preset-import']) $(id).disabled = !available;
-    $('text-preset-add-rule').disabled = steps.length >= maxSteps;
-    $('text-preset-save-as').disabled = !available || !valid || presets.length >= 100;
-    $('text-preset-save').disabled = !available || !saved || !valid;
-    $('text-preset-rename').disabled = !available || !saved;
-    $('text-preset-delete').disabled = !available || !saved;
+    /** @type {HTMLButtonElement} */ ($('text-preset-export-current')).disabled = !available || !saved;
+    for (const id of ['text-preset-export-library', 'text-preset-import-button', 'text-preset-import']) {
+      const control = /** @type {HTMLButtonElement | HTMLInputElement} */ ($(id));
+      control.disabled = !available;
+    }
+    /** @type {HTMLButtonElement} */ ($('text-preset-add-rule')).disabled = steps.length >= maxSteps;
+    /** @type {HTMLButtonElement} */ ($('text-preset-save-as')).disabled = !available || !valid || presets.length >= 100;
+    /** @type {HTMLButtonElement} */ ($('text-preset-save')).disabled = !available || !saved || !valid;
+    /** @type {HTMLButtonElement} */ ($('text-preset-rename')).disabled = !available || !saved;
+    /** @type {HTMLButtonElement} */ ($('text-preset-delete')).disabled = !available || !saved;
     presetDefault.disabled = !available || !saved;
     presetDefault.textContent = saved && selectedPreset === defaultPresetId ? '取消默认' : '设为默认';
-    $('text-process-project-save').disabled = !valid;
+    /** @type {HTMLButtonElement} */ ($('text-process-project-save')).disabled = !valid;
     const override = projectOverride('text');
-    $('text-process-project-reset').disabled = !available || override === undefined;
-    $('text-process-project-empty').disabled = Array.isArray(override) && !override.length;
+    /** @type {HTMLButtonElement} */ ($('text-process-project-reset')).disabled = !available || override === undefined;
+    /** @type {HTMLButtonElement} */ ($('text-process-project-empty')).disabled = Array.isArray(override) && !override.length;
     projectStatus.textContent = override === undefined ? '工程内继承默认预设'
       : override.length ? '已保存当前工程默认处理' : '工程内默认留空';
   }
 
   function renderPresets() {
-    const { presets, defaultPresetId } = window.MaweProcessing.library;
+    const { presets, defaultPresetId } = MaweProcessing.library;
     presetSelect.replaceChildren(new Option('自定义步骤', ''));
     for (const { id, name } of presets) {
       const option = new Option(name + (id === defaultPresetId ? ' ★' : ''), id);
@@ -268,7 +281,7 @@ export function initMaweTextProcess() {
   }
 
   function loadDefault({ preserveScope = false } = {}) {
-    const { presets, defaultPresetId } = window.MaweProcessing.library;
+    const { presets, defaultPresetId } = MaweProcessing.library;
     const preset = presets.find(({ id }) => id === defaultPresetId);
     const project = projectOverride('text');
     selectedPreset = project === undefined ? preset?.id || '' : '';
@@ -285,14 +298,14 @@ export function initMaweTextProcess() {
   }
 
   function showStorageReady() {
-    if (window.MaweProcessing.portable) showStorageStatus('仅保存在当前浏览器（便携模式）', 'local');
+    if (MaweProcessing.portable) showStorageStatus('仅保存在当前浏览器（便携模式）', 'local');
     else showStorageStatus('已与用户级配置同步', 'success');
   }
 
   async function saveLibrary(change, newSelection = selectedPreset) {
     const current = session;
     writing = true;
-    showStorageStatus(window.MaweProcessing.portable ? '正在保存到当前浏览器…' : '正在保存用户级预设库…', 'pending');
+    showStorageStatus(MaweProcessing.portable ? '正在保存到当前浏览器…' : '正在保存用户级预设库…', 'pending');
     refreshActions();
     const status = await update(change);
     writing = false;
@@ -311,7 +324,7 @@ export function initMaweTextProcess() {
   }
 
   function captureTargets(mainIndexes) {
-    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     const track = mainIndexes ? null : MaweMultiSubtitleCore.getActiveExtensionTrack();
     return [
       ...[...(mainIndexes ?? MaweSelection.selectedIdxs)].sort((a, b) => a - b)
@@ -322,7 +335,7 @@ export function initMaweTextProcess() {
   }
 
   function currentRows() {
-    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     const rows = (segments, trackId) => segments.map((segment, index) => ({
       segment, index, trackId, before: String(segment.text ?? ''),
     }));
@@ -364,7 +377,7 @@ export function initMaweTextProcess() {
     // The existing substitution helper is pure and self-contained. Embedding
     // both functions in a Blob also supports the standalone file:// editor.
     const source = 'const run = ' + replaceBatch.toString()
-      + ';const expand = ' + global.AsrEditorUtils.expandTextSearchReplacement.toString()
+      + ';const expand = ' + AsrEditorUtils.expandTextSearchReplacement.toString()
       + ';self.onmessage = ({data}) => { try { self.postMessage({texts: run(...data, expand)}); }'
       + 'catch (error) { self.postMessage({error: error.message}); } };';
     const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
@@ -401,7 +414,7 @@ export function initMaweTextProcess() {
           if (step.enabled === false) continue;
           const operation = prepareStep(step, assMode);
           if (step.type !== 'replace') {
-            texts = texts.map((value) => global.AsrEditorUtils.applyTextProcessing(value,
+            texts = texts.map((value) => AsrEditorUtils.applyTextProcessing(value,
               { ...operation, assSpecialSymbolRule }));
           } else {
             worker ||= makeRegexWorker();
@@ -446,7 +459,7 @@ export function initMaweTextProcess() {
       const filter = button(showUnchanged ? '仅看有变化的字幕' : '查看全部字幕', () => {
         showUnchanged = !showUnchanged;
         showResult(rows);
-        preview.querySelector('.text-process-preview-filter')?.focus();
+        /** @type {HTMLElement} */ (preview.querySelector('.text-process-preview-filter'))?.focus();
       });
       filter.className = 'text-process-preview-filter';
       filter.setAttribute('aria-pressed', String(showUnchanged));
@@ -573,8 +586,9 @@ export function initMaweTextProcess() {
       && prefilledStep.enabled === undefined;
   }
 
+  /** @param {{replaceSelection?: number[]}} [options] */
   async function openTextProcessModal({ replaceSelection } = {}) {
-    if (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
+    if (!AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
     }
@@ -595,7 +609,7 @@ export function initMaweTextProcess() {
       setPresetScope('selected');
       renderPresets();
       renderSteps();
-      stepList.querySelector('.processing-replace-fields input')?.focus();
+      /** @type {HTMLElement} */ (stepList.querySelector('.processing-replace-fields input'))?.focus();
     } else {
       loadDefault();
       $('text-preset-add-rule').focus();
@@ -603,7 +617,7 @@ export function initMaweTextProcess() {
     const fingerprint = () => JSON.stringify([steps, selectedPreset]);
     const initial = fingerprint();
     const initialScope = selectedOnly.checked;
-    const presetsBeforeRefresh = window.MaweProcessing.library.presets;
+    const presetsBeforeRefresh = MaweProcessing.library.presets;
     const ok = await refresh();
     if (session !== current) return;
     reading = false;
@@ -618,7 +632,7 @@ export function initMaweTextProcess() {
     else {
       // 比较刷新前后已规范化的预设步骤，而不是把用户正在编辑的草稿拿来比较。
       const previous = presetsBeforeRefresh.find(({ id }) => id === selectedPreset);
-      const refreshed = window.MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+      const refreshed = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
       if (previous && refreshed && JSON.stringify(previous.steps) !== JSON.stringify(refreshed.steps)) selectedPreset = '';
       renderPresets();
       schedulePreview();
@@ -636,7 +650,7 @@ export function initMaweTextProcess() {
     const changes = result.filter(({ before, after }) => before !== after);
     if (!changes.length) return;
     const mappings = changes.map(({ segment, before, after }) =>
-      global.AsrEditorUtils.reconcileTimedTextItems(before, segment.items, after));
+      AsrEditorUtils.reconcileTimedTextItems(before, segment.items, after));
     closeTextProcessModal();
     MaweCommands.run('文本处理', (command) => {
       let affected = 0;
@@ -663,7 +677,7 @@ export function initMaweTextProcess() {
   $('text-process-cancel').addEventListener('click', () => closeTextProcessModal());
   modal.addEventListener('click', (event) => {
     for (const menu of [presetFileMenu, projectMenu]) {
-      if (!menu.contains(event.target)) menu.open = false;
+      if (!menu.contains(/** @type {Node} */ (event.target))) menu.open = false;
     }
     if (event.target === modal) closeTextProcessModal();
   });
@@ -687,11 +701,11 @@ export function initMaweTextProcess() {
     steps = [...existing, createStep(stepType.value)];
     renderSteps();
     const row = stepList.lastElementChild;
-    (row?.querySelector('input[type="text"], .text-process-wrap-preset-buttons button') || row?.querySelector('input'))?.focus();
+    (/** @type {HTMLElement} */ (row?.querySelector('input[type="text"], .text-process-wrap-preset-buttons button') || row?.querySelector('input')))?.focus();
   });
   presetSelect.addEventListener('change', () => {
     selectedPreset = presetSelect.value;
-    const preset = window.MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+    const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
     steps = structuredClone(preset?.steps || []);
     if (preset) setPresetScope(preset.scope);
     else prefillEmptySteps();
@@ -699,7 +713,7 @@ export function initMaweTextProcess() {
   });
   const currentScope = () => selectedOnly.checked ? 'selected' : 'all';
   $('text-preset-save-as').addEventListener('click', () => {
-    const name = global.prompt('预设名称')?.trim();
+    const name = editorDialogs.prompt('预设名称')?.trim();
     if (!name) return;
     const id = crypto.randomUUID();
     const recipe = structuredClone(steps);
@@ -714,13 +728,13 @@ export function initMaweTextProcess() {
   });
   $('text-preset-rename').addEventListener('click', () => {
     const id = selectedPreset;
-    const current = window.MaweProcessing.library.presets.find((preset) => preset.id === id);
-    const name = global.prompt('预设名称', current.name)?.trim();
+    const current = MaweProcessing.library.presets.find((preset) => preset.id === id);
+    const name = editorDialogs.prompt('预设名称', current.name)?.trim();
     if (name) void saveLibrary((draft) => { draft.presets.find((preset) => preset.id === id).name = name; });
   });
   $('text-preset-delete').addEventListener('click', () => {
     const id = selectedPreset;
-    if (!global.confirm('删除这个预设？')) return;
+    if (!editorDialogs.confirm('删除这个预设？')) return;
     void saveLibrary((draft) => {
       draft.presets = draft.presets.filter((preset) => preset.id !== id);
       if (draft.defaultPresetId === id) draft.defaultPresetId = null;
@@ -733,7 +747,7 @@ export function initMaweTextProcess() {
 
   // 导入单条预设时生成不与现有预设重名的名称（「原名 (2)」「原名 (3)」…）。
   function uniquePresetName(name) {
-    const names = new Set(window.MaweProcessing.library.presets.map(({ name }) => name));
+    const names = new Set(MaweProcessing.library.presets.map(({ name }) => name));
     if (!names.has(name)) return name;
     for (let index = 2; ; index++) {
       const candidate = name + ' (' + index + ')';
@@ -818,13 +832,13 @@ export function initMaweTextProcess() {
 
   $('text-preset-export-current').addEventListener('click', async () => {
     dismissMenu(presetFileMenu);
-    const preset = window.MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+    const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
     if (!preset) return;
     await exportPresetFile(preset.name + '.json', preset);
   });
   $('text-preset-export-library').addEventListener('click', async () => {
     dismissMenu(presetFileMenu);
-    const { schema, presets, defaultPresetId } = window.MaweProcessing.library;
+    const { schema, presets, defaultPresetId } = MaweProcessing.library;
     await exportPresetFile('处理预设库.json', { schema, presets, defaultPresetId });
   });
   $('text-preset-import-button').addEventListener('click', () => {
@@ -940,13 +954,13 @@ export function initMaweTextProcess() {
   function applyWrapChars(scope, left, right, label = '左右添加字符', { warnWordTimings = true } = {}) {
     if (MaweInlineEdit.editingState) finishEdit(true);
     const indexes = [...new Set((Array.isArray(scope) ? scope : [])
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length))]
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length))]
       .sort((a, b) => a - b);
     if (!indexes.length) return;
-    const { wrapCharsAroundText } = window.AsrEditorUtils;
+    const { wrapCharsAroundText } = AsrEditorUtils;
     const previews = indexes.map((index) => ({
       index,
-      ...wrapCharsAroundText(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.text, left, right,
+      ...wrapCharsAroundText(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.text, left, right,
         MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule),
     }));
     const skipped = previews.filter((row) => row.skipped).length;
@@ -958,12 +972,12 @@ export function initMaweTextProcess() {
       let changed = 0, staleWordTimings = 0;
       previews.forEach((row) => {
         if (!row.changed) return;
-        const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[row.index];
+        const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[row.index];
         const previousText = segment.text;
         segment.text = row.text;
         segment._dirty = true;
         changed += 1;
-        if (window.AsrEditorUtils.planWordTimingTextSync(segment, previousText)?.warn) staleWordTimings += 1;
+        if (AsrEditorUtils.planWordTimingTextSync(segment, previousText)?.warn) staleWordTimings += 1;
       });
       command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
       MaweHistory.updateUndoRedoButtons();
@@ -981,7 +995,7 @@ export function initMaweTextProcess() {
   function openWrapCharsModal(scope) {
     if (MaweInlineEdit.editingState) finishEdit(true);
     wrapCharsScope = (Array.isArray(scope) ? scope : [...MaweSelection.selectedIdxs])
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
     if (!wrapCharsScope.length) {
       MaweHint.flashHint('请先选择要处理的字幕', 'invalid');
       return;
@@ -1001,15 +1015,14 @@ export function initMaweTextProcess() {
     wrapCharsModal?.classList.remove('show');
   }
 
-  global.MaweTextProcess = Object.freeze({
+  MaweTextProcess = Object.freeze({
     wrapCharsModal, wrapCharsLeftInput, wrapCharsRightInput,
     get wrapCharsScope() { return wrapCharsScope; },
     openTextProcessModal, applyWrapChars, openWrapCharsModal, closeWrapCharsModal,
   });
-})(window);
 }
 
-export function openTextProcessModal(...args) { return window.MaweTextProcess.openTextProcessModal(...args); }
-export function applyWrapChars(...args) { return window.MaweTextProcess.applyWrapChars(...args); }
-export function openWrapCharsModal(...args) { return window.MaweTextProcess.openWrapCharsModal(...args); }
-export function closeWrapCharsModal(...args) { return window.MaweTextProcess.closeWrapCharsModal(...args); }
+export function openTextProcessModal(...args) { return MaweTextProcess.openTextProcessModal(...args); }
+export function applyWrapChars(...args) { return MaweTextProcess.applyWrapChars(...args); }
+export function openWrapCharsModal(...args) { return MaweTextProcess.openWrapCharsModal(...args); }
+export function closeWrapCharsModal(...args) { return MaweTextProcess.closeWrapCharsModal(...args); }

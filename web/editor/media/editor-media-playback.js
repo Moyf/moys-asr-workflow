@@ -1,150 +1,155 @@
+import { MaweCueListAnchor } from '../cues/editor-cue-list-anchor.js';
+import { MaweShortcuts } from '../cues/editor-shortcuts.js';
+import { notifyAutoLoadedMediaReady, flushPendingMediaSeek } from '../cues/editor-text-cleanup.js';
+import { MaweTimeline } from '../cues/editor-timeline.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAssFrame } from '../styles/editor-wiring-ass-frame.js';
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweAudioProcessing } from './editor-audio-processing.js';
+import { MaweGapPlayback } from './editor-gap-playback.js';
+import { MaweJklPlayback } from './editor-jkl.js';
+import { MawePlaybackLoop } from './editor-playback-loop.js';
 import { observeAssSubtitlePreviewPlayer, scheduleAssSubtitlePreviewRefresh } from './editor-ass-preview-refresh.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
 
 export function isPlaybackActive() {
   const player = MaweCoreState.player;
-  return Boolean(MaweJklPlayback.jklReversePlaying || (player && !player.paused) || window.MaweGapPlayback?.pendingPlayback);
+  return Boolean(MaweJklPlayback.jklReversePlaying || (player && !player.paused) || MaweGapPlayback?.pendingPlayback);
 }
 
 export function pausePlaybackAfterMouseClick() {
   if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
   if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
-  window.MaweGapPlayback?.cancelPendingPlayback();
+  MaweGapPlayback?.cancelPendingPlayback();
   MaweCoreState.player?.pause();
   MaweMediaPlayback.syncMediaControls();
 }
 
-export function initMediaPlaybackModule() {
 // 媒体播放：播放器事件、占位符、速率与 seek 控制。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMediaPlayback 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweMediaPlayback(global) {
-  'use strict';
+function syncPlayerPlaceholder() {
+  if (!MaweDom.playerEmpty) return;
+  const source = MaweCoreState.player?.currentSrc
+    || MaweCoreState.player?.getAttribute('src')
+    || MaweCoreState.player?.querySelector('source')?.getAttribute('src')
+    || '';
+  const hasMedia = Boolean(String(source).trim());
+  MaweDom.playerEmpty.classList.toggle('hidden', hasMedia);
+  MaweDom.playerWrap?.classList.toggle('empty-state', !hasMedia);
+  MaweCoreState.waveformEditor?.setMediaAvailable(hasMedia);
+}
 
 
 
-  function syncPlayerPlaceholder() {
-    if (!MaweDom.playerEmpty) return;
-    const source = MaweCoreState.player?.currentSrc
-      || MaweCoreState.player?.getAttribute('src')
-      || MaweCoreState.player?.querySelector('source')?.getAttribute('src')
-      || '';
-    const hasMedia = Boolean(String(source).trim());
-    MaweDom.playerEmpty.classList.toggle('hidden', hasMedia);
-    MaweDom.playerWrap?.classList.toggle('empty-state', !hasMedia);
-    MaweCoreState.waveformEditor?.setMediaAvailable(hasMedia);
+function togglePlayback() {
+  if (!hasLoadedMedia()) {
+    MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
+    return;
   }
-
-
-
-  function togglePlayback() {
-    if (!hasLoadedMedia()) {
-      MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
-      return;
-    }
-    if (window.MaweGapPlayback?.cancelPendingPlayback()) {
-      syncMediaControls();
-      return;
-    }
-    if (MaweJklPlayback.jklReversePlaying) {
-      MaweJklPlayback.stopJklReversePlayback();
-      return;
-    }
-    if (MaweJklPlayback.isJklDirectionMode() && MaweJklPlayback.jklPlaybackRate < 0) {
-      MaweJklPlayback.startJklReversePlayback();
-      return;
-    }
-    if (MaweCoreState.player.paused) {
-      window.MaweGapPlayback?.beforePlay(MaweCoreState.player);
-      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
-      if (MaweJklPlayback.isJklDirectionMode()) MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(MaweJklPlayback.jklPlaybackRate));
-      const promise = MaweCoreState.player.play();
-      if (promise && promise.catch) promise.catch(() => {});
-    } else {
-      MaweCoreState.player.pause();
-    }
+  if (MaweGapPlayback?.cancelPendingPlayback()) {
     syncMediaControls();
+    return;
   }
+  if (MaweJklPlayback.jklReversePlaying) {
+    MaweJklPlayback.stopJklReversePlayback();
+    return;
+  }
+  if (MaweJklPlayback.isJklDirectionMode() && MaweJklPlayback.jklPlaybackRate < 0) {
+    MaweJklPlayback.startJklReversePlayback();
+    return;
+  }
+  if (MaweCoreState.player.paused) {
+    MaweGapPlayback?.beforePlay(MaweCoreState.player);
+    void MaweAudioProcessing?.applyPreview({ gesture: true });
+    if (MaweJklPlayback.isJklDirectionMode()) MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(MaweJklPlayback.jklPlaybackRate));
+    const promise = MaweCoreState.player.play();
+    if (promise && promise.catch) promise.catch(() => {});
+  } else {
+    MaweCoreState.player.pause();
+  }
+  syncMediaControls();
+}
 
 
 
-  function hasLoadedMedia() {
-    return Boolean(
-      MaweCoreState.player.currentSrc
-      || MaweCoreState.player.getAttribute('src')
-      || MaweCoreState.player.querySelector('source')?.getAttribute('src'),
+function hasLoadedMedia() {
+  return Boolean(
+    MaweCoreState.player.currentSrc
+    || MaweCoreState.player.getAttribute('src')
+    || MaweCoreState.player.querySelector('source')?.getAttribute('src'),
+  );
+}
+
+
+
+function formatMediaTime(seconds) {
+  if (MaweTimeline.timelineIsFrameMode()) {
+    return MaweTimeline.formatTimelineTimecode(
+      (Number(seconds) || 0) * 1000,
+      MaweTimeline.projectTimebase().fps,
+      MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
     );
   }
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remaining = total % 60;
+  const pad = (value) => String(value).padStart(2, '0');
+  return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
+}
 
 
 
-  function formatMediaTime(seconds) {
-    if (MaweTimeline.timelineIsFrameMode()) {
-      return MaweTimeline.formatTimelineTimecode(
-        (Number(seconds) || 0) * 1000,
-        MaweTimeline.projectTimebase().fps,
-        MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
-      );
-    }
-    const total = Math.max(0, Math.floor(Number(seconds) || 0));
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const remaining = total % 60;
-    const pad = (value) => String(value).padStart(2, '0');
-    return hours ? `${hours}:${pad(minutes)}:${pad(remaining)}` : `${pad(minutes)}:${pad(remaining)}`;
+function mediaSeekStepLabel(value = MaweTimeline.timelineMediaSeekStepValue()) {
+  return MaweTimeline.timelineIsFrameMode() ? `${value}F` : `${value}ms`;
+}
+
+
+
+function refreshMediaSeekStepHelp() {
+  if (MaweDom.helpMediaSeekStep) MaweDom.helpMediaSeekStep.textContent = mediaSeekStepLabel();
+}
+
+
+
+function refreshMediaSeekControlLabels() {
+  const value = MaweTimeline.timelineMediaSeekStepValue();
+  const unit = MaweTimeline.timelineIsFrameMode() ? 'F' : 'ms';
+  const language = MAWE_I18N?.language === 'en' ? 'en' : 'zh';
+  const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
+  const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
+  if (MaweDom.mediaStepBack) {
+    MaweDom.mediaStepBack.setAttribute('aria-label', backLabel);
+    MaweDom.mediaStepBack.title = backLabel;
   }
-
-
-
-  function mediaSeekStepLabel(value = MaweTimeline.timelineMediaSeekStepValue()) {
-    return MaweTimeline.timelineIsFrameMode() ? `${value}F` : `${value}ms`;
+  if (MaweDom.mediaStepForward) {
+    MaweDom.mediaStepForward.setAttribute('aria-label', forwardLabel);
+    MaweDom.mediaStepForward.title = forwardLabel;
   }
+}
 
 
 
-  function refreshMediaSeekStepHelp() {
-    if (MaweDom.helpMediaSeekStep) MaweDom.helpMediaSeekStep.textContent = mediaSeekStepLabel();
+function syncPlaybackRateOption(rate) {
+  if (!MaweDom.mediaPlaybackRate || !Number.isFinite(rate)) return;
+  MaweDom.mediaPlaybackRate.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
+  const value = String(rate);
+  let option = Array.from(MaweDom.mediaPlaybackRate.options).find((item) => item.value === value);
+  if (!option) {
+    option = document.createElement('option');
+    option.value = value;
+    option.textContent = MaweShortcuts.fmtRate(rate);
+    option.dataset.generated = 'true';
+    MaweDom.mediaPlaybackRate.append(option);
   }
+  MaweDom.mediaPlaybackRate.value = value;
+}
 
 
 
-  function refreshMediaSeekControlLabels() {
-    const value = MaweTimeline.timelineMediaSeekStepValue();
-    const unit = MaweTimeline.timelineIsFrameMode() ? 'F' : 'ms';
-    const language = window.MAWE_I18N?.language === 'en' ? 'en' : 'zh';
-    const backLabel = language === 'en' ? `Back ${value}${unit}` : `后退 ${value}${unit}`;
-    const forwardLabel = language === 'en' ? `Forward ${value}${unit}` : `前进 ${value}${unit}`;
-    if (MaweDom.mediaStepBack) {
-      MaweDom.mediaStepBack.setAttribute('aria-label', backLabel);
-      MaweDom.mediaStepBack.title = backLabel;
-    }
-    if (MaweDom.mediaStepForward) {
-      MaweDom.mediaStepForward.setAttribute('aria-label', forwardLabel);
-      MaweDom.mediaStepForward.title = forwardLabel;
-    }
-  }
-
-
-
-  function syncPlaybackRateOption(rate) {
-    if (!MaweDom.mediaPlaybackRate || !Number.isFinite(rate)) return;
-    MaweDom.mediaPlaybackRate.querySelectorAll('option[data-generated="true"]').forEach((option) => option.remove());
-    const value = String(rate);
-    let option = Array.from(MaweDom.mediaPlaybackRate.options).find((item) => item.value === value);
-    if (!option) {
-      option = document.createElement('option');
-      option.value = value;
-      option.textContent = MaweShortcuts.fmtRate(rate);
-      option.dataset.generated = 'true';
-      MaweDom.mediaPlaybackRate.append(option);
-    }
-    MaweDom.mediaPlaybackRate.value = value;
-  }
-
-
-
-  function syncMediaControls() {
-  window.MaweAudioProcessing?.render();
+function syncMediaControls() {
+  MaweAudioProcessing?.render();
   const fullscreenPreview = Boolean(MaweDom.playerWrap && document.fullscreenElement === MaweDom.playerWrap);
   const wasFullscreenPreview = MaweDom.playerWrap?.classList.contains('fullscreen-preview') === true;
   MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
@@ -184,76 +189,76 @@ export function initMediaPlaybackModule() {
 
 
 
-  function stopPlaybackRefresh(mediaElement = null) {
-    if (mediaElement && MaweCoreState.playbackFramePlayer && MaweCoreState.playbackFramePlayer !== mediaElement) return;
-    if (MaweCoreState.playbackFrameId) cancelAnimationFrame(MaweCoreState.playbackFrameId);
+function stopPlaybackRefresh(mediaElement = null) {
+  if (mediaElement && MaweCoreState.playbackFramePlayer && MaweCoreState.playbackFramePlayer !== mediaElement) return;
+  if (MaweCoreState.playbackFrameId) cancelAnimationFrame(MaweCoreState.playbackFrameId);
+  MaweCoreState.playbackFrameId = 0;
+  MaweCoreState.playbackFramePlayer = null;
+}
+
+
+
+function startPlaybackRefresh(mediaElement) {
+  if (!mediaElement || mediaElement !== MaweCoreState.player || mediaElement.paused || mediaElement.ended) return;
+  if (MaweCoreState.playbackFramePlayer !== mediaElement) {
+    stopPlaybackRefresh();
+    MaweCoreState.playbackFramePlayer = mediaElement;
+  }
+  if (MaweCoreState.playbackFrameId) return;
+  const refresh = () => {
     MaweCoreState.playbackFrameId = 0;
-    MaweCoreState.playbackFramePlayer = null;
-  }
-
-
-
-  function startPlaybackRefresh(mediaElement) {
-    if (!mediaElement || mediaElement !== MaweCoreState.player || mediaElement.paused || mediaElement.ended) return;
-    if (MaweCoreState.playbackFramePlayer !== mediaElement) {
-      stopPlaybackRefresh();
-      MaweCoreState.playbackFramePlayer = mediaElement;
-    }
-    if (MaweCoreState.playbackFrameId) return;
-    const refresh = () => {
-      MaweCoreState.playbackFrameId = 0;
-      if (MaweCoreState.playbackFramePlayer !== mediaElement || MaweCoreState.player !== mediaElement
-          || mediaElement.paused || mediaElement.ended) {
-        if (MaweCoreState.playbackFramePlayer === mediaElement) MaweCoreState.playbackFramePlayer = null;
-        if (MaweCoreState.player === mediaElement) {
-          MawePlaybackLoop.update();
-          MaweCoreState.waveformEditor?.updatePlayback();
-        }
-        return;
+    if (MaweCoreState.playbackFramePlayer !== mediaElement || MaweCoreState.player !== mediaElement
+        || mediaElement.paused || mediaElement.ended) {
+      if (MaweCoreState.playbackFramePlayer === mediaElement) MaweCoreState.playbackFramePlayer = null;
+      if (MaweCoreState.player === mediaElement) {
+        MawePlaybackLoop.update();
+        MaweCoreState.waveformEditor?.updatePlayback();
       }
-      // 播放中只更新当前字幕/预览和波形播放头；不重绘波形画布、不重建字幕列表。
-      MawePlaybackLoop.updatePlaybackFrame();
-      MaweCoreState.playbackFrameId = requestAnimationFrame(refresh);
-    };
+      return;
+    }
+    // 播放中只更新当前字幕/预览和波形播放头；不重绘波形画布、不重建字幕列表。
+    MawePlaybackLoop.updatePlaybackFrame();
     MaweCoreState.playbackFrameId = requestAnimationFrame(refresh);
-  }
+  };
+  MaweCoreState.playbackFrameId = requestAnimationFrame(refresh);
+}
 
 
 
-  function bindPlayerEvents(mediaElement) {
-    if (!mediaElement) return;
-    window.MaweAudioProcessing?.bindPlayer(mediaElement);
-    window.MaweGapPlayback?.bindPlayer(mediaElement);
-    window.MaweAssFrame?.bindPlayer(mediaElement);
-    observeAssSubtitlePreviewPlayer(mediaElement);
-    mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
-    mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
-    mediaElement.addEventListener('seeking', () => {
-      // 试听自己的起点 seek 不取消；之后的任何 seek（含手动定位）都取消边界。
-      if (auditionSeekPending) { auditionSeekPending = false; return; }
-      auditionStopSeconds = null;
-      clearAuditionStopTimer();
-    });
-    ['pause', 'ended', 'emptied'].forEach((name) => mediaElement.addEventListener(name, () => {
-      auditionSeekPending = false;
-      auditionStopSeconds = null;
-      clearAuditionStopTimer();
-    }));
-    mediaElement.addEventListener('seeked', () => { auditionSeekPending = false; });
-    mediaElement.addEventListener('ratechange', () => scheduleAuditionStop(mediaElement));
-    mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
-    mediaElement.addEventListener('loadedmetadata', () => {
-      MaweTimeline.captureProjectVideoDimensions(mediaElement);
-      scheduleAssSubtitlePreviewRefresh();
-      MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
-      MaweTextCleanup.flushPendingMediaSeek(mediaElement);
-    });
-    mediaElement.addEventListener('canplay', () => MaweTextCleanup.flushPendingMediaSeek(mediaElement));
-    mediaElement.addEventListener('progress', () => MaweTextCleanup.flushPendingMediaSeek(mediaElement));
+function bindPlayerEvents(mediaElement) {
+  if (!mediaElement) return;
+  MaweAudioProcessing?.bindPlayer(mediaElement);
+  MaweGapPlayback?.bindPlayer(mediaElement);
+  MaweAssFrame?.bindPlayer(mediaElement);
+  observeAssSubtitlePreviewPlayer(mediaElement);
+  mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
+  mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
+  mediaElement.addEventListener('seeking', () => {
+    // 试听自己的起点 seek 不取消；之后的任何 seek（含手动定位）都取消边界。
+    if (auditionSeekPending) { auditionSeekPending = false; return; }
+    auditionStopSeconds = null;
+    clearAuditionStopTimer();
+  });
+  ['pause', 'ended', 'emptied'].forEach((name) => mediaElement.addEventListener(name, () => {
+    auditionSeekPending = false;
+    auditionStopSeconds = null;
+    clearAuditionStopTimer();
+  }));
+  mediaElement.addEventListener('seeked', () => { auditionSeekPending = false; });
+  mediaElement.addEventListener('ratechange', () => scheduleAuditionStop(mediaElement));
+  mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
+  mediaElement.addEventListener('loadedmetadata', () => {
+    MaweTimeline.captureProjectVideoDimensions(mediaElement);
+    scheduleAssSubtitlePreviewRefresh();
+    notifyAutoLoadedMediaReady(mediaElement);
+    flushPendingMediaSeek(mediaElement);
+  });
+  mediaElement.addEventListener('canplay', () => flushPendingMediaSeek(mediaElement));
+  mediaElement.addEventListener('progress', () => flushPendingMediaSeek(mediaElement));
 mediaElement.addEventListener('play', () => {
-  // 开始播放可驱动已启用的跟随，但不会恢复被用户关闭的跟随状态。
-  if (MaweCoreState.player === mediaElement && MaweCueListAnchor.cueListScroll.following) MaweCueListAnchor.cueListScroll.playbackKey = null;
-  startPlaybackRefresh(mediaElement);
+// 开始播放可驱动已启用的跟随，但不会恢复被用户关闭的跟随状态。
+if (MaweCoreState.player === mediaElement && MaweCueListAnchor.cueListScroll.following) MaweCueListAnchor.cueListScroll.playbackKey = null;
+startPlaybackRefresh(mediaElement);
 });
 mediaElement.addEventListener('playing', () => startPlaybackRefresh(mediaElement));
 mediaElement.addEventListener('pause', () => {
@@ -261,146 +266,144 @@ stopPlaybackRefresh(mediaElement);
 if (MaweCoreState.player !== mediaElement) return;
 if (MaweCueListAnchor.cueListScroll.owner === 'follow') MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
 MawePlaybackLoop.update();
-      MaweCoreState.waveformEditor?.updatePlayback();
-    });
-    mediaElement.addEventListener('ended', () => {
-      stopPlaybackRefresh(mediaElement);
-      if (MaweCoreState.player !== mediaElement) return;
-      MawePlaybackLoop.update();
-      MaweCoreState.waveformEditor?.updatePlayback();
-    });
-    mediaElement.addEventListener('emptied', () => stopPlaybackRefresh(mediaElement));
-    if (mediaElement.tagName === 'VIDEO') {
-      mediaElement.addEventListener('click', (event) => {
-        if (event.defaultPrevented) return;
-        togglePlayback();
-      });
-    }
-    ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'playing', 'pause', 'ended', 'volumechange', 'ratechange', 'emptied']
-      .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
-    if (mediaElement.readyState >= 1) {
-      queueMicrotask(() => {
-        MaweTimeline.captureProjectVideoDimensions(mediaElement);
-        MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
-        MaweTextCleanup.flushPendingMediaSeek(mediaElement);
-      });
-    }
-    syncMediaControls();
-  }
-
-
-
-  function setPlayerCurrentTime(seconds, { preserveAudition = false } = {}) {
-    // Cancel synchronously: a queued timeupdate can arrive before seeking and
-    // otherwise apply the old audition boundary to the user's new position.
-    if (!preserveAudition) {
-      auditionSeekPending = false;
-      auditionStopSeconds = null;
-      clearAuditionStopTimer();
-    }
-    const player = MaweCoreState.player;
-    player.currentTime = seconds;
-    window.MaweGapPlayback?.retargetPendingSeek(player);
-  }
-
-  function seekMediaBy(deltaSeconds) {
-    if (!hasLoadedMedia()) return;
-    const duration = Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration : Infinity;
-    setPlayerCurrentTime(Math.max(0, Math.min(duration, MaweCoreState.player.currentTime + deltaSeconds)));
+    MaweCoreState.waveformEditor?.updatePlayback();
+  });
+  mediaElement.addEventListener('ended', () => {
+    stopPlaybackRefresh(mediaElement);
+    if (MaweCoreState.player !== mediaElement) return;
     MawePlaybackLoop.update();
-    syncMediaControls();
+    MaweCoreState.waveformEditor?.updatePlayback();
+  });
+  mediaElement.addEventListener('emptied', () => stopPlaybackRefresh(mediaElement));
+  if (mediaElement.tagName === 'VIDEO') {
+    mediaElement.addEventListener('click', (event) => {
+      if (event.defaultPrevented) return;
+      togglePlayback();
+    });
   }
+  ['timeupdate', 'loadedmetadata', 'durationchange', 'play', 'playing', 'pause', 'ended', 'volumechange', 'ratechange', 'emptied']
+    .forEach((eventName) => mediaElement.addEventListener(eventName, syncMediaControls));
+  if (mediaElement.readyState >= 1) {
+    queueMicrotask(() => {
+      MaweTimeline.captureProjectVideoDimensions(mediaElement);
+      notifyAutoLoadedMediaReady(mediaElement);
+      flushPendingMediaSeek(mediaElement);
+    });
+  }
+  syncMediaControls();
+}
 
 
 
-  function seekMediaTo(timeSeconds, { preserveAudition = false } = {}) {
-    if (!hasLoadedMedia()) return false;
-    const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0
-      ? MaweCoreState.player.duration : null;
-    if (!Number.isFinite(duration)) return false;
-    MaweJklPlayback.stopJklReversePlayback({ render: false });
-    const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
+function setPlayerCurrentTime(seconds, { preserveAudition = false } = {}) {
+  // Cancel synchronously: a queued timeupdate can arrive before seeking and
+  // otherwise apply the old audition boundary to the user's new position.
+  if (!preserveAudition) {
+    auditionSeekPending = false;
+    auditionStopSeconds = null;
+    clearAuditionStopTimer();
+  }
+  const player = MaweCoreState.player;
+  player.currentTime = seconds;
+  MaweGapPlayback?.retargetPendingSeek(player);
+}
+
+function seekMediaBy(deltaSeconds) {
+  if (!hasLoadedMedia()) return;
+  const duration = Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration : Infinity;
+  setPlayerCurrentTime(Math.max(0, Math.min(duration, MaweCoreState.player.currentTime + deltaSeconds)));
+  MawePlaybackLoop.update();
+  syncMediaControls();
+}
+
+
+
+function seekMediaTo(timeSeconds, { preserveAudition = false } = {}) {
+  if (!hasLoadedMedia()) return false;
+  const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0
+    ? MaweCoreState.player.duration : null;
+  if (!Number.isFinite(duration)) return false;
+  MaweJklPlayback.stopJklReversePlayback({ render: false });
+  const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
 setPlayerCurrentTime(targetSeconds, { preserveAudition });
 MawePlaybackLoop.update();
 MaweCueListAnchor.resumeCueListFollowing();
 MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
-    MaweCoreState.waveformEditor?.updatePlayback();
-    syncMediaControls();
-    return true;
-  }
+  MaweCoreState.waveformEditor?.updatePlayback();
+  syncMediaControls();
+  return true;
+}
 
   // 试听：从 startMs 播放到 endMs 自动暂停一次；任何手动 seek/暂停都会取消。
   // timeupdate 最长 ~250ms 才触发一次，只做兜底；边界主要靠精确定时暂停。
-  let auditionStopSeconds = null;
-  let auditionSeekPending = false;
-  let auditionStopTimer = 0;
-  function clearAuditionStopTimer() {
-    if (auditionStopTimer) { clearTimeout(auditionStopTimer); auditionStopTimer = 0; }
+let auditionStopSeconds = null;
+let auditionSeekPending = false;
+let auditionStopTimer = 0;
+function clearAuditionStopTimer() {
+  if (auditionStopTimer) { clearTimeout(auditionStopTimer); auditionStopTimer = 0; }
+}
+function stopAtAuditionBoundary(mediaElement) {
+  auditionStopSeconds = null;
+  clearAuditionStopTimer();
+  if (!mediaElement.paused) mediaElement.pause();
+}
+function auditionRange(startMs, endMs) {
+  if (!hasLoadedMedia()) {
+    MaweHint.flashHint('请先导入媒体，然后才能试听', 'invalid');
+    return false;
   }
-  function stopAtAuditionBoundary(mediaElement) {
+  const start = Math.max(0, (Number(startMs) || 0) / 1000);
+  const stop = (Number(endMs) || 0) / 1000;
+  if (!(stop > start)) return false;
+  MaweGapPlayback?.cancelPendingPlayback();
+  // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
+  auditionStopSeconds = stop;
+  auditionSeekPending = true;
+  if (!seekMediaTo(start, { preserveAudition: true })) {
+    auditionSeekPending = false;
     auditionStopSeconds = null;
     clearAuditionStopTimer();
-    if (!mediaElement.paused) mediaElement.pause();
+    return false;
   }
-  function auditionRange(startMs, endMs) {
-    if (!hasLoadedMedia()) {
-      MaweHint.flashHint('请先导入媒体，然后才能试听', 'invalid');
-      return false;
-    }
-    const start = Math.max(0, (Number(startMs) || 0) / 1000);
-    const stop = (Number(endMs) || 0) / 1000;
-    if (!(stop > start)) return false;
-    window.MaweGapPlayback?.cancelPendingPlayback();
-    // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
-    auditionStopSeconds = stop;
-    auditionSeekPending = true;
-    if (!seekMediaTo(start, { preserveAudition: true })) {
-      auditionSeekPending = false;
-      auditionStopSeconds = null;
-      clearAuditionStopTimer();
-      return false;
-    }
-    scheduleAuditionStop(MaweCoreState.player);
-    if (MaweCoreState.player.paused) togglePlayback();
-    return true;
-  }
-  function scheduleAuditionStop(mediaElement) {
-    if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
-    const rate = Number(mediaElement.playbackRate) || 1;
-    const delayMs = Math.max(0, (auditionStopSeconds - mediaElement.currentTime) * 1000 / rate);
-    clearAuditionStopTimer();
-    auditionStopTimer = setTimeout(() => {
-      auditionStopTimer = 0;
-      if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
-      if (mediaElement.paused) { auditionStopSeconds = null; return; }
-      if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
-      else scheduleAuditionStop(mediaElement);
-    }, delayMs + 1);
-  }
-  function watchAuditionBoundary(mediaElement) {
-    if (auditionStopSeconds === null) return;
-    if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; clearAuditionStopTimer(); return; }
-    if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
-  }
-
-  global.MaweMediaPlayback = Object.freeze({
-    syncPlayerPlaceholder,
-    togglePlayback,
-    hasLoadedMedia,
-    formatMediaTime,
-    mediaSeekStepLabel,
-    refreshMediaSeekStepHelp,
-    refreshMediaSeekControlLabels,
-    syncPlaybackRateOption,
-    syncMediaControls,
-    stopPlaybackRefresh,
-    startPlaybackRefresh,
-    bindPlayerEvents,
-    setPlayerCurrentTime,
-    seekMediaBy,
-    seekMediaTo,
-    get isAuditioning() { return auditionStopSeconds !== null; },
-    auditionRange
-  });
-})(typeof window !== 'undefined' ? window : globalThis);
+  scheduleAuditionStop(MaweCoreState.player);
+  if (MaweCoreState.player.paused) togglePlayback();
+  return true;
 }
+function scheduleAuditionStop(mediaElement) {
+  if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
+  const rate = Number(mediaElement.playbackRate) || 1;
+  const delayMs = Math.max(0, (auditionStopSeconds - mediaElement.currentTime) * 1000 / rate);
+  clearAuditionStopTimer();
+  auditionStopTimer = setTimeout(() => {
+    auditionStopTimer = 0;
+    if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
+    if (mediaElement.paused) { auditionStopSeconds = null; return; }
+    if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
+    else scheduleAuditionStop(mediaElement);
+  }, delayMs + 1);
+}
+function watchAuditionBoundary(mediaElement) {
+  if (auditionStopSeconds === null) return;
+  if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; clearAuditionStopTimer(); return; }
+  if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
+}
+
+export const MaweMediaPlayback = Object.freeze({
+  syncPlayerPlaceholder,
+  togglePlayback,
+  hasLoadedMedia,
+  formatMediaTime,
+  mediaSeekStepLabel,
+  refreshMediaSeekStepHelp,
+  refreshMediaSeekControlLabels,
+  syncPlaybackRateOption,
+  syncMediaControls,
+  stopPlaybackRefresh,
+  startPlaybackRefresh,
+  bindPlayerEvents,
+  setPlayerCurrentTime,
+  seekMediaBy,
+  seekMediaTo,
+  get isAuditioning() { return auditionStopSeconds !== null; },
+  auditionRange
+});

@@ -83,7 +83,7 @@ async function monitorServerStatus() {
   serverStatusMonitorInFlight = true;
   let result;
   try {
-    const callBackend = window.MAWLauncher?.callBackend || bridge;
+    const callBackend = launcherRuntime?.callBackend || bridge;
     result = await callBackend("get_server_status", serverPayload());
   } catch (_error) {
     result = { ok: false };
@@ -102,5 +102,5 @@ async function monitorServerStatus() {
 // 使用——那段时间逐行 [runtime] 输出已在自动滚动的列表与面板进度区出现，
 // 黄字再显示同一行会相邻重复。
 const appendLog = (text, { inline = false, quietLatest = false } = {}) => { text = redactSensitive(text); const log = $("log"); const needsSpace = inline && log.textContent && !log.textContent.endsWith("\n"); log.textContent += `${needsSpace ? " " : ""}${text}${inline ? "" : "\n"}`; log.scrollTop = log.scrollHeight; state.lastLogMessage = text; const latest = $("logLatest"); if (quietLatest) { latest.classList.add("hidden"); latest.dataset.inline = "false"; return; } const inlineLatest = inline && latest.dataset.inline === "true"; latest.textContent = inlineLatest ? `${latest.textContent} ${text}` : text; latest.dataset.inline = String(inline); latest.classList.remove("hidden"); };
-function confirmAction(message) { $("batchConfirmMessage").textContent = String(message || ""); $("batchConfirmModal").classList.remove("hidden"); $("batchConfirmYes").focus(); return new Promise((resolve) => { window.MAWLauncher.confirmResolve = resolve; }); }
-function finishConfirm(value) { const resolve = window.MAWLauncher.confirmResolve; window.MAWLauncher.confirmResolve = null; $("batchConfirmModal").classList.add("hidden"); resolve?.(value); }
+function confirmAction(message) { $("batchConfirmMessage").textContent = String(message || ""); $("batchConfirmModal").classList.remove("hidden"); $("batchConfirmYes").focus(); return new Promise((resolve) => { launcherRuntime.confirmResolve = resolve; }); }
+function finishConfirm(value) { const resolve = launcherRuntime.confirmResolve; launcherRuntime.confirmResolve = null; $("batchConfirmModal").classList.add("hidden"); resolve?.(value); }

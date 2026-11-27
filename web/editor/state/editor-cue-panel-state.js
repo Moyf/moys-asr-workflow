@@ -1,6 +1,7 @@
 // 当前字幕面板运行态：面板索引/轨道、撤销暂存与编辑状态复位。
 // 状态由 MaweState 持有；resetCuePanelEditState 可供其他模块静态导入。
-// window.MaweCuePanelState 仍供尚未迁移的代码使用（计划在 G16 退役）。
+import { MaweState } from './editor-state.js';
+export let MaweCuePanelState;
 export function resetCuePanelEditState({ discard = false } = {}) {
   const command = MaweState.panel.cuePanelUndoRecord;
   MaweState.panel.cuePanelUndoPushed = false;
@@ -13,7 +14,7 @@ export function resetCuePanelEditState({ discard = false } = {}) {
 export function initMaweCuePanelState() {
   'use strict';
 
-  window.MaweCuePanelState = Object.freeze({
+  MaweCuePanelState = Object.freeze({
     get gapPreviewRange() { return MaweState.panel.gapPreviewRange; },
     set gapPreviewRange(v) { MaweState.panel.gapPreviewRange = v; },
     get gapRemovePanelDrag() { return MaweState.panel.gapRemovePanelDrag; },
@@ -34,4 +35,6 @@ export function initMaweCuePanelState() {
     set cuePanelCanceling(v) { MaweState.panel.cuePanelCanceling = v; },
     resetCuePanelEditState
   });
+
+
 }

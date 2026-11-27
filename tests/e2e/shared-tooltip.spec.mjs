@@ -44,7 +44,7 @@ test('external title updates refresh the bubble and synchronous hide preserves t
   await expect(page.locator('#tooltip-test')).not.toHaveAttribute('title');
   await page.evaluate(() => {
     document.getElementById('tooltip-test').setAttribute('title', 'newest');
-    window.MaweTooltip.hide();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   });
   await expect(page.locator('#tooltip-test')).toHaveAttribute('data-title', 'newest');
 });
@@ -56,7 +56,7 @@ test('external set/remove does not resurrect a cleared title', async ({ page }) 
     const target = document.getElementById('tooltip-test');
     target.setAttribute('title', 'temporary');
     target.removeAttribute('title');
-    window.MaweTooltip.hide();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   });
   // 转存读取实时 DOM：同步 set+remove 落定时 title 已不在，
   // data-title 保持原值，临时文本既不显示也不会被复活。
@@ -69,7 +69,7 @@ test('external empty-string title clears the stored data-title', async ({ page }
   await expect(page.locator('.mawe-tooltip.show .mawe-tooltip-text')).toBeVisible();
   await page.evaluate(() => {
     document.getElementById('tooltip-test').title = '';
-    window.MaweTooltip.hide();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   });
   await expect(page.locator('#tooltip-test')).not.toHaveAttribute('data-title');
   await expect(page.locator('#tooltip-test')).not.toHaveAttribute('title');

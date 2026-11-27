@@ -1,3 +1,5 @@
+import { MaweDom } from '../ui/editor-dom.js';
+import { MaweSearch } from './editor-search.js';
 import { bindToolbarExportDropdown } from '../ui/editor-export-menus.js';
 import { renderColorFilterMenu, positionColorFilterMenu } from './editor-color-filter.js';
 

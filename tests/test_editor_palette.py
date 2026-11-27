@@ -24,7 +24,8 @@ class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase)
     def test_rendered_page_contains_injected_palette_script(self) -> None:
         page = edit.render_editor_page(**self._minimal_context())
 
-        self.assertIn("window.ASR_EDITOR_PALETTE = ", page)
+        self.assertIn('<script id="maw-editor-palette" type="application/json">', page)
+        self.assertNotIn("window.ASR_EDITOR_PALETTE = ", page)
         self.assertNotIn("__PALETTE_JSON__", page)
         for name, value in COLOR_PALETTE_ALL:
             self.assertIn(json.dumps({"name": name, "value": value}, ensure_ascii=False), page)
@@ -33,9 +34,9 @@ class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase)
         # Local Server rendering remains supported after the standalone entry retires.
         blank = edit.render_empty_editor_page()
 
-        assignment = "window.ASR_EDITOR_PALETTE = "
-        self.assertIn(assignment, blank)
-        injected, _ = json.JSONDecoder().raw_decode(blank.split(assignment, 1)[1])
+        start = '<script id="maw-editor-palette" type="application/json">'
+        self.assertIn(start, blank)
+        injected, _ = json.JSONDecoder().raw_decode(blank.split(start, 1)[1])
         self.assertEqual(
             injected,
             [{"name": name, "value": value} for name, value in COLOR_PALETTE_ALL],

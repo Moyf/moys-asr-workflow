@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { runFcp7PngExport } from '../web/editor/io/editor-fcp7-png.js';
+import vm from 'node:vm';
+import { compileEditorFixture } from './helpers/editor-entry.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+const realUtils = initRealEditorUtils();
+globalThis.AsrEditorUtils = realUtils;
+vm.runInThisContext(await compileEditorFixture([], { exposed: { fcp7Fixture: 'editor/io/editor-fcp7-png.js' } }));
+const { runFcp7PngExport } = globalThis.fcp7Fixture;
 
 function setup(t, handler) {
   const previous = new Map(['window', 'MaweBoot', 'MaweExportSrt', 'fetch'].map(key => [key, globalThis[key]]));
   const config = { fcp7PngJobsUrl: '/jobs', requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'media' };
-  globalThis.window = Object.assign(new EventTarget(), { MaweProjectLoad: { projectBindingEpoch: 1 },
-    AsrEditorUtils: { serializeFcp7PngXml: () => '<xmeml/>' } });
+  globalThis.window = Object.assign(new EventTarget(), { MaweProjectLoad: { projectBindingEpoch: 1 } });
+  // ESM 直连：替换真实模块门面上的序列化函数（vm 夹具时代的 window 存根不再生效）。
+  const originalSerialize = realUtils.serializeFcp7PngXml;
+  realUtils.serializeFcp7PngXml = () => '<xmeml/>';
+  t.after(() => { realUtils.serializeFcp7PngXml = originalSerialize; });
   globalThis.MaweBoot = { SERVER_CONFIG: config };
   globalThis.MaweExportSrt = { currentAssVideoResolution: () => ({ width: 640, height: 360 }) };
   globalThis.fetch = async (url, options) => ({ ok: true, json: async () => handler(url, options) });

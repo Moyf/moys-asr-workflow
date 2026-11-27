@@ -1,3 +1,19 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweInlineEdit } from '../cues/editor-inline-edit.js';
+import { MaweAudioProcessing } from '../media/editor-audio-processing.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweAssFontAliases } from '../styles/editor-wiring-ass-font-aliases.js';
+import { MaweGapRemoveData } from '../ui/editor-gap-remove-data.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweExportSrt } from './editor-export-srt.js';
+import { MaweProjectLoad } from './editor-project-load.js';
+import { MaweStickerBurnPlan } from './editor-sticker-burn-plan.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+export let MaweBurnVideoExport;
+let activeBurnVideoTask;
+
 export function initMaweBurnVideoWiring() {
 // === 编辑器「烧录视频」：当前 ASS 或按库样式转换的 SRT，复用同一媒体任务 ===
 // 与「去空隙导出 → 重组后视频」同一套媒体任务生命周期（准入令牌 / 轮询 / 流式下载 /
@@ -58,12 +74,12 @@ function connectNativeBurn() {
 }
 
 function burnVideoText(text) {
-  return window.MAWE_I18N?.translateText?.(text) || text;
+  return MAWE_I18N?.translateText?.(text) || text;
 }
 
 function burnVideoMediaCurrent(config, greenScreen = false) {
   if (config?.[greenScreen ? 'canGreenScreenExport' : 'canBurnVideoExport'] !== true || !config.burnVideoJobsUrl) return false;
-  const player = window.MaweCoreState?.player;
+  const player = MaweCoreState?.player;
   const source = player?.currentSrc || player?.querySelector?.('source')?.src || player?.src;
   if (!source) return false;
   try {
@@ -79,7 +95,7 @@ function burnVideoBindingCurrent(config, snapshot) {
     && config.bindingGeneration === snapshot.bindingGeneration
     && config.sourceMediaId === snapshot.sourceMediaId
     && config.burnVideoSourceName === snapshot.sourceName
-    && window.MaweProjectLoad?.projectBindingEpoch === snapshot.bindingEpoch;
+    && MaweProjectLoad?.projectBindingEpoch === snapshot.bindingEpoch;
 }
 
 function burnVideoSafeError(error, fallback) {
@@ -162,7 +178,7 @@ function showBurnVideoSuccess(message, name, open = null, syncWarning = false) {
 async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText, greenScreen = false }) {
   const tr = burnVideoText;
   const config = MaweBoot.SERVER_CONFIG;
-  if (window.__maweBurnVideoTask) return;
+  if (activeBurnVideoTask) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   if (!burnVideoMediaCurrent(config, greenScreen) || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
@@ -176,11 +192,11 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const sourceMediaId = config.sourceMediaId;
   const sourceName = config.burnVideoSourceName;
   const jobsUrl = config.burnVideoJobsUrl;
-  const bindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
+  const bindingEpoch = MaweProjectLoad?.projectBindingEpoch;
   const snapshot = { jobsUrl, requestToken, bindingGeneration, sourceMediaId, sourceName, bindingEpoch, greenScreen };
   const isBindingCurrent = () => burnVideoBindingCurrent(config, snapshot);
   const nativeSession = nativeBurnConnection ? await nativeBurnConnection : null;
-  if (window.__maweBurnVideoTask || nativeBurnPicking) return;
+  if (activeBurnVideoTask || nativeBurnPicking) return;
   if (!isBindingCurrent()) {
     MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频烧录'), 'warning');
     return;
@@ -199,9 +215,9 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   // Start lazily, but keep the save picker inside the original user gesture.
   // Only defer building ASS when inventory is still pending.
   const needsAssFonts = greenScreen || MaweSettings.EDITOR_SETTINGS.assMode === true;
-  const fontsReady = needsAssFonts ? window.MaweAssFontAliases?.ensureCoverage?.() : null;
-  const deferRequest = needsAssFonts && window.MaweAssFontAliases?.pending?.();
-  const audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
+  const fontsReady = needsAssFonts ? MaweAssFontAliases?.ensureCoverage?.() : null;
+  const deferRequest = needsAssFonts && MaweAssFontAliases?.pending?.();
+  const audioGainDb = MaweAudioProcessing?.settings().gain_db || 0;
   let request;
   const prepareRequest = () => {
     request = buildRequest();
@@ -224,7 +240,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
       const basename = suggestedName.slice(0, -4).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 220);
       handle = await nativeBurnPost(`${jobsUrl}/native-target`, requestToken, {
         nativeSession, admissionToken, bindingGeneration, sourceMediaId, suggestedName: `${basename || 'export'}.mp4`,
-        language: window.MAWE_I18N?.language === 'en' ? 'en' : 'zh',
+        language: MAWE_I18N?.language === 'en' ? 'en' : 'zh',
       });
       if (handle.cancelled) return;
       if (typeof handle.nativeTarget !== 'string' || typeof handle.name !== 'string') {
@@ -251,7 +267,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   }
   if (deferRequest) {
     await fontsReady;
-    await window.MaweAssFontAliases?.whenReady?.();
+    await MaweAssFontAliases?.whenReady?.();
     if (!isBindingCurrent()) {
       MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频烧录'), 'warning');
       return;
@@ -394,9 +410,9 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   };
   try {
     // 选择器等待期间另一个入口可能已经开始任务；二次确认避免并发。
-    if (window.__maweBurnVideoTask) return;
+    if (activeBurnVideoTask) return;
     task = { id: null, controller: new AbortController(), stopRequested: false, cancelRequest: null, requestStop };
-    window.__maweBurnVideoTask = task;
+    activeBurnVideoTask = task;
     button.disabled = true;
     panel = document.createElement('div');
     panel.className = 'gap-video-job';
@@ -547,7 +563,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     if (task) {
       window.removeEventListener('pagehide', requestStop);
       panel.remove();
-      if (window.__maweBurnVideoTask === task) window.__maweBurnVideoTask = null;
+      if (activeBurnVideoTask === task) activeBurnVideoTask = null;
       button.disabled = false;
     }
   }
@@ -580,7 +596,7 @@ document.getElementById('burn-video-export-btn')?.addEventListener('click', () =
     label: '烧录视频',
     startHint: 'FFmpeg 将重新编码源视频并烧录当前字幕；长视频可能需要较长时间。',
     successText: '烧录视频已保存',
-    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
+    suggestedName: `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
     buildRequest: () => buildBurnVideoSubtitles(),
   });
 });
@@ -592,7 +608,7 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
     label: '重组后烧录视频',
     startHint: '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。',
     successText: '重组后烧录视频已保存',
-    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
+    suggestedName: `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}_${MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
     buildRequest: () => {
       const context = MaweExportSrt.gapRemovedExportContext();
       if (!context) return null;
@@ -603,7 +619,7 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
   });
 });
 
-const greenScreenAudioToggle = document.getElementById('green-screen-include-audio');
+const greenScreenAudioToggle = /** @type {HTMLInputElement} */ (document.getElementById('green-screen-include-audio'));
 if (greenScreenAudioToggle) {
   greenScreenAudioToggle.checked = MaweSettings.EDITOR_SETTINGS.greenScreenIncludeAudio === true;
   greenScreenAudioToggle.addEventListener('change', () => {
@@ -617,7 +633,7 @@ document.getElementById('download-green-screen-video')?.addEventListener('click'
     label: '生成绿幕视频',
     startHint: '正在生成绿幕字幕视频…（绿幕导出不含表情包）',
     successText: '绿幕视频已保存',
-    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
+    suggestedName: `${MaweBoot.FILENAME_BASE}_${MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
     buildRequest: () => ({ ass: MaweExportSrt.buildAss(), greenScreen: true,
       includeAudio: MaweSettings.EDITOR_SETTINGS.greenScreenIncludeAudio === true }),
   });
@@ -640,7 +656,7 @@ function updateBurnVideoButton() {
     greenButton.setAttribute('aria-disabled', String(!greenVisible));
   }
   document.querySelectorAll('[data-settings-export="download-green-screen-video"]').forEach(button => {
-    button.disabled = !greenVisible;
+    /** @type {HTMLButtonElement} */ (button).disabled = !greenVisible;
   });
 }
 
@@ -655,9 +671,11 @@ function invalidateBurnVideoBinding() {
   updateBurnVideoButton();
   // Admission/body/write operations may be pending without another poll.
   // Cancel through the task's captured URL/token, not the invalidated config.
-  window.__maweBurnVideoTask?.requestStop?.();
+  activeBurnVideoTask?.requestStop?.();
 }
 const nativeBurnConnection = connectNativeBurn();
 updateBurnVideoButton();
-window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });
+MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });
+
+
 }

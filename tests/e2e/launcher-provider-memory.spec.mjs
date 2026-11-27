@@ -1,7 +1,8 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 
-const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
+const launcherUrl = launcherFixtureUrl();
 
 test('startup migrates legacy cleanup memory, preserves newer choices and restores comparison from other AI steps', async ({ page }) => {
   const errors = [];

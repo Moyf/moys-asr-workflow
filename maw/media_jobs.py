@@ -184,8 +184,9 @@ class MediaJob:
             self.check_cancelled()
         finally:
             # A child can exit while its descendants still own the pipe handles.
-            # Always close the registered Windows Job / POSIX process group.
-            terminate_process_tree(process)
+            # These commands invoke FFmpeg/FFprobe directly, so use the Windows
+            # job first. A taskkill scan can exceed the cancel deadline under load.
+            terminate_process_tree(process, prefer_registered_job=True)
             if os.name != "nt":
                 try:
                     os.killpg(process.pid, signal.SIGKILL)

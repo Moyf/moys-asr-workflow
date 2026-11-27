@@ -136,7 +136,7 @@ function renderProviderNote(providerItem) {
     link.className = "inline-link";
     link.dataset.i18n = "toolbox_llm";
     link.textContent = t("toolbox_llm");
-    link.addEventListener("click", () => { window.MAWLauncher?.openToolboxAiProcessing?.(); });
+    link.addEventListener("click", () => { launcherRuntime?.openToolboxAiProcessing?.(); });
     noteElement.append(link);
     appendNoteText(noteElement, en ? " of the toolbox." : " 中使用它来翻译啥的。");
     noteElement.classList.remove("hidden");

@@ -196,17 +196,23 @@ class ThumbnailServerTests(unittest.TestCase):
 
     def test_token_host_origin_paths_and_bounds(self):
         body={'binding':self.binding,'client_id':'test','requestToken':self.server.request_token}
-        for change,headers,expected in (({'requestToken':'bad'},None,403),
-            ({},{'Host':'evil.example'},403),({},{'Origin':'https://evil.example'},403),
-            ({'path':str(self.media)},None,400),({'lease':{}},None,400),
-            ({'playing':'false'},None,400),({'view':True},None,400),
-            ({'interval_ms':250,'ranges':[{'start_ms':0,'end_ms':7200000}]},None,400)):
-            status,_,_ = self.request('/api/thumbnails/demand',{**body,**change},headers=headers)
+        for headers, expected in (({'Host':'evil.example'},403),
+                                  ({'Origin':'https://evil.example'},403),
+                                  ({'Content-Length':'65537'},400)):
+            with self.subTest(headers=headers):
+                # The server makes these decisions from headers alone. A client
+                # sending a body during early close can get a Windows TCP reset.
+                status, response_headers, _ = self.request('/api/thumbnails/demand',headers=headers,method='POST')
+                self.assertEqual(status,expected)
+                self.assertEqual(response_headers.get('Connection'),'close')
+        for change,expected in (({'requestToken':'bad'},403),
+            ({'path':str(self.media)},400),({'lease':{}},400),
+            ({'playing':'false'},400),({'view':True},400),
+            ({'interval_ms':250,'ranges':[{'start_ms':0,'end_ms':7200000}]},400)):
+            status,_,_ = self.request('/api/thumbnails/demand',{**body,**change})
             self.assertEqual(status,expected)
         status,_,_ = self.request('/api/thumbnails/demand',{'requestToken':self.server.request_token,'binding':'old'})
         self.assertEqual(status,409)
-        status,_,_ = self.request('/api/thumbnails/demand',body,headers={'Content-Length':'65537'})
-        self.assertEqual(status,400)
 
     def test_head_revision_and_rebinding_are_isolated(self):
         result = self.ready()

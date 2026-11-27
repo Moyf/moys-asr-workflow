@@ -1,9 +1,10 @@
+import { launcherFixtureUrl } from '../helpers/launcher-browser-fixture.mjs';
 import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const launcherUrl = pathToFileURL(fileURLToPath(new URL('../../web/launcher/index.html', import.meta.url))).href;
+const launcherUrl = launcherFixtureUrl();
 const headings = ['mediaTitle', 'settingsTitle', 'autoPostprocessTitle', 'logTitle', 'serverTitle'];
 const labels = {
   zh: ['选择媒体', '识别设置', '转写后自动处理', '日志', '编辑器'],

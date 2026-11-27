@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const source = fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-manager.js', import.meta.url), 'utf8');
 let target;
@@ -21,7 +22,7 @@ test('style snapshot hint inspects canonical secondary cues using the live style
   const hint = { hidden: true };
   const context = { assStyleProjectHint: hint, MaweBoot: { DATA: project }, getAssStyleLibrary: () => library,
     window: { AsrEditorUtils: { iterSegments: projectModel.iterSegments, assStyleSnapshotKey: JSON.stringify } } };
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(`${source.slice(target.start, target.end)}\nupdateAssStyleProjectHint()`, context);
   assert.equal(hint.hidden, false);
   library.styles[0].fontSize = 40;

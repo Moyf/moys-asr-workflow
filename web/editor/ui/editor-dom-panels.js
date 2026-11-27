@@ -1,3 +1,4 @@
+import { MaweDom } from './editor-dom.js';
 const domPanelsState = { value: null };
 
 export function getMaweDomPanels() { return domPanelsState.value; }

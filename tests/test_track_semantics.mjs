@@ -3,13 +3,14 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { readFixture, createProjectHarness, initializeStickerOverlay } from './helpers/track-golden.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
-const load = (context, file) => vm.runInNewContext(initModuleSource(file), context);
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+const load = (context, file) => vm.runInNewContext(initModuleSource(file), exposeWindowGlobals(context));
 
 test('Z/X targets the current track and uses main when selection is empty', () => {
   const { data, h } = createProjectHarness(readFixture('three-tracks'));
   const main = h.getMainTrack(data), secondary = h.getExtensionTrack(data), overlay = h.getOverlayTrack(data);
   let refs = [], current = null;
-  const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: data },
+  const context = { window: { AsrEditorUtils: h }, AsrEditorUtils: h, MaweBoot: { DATA: data },
     MaweState: { selection: { getSelectedCueRefs: () => refs, getCurrentCueRef: () => current,
       getCurrentTrack: () => data.tracks.find(t => t.id === current?.track_id) || main } },
     MaweContextMenus: { findWaveformCueAtTime: (time, segments) => segments.findIndex(s => s.start <= time && s.end >= time) },

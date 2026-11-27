@@ -3,6 +3,9 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { TrackPolicy } from '../web/shared/utils/track-policy.js';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 function fixture() {
   const main = { id: 'main', role: 'main', enabled: true, segments: [{ id: 'm', start: 0, end: 1000, text: 'main' }] };
@@ -35,7 +38,7 @@ function fixture() {
     getAssStyleLibrary: () => ({ assignments: {} }),
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/io/editor-export-srt.js', 'initMaweExportSrt'), context);
   return { context, main, secondary, overlay, calls };
 }

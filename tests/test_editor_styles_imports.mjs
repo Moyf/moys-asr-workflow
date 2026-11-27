@@ -20,11 +20,10 @@ test('G09 style initializers use static imports for sibling function calls', () 
   const owners = new Map();
   const trees = new Map();
   for (const file of styleFiles) {
-    const item = editorInitializers.find(module => module.file === file);
     const source = fs.readFileSync(path.join(web, file), 'utf8');
     const tree = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
     trees.set(file, tree);
-    const facade = source.match(/(?:global|window)\.(Mawe\w+)\s*=\s*Object\.freeze/);
+    const facade = source.match(/^export (?:const|let) (Mawe\w+)\b/m);
     assert.ok(facade, `Missing compatibility facade for ${file}`);
     owners.set(facade[1], file);
   }
@@ -49,6 +48,10 @@ test('G09 modules are safe to import before browser initialization', async () =>
 
   for (const file of styleFiles) {
     const module = await import(`../web/${file}`);
+    if (file === 'editor/styles/editor-appearance-inputs.js') {
+      assert.equal(typeof module.MaweAppearanceInputs.applySubtitleBackgroundColorInput, 'function');
+      continue;
+    }
     assert.equal(typeof module[editorInitializers.find(item => item.file === file).exportName], 'function');
   }
 });

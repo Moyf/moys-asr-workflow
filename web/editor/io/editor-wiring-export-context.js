@@ -1,4 +1,13 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweHint } from '../ui/editor-hint.js';
+import { MaweExportTimeline } from './editor-export-timeline.js';
+import { MaweProjectSave } from './editor-project-save.js';
+import { MaweServerSave } from './editor-server-save.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
+export let MaweExportContext;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 export function initMaweExportContextWiring() {
 'use strict';
@@ -14,12 +23,12 @@ export function initMaweExportContextWiring() {
 // 自身数组，不能在合并后的大数组里按下标解析，因此同时返回归属集合，
 // 由 colorContextResolver 提供每条段的颜色/说话人解析上下文。
 function aiCleanupExportSegments(segments) {
-  return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
+  return AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
 }
 
 function mergedExportSegments(projectMain = aiCleanupExportSegments) {
-  const policy = window.AsrEditorUtils.TrackPolicy;
-  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const policy = AsrEditorUtils.TrackPolicy;
+  const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
   const overlay = getOverlayTrack();
   const mainSegments = policy.isTrackEnabled(main, 'export') ? projectMain(main.segments) : [];
   const overlaySegments = policy.isTrackEnabled(overlay, 'export') ? overlay.segments : [];
@@ -27,14 +36,14 @@ function mergedExportSegments(projectMain = aiCleanupExportSegments) {
     return { segments: mainSegments, overlaySet: new Set(), overlaySegments };
   }
   return {
-    segments: window.AsrEditorUtils.mergeMainAndOverlaySegments(mainSegments, overlaySegments),
+    segments: AsrEditorUtils.mergeMainAndOverlaySegments(mainSegments, overlaySegments),
     overlaySet: new Set(overlaySegments),
     overlaySegments,
   };
 }
 
 function exportColorContextResolver(overlaySet, overlaySegments) {
-  return (segment) => (overlaySet.has(segment) ? overlaySegments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+  return (segment) => (overlaySet.has(segment) ? overlaySegments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
 }
 
 
@@ -232,12 +241,12 @@ function buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFr
 let projectBackupTimer = null;
 function syncProjectBackupControls() {
   const available = MaweServerSave.serverProjectSavingEnabled() && !MaweServerSave.projectFileHandle;
-  const enabled = document.getElementById('project-backup-enabled');
-  const minutes = document.getElementById('project-backup-minutes');
-  const limit = document.getElementById('project-backup-limit');
+  const enabled = /** @type {HTMLInputElement} */ (document.getElementById('project-backup-enabled'));
+  const minutes = /** @type {HTMLInputElement} */ (document.getElementById('project-backup-minutes'));
+  const limit = /** @type {HTMLInputElement} */ (document.getElementById('project-backup-limit'));
   enabled.checked = MaweSettings.EDITOR_SETTINGS.projectBackupEnabled;
   enabled.disabled = !available;
-  document.getElementById('project-backup-open').disabled = !available;
+  /** @type {HTMLButtonElement} */ (document.getElementById('project-backup-open')).disabled = !available;
   minutes.value = MaweSettings.EDITOR_SETTINGS.projectBackupMinutes;
   limit.value = MaweSettings.EDITOR_SETTINGS.projectBackupLimit;
   minutes.disabled = limit.disabled = !available || !enabled.checked;
@@ -250,13 +259,16 @@ function syncProjectBackupControls() {
     }, MaweSettings.EDITOR_SETTINGS.projectBackupMinutes * 60000);
   }
 }
-for (const [id, key, fallback, max] of [
+/** @type {Array<[string, string, number | boolean, number]>} */
+const backupControls = [
   ['project-backup-enabled', 'projectBackupEnabled', true, 0],
   ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
   ['project-backup-limit', 'projectBackupLimit', 20, 1000],
-]) {
+];
+for (const [id, key, fallback, max] of backupControls) {
   document.getElementById(id)?.addEventListener('change', (event) => {
-    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    const control = /** @type {HTMLInputElement} */ (event.target);
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(control.value) || Number(fallback)))) : control.checked;
     MaweSettings.updateEditorSettings({ [key]: value });
     syncProjectBackupControls();
   });
@@ -295,10 +307,12 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
 // 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
 // 任何失败都静默回退为「手动选择媒体」的便携流程。
 
-window.MaweExportContext = Object.freeze({
+MaweExportContext = Object.freeze({
   exportColorContextResolver,
   mergedExportSegments,
   buildOverlaySubtitleOtioTrack,
   syncProjectBackupControls,
 });
+
+
 }

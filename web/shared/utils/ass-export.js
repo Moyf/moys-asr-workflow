@@ -1,4 +1,5 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
+import { ASR_EDITOR_PALETTE } from '../editor-palette.js';
 export function createUtilsModule(dependencies) {
   'use strict';
   const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceAnimationTags, parseSentenceShakeMarkers, assStyleLine, effectiveColorName, effectiveSegmentColor, getProject, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, getWordTimingEntries, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
@@ -22,8 +23,8 @@ export function createUtilsModule(dependencies) {
 
 
   function normalizeAssColorStyles(value) {
-    const injected = Array.isArray(window.ASR_EDITOR_PALETTE)
-      ? window.ASR_EDITOR_PALETTE : ASS_FALLBACK_COLOR_PALETTE;
+    const injected = Array.isArray(ASR_EDITOR_PALETTE)
+      ? ASR_EDITOR_PALETTE : ASS_FALLBACK_COLOR_PALETTE;
     const source = Array.isArray(value) ? value : injected;
     const byName = new Map(source
       .filter((entry) => entry && typeof entry.name === 'string')
@@ -51,9 +52,9 @@ export function createUtilsModule(dependencies) {
   // ASS 样式里的 Fontname 写出前经服务端字体别名表归一化：libass（Windows
   // directwrite/GDI）只按 nameID1 匹配，排版名（如 "Smiley Sans"）会被静默
   // 回退。表未加载（便携模式/旧服务器）时原样返回；替换记录由别名模块在
-  // 导出入口的捕获窗口内收集。与 window.ASR_EDITOR_PALETTE 同一注入约定。
+  // 导出入口的捕获窗口内收集。
   function canonicalizeAssFontName(name) {
-    const aliases = window.MaweAssFontAliases;
+    const aliases = dependencies.getAssFontAliases?.();
     if (!aliases || typeof aliases.canonicalFor !== 'function') return name;
     return aliases.canonicalFor(name) || name;
   }
@@ -75,7 +76,7 @@ export function createUtilsModule(dependencies) {
   // One font-run plan feeds Canvas, downloaded ASS, frame preview and burn-in.
   // Portable/old servers retain the legacy path when coverage is unavailable.
   function resolveFontRuns(runs, style) {
-    return globalThis.window?.MaweAssFontAliases?.resolveRuns?.(runs, style) || runs;
+    return dependencies.getAssFontAliases?.()?.resolveRuns?.(runs, style) || runs;
   }
 
   // KTV（\k 整词跳变）：把字词时间码映射为「已唱/未唱」翻转计划。
@@ -296,10 +297,11 @@ export function createUtilsModule(dependencies) {
 
 
   function buildAssPayload(segments, options = {}) {
-    void globalThis.window?.MaweAssFontAliases?.ensureCoverage?.();
+    const aliases = dependencies.getAssFontAliases?.();
+    void aliases?.ensureCoverage?.();
     // A Canvas-only diagnostic plan may render provisionally; never send an
     // ASS snapshot to libass/export while the font inventory is changing.
-    if (!options.allowAssPlanDiagnostics && globalThis.window?.MaweAssFontAliases?.pending?.()) {
+    if (!options.allowAssPlanDiagnostics && aliases?.pending?.()) {
       throw new Error('本机字体信息仍在加载，请稍后重试 ASS 预览或导出。');
     }
     const source = Array.isArray(segments) ? segments : [];

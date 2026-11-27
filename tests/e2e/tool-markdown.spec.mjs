@@ -2,20 +2,41 @@ import {expect, test} from '@playwright/test';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {readFileSync, writeFileSync} from 'node:fs';
+import {toolCatalog} from '../../tools/catalog.js';
+import {createToolMarkdown} from '../../tools/shared/markdown.js';
+import {createDocViewerFactory} from '../../tools/shared/doc-viewer.js';
 
 const catalogUrl = pathToFileURL(resolve('tools/index.html')).href;
 const docUrl = path => pathToFileURL(resolve('tools', path)).href;
 
 // Optional read-only pre-fix snapshot for real negative controls. Never overwrite worktree source.
-test.beforeEach(async ({page}) => {
+test.beforeEach(async ({page}, testInfo) => {
   const snapshot = process.env.MAW_TOOL_MARKDOWN_SNAPSHOT;
-  if (!snapshot) return;
-  for (const name of ['markdown.js','markdown.css','doc-viewer.js','doc-viewer.css']) {
-    await page.route(docUrl('shared/' + name), route => route.fulfill({
-      contentType:name.endsWith('.js') ? 'text/javascript' : 'text/css',
-      body:readFileSync(resolve(snapshot, name), 'utf8'),
-    }));
+  if (snapshot) {
+    for (const name of ['markdown.css','doc-viewer.css']) {
+      await page.route(docUrl('shared/' + name), route => route.fulfill({
+        contentType:'text/css', body:readFileSync(resolve(snapshot, name), 'utf8'),
+      }));
+    }
   }
+  const productionEntry = testInfo.title.startsWith('all documentation buttons');
+  if (productionEntry && !snapshot) return;
+  let source = readFileSync('tools/tool-docs-data.js', 'utf8');
+  if (snapshot) {
+    const [markdown, viewer] = await Promise.all([
+      import(pathToFileURL(resolve(snapshot, 'markdown.js'))),
+      import(pathToFileURL(resolve(snapshot, 'doc-viewer.js'))),
+    ]);
+    source = source
+      .replace(createToolMarkdown.toString(), () => markdown.createToolMarkdown.toString())
+      .replace(createDocViewerFactory.toString(), () => viewer.createDocViewerFactory.toString());
+  }
+  if (!productionEntry) {
+    source = source.replace('  mountToolCatalog({data:toolCatalog, docs, viewer});', match => match + `
+      Object.assign(window, {MAWMarkdown:markdown, MAWDocViewer:viewers, MAWToolDocViewer:viewer});
+    `);
+  }
+  await page.route(docUrl('tool-docs-data.js'), route => route.fulfill({contentType:'text/javascript', body:source}));
 });
 
 async function openCatalog(page) {
@@ -24,7 +45,7 @@ async function openCatalog(page) {
   page.on('request', request => {if (/^https?:/.test(request.url())) remote.push(request.url());});
   await page.route(/^https?:/, route => route.abort());
   await page.goto(catalogUrl);
-  await expect(page.locator('.card')).toHaveCount(10);
+  await expect(page.locator('.card')).toHaveCount(toolCatalog.length);
   return {errors, remote};
 }
 
@@ -34,11 +55,13 @@ async function showText(page, markdown, title = '测试说明') {
   }), {markdown, title, baseUrl:docUrl('README.md')});
 }
 
-test('all ten documentation buttons read offline without navigation and retain exact source links and focus', async ({page}) => {
+test('all documentation buttons read offline without navigation and retain exact source links and focus', async ({page}) => {
   const evidence = await openCatalog(page);
   const buttons = page.locator('.card button[data-tool-doc]');
-  await expect(buttons).toHaveCount(10);
-  for (let index = 0; index < 10; index++) {
+  await expect(buttons).toHaveCount(toolCatalog.length);
+  expect(await page.evaluate(() => ['MAWMarkdown','MAWDocViewer','MAWToolDocViewer','MAWToolCatalog','MAWToolDocs']
+    .filter(name => Object.hasOwn(window, name)))).toEqual([]);
+  for (let index = 0; index < toolCatalog.length; index++) {
     const button = buttons.nth(index), path = await button.getAttribute('data-tool-doc');
     await button.click();
     const dialog = page.getByRole('dialog');

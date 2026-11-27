@@ -5,7 +5,7 @@ import { createOutputTail } from './output-tail.mjs';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
+import { editorServerEntry, generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
 import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 
 
@@ -32,7 +32,7 @@ export function syntheticScrollProject(count = 107, mode = 'main', paired = fals
   return createProjectTracks().importProject(legacy).project;
 }
 
-export async function startScrollFixture({ count = 107, mode = 'main', paired = false, blank = false, readinessTimeoutMs = 45_000 } = {}) {
+export async function startScrollFixture({ count = 107, mode = 'main', paired = false, blank = false, production = false, readinessTimeoutMs = 45_000 } = {}) {
   if (!Number.isFinite(readinessTimeoutMs) || readinessTimeoutMs <= 0) throw new RangeError('readinessTimeoutMs must be finite and positive');
   const evidenceRoot = resolve(process.env.MAW_SCROLL_EVIDENCE || 'output/playwright/cue-scroll');
   mkdirSync(evidenceRoot, { recursive: true });
@@ -51,10 +51,11 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   if (app && /\/Applications\//.test(resolve(app))) throw new Error('Acceptance must use an independent app');
   const python = String(process.env.MAW_E2E_PYTHON || '').trim();
   const command = app || python || 'uv';
-  const args = [...(app ? ['--serve']
-    : [...(python ? [] : ['run', '--no-sync', 'python']), 'server-editor/serve.py']),
-    ...(blank ? ['--blank'] : [projectPath, '--media', mediaPath]),
-    '--no-open', '--no-waveform', '--port', String(port)];
+  const projectArgs = blank ? [] : [projectPath, '--media', mediaPath];
+  const args = app
+    ? ['--server', String(port), ...projectArgs, '--no-open', '--no-waveform']
+    : [...(python ? [] : ['run', '--no-sync', 'python']), ...editorServerEntry(production),
+      ...(blank ? ['--blank'] : projectArgs), '--no-open', '--no-waveform', '--port', String(port)];
   const log = createWriteStream(join(directory, 'server.log'));
   // Frozen acceptance may run an older binary without the instance header.
   const instance = app ? undefined : randomBytes(16).toString('hex');

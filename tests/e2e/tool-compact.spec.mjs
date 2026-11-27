@@ -11,10 +11,7 @@ const fileUrl = path => pathToFileURL(resolve(path)).href;
 const project = {segments:[{start:0,end:1000,text:'测试字幕',items:[{start:0,end:500,text:'测试'},{start:500,end:1000,text:'字幕'}]}]};
 
 test('compact board keeps long unbroken titles within a reachable column',async({page})=>{
-  await dashboard(page);
-  await page.evaluate(()=>{
-    state.prs[0].title='UnbrokenTitle'.repeat(25);render();
-  });
+  await dashboard(page, { title: 'UnbrokenTitle'.repeat(25) });
   await page.setViewportSize({width:375,height:812});
   const input=page.locator('[data-tool-compact]');
   await projectChecked(input,true);
@@ -68,9 +65,9 @@ function generateOcr(testInfo) {
   return output;
 }
 
-async function dashboard(page) {
+async function dashboard(page, { title = '测试卡片' } = {}) {
   const status = {'1':'review'}, ignored = {}, posts = [];
-  const prs = [{number:1,title:'测试卡片',body:'## PR 正文\n\n**重点** 与 [链接](https://example.invalid)\n\n- [ ] 核验\n\n<script>window.injected=true</script>',headRefName:'feature',baseRefName:'main',author:{login:'demo'},url:'https://example.invalid',milestone:null,statusCheckRollup:[]}];
+  const prs = [{number:1,title,body:'## PR 正文\n\n**重点** 与 [链接](https://example.invalid)\n\n- [ ] 核验\n\n<script>window.injected=true</script>',headRefName:'feature',baseRefName:'main',author:{login:'demo'},url:'https://example.invalid',milestone:null,statusCheckRollup:[]}];
   const assets = {'/':'tools/dev-dashboard/index.html','/app.js':'tools/dev-dashboard/app.js','/marked-15.0.12.min.js':'tools/dev-dashboard/marked-15.0.12.min.js','/style.css':'tools/dev-dashboard/style.css','/shared/tool-page.css':'tools/shared/tool-page.css','/shared/tool-page.js':'tools/shared/tool-page.js'};
   await page.route('http://127.0.0.1:8262/**', async route => {
     const path = new URL(route.request().url()).pathname;
@@ -258,11 +255,14 @@ test('timestamp item-text track uses the OCR 34 by 20 geometry rather than the o
 test('native label, input change and Space toggle compact once and preserve search focus', async ({page}) => {
   await timestamp(page);
   const input = page.locator('[data-tool-compact]'); await assertNative(input);
-  await page.evaluate(project => {
-    window.MAWTsCompare.loadProjectObjects([{name:'fixture',project}]);
+  await page.locator('#fileInput').setInputFiles({
+    name:'fixture.mosp',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project)),
+  });
+  await expect(page.locator('.file-card')).toHaveCount(1);
+  await page.evaluate(() => {
     window.densityEvents = 0;
     document.addEventListener('tool-density-change', () => window.densityEvents++);
-  }, project);
+  });
   await input.locator('..').click(); await expect(input).toBeChecked();
   expect(await page.evaluate(() => window.densityEvents)).toBe(1);
   await input.focus(); await page.keyboard.press('Space'); await expect(input).not.toBeChecked();

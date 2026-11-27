@@ -1,7 +1,15 @@
+import { editorDialogs } from '../../shared/editor-dialogs.js';
 // 工作区：内置与服务器工作区选择、导航持久化与库管理。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweWorkspaces 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
+import { AsrWaveform } from '../media/waveform.js';
+import { MaweBoot } from '../boot/editor-boot.js';
+import { MaweHost } from '../boot/editor-host.js';
+import { MaweExportTimeline } from '../io/editor-export-timeline.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweHistory } from '../state/editor-history.js';
+import { MaweDisplaySettings } from './editor-display-settings.js';
+import { MaweHint } from './editor-hint.js';
+export let MaweWorkspaces;
 export function initMaweWorkspaces() {
   'use strict';
 
@@ -12,7 +20,7 @@ export function initMaweWorkspaces() {
 
 
   // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
-  const BUILTIN_WORKSPACE_IDS = window.AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'cinema'];
+  const BUILTIN_WORKSPACE_IDS = AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'cinema'];
 
 
   let currentServerWorkspaceName = '';
@@ -21,16 +29,16 @@ export function initMaweWorkspaces() {
   let currentBuiltinWorkspaceName = '';
 
 
-  const workspacePresetSelect = document.getElementById('workspace-preset');
+  const workspacePresetSelect = /** @type {HTMLSelectElement} */ (document.getElementById('workspace-preset'));
 
 
-  const saveWorkspaceButton = document.getElementById('workspace-save');
+  const saveWorkspaceButton = /** @type {HTMLButtonElement} */ (document.getElementById('workspace-save'));
 
 
-  const saveWorkspaceAsButton = document.getElementById('workspace-save-as');
+  const saveWorkspaceAsButton = /** @type {HTMLButtonElement} */ (document.getElementById('workspace-save-as'));
 
 
-  const deleteWorkspaceButton = document.getElementById('workspace-delete');
+  const deleteWorkspaceButton = /** @type {HTMLButtonElement} */ (document.getElementById('workspace-delete'));
 
 
 
@@ -167,7 +175,7 @@ export function initMaweWorkspaces() {
     if (!MaweCoreState.waveformEditor || !MaweBoot.SERVER_CONFIG?.settingsUrl) return;
     let name = currentServerWorkspaceName;
     if (saveAs) {
-      name = prompt('请输入工作区名称：', '我的工作区')?.trim() || '';
+      name = editorDialogs.prompt('请输入工作区名称：', '我的工作区')?.trim() || '';
       if (!name) return;
     }
     if (!name && !currentBuiltinWorkspaceName) return;
@@ -202,7 +210,7 @@ export function initMaweWorkspaces() {
 
   async function deleteCurrentServerWorkspace() {
     const name = currentServerWorkspaceName;
-    if (!name || !MaweBoot.SERVER_CONFIG?.settingsUrl || !confirm(`确定删除工作区「${name}」吗？`)) return;
+    if (!name || !MaweBoot.SERVER_CONFIG?.settingsUrl || !editorDialogs.confirm(`确定删除工作区「${name}」吗？`)) return;
     deleteWorkspaceButton.disabled = true;
     try {
       await updateServerWorkspaceSettings({ deleteWorkspaceName: name });
@@ -254,7 +262,7 @@ export function initMaweWorkspaces() {
     if (layoutPreset) MaweCoreState.waveformEditor.setLayoutData(layoutPreset);
     else MaweCoreState.waveformEditor.setLayout(preset);
     MaweDisplaySettings.applyEditorDisplaySettings(
-      savedPreset?.editorDisplay || window.AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
+      savedPreset?.editorDisplay || AsrWaveform?.builtinWorkspaces?.[preset]?.editorDisplay,
     );
     workspacePresetSelect.value = preset;
     restoreWorkspaceNavigation(savedPreset);
@@ -325,7 +333,7 @@ export function initMaweWorkspaces() {
     const transferDropdown = document.getElementById('workspace-transfer-dropdown');
     const exportButton = document.getElementById('workspace-export');
     const importButton = document.getElementById('workspace-import');
-    const importFile = document.getElementById('workspace-import-file');
+    const importFile = /** @type {HTMLInputElement} */ (document.getElementById('workspace-import-file'));
     if (transferDropdown) transferDropdown.hidden = false;
     exportButton?.addEventListener('click', async () => {
       await MaweExportTimeline.downloadFile(MaweExportTimeline.buildWorkspaceJson(), `${MaweBoot.FILENAME_BASE}.workspace.json`, 'application/json', {
@@ -338,7 +346,7 @@ export function initMaweWorkspaces() {
       importFile.click();
     });
     importFile?.addEventListener('change', async (event) => {
-      const file = event.target.files?.[0];
+      const file = /** @type {HTMLInputElement} */ (event.target).files?.[0];
       if (!file) return;
       try {
         const data = JSON.parse(await file.text());
@@ -359,7 +367,7 @@ export function initMaweWorkspaces() {
       selectedWorkspaceId = workspacePresetSelect.value;
       if (BUILTIN_WORKSPACE_IDS.includes(selectedWorkspaceId)) {
         MaweCoreState.waveformEditor.setLayout(selectedWorkspaceId);
-        MaweDisplaySettings.applyEditorDisplaySettings(window.AsrWaveform?.builtinWorkspaces?.[selectedWorkspaceId]?.editorDisplay);
+        MaweDisplaySettings.applyEditorDisplaySettings(AsrWaveform?.builtinWorkspaces?.[selectedWorkspaceId]?.editorDisplay);
       }
     });
     document.getElementById('layout-edit-toggle')?.addEventListener('click', () => {
@@ -368,7 +376,7 @@ export function initMaweWorkspaces() {
     });
   }
 
-  global.MaweWorkspaces = Object.freeze({
+  MaweWorkspaces = Object.freeze({
     BUILTIN_WORKSPACE_IDS,
     get currentServerWorkspaceName() { return currentServerWorkspaceName; },
     set currentServerWorkspaceName(v) { currentServerWorkspaceName = v; },
@@ -395,4 +403,5 @@ export function initMaweWorkspaces() {
     configureServerWorkspaceLibrary,
     configureWorkspaceTransfer
   });
+
 }

@@ -2,6 +2,7 @@
 export function createWaveformModule(dependencies) {
   'use strict';
   const { colorForSegment, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage, wordTimingFullLane: wordTimingFullLanePredicate } = dependencies;
+  const { gapRemoveCore, getWordTimingEntries } = dependencies;
 
   class WaveformMethods {
 
@@ -203,7 +204,7 @@ export function createWaveformModule(dependencies) {
         if (gap.removed !== false) {
           block.classList.toggle(
             'protected',
-            window.AsrGapRemoveCore.isGapRemoveDisplayProtected(gap),
+            gapRemoveCore.isGapRemoveDisplayProtected(gap),
           );
         }
         block.classList.toggle('boundary-editable', boundaryEnabled);
@@ -610,8 +611,8 @@ export function createWaveformModule(dependencies) {
         // 命中。只在词块边界与句边界真正重合时处理；full 分层不重叠则跳过。
         if (track === 'main' && this.options.wordTiming?.enabled && !wordTimingFullLane) {
           const timing = this.cueTiming();
-          const leftEntries = window.AsrEditorUtils?.getWordTimingEntries(left, timing);
-          const rightEntries = window.AsrEditorUtils?.getWordTimingEntries(right, timing);
+          const leftEntries = getWordTimingEntries?.(left, timing);
+          const rightEntries = getWordTimingEntries?.(right, timing);
           if (leftEntries?.length && leftEntries[leftEntries.length - 1].end === leftEnd) {
             const leftWords = row.querySelectorAll(`.waveform-word-block[data-segment-idx="${index}"]`);
             leftWords[leftWords.length - 1]?.classList.add('has-shared-boundary-right');

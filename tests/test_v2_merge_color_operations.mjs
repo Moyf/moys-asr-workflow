@@ -4,7 +4,10 @@ import vm from 'node:vm';
 import { createUtilsModule as createGroups } from '../web/shared/utils/subtitle-groups.js';
 import { createUtilsModule as createMulti } from '../web/shared/utils/multi-subtitle.js';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
-import { invokedInitModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
+import { initRealEditorUtils } from './helpers/init-real-editor-utils.mjs';
+initRealEditorUtils();
 
 const cue = (id, index, color) => ({
   id, start: index * 1000, end: (index + 1) * 1000, text: id,
@@ -72,8 +75,8 @@ function fixture() {
     },
   };
   context.window = context;
-  vm.createContext(context);
-  vm.runInContext(invokedInitModuleSource('editor/cues/editor-segment-ops.js', 'initMaweSegmentOps'), context);
+  vm.createContext(exposeWindowGlobals(context));
+  vm.runInContext(plainModuleSource('editor/cues/editor-segment-ops.js'), context);
   vm.runInContext(plainModuleSource('editor/cues/overlay-track.js'), context);
   return { context, history, original: structuredClone(project) };
 }

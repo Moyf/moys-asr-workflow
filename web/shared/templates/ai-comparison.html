@@ -160,8 +160,8 @@ textarea[aria-invalid="true"]{border-color:var(--red);box-shadow:0 0 0 3px var(-
 <main id="rows"></main><p id="empty" class="empty" hidden>没有符合条件的记录。</p>
 </div>
 <script id="comparison-data" type="application/json">{{DATA}}</script>
-<script>{{REVIEW_SCRIPT}}</script>
-<script>
+<script type="module">
+{{REVIEW_SCRIPT}}
 const data=JSON.parse(document.getElementById('comparison-data').textContent);
 const byId=id=>document.getElementById(id);
 
@@ -291,7 +291,7 @@ byId('reset-translations').addEventListener('click',()=>{edits.clear();updateDra
 byId('download-project').addEventListener('click',async()=>{
  byId('download-project').disabled=true;
  try{
-  const {project,changed}=await MAWTranslationReview.applyEdits(data.translationReview,editList());
+  const {project,changed}=await translationReview.applyEdits(data.translationReview,editList());
   const blob=new Blob([JSON.stringify(project,null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');
   link.href=url;link.download=data.translationReview.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   byId('edit-status').textContent=`已下载核对后 MOSP，手动修改 ${changed} 条。`;
@@ -300,7 +300,7 @@ byId('download-project').addEventListener('click',async()=>{
 });
 if(data.translationReview){
  byId('edit-actions').hidden=false;
- MAWTranslationReview.readPacket(data.translationReview).then(value=>{
+ translationReview.readPacket(data.translationReview).then(value=>{
   packet=value;entries=new Map(packet.entries.map(entry=>[entry.id,entry]));updateDraft();render();
  }).catch(error=>{byId('edit-status').textContent=error.message;byId('download-project').disabled=true;});
 }

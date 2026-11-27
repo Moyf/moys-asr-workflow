@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 test('single-track render uses the canonical main track and imported cue builder', () => {
   const cues = [{ id: 'cue', start: 100, end: 400, text: 'hello' }];
@@ -33,7 +34,7 @@ test('single-track render uses the canonical main track and imported cue builder
     scheduleOnboarding: noop,
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-cue-panel.js', 'initMaweCuePanel'), context);
   context.MaweCuePanel.renderAll();
   assert.equal(built.length, 1);

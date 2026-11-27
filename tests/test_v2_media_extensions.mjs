@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 const fixture = { window: {} };
 loadEditorModule(fixture, 'shared/editor-utils.js');
@@ -45,9 +46,9 @@ test('video dimensions update and clear keep media and audio extension fields', 
     audio_tracks: [{ stream_index: 3, codec: ' opus ', vendor: { flag: false, value: 0 } }] };
   const player = { tagName: 'VIDEO', videoWidth: 1920, videoHeight: 1080 };
   let saves = 0;
-  const context = { window: { AsrEditorUtils: utils }, MaweBoot: { DATA: { media_metadata: media } },
+  const context = { window: { AsrEditorUtils: utils }, AsrEditorUtils: utils, MaweBoot: { DATA: { media_metadata: media } },
     MaweCoreState: { player }, MaweServerSave: { projectImportDirty: false, scheduleAutoSaveFlush() { saves++; } } };
-  vm.runInNewContext(initModuleSource('editor/cues/editor-timeline.js'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-timeline.js'), exposeWindowGlobals(context));
   const timeline = context.window.MaweTimeline;
   assert.equal(timeline.captureProjectVideoDimensions(player), true);
   assert.deepEqual(plain(context.MaweBoot.DATA.media_metadata), {

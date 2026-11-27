@@ -1,4 +1,4 @@
-(function () {
+export function initLauncherPostprocess(launcherRuntime) {
   "use strict";
 
   const $ = (id) => document.getElementById(id);
@@ -94,7 +94,7 @@
   let splitPreviewRequest = 0;
 
   function t(key) {
-    return window.MAWLauncher.translate(key);
+    return launcherRuntime.translate(key);
   }
 
   function resegmentMaxCharsValid() {
@@ -189,7 +189,7 @@
   function knownProviderId(providerId) {
     const id = String(providerId || "");
     if (!id) return "";
-    const providers = window.MAWLauncher.config?.postprocessProviders || [];
+    const providers = launcherRuntime.config?.postprocessProviders || [];
     return providers.some((item) => item.id === id) ? id : "";
   }
 
@@ -335,7 +335,7 @@
   }
 
   function bridge(method, payload = {}) {
-    return window.MAWLauncher.callBackend(method, payload);
+    return launcherRuntime.callBackend(method, payload);
   }
 
   function extension(path) {
@@ -508,7 +508,7 @@
   }
 
   function provider(providerId = $("postprocessProvider").value) {
-    const providers = window.MAWLauncher.config.postprocessProviders;
+    const providers = launcherRuntime.config.postprocessProviders;
     return providers.find((item) => item.id === providerId) || providers[0];
   }
 
@@ -527,7 +527,7 @@
 
   /** 重建两个供应商下拉：设置页显示全部槽位（未配置的也能选中补填），工具箱隐藏未填 URL 的 #2/#3。 */
   function fillProviderSelects(preferredProviderId = "") {
-    const providers = window.MAWLauncher.config?.postprocessProviders || [];
+    const providers = launcherRuntime.config?.postprocessProviders || [];
     [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
       if (!select) return;
       const previous = select.value || preferredProviderId;
@@ -550,8 +550,8 @@
 
   function postprocessErrorText(result) {
     const detail = result?.detail || result?.error || "";
-    return window.MAWLauncher.errorText
-      ? window.MAWLauncher.errorText(result?.code || "", detail, result)
+    return launcherRuntime.errorText
+      ? launcherRuntime.errorText(result?.code || "", detail, result)
       : (detail || t("failed"));
   }
 
@@ -580,7 +580,7 @@
   }
 
   function syncProviderOptionLabels() {
-    const providers = window.MAWLauncher.config?.postprocessProviders || [];
+    const providers = launcherRuntime.config?.postprocessProviders || [];
     [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
       providers.forEach((item) => {
         const option = Array.from(select.options).find((candidate) => candidate.value === item.id);
@@ -796,7 +796,7 @@
   }
 
   function renderOcrModel() {
-    const config = window.MAWLauncher.config || {};
+    const config = launcherRuntime.config || {};
     const models = Array.isArray(config.ocrModels) && config.ocrModels.length
       ? config.ocrModels
       : [
@@ -832,7 +832,7 @@
   }
 
   function renderAlignmentModelControls(selectId, statusId, runId, { scriptMode = false } = {}) {
-    const config = window.MAWLauncher.config || {};
+    const config = launcherRuntime.config || {};
     let models = Array.isArray(config.alignmentModels) && config.alignmentModels.length
       ? config.alignmentModels
       : [
@@ -1017,8 +1017,8 @@
   }
 
   function clampToolboxSize(width, height) {
-    const viewportWidth = window.MAWLauncher.viewportPixelsToPage(window.innerWidth);
-    const viewportHeight = window.MAWLauncher.viewportPixelsToPage(window.innerHeight);
+    const viewportWidth = launcherRuntime.viewportPixelsToPage(window.innerWidth);
+    const viewportHeight = launcherRuntime.viewportPixelsToPage(window.innerHeight);
     const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, viewportWidth - 40);
     const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, viewportHeight - 156));
     return {
@@ -1070,8 +1070,8 @@
       handle.classList.add("dragging");
       const onMove = (moveEvent) => {
         size = axis === "y"
-          ? applyToolboxSize(start.width, start.height + window.MAWLauncher.viewportPixelsToPage(start.y - moveEvent.clientY))
-          : applyToolboxSize(start.width + window.MAWLauncher.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
+          ? applyToolboxSize(start.width, start.height + launcherRuntime.viewportPixelsToPage(start.y - moveEvent.clientY))
+          : applyToolboxSize(start.width + launcherRuntime.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
       };
       const onEnd = () => {
         handle.removeEventListener("pointermove", onMove);
@@ -1129,7 +1129,7 @@
     result.classList.toggle("error", kind === "error");
     renderPostprocessResultActions();
     if (kind === "error" || options.revealWarning === true) {
-      window.MAWLauncher.revealFeedback?.(result, message);
+      launcherRuntime.revealFeedback?.(result, message);
     }
   }
 
@@ -1280,8 +1280,8 @@
     status.textContent = message;
     status.classList.toggle("success", kind === "success");
     status.classList.toggle("error", kind === "error");
-    if (kind === "error") window.MAWLauncher.revealFeedback?.(status, message);
-    else if (!message) window.MAWLauncher.revealFeedback?.(status, "");
+    if (kind === "error") launcherRuntime.revealFeedback?.(status, message);
+    else if (!message) launcherRuntime.revealFeedback?.(status, "");
     if (message && timeoutMs > 0) {
       saveStatusTimer = window.setTimeout(() => setSettingsSaveStatus(""), timeoutMs);
     }
@@ -1447,10 +1447,10 @@
     try {
       let inputs = paths;
       if ($("toolboxRecordingInputMode").value === "recording") {
-        const transcription = window.MAWLauncher.getTranscriptionPayload();
+        const transcription = launcherRuntime.getTranscriptionPayload();
         if (paths.mediaPath) {
           transcription.mediaPath = paths.mediaPath;
-          transcription.audioTrack = window.MAWLauncher.getAudioTrackForMedia(paths.mediaPath);
+          transcription.audioTrack = launcherRuntime.getAudioTrackForMedia(paths.mediaPath);
         }
         const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
         if (!started.ok) { setResult(started.error || postprocessErrorText(started), "error"); return; }
@@ -1466,7 +1466,7 @@
         if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
         inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
         $("toolboxAlignmentProjectPath").value = prepared.projectPath;
-        window.MAWLauncher.setJsonPath(prepared.projectPath);
+        launcherRuntime.setJsonPath(prepared.projectPath);
       }
       const result = await bridge("start_alignment_server", { ...inputs, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
       if (!result.ok) {
@@ -1526,8 +1526,8 @@
         return;
       }
       if (openEditor) {
-        window.MAWLauncher.setJsonPath(result.projectPath);
-        await window.MAWLauncher.openServerEditor();
+        launcherRuntime.setJsonPath(result.projectPath);
+        await launcherRuntime.openServerEditor();
       }
       const warnings = Array.isArray(result.warnings) ? result.warnings : [];
       setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
@@ -1570,7 +1570,7 @@
       hint.textContent = message;
       hint.classList.toggle("visible", Boolean(message));
     }
-    window.MAWLauncher.revealFeedback?.(hint, message);
+    launcherRuntime.revealFeedback?.(hint, message);
   }
 
   function clearSettingsErrors() {
@@ -1639,8 +1639,8 @@
     const inset = 8;
     const left = Math.min(Math.max(event.clientX, inset), window.innerWidth - rect.width - inset);
     const top = Math.min(Math.max(event.clientY, inset), window.innerHeight - rect.height - inset);
-    menu.style.left = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, left))}px`;
-    menu.style.top = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, top))}px`;
+    menu.style.left = `${launcherRuntime.viewportPixelsToPage(Math.max(inset, left))}px`;
+    menu.style.top = `${launcherRuntime.viewportPixelsToPage(Math.max(inset, top))}px`;
     menu.querySelector('[role="menuitem"]:not(.hidden)')?.focus({ preventScroll: true });
   }
 
@@ -1792,7 +1792,7 @@
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (chain?.kind === "match" && chain.scriptPath && (result.projectPath || result.srtPath)) {
-      for (const warning of warnings) window.MAWLauncher.appendLog?.(warning);
+      for (const warning of warnings) launcherRuntime.appendLog?.(warning);
       const overlaps = warnings.filter(warning => warning.includes("与匹配结果重叠") || warning.includes("与匹配结果完全重叠"));
       setResult([t("toolbox_done"), t("toolbox_match_source").replace("{path}", () => chain.scriptPath),
         t("toolbox_match_compare_hint"), ...overlaps].join("\n"), "success", { revealWarning: warnings.length > 0 });
@@ -1957,7 +1957,7 @@
     );
     if (!fresh.size) return;
     providerStatusApplied = request;
-    (window.MAWLauncher.config?.postprocessProviders || []).forEach((item) => {
+    (launcherRuntime.config?.postprocessProviders || []).forEach((item) => {
       const next = fresh.get(String(item?.id || ""));
       if (!next) return;
       for (const field of ["baseUrl", "model", "reasoningMode", "displayName", "label"]) {
@@ -2037,7 +2037,7 @@
     if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
     if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady(stepProviderId(stepId));
     if (stepId === "ocr") {
-      const config = window.MAWLauncher.config || {};
+      const config = launcherRuntime.config || {};
       const ocrModel = (Array.isArray(config.ocrModels) ? config.ocrModels : [])
         .find((item) => item.id === $("ocrModel").value);
       if (!config.ocrRuntime?.ready || !ocrModel?.installed) return false;
@@ -2118,14 +2118,14 @@
   }
 
   function stateLangSeparator() {
-    return window.MAWLauncher?.translate("auto_postprocess_title")?.includes("Post-") ? ", " : "、";
+    return launcherRuntime?.translate("auto_postprocess_title")?.includes("Post-") ? ", " : "、";
   }
 
   function persistAutoPlanSoon() {
     window.clearTimeout(autoPlanSaveTimer);
     autoPlanSaveTimer = window.setTimeout(async () => {
       const result = await bridge("save_postprocess_plan", { plan: autoPlanFromControls() });
-      if (result.ok && window.MAWLauncher.config) window.MAWLauncher.config.postprocessAutoPlan = result.plan;
+      if (result.ok && launcherRuntime.config) launcherRuntime.config.postprocessAutoPlan = result.plan;
     }, 180);
   }
 
@@ -2188,7 +2188,7 @@
         const hasModel = item?.hasModel || item?.model || $("llmModel")?.value.trim();
         setTestConnectionAttention(Boolean(hasApiKey && hasBaseUrl && hasModel && !item?.verified));
       }
-      window.MAWLauncher.openSettings("llmSettingsSection", focusId);
+      launcherRuntime.openSettings("llmSettingsSection", focusId);
       return;
     }
     toolboxOpenMode = "auto-config";
@@ -2293,7 +2293,7 @@
   }
 
   function initializeAutoPostprocess() {
-    const plan = window.MAWLauncher.config?.postprocessAutoPlan || defaultAutoPlan();
+    const plan = launcherRuntime.config?.postprocessAutoPlan || defaultAutoPlan();
     applyAutoPostprocessPlan(plan);
     const providerId = providerIdForTask(activeLlmOperation || $("postprocessOperation").value)
       || (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
@@ -2450,9 +2450,9 @@
     }
     setFieldError("toolboxTimestampScriptPath", "");
     const modelId = $(scriptMode ? "toolboxScriptAlignmentModel" : "toolboxTimestampModel").value;
-    const model = (window.MAWLauncher.config?.alignmentModels || []).find((item) => item.id === modelId);
+    const model = (launcherRuntime.config?.alignmentModels || []).find((item) => item.id === modelId);
     const runtimeReady = model?.runtimeAvailable === undefined
-      ? Boolean(window.MAWLauncher.config?.localRuntime?.ready)
+      ? Boolean(launcherRuntime.config?.localRuntime?.ready)
       : Boolean(model?.runtimeAvailable);
     if (!model?.installed || !runtimeReady) {
       const message = t("toolbox_timestamp_model_not_ready");
@@ -2983,7 +2983,7 @@
   }
 
   function initialize() {
-    const config = window.MAWLauncher.config;
+    const config = launcherRuntime.config;
     if (!config?.postprocessProviders?.length) return;
     const selectedProvider = config.postprocessProviders.find((item) => item.selected)?.id || config.postprocessProviders[0].id;
     fillProviderSelects(selectedProvider);
@@ -3069,14 +3069,14 @@
   });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
-  $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
-  $("openPunctSettings").addEventListener("click", () => window.MAWLauncher.openSettings("punctuationSettingsSection"));
+  $("openOcrSettings").addEventListener("click", () => launcherRuntime.openSettings("ocrSettingsSection"));
+  $("openPunctSettings").addEventListener("click", () => launcherRuntime.openSettings("punctuationSettingsSection"));
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("stopToolboxPostprocess").addEventListener("click", () => { void cancelAiPostprocess(); });
   $("toolboxPostprocessSettings").addEventListener("click", () => {
     const providerId = $("postprocessProvider").value;
     renderProvider(providerId, { syncToolbox: false });
-    window.MAWLauncher.openSettings("llmSettingsSection");
+    launcherRuntime.openSettings("llmSettingsSection");
     requestAnimationFrame(() => $("llmApiKey")?.focus());
   });
   $("runFixedProcess").addEventListener("click", runFixedProcess);
@@ -3213,7 +3213,7 @@
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection", "llmApiKey"); });
+  $("openLlmSettings").addEventListener("click", () => { renderProvider(); launcherRuntime.openSettings("llmSettingsSection", "llmApiKey"); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
     persistLlmPrompt();
@@ -3368,26 +3368,26 @@
   });
   setupToolboxResize();
   window.addEventListener("mawlauncherready", initialize, { once: true });
-  window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
-  window.MAWLauncher.onMediaToolLog = renderMediaToolLog;
-  window.MAWLauncher.onPostprocessStream = renderPostprocessStream;
-  window.MAWLauncher.onPostprocessPipeline = (event) => {
+  launcherRuntime.onPostprocessStatus = renderPostprocessStatus;
+  launcherRuntime.onMediaToolLog = renderMediaToolLog;
+  launcherRuntime.onPostprocessStream = renderPostprocessStream;
+  launcherRuntime.onPostprocessPipeline = (event) => {
     if (postprocessCancelling) return;
     if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
     if (event.stage === "done" && event.warnings?.length) setResult(`${t("toolbox_done")}\n${event.warnings.join("\n")}`, "success", { revealWarning: true });
   };
-  window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
-  window.MAWLauncher.openToolboxAiProcessing = () => {
+  launcherRuntime.getAutoPostprocessPayload = autoPlanFromControls;
+  launcherRuntime.openToolboxAiProcessing = () => {
     // DeepSeek 彩蛋提示里的「AI处理」入口：打开工具箱并切到 AI 处理标签页。
     toolboxOpenMode = "manual";
     if ($("toolboxDrawer").classList.contains("hidden")) setOpen(true);
     selectTool("llm");
   };
-  window.MAWLauncher.onLanguageChanged = () => {
+  launcherRuntime.onLanguageChanged = () => {
     clearScriptAlignmentCheck();
     syncProviderOptionLabels();
-    if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
+    if (launcherRuntime.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();
     renderTimestampModel();
     document.querySelectorAll(".toolbox-chain-file, .toolbox-chain-source").forEach(renderArtifactButton);
@@ -3400,13 +3400,13 @@
     renderAutoPostprocessState();
     updateBackfillLabels();
   };
-  window.MAWLauncher.onProjectPathChanged = () => {
+  launcherRuntime.onProjectPathChanged = () => {
     syncPaths();
   };
-  window.MAWLauncher.onAlignmentModelsChanged = () => {
+  launcherRuntime.onAlignmentModelsChanged = () => {
     renderTimestampModel();
   };
-  window.MAWLauncher.onMediaPathChanged = ({ refreshOcrVideo = false } = {}) => {
+  launcherRuntime.onMediaPathChanged = ({ refreshOcrVideo = false } = {}) => {
     if (refreshOcrVideo) {
       ocrVideoManual = false;
       $("ocrVideoPath").value = autoOcrVideoPath();
@@ -3423,18 +3423,18 @@
     $("runScriptMatch").disabled = batchMode || busy;
     $("configureAutoMatch").disabled = batchMode;
   }
-  window.MAWLauncher.onBatchModeChanged = (active) => {
+  launcherRuntime.onBatchModeChanged = (active) => {
     batchMode = Boolean(active);
     applyBatchModeLocks();
     if (batchMode && $("toolboxMatchTab").classList.contains("active")) selectTool("replace");
     renderAutoPostprocessState();
   };
-  window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
-  window.MAWLauncher.onSettingsClosed = cancelPendingAutoStep;
-  window.MAWLauncher.onOcrRuntimeChanged = () => {
+  launcherRuntime.openAutoPostprocessStep = openAutoStep;
+  launcherRuntime.onSettingsClosed = cancelPendingAutoStep;
+  launcherRuntime.onOcrRuntimeChanged = () => {
     renderOcrModel();
     renderAutoPostprocessState();
     maybeEnablePendingAutoStep();
   };
-  if (window.MAWLauncher.config) initialize();
-})();
+  if (launcherRuntime.config) initialize();
+}

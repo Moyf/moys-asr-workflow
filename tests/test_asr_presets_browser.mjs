@@ -1,21 +1,25 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
+import { mkdtempSync, rmdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { buildLauncherBrowserFixture } from './helpers/launcher-browser-fixture.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.MAW_TEST_PLAYWRIGHT || 'playwright');
 
 test('ASR preset library manages metadata and options independently with keyboard and narrow layouts', async () => {
   const browser = await chromium.launch({ executablePath: process.env.MAW_E2E_CHROMIUM_PATH || undefined });
+  const directory = mkdtempSync(join(tmpdir(), 'maw-preset-browser-'));
+  let fixture;
   try {
     const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1100, height: 850 } });
     const errors = [];
     page.setDefaultTimeout(15_000);
     page.on('pageerror', error => errors.push(error.message));
-    const url = pathToFileURL(path.resolve('web/launcher/index.html')).href;
-    await page.goto(url);
+    fixture = await buildLauncherBrowserFixture(directory);
+    await page.goto(fixture.url);
     await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length);
     const rawConfig = await page.evaluate(() => window.MAWLauncher.config);
     const config = { ...rawConfig, asrPresetRoot: 'C:/Users/test/AppData/Local/MAW/asr-presets', asrPresetRootConfigured: true };
@@ -279,5 +283,9 @@ test('ASR preset library manages metadata and options independently with keyboar
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     assert.equal(await page.locator('#saveAsrPreset').isVisible(), true);
     assert.deepEqual(errors, []);
-  } finally { await browser.close(); }
+  } finally {
+    await browser.close();
+    fixture?.cleanup();
+    rmdirSync(directory);
+  }
 });

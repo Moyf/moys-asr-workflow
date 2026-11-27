@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
 function fixture({ timed = true } = {}) {
   const segment = { id: 'cue', start: 0, end: 1000, text: 'hello' };
@@ -26,7 +27,7 @@ function fixture({ timed = true } = {}) {
     },
   };
   context.window = context;
-  vm.createContext(context);
+  vm.createContext(exposeWindowGlobals(context));
   vm.runInContext(invokedInitModuleSource('editor/cues/editor-split-context.js', 'initMaweSplitContext'), context);
   return { context, segment, calls };
 }

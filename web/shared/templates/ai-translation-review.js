@@ -1,5 +1,5 @@
 /* Fixed offline adapter. No file path access; only text edits to snapshot-owned IDs. */
-(function (root) {
+export const translationReview = (() => {
   'use strict';
   function compose(entry, text, packet) {
     if (packet.mode !== 'bilingual' || !entry.source.trim()) return text;
@@ -31,7 +31,7 @@
   function mainTrack(project) { return project.tracks.find(track => track.role === 'main'); }
   async function readPacket(review) {
     if (typeof review?.snapshot !== 'string' || !/^[a-f0-9]{64}$/.test(review.sha256)) throw new Error('核对快照或指纹无效。');
-    const digest = await root.crypto.subtle.digest('SHA-256', new TextEncoder().encode(review.snapshot));
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(review.snapshot));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (hash !== review.sha256) throw new Error('快照指纹不一致，不能导出。请重新生成核对页。');
     const packet = JSON.parse(review.snapshot);
@@ -109,5 +109,5 @@
     }
     return { project: result, changed };
   }
-  root.MAWTranslationReview = Object.freeze({ readPacket, applyEdits });
-})(globalThis);
+  return Object.freeze({ readPacket, applyEdits });
+})();

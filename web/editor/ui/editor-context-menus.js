@@ -1,8 +1,33 @@
+import { MaweBoot } from '../boot/editor-boot.js';
+import { addExtensionAtWaveformTime, addCueAtWaveformTime } from '../cues/editor-add-cue.js';
+import { unbindSelectedSubtitlePair, alignExtensionToMainTimeRange, bindSelectedSubtitlePair, beginPendingExtensionBinding } from '../cues/editor-binding-align.js';
+import { MaweCueElements } from '../cues/editor-cue-elements.js';
+import { commitCuePanelEdit, setCuePanelTarget, renderAll, focusCuePanelText } from '../cues/editor-cue-panel.js';
+import { MaweSegmentOps } from '../cues/editor-segment-ops.js';
+import { MaweSelection } from '../cues/editor-selection.js';
+import { splitFromContextMenu } from '../cues/editor-split-context.js';
+import { MaweSplitCore } from '../cues/editor-split-core.js';
+import { MaweStickerPicker } from '../cues/editor-sticker-picker.js';
+import { seekFromWaveform } from '../cues/editor-text-cleanup.js';
+import { MaweTextProcess } from '../cues/editor-text-process.js';
+import { MaweWordTiming } from '../cues/editor-word-timing.js';
+import { MaweMediaPlayback } from '../media/editor-media-playback.js';
+import { MaweCoreState } from '../state/editor-core-state.js';
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweState } from '../state/editor-state.js';
+import { MaweColors } from '../styles/editor-colors.js';
+import { MaweSpeakerLabels } from '../styles/editor-speaker-labels.js';
+import { MaweDisplaySettings } from './editor-display-settings.js';
+import { MaweDom } from './editor-dom.js';
+import { MaweGapRemoveData } from './editor-gap-remove-data.js';
+import { MaweGapRemoveUi } from './editor-gap-remove-ui.js';
+import { MaweHint } from './editor-hint.js';
 import { updateSelectionCountText } from '../cues/editor-overlay-cue-selection.js';
+export let MaweContextMenus;
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 // 右键菜单：字幕/副字幕/空隙/波形空白菜单与定位。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweContextMenus 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 由 split-cluster codemod 自 editor.js 拆出。
 import {
   getOverlayTrack,
   addOverlayAtWaveformTime,
@@ -25,10 +50,10 @@ export function initMaweContextMenus() {
 
 
 
-  function findWaveformCueAtTime(timeMs, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
+  function findWaveformCueAtTime(timeMs, segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
     const time = Number(timeMs);
     if (!Number.isFinite(time)) return -1;
-    const list = Array.isArray(segments) ? segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const list = Array.isArray(segments) ? segments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     return list.findIndex((segment) => {
       const start = Number(segment?.start);
       const end = Number(segment?.end);
@@ -63,21 +88,21 @@ export function initMaweContextMenus() {
     sep.className = 'sep';
     MaweDom.ctxmenu.appendChild(sep);
   }
-  const mainIdx = findWaveformCueAtTime(timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+  const mainIdx = findWaveformCueAtTime(timeMs, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
     addItem(
       '创建副字幕',
       'N',
-      () => MaweAddCue.addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
+      () => addExtensionAtWaveformTime(timeMs, clickX, clickY, extensionTrack),
       extensionIdx >= 0,
     );
   } else {
     addItem(
       '创建字幕',
       'N',
-      () => MaweAddCue.addCueAtWaveformTime(timeMs, clickX, clickY),
+      () => addCueAtWaveformTime(timeMs, clickX, clickY),
       mainIdx >= 0,
     );
     // 叠加轨启用时提供「创建叠加字幕」：主字幕占用的时间点也能创建
@@ -91,11 +116,11 @@ export function initMaweContextMenus() {
       );
     }
   }
-  if (Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
+  if (Array.isArray(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
     addItem(
       '按音频位置拆分主字幕',
       'B',
-      () => MaweSplitContext.splitFromContextMenu(mainIdx, clickX, clickY, timeMs),
+      () => splitFromContextMenu(mainIdx, clickX, clickY, timeMs),
       mainIdx < 0,
     );
   }
@@ -184,7 +209,7 @@ export function initMaweContextMenus() {
       if (event.key === 'ArrowRight' && event.target === head) {
         event.preventDefault(); event.stopPropagation();
         setOpen(true);
-        list.querySelector('button, [tabindex="0"]')?.focus();
+        /** @type {HTMLButtonElement} */ (list.querySelector('button, [tabindex="0"]'))?.focus();
       } else if (event.key === 'ArrowLeft' || event.key === 'Escape') {
         event.preventDefault(); event.stopPropagation();
         setOpen(false);
@@ -228,13 +253,13 @@ export function initMaweContextMenus() {
     selectAll.textContent = '选择此人在当前轨道的全部字幕';
     selectAll.addEventListener('click', () => {
       MaweDom.ctxmenu.classList.remove('show');
-      MaweCuePanel.commitCuePanelEdit();
+      commitCuePanelEdit();
       MaweSelection.clearSelection({ silent: true });
       track.segments.forEach((cue, index) => {
         if (cue.speaker === segment.speaker) MaweState.selection.add(kind, index);
       });
       const first = MaweState.selection.indices(kind).values().next().value;
-      if (first !== undefined) MaweCuePanel.setCuePanelTarget(kind, first, kind === 'extension' ? track.id : null);
+      if (first !== undefined) setCuePanelTarget(kind, first, kind === 'extension' ? track.id : null);
       MaweSelection.updateMultiSelectionClasses();
       if (kind === 'main') {
         MaweCoreState.container.querySelectorAll('.cue[data-idx]').forEach(row => {
@@ -368,7 +393,7 @@ export function initMaweContextMenus() {
     MaweDom.ctxmenu.appendChild(row);
     // 「清除颜色」项：仅当选中范围内有颜色时显示
     const hasColorInRange = targets.some(i =>
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color_group_id);
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color_group_id);
     if (MaweBoot.DATA.annotation_mode === 'color' && hasColorInRange) {
       addItem('清除颜色', '0', () => MaweStickerPicker.clearColorOnTargets(targets), { danger: true });
     }
@@ -381,7 +406,7 @@ export function initMaweContextMenus() {
   // 自定义；组序与组内排序都跟随 WRAP_CHAR_PRESETS 数组序。
   function visibleWrapCharPresets() {
     const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
-    return (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).filter(preset => !preset.ass || assMode);
+    return (AsrEditorUtils.WRAP_CHAR_PRESETS || []).filter(preset => !preset.ass || assMode);
   }
   function addWrapCharsSubmenu(targets, container = MaweDom.ctxmenu) {
     const wrapPresets = visibleWrapCharPresets();
@@ -455,42 +480,42 @@ export function initMaweContextMenus() {
       : splitTextMode === 'duplicate'
         ? 'Ctrl/Cmd+Shift+B'
         : 'B';
-    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(
+    addItem(splitLabel, splitKbd, () => splitFromContextMenu(
       idx, x, y, waveformTimeMs, { splitTextMode },
     ));
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', '', () => {
-        MaweTextCleanup.seekFromWaveform(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000);
+        seekFromWaveform(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000);
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
     // 试听：只播放该字幕自身的时间范围，到终点自动暂停；F 为全局快捷键。
     addItem('试听', 'F', () => {
-      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
+      const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
       MaweMediaPlayback.auditionRange(segment.start, segment.end);
     });
     addSep();
     // 组 2：外观（表情包与颜色）；表情包功能关闭时隐藏分配入口
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
-    if (stickersEnabled && (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker_group_id)) {
+    if (stickersEnabled && (AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker_group_id)) {
       addItem('删除表情包', '', () => {
         MaweStickerPicker.removeStickerCascade(idx);
-        MaweCuePanel.renderAll();
+        renderAll();
         MaweHint.flashHint('已删除', 'success');
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
-    addSpeakerSubmenu(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), targetIdxs,
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx], 'main');
+    addSpeakerSubmenu(AsrEditorUtils.getMainTrack(MaweBoot.DATA), targetIdxs,
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx], 'main');
     if (MaweBoot.DATA.annotation_mode !== 'speaker' && colorGroupHeadIndex(idx) >= 0) {
       addItem('移出颜色组', '', () => detachColorFromGroup(idx));
     }
     addSep();
     // 组 3：状态与删除
     addItem(
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].disabled ? '启用此条' : '禁用此条',
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].disabled ? '启用此条' : '禁用此条',
       'Alt+点击',
       () => MaweStickerPicker.toggleDisabled([idx])
     );
@@ -500,7 +525,7 @@ export function initMaweContextMenus() {
     if (MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
       addItem('解绑', 'Shift+G', () => {
         MaweSelection.selectOnly(idx);
-        MaweBindingAlign.unbindSelectedSubtitlePair();
+        unbindSelectedSubtitlePair();
       });
     }
     // 「左右添加字符」提为顶层菜单行，放「高级操作」上方：预设是高频动作；
@@ -517,17 +542,17 @@ export function initMaweContextMenus() {
     // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id);
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id);
     if (hasStickerInRange) {
       addItem('延长表情包', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }
     if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
     addColorSubmenu(targetIdxs);
-    addSpeakerSubmenu(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), targetIdxs,
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx], 'main');
+    addSpeakerSubmenu(AsrEditorUtils.getMainTrack(MaweBoot.DATA), targetIdxs,
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx], 'main');
     addSep();
     // 组 3：状态与删除
-    const _disabledInSel = targetIdxs.filter(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].disabled).length;
+    const _disabledInSel = targetIdxs.filter(i => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].disabled).length;
     addItem(
       _disabledInSel === targetIdxs.length ? '启用选中' : '禁用选中',
       '',
@@ -602,10 +627,10 @@ export function initMaweContextMenus() {
       'Alt+点击',
     );
     addItem('删除副字幕', () => MaweSegmentOps.deleteExtensionSegments([index]), true);
-    if (binding) addItem('对齐主字幕时间范围', () => MaweBindingAlign.alignExtensionToMainTimeRange(index, track), false, false, 'H');
+    if (binding) addItem('对齐主字幕时间范围', () => alignExtensionToMainTimeRange(index, track), false, false, 'H');
     if (binding) addItem('解绑', () => {
       MaweSelection.selectOnlyExtension(index);
-      MaweBindingAlign.unbindSelectedSubtitlePair();
+      unbindSelectedSubtitlePair();
     }, false, false, 'Shift+G');
     if (binding) {
       // 一对一关系已经存在时，必须先解绑，避免用户误以为点击后会静默换绑。
@@ -617,12 +642,12 @@ export function initMaweContextMenus() {
           // 再复用顶部「绑定」操作。这里是用户明确保留主字幕后发起的绑定，
           // 因此保留主字幕选区，作为有意的直接绑定/替换入口。
           MaweSelection.selectOnlyExtension(index, track, true, true);
-          MaweBindingAlign.bindSelectedSubtitlePair();
+          bindSelectedSubtitlePair();
         }, false, false, 'G');
       }
       // 即使当前还保留着一条主字幕选区，也保留自动匹配入口，方便按时间
       // 选择最早的未绑定主字幕；明确绑定选中项则使用上面的入口。
-      addItem('绑定到主字幕', () => MaweBindingAlign.beginPendingExtensionBinding(index, track), false, false, 'G');
+      addItem('绑定到主字幕', () => beginPendingExtensionBinding(index, track), false, false, 'G');
     }
     MaweDom.ctxmenu.classList.add('show');
     const rect = MaweDom.ctxmenu.getBoundingClientRect();
@@ -666,7 +691,7 @@ export function initMaweContextMenus() {
     if (!MaweDom.ctxmenu.contains(event.target)) MaweDom.ctxmenu.classList.remove('show');
   }
 
-  global.MaweContextMenus = Object.freeze({
+  MaweContextMenus = Object.freeze({
     findWaveformCueAtTime,
     showWaveformBlankMenu,
     get ctxLastClickX() { return ctxLastClickX; },
@@ -679,6 +704,7 @@ export function initMaweContextMenus() {
     showGapContextMenu,
     closeContextMenuOnOutsidePointerDown
   });
+
 }
 
 // 叠加字幕块的右键菜单：转为主字幕 / 删除。叠加轨不参与拆分合并与绑定。
@@ -688,7 +714,7 @@ export function showOverlayContextMenu(x, y, index) {
   if (!segment) return;
   // 主轨同时间段已有字幕时，转回去会产生主轨重叠，置灰禁用；
   // 只把该条叠加段的时间范围与主轨比对，相邻贴合（端点相接）不算占用。
-  const mainOccupied = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((main) =>
+  const mainOccupied = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((main) =>
     Number(main?.start) < Number(segment?.end) && Number(main?.end) > Number(segment?.start));
   MaweDom.ctxmenu.innerHTML = '';
   const addItem = (label, fn, opts = {}) => {
@@ -709,20 +735,20 @@ export function showOverlayContextMenu(x, y, index) {
     MaweDom.ctxmenu.appendChild(sep);
   };
   addItem('编辑文本', () => {
-    MaweCuePanel.setCuePanelTarget('overlay', index);
+    setCuePanelTarget('overlay', index);
     // 与波形双击一致：弹出快速编辑气泡（从字幕列表菜单打开时先滚动定位）；
     // 气泡无法锚定时回退聚焦字幕面板文本框。
     MaweCoreState.waveformEditor?.revealTime(Number(segment.start), true);
     if (MaweCoreState.waveformEditor?.openCueQuickEditAtIndex) {
       MaweCoreState.waveformEditor.openCueQuickEditAtIndex(
-        'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay'));
+        'overlay', index, () => focusCuePanelText(index, 'overlay'));
     } else {
-      MaweCuePanel.focusCuePanelText(index, 'overlay');
+      focusCuePanelText(index, 'overlay');
     }
   });
   if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
     addItem('跳转并播放', () => {
-      MaweTextCleanup.seekFromWaveform(segment.start / 1000);
+      seekFromWaveform(segment.start / 1000);
       if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
     });
   }

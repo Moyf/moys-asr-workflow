@@ -3,8 +3,9 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { parse } from 'acorn';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+import { exposeWindowGlobals } from './helpers/vm-window-globals.mjs';
 
-const source = initModuleSource('editor/io/editor-wiring-export-actions.js');
+const source = initModuleSource('editor/io/editor-wiring-export-actions.js', { isolate: false });
 const fn = parse(source, { ecmaVersion: 'latest' }).body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'downloadPreparedAss');
 const code = source.slice(fn.start, fn.end);
 function fixture({ trackError, pickerError, writeError } = {}) {
@@ -19,7 +20,7 @@ function fixture({ trackError, pickerError, writeError } = {}) {
     writeBlob: async (_handle, blob) => { calls.push('write'); if (writeError) throw writeError; assert.equal(await blob().text(), 'original ASS'); },
   } }, MaweExportTimeline: { downloadFile: async (_data, _name, _mime, _accept, options) => { calls.push(['fallback', options.usePicker]); } },
   buildAssWithFontAliasCapture: build => build(), announceAssFontAliasReplacements() {} };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(code, exposeWindowGlobals(context));
   return { calls, release, reject, context, run: () => context.downloadPreparedAss(() => { calls.push('build'); return 'original ASS'; }, 'captions.ass', 'ASS') };
 }
 

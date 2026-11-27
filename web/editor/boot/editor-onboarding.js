@@ -1,4 +1,7 @@
+import { MaweBoot } from './editor-boot.js';
 import { getOnboardingEditor } from './editor-boot.js';
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { AsrEditorUtils } from '../../shared/editor-utils.js';
 
 const hooks = { current: null };
 
@@ -26,7 +29,7 @@ const onboardingStatus = document.getElementById('onboarding-status');
 const onboardingFootnote = document.getElementById('onboarding-footnote');
 const onboardingSkip = document.getElementById('onboarding-skip');
 const onboardingSecondary = document.getElementById('onboarding-secondary');
-const onboardingPrimary = document.getElementById('onboarding-primary');
+const onboardingPrimary = /** @type {HTMLButtonElement} */ (document.getElementById('onboarding-primary'));
 const onboardingHelp = document.getElementById('onboarding-help');
 const ONBOARDING_STORAGE_KEY = 'moy.asr.editor.onboarding.v1';
 const ONBOARDING_STEP_COUNT = 3;
@@ -179,7 +182,7 @@ function onboardingModKey() {
 }
 
 function onboardingIsEnglish() {
-  return window.MAWE_I18N?.language === 'en';
+  return MAWE_I18N?.language === 'en';
 }
 
 function onboardingSplitKey() {
@@ -188,7 +191,7 @@ function onboardingSplitKey() {
 
 function onboardingText(value) {
   const text = String(value ?? '');
-  const translateText = window.MAWE_I18N?.translateText;
+  const translateText = MAWE_I18N?.translateText;
   return typeof translateText === 'function' ? translateText(text) : text;
 }
 
@@ -402,8 +405,8 @@ function renderOnboarding() {
 }
 
 function findOnboardingSplitTarget() {
-  for (let i = 0; i < window.AsrEditorUtils.getMainTrack(DATA).segments.length; i++) {
-    const segment = window.AsrEditorUtils.getMainTrack(DATA).segments[i];
+  for (let i = 0; i < AsrEditorUtils.getMainTrack(DATA).segments.length; i++) {
+    const segment = AsrEditorUtils.getMainTrack(DATA).segments[i];
     if (segment && segment.end - segment.start >= 200 && String(segment.text || '').trim().length >= 2) return i;
   }
   return -1;
@@ -416,7 +419,7 @@ function onboardingFocusCard() {
 function openOnboarding({ force = false } = {}) {
   if (!onboardingLayer) return;
   if (!force && readOnboardingStatus()) return;
-  if (!window.AsrEditorUtils.getMainTrack(DATA).segments.length) {
+  if (!AsrEditorUtils.getMainTrack(DATA).segments.length) {
     onboardingResetTransient();
     onboardingState.open = true;
     onboardingState.mode = 'empty';
@@ -433,7 +436,7 @@ function openOnboarding({ force = false } = {}) {
 
 function maybeStartOnboarding() {
   if (onboardingIsOpen()) {
-    if (onboardingState.mode === 'empty' && window.AsrEditorUtils.getMainTrack(DATA).segments.length) openOnboarding({ force: true });
+    if (onboardingState.mode === 'empty' && AsrEditorUtils.getMainTrack(DATA).segments.length) openOnboarding({ force: true });
     return;
   }
   if (readOnboardingStatus()) return;
@@ -443,7 +446,7 @@ function maybeStartOnboarding() {
 
 function finishOnboarding(status = 'completed') {
   // 引导中如果停在真实合并之后，跳过时先恢复工程，避免留下半完成的教学改动。
-  if (onboardingState.phase === 'await-undo' && window.AsrEditorUtils.getMainTrack(DATA).segments.length < onboardingState.mergeBeforeCount) {
+  if (onboardingState.phase === 'await-undo' && AsrEditorUtils.getMainTrack(DATA).segments.length < onboardingState.mergeBeforeCount) {
     performUndo();
   }
   saveOnboardingStatus(status);
@@ -474,7 +477,7 @@ function startOnboardingNavigation() {
   onboardingState.phase = 'navigation';
   onboardingState.moves = 0;
   const startIdx = editor.currentCuePanelIdx >= 0 ? editor.currentCuePanelIdx : 0;
-  selectOnly(Math.min(startIdx, window.AsrEditorUtils.getMainTrack(DATA).segments.length - 1));
+  selectOnly(Math.min(startIdx, AsrEditorUtils.getMainTrack(DATA).segments.length - 1));
   onboardingState.lastCueIdx = editor.currentCuePanelIdx;
   renderOnboarding();
   onboardingFocusCard();
@@ -484,7 +487,7 @@ function startOnboardingMerge() {
   onboardingState.started = true;
   onboardingState.phase = 'merge-armed';
   onboardingState.shiftUsed = false;
-  onboardingState.mergeBeforeCount = window.AsrEditorUtils.getMainTrack(DATA).segments.length;
+  onboardingState.mergeBeforeCount = AsrEditorUtils.getMainTrack(DATA).segments.length;
   onboardingState.mergeSelectedCount = 0;
   if (selectedIdxs.size !== 1) selectOnly(editor.currentCuePanelIdx >= 0 ? editor.currentCuePanelIdx : 0);
   renderOnboarding();
@@ -500,7 +503,7 @@ function prepareOnboardingSplit() {
   }
   onboardingState.phase = 'split-demo';
   onboardingState.started = true;
-  onboardingState.splitBeforeCount = window.AsrEditorUtils.getMainTrack(DATA).segments.length;
+  onboardingState.splitBeforeCount = AsrEditorUtils.getMainTrack(DATA).segments.length;
   onboardingState.splitTargetIdx = targetIdx;
   selectOnly(targetIdx);
   const target = container.querySelector(`.cue[data-idx="${targetIdx}"]`);
@@ -526,7 +529,7 @@ function beginOnboardingRealSplit(idx) {
 function onboardingObserveRender() {
   if (!onboardingIsOpen() || onboardingState.mode !== 'tour') return;
   if (onboardingState.step === 1 && (onboardingState.phase === 'merge-armed' || onboardingState.phase === 'merge-ready')
-      && window.AsrEditorUtils.getMainTrack(DATA).segments.length < onboardingState.mergeBeforeCount) {
+      && AsrEditorUtils.getMainTrack(DATA).segments.length < onboardingState.mergeBeforeCount) {
     onboardingState.phase = 'await-undo';
     onboardingState.started = true;
     onboardingState.mergeSelectedCount = Math.max(2, onboardingState.mergeSelectedCount || 2);
@@ -537,7 +540,7 @@ function onboardingObserveRender() {
     return;
   }
   if (onboardingState.step === 1 && onboardingState.phase === 'await-undo'
-      && window.AsrEditorUtils.getMainTrack(DATA).segments.length === onboardingState.mergeBeforeCount) {
+      && AsrEditorUtils.getMainTrack(DATA).segments.length === onboardingState.mergeBeforeCount) {
     flashHint(onboardingText('已撤销这次体验，请点击下一步学习拆分'), 'success');
     onboardingState.phase = 'merge-complete';
     onboardingState.started = false;
@@ -546,7 +549,7 @@ function onboardingObserveRender() {
     return;
   }
   if (onboardingState.step === 2 && (onboardingState.phase === 'split-demo' || onboardingState.phase === 'split-live')
-      && window.AsrEditorUtils.getMainTrack(DATA).segments.length > onboardingState.splitBeforeCount) {
+      && AsrEditorUtils.getMainTrack(DATA).segments.length > onboardingState.splitBeforeCount) {
     onboardingState.phase = 'complete';
     onboardingState.started = false;
     saveOnboardingStatus('completed');
@@ -598,7 +601,7 @@ onboardingDemo?.addEventListener('click', (event) => {
     : null;
   if (!target) return;
   setEditorSettingsPanelOpen(true);
-  target.blur();
+  /** @type {HTMLElement} */ (target).blur();
 });
 helpOnboardingButton?.addEventListener('click', () => {
   editor.closeHelp();
@@ -666,6 +669,5 @@ document.addEventListener('keydown', (event) => {
     scheduleStart: scheduleOnboardingAfterRender,
     beginRealSplit: beginOnboardingRealSplit,
   });
-  window.MAWE_ONBOARDING = hooks.current;
   scheduleOnboardingAfterRender();
 }

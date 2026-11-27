@@ -1,7 +1,6 @@
+import { AsrGapRemoveCore } from './gap-remove-core.js';
 import { TrackPolicy } from './utils/track-policy.js';
-// Compatibility facade: initialize domain factories once and retain the
-// historical API. ESM init module: the assembler calls this at the
-// file's original manifest position.
+// Assemble shared domain helpers with the capabilities supplied by the Editor entry.
 import { createUtilsModule as createDataModule } from './utils/data.js';
 import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
 import { createTrackModule } from './utils/tracks.js';
@@ -43,21 +42,30 @@ import { createUtilsModule as createPreviewGeometryModule } from './utils/previe
 import { createUtilsModule as createLottieModule } from './utils/lottie.js';
 import { createUtilsModule as createOgrafModule } from './utils/ograf.js';
 
-export function initEditorUtils() {
-  'use strict';
+export let AsrEditorUtils;
 
+/** @param {{
+ *   getNavigator?: () => Navigator | undefined,
+ *   getProject?: () => ProjectData | undefined,
+ *   getColorByName?: () => Record<string, {value: string}> | undefined,
+ *   getAssFontAliases?: () => {canonicalFor?: Function, resolveRuns?: Function, ensureCoverage?: Function, pending?: Function} | undefined,
+ * }} [dependencies] */
+export function initEditorUtils({ getNavigator = () => undefined, getProject, getColorByName, getAssFontAliases } = {}) {
 const trackHelpers = createTrackModule();
 const helpers = {
   TrackPolicy,
-  gapRemoveCore: window.AsrGapRemoveCore,
-  getNavigator: () => window.MaweHost.runtime.getNavigator(),
-  getProject: () => window.MaweBoot?.DATA,
+  gapRemoveCore: AsrGapRemoveCore,
+  getNavigator,
+  getProject,
+  getColorByName,
+  getAssFontAliases,
 };
-const projectTracksHelpers = createProjectTracksModule(helpers);
+const projectTracksHelpers = createProjectTracksModule();
 Object.assign(helpers, projectTracksHelpers);
 Object.assign(helpers, speakerIdentity);
-Object.assign(helpers, createDataModule(helpers));
-const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
+const dataHelpers = createDataModule(helpers);
+Object.assign(helpers, dataHelpers);
+const subtitleGroupHelpers = createSubtitleGroupsModule(dataHelpers);
 Object.assign(helpers, subtitleGroupHelpers);
 Object.assign(helpers, createFontsModule(helpers));
 Object.assign(helpers, createSpeakersModule(helpers));
@@ -86,12 +94,11 @@ Object.assign(helpers, multiSubtitleHelpers);
 const wordTimingHelpers = createWordTimingModule(helpers);
 Object.assign(helpers, createWordSplitModule(helpers));
 Object.assign(helpers, createSrtModule(helpers));
-Object.assign(helpers, createLrcModule(helpers));
+Object.assign(helpers, createLrcModule());
 Object.assign(helpers, createAssAnimationModule(helpers));
 Object.assign(helpers, createAssCanvasLayoutModule(helpers));
 Object.assign(helpers, createStickerPlacementModule(helpers));
-// 卡拉 OK 导出需要字词时间码条目；word-timing 模块刻意不并入 helpers 命名
-// 空间（见 window.AsrEditorUtils 的独立展开），这里按需显式注入。
+// 卡拉 OK 导出单独接收字词时间码条目。
 Object.assign(helpers, createAssExportModule({
   ...helpers, getWordTimingEntries: wordTimingHelpers.getWordTimingEntries,
 }));
@@ -102,7 +109,7 @@ Object.assign(helpers, createPlatformModule(helpers));
 Object.assign(helpers, createPreviewGeometryModule(helpers));
 Object.assign(helpers, createLottieModule(helpers));
 Object.assign(helpers, createOgrafModule(helpers));
-Object.assign(helpers, createMarkersModule(helpers));
+Object.assign(helpers, createMarkersModule());
 const {
   ASS_COLOR_STYLE_NAMES,
   ASS_DEFAULT_ANIMATIONS,
@@ -426,7 +433,7 @@ const {
   wrapCharsAroundText,
 } = helpers;
 
-window.AsrEditorUtils = {
+AsrEditorUtils = {
   effectiveSegmentColor: helpers.effectiveSegmentColor,
   TrackPolicy,
   ...speakerIdentity,
@@ -615,7 +622,6 @@ filterFontFamilyOptions,
   normalizeMultiSubtitleRowHeight,
   normalizeClickBehavior,
   normalizeClickTarget,
-  normalizeKeyboardOperationReferenceMode,
   normalizeJklPlaybackMode,
   clampMediaSeekStepMs,
   clampCueMoveStepMs,
@@ -705,7 +711,6 @@ filterFontFamilyOptions,
   assStackPieceRootAt,
   ASS_SHAKE_INTERVAL_MS,
   buildAssPayload,
-  buildPlainTextPayload,
   fileBasename,
   normalizeGapRemoveGaps,
   applyGapRemoveRange,

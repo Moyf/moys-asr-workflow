@@ -1,8 +1,9 @@
 // 核心运行态：容器/播放器/波形实例引用、播放帧句柄与媒体文件类型判定。
 // 状态由 MaweState 持有；initMaweCoreState 在清单原来的位置执行。
 // 媒体类型判断函数可供其他模块静态导入。
-// window.MaweCoreState 仍供尚未迁移的代码使用（计划在 G16 退役）。
 
+import { MaweState } from './editor-state.js';
+export let MaweCoreState;
 const MEDIA_FILE_RE = /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v|wav|mp3|m4a|aac|ogg|flac|opus)$/i;
 
 export function isMediaFile(file) {
@@ -27,7 +28,7 @@ export function initMaweCoreState() {
   // 工程内波形是可直接使用的缓存；加载关联媒体时不要因为媒体签名不同而覆盖它。
   // 媒体生成的波形则不属于工程缓存，切换媒体时仍应重新分析。
 
-  window.MaweCoreState = Object.freeze({
+  MaweCoreState = Object.freeze({
     container,
     get player() { return MaweState.runtime.player; },
     set player(v) { MaweState.runtime.player = v; },
@@ -43,4 +44,6 @@ export function initMaweCoreState() {
     isMediaFile,
     isReapeaksFile
   });
+
+
 }
