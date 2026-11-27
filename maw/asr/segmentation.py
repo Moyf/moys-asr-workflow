@@ -651,25 +651,30 @@ def build_interpolated_items(
     breaks = _strong_punct_set("\n")
     protected = protected_offsets(clean)
     closing_quotes = straight_quote_closing_offsets(clean)
+    source_body_offsets = body_character_offsets(clean)
     pieces: list[str] = []
     buf = ""
+    body_start = 0
     pending_break = False
     for index, ch in enumerate(clean, 1):
         following = clean[index] if index < len(clean) else ""
-        if pending_break and ch not in " \t\r" and not is_punctuation_continuation(
+        if pending_break and not ch.isspace() and not is_punctuation_continuation(
             ch, breaks, following=following, closes_quote=index in closing_quotes,
         ):
             pieces.append(buf)
             buf = ""
+            body_start = source_body_offsets[index - 1]
             pending_break = False
         buf += ch
-        if ch in breaks and (index not in protected or ch == "\n"):
+        # A leading separator belongs to the body that follows it. Do not
+        # allocate an interpolated time range to a separator-only piece.
+        if ch in breaks and source_body_offsets[index - 1] > body_start and (index not in protected or ch == "\n"):
             pending_break = True
     if buf:
-        if buf.strip() or not pieces:
+        if source_body_offsets[-1] > body_start or not pieces:
             pieces.append(buf)
         else:
-            # 尾部纯空白并回上一块，避免丢字符。
+            # Keep trailing punctuation/whitespace without inventing a cue.
             pieces[-1] += buf
 
     step = max(1, int(max_piece_len))
