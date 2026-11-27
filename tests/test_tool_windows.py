@@ -47,6 +47,27 @@ class ToolWindowTests(unittest.TestCase):
         self.assertIn("bad.mosp", payload["warning"])
         self.assertIn("b.srt", payload["warning"])
 
+    def test_transcript_preload_keeps_ten_and_reports_the_limit(self) -> None:
+        files = [_write_project(self.directory, f"{index}.mosp") for index in range(11)]
+        payload = transcript_compare_payload(files, lang="en")
+        self.assertEqual([item["name"] for item in payload["files"]], [path.name for path in files[:10]])
+        self.assertIn("10", payload["warning"])
+
+    def test_transcript_preload_skips_unreadable_file_and_continues(self) -> None:
+        blocked = _write_project(self.directory, "blocked.mosp")
+        valid = _write_project(self.directory, "valid.mosp")
+        original = Path.read_bytes
+
+        def read_bytes(path):
+            if path == blocked:
+                raise PermissionError(path.name)
+            return original(path)
+
+        with patch.object(Path, "read_bytes", read_bytes):
+            payload = transcript_compare_payload([blocked, valid])
+        self.assertEqual([item["name"] for item in payload["files"]], [valid.name])
+        self.assertIn(blocked.name, payload["warning"])
+
     def test_preload_api_returns_payload_only(self) -> None:
         api = ComparisonPreloadApi({"files": [], "warning": ""})
         self.assertEqual(api.compare_preload(), {"files": [], "warning": ""})

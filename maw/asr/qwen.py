@@ -39,7 +39,7 @@ from maw.asr.common import (
     parse_duration,
 )
 from maw.asr.segmentation import (
-    _DEFAULT_EXTRA_STRONG_PUNCT,
+    add_split_punctuation_argument,
     _DEFAULT_STRIP_TAIL_PUNCT,
     configure_extra_strong_punct,
     WESTERN_MAX_WORDS,
@@ -1145,10 +1145,7 @@ def main():
         "--strip-tail-punct", default=_DEFAULT_STRIP_TAIL_PUNCT,
         help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
     )
-    parser.add_argument(
-        "--extra-strong-punct", default=_DEFAULT_EXTRA_STRONG_PUNCT,
-        help="强断句符号集合（与 Launcher 共享断句配置默认清单一致；每个字符并入强断句符号，仅换行始终生效）",
-    )
+    add_split_punctuation_argument(parser)
     parser.add_argument(
         "--gap-split", type=int, default=500,
         help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 500）",

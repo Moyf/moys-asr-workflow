@@ -28,6 +28,7 @@ from maw.asr.segmentation import (
     repair_nonpositive_duration_segments,
     split_coarse_segments,
     split_segments_auto,
+    strong_punctuation_item_ends,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
@@ -47,6 +48,7 @@ from maw.language import (
 )
 from maw.project import repair_segment_durations
 from maw.project_io import write_mosp
+from maw.subtitle_segmentation import body_character_count
 
 
 ProgressCallback = Callable[[str], None]
@@ -320,22 +322,27 @@ def _qwen_alignment_range(start: object, end: object) -> tuple[int, int] | None:
     return (first_ms, last_ms) if first_ms == last_ms else None
 
 
-def _group_qwen_zero_width_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _group_qwen_zero_width_items(
+    items: list[dict[str, Any]], split_mode: str,
+) -> list[dict[str, Any]]:
     """Absorb untimed tokens into an adjacent timed group, without losing text.
 
     The group uses the outer provider range; no independent word boundary is
     invented. An entirely zero-width alignment still has no usable duration.
     """
+    strong_ends = strong_punctuation_item_ends(items, split_mode)
     grouped: list[dict[str, Any]] = []
     leading: list[dict[str, Any]] = []
-    for source in items:
+    for index, source in enumerate(items):
         item = dict(source)
         if item["end"] <= item["start"]:
-            if grouped:
+            if grouped and not leading and index not in strong_ends:
                 grouped[-1]["text"] += item["text"]
                 grouped[-1]["start"] = min(grouped[-1]["start"], item["start"])
                 grouped[-1]["end"] = max(grouped[-1]["end"], item["end"])
             else:
+                # A zero-width token after a cut belongs to the next timed
+                # item, not to the subtitle on the other side of the cut.
                 leading.append(item)
             continue
         if leading:
@@ -344,6 +351,10 @@ def _group_qwen_zero_width_items(items: list[dict[str, Any]]) -> list[dict[str, 
             item["end"] = max(item["end"], *(part["end"] for part in leading))
             leading = []
         grouped.append(item)
+    if grouped and leading:
+        # There is no following timed item; keep the otherwise untimed tail.
+        grouped[-1]["text"] += "".join(part["text"] for part in leading)
+        grouped[-1]["end"] = max(grouped[-1]["end"], *(part["end"] for part in leading))
     return grouped
 
 
@@ -828,7 +839,7 @@ class QwenAsrEngine:
                 invalid_alignment = True
                 items = []
             else:
-                items = _group_qwen_zero_width_items(items)
+                items = _group_qwen_zero_width_items(items, split_mode)
                 if not items:
                     invalid_alignment = True
         segments: list[dict[str, Any]] = []
@@ -1636,7 +1647,7 @@ class FireRedAsrEngine:
             text,
             language_value,
             punctuated_items,
-            punctuated_segments,
+            [],  # ct-punc supplies marks; MAW owns the final subtitle boundaries.
             self.model,
             language_source,
             split_mode,
@@ -2332,12 +2343,12 @@ def _resplit_engine_segment(
     if split_mode == "word":
         needs_split = len(source_items) > max_words
     else:
-        needs_split = len(text) > max_len
+        needs_split = body_character_count(text) > max_len
     if not needs_split:
         return [dict(engine_segment)]
     unit_items: list[dict[str, Any]] = []
     for nested_item in source_items:
-        if split_mode != "word" and len(str(nested_item.get("text") or "")) > max_len:
+        if split_mode != "word" and body_character_count(str(nested_item.get("text") or "")) > max_len:
             unit_items.extend(_expand_coarse_item(nested_item))
         else:
             unit_items.append(dict(nested_item))

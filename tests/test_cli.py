@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -11,6 +12,46 @@ from maw import cli
 
 
 class CliTests(unittest.TestCase):
+    def test_compare_opens_one_window_with_preloaded_files_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second = root / "first.mosp", root / "second.srt"
+            first.write_text('{"segments":[{"start":0,"end":1000,"text":"sample"}]}', encoding="utf-8")
+            second.write_text("1\n00:00:00,000 --> 00:00:01,000\nsample\n", encoding="utf-8")
+            webview = mock.Mock()
+            with mock.patch.dict(sys.modules, {"webview": webview}):
+                result = cli.main(["--compare", str(first), str(second), str(first)])
+        self.assertEqual(result, 0)
+        webview.create_window.assert_called_once()
+        _, kwargs = webview.create_window.call_args
+        self.assertTrue(kwargs["url"].endswith("/tools/compare.html"))
+        self.assertEqual([file["name"] for file in kwargs["js_api"].compare_preload()["files"]],
+                         ["first.mosp", "second.srt"])
+        webview.start.assert_called_once_with()
+
+    def test_compare_rejects_an_empty_load_and_other_modes_without_starting_ui(self) -> None:
+        webview = mock.Mock()
+        with mock.patch.dict(sys.modules, {"webview": webview}), redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(cli.main(["--compare", "nonexistent-compare-test.srt"]), 1)
+            self.assertIn("nonexistent-compare-test.srt", errors.getvalue())
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--compare", "a.srt", "--align-script", "manuscript.txt"])
+            self.assertEqual(raised.exception.code, 2)
+        webview.create_window.assert_not_called()
+
+    def test_compare_reports_native_startup_errors(self) -> None:
+        class BrowserError(Exception):
+            pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            sample = Path(directory) / "clip.srt"
+            sample.touch()
+            webview = mock.Mock(WebViewException=BrowserError)
+            webview.start.side_effect = BrowserError("renderer unavailable")
+            with mock.patch.dict(sys.modules, {"webview": webview}), redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(cli.main(["--compare", str(sample)]), 1)
+            self.assertIn("renderer unavailable", errors.getvalue())
+
     def test_parser_accepts_srt_and_optional_mosp_outputs(self) -> None:
         args = cli.build_parser("MAW.exe").parse_args(
             ["-i", "clip.mp3", "-o", "clip.srt", "clip.mosp"]
@@ -283,6 +324,21 @@ class CliTests(unittest.TestCase):
         self.assertIn("--debug", generated)
         self.assertIn("--speaker", generated)
         self.assertEqual(generated[generated.index("--strip-tail-punct") + 1], "，。！？")
+
+    def test_transcription_providers_forward_explicit_empty_or_custom_split_punctuation(self) -> None:
+        parser = cli.build_parser("MAW.exe")
+        for provider in ("qwen", "soniox", "doubao", "tencent", "openai", "bcut", "moss"):
+            for symbols in (None, "", "~", "-~"):
+                with self.subTest(provider=provider, symbols=symbols):
+                    command = ["--provider", provider, "-i", "clip.mp3"]
+                    if symbols is not None:
+                        command.append(f"--extra-strong-punct={symbols}")
+                    args = parser.parse_args(command)
+                    generated = cli._generator_args(args, Path("clip.mp3"), Path("out.srt"))
+                    if symbols is None:
+                        self.assertFalse(any(value.startswith("--extra-strong-punct") for value in generated))
+                    else:
+                        self.assertIn(f"--extra-strong-punct={symbols}", generated)
 
     def test_moss_forwards_hotwords_as_keyterms(self) -> None:
         args = cli.build_parser("MAW.exe").parse_args(

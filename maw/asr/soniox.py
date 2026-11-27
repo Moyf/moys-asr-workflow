@@ -31,6 +31,9 @@ from maw.asr.common import (
     parse_duration,
 )
 from maw.asr.segmentation import (
+    add_split_punctuation_argument,
+    configure_extra_strong_punct,
+    split_coarse_segments,
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
 )
@@ -163,7 +166,9 @@ def main():
         "--no-model-tag", action="store_true",
         help="默认输出文件名不附加供应商标识段（默认附加 soniox）",
     )
+    add_split_punctuation_argument(parser)
     args = parser.parse_args()
+    configure_extra_strong_punct(args.extra_strong_punct)
     if args.audio_track < 0:
         parser.error("--audio-track 必须是非负整数")
     if args.default_audio_track is not None and args.default_audio_track < 0:
@@ -292,7 +297,13 @@ def main():
 
         if result.get("timestamp_granularity") == "segment" and result.get("segments"):
             print("[解析] 云端词级时间码不完整，保留可用的句级时间范围...")
-            segments = [dict(segment) for segment in result["segments"]]
+            segments = split_coarse_segments(
+                [dict(segment) for segment in result["segments"]],
+                max_len=args.max_len, min_len=args.min_len, gap_split_ms=args.gap_split,
+                max_words=args.max_words, min_words=args.min_words,
+                split_mode=split_mode_for_text(result.get("text", ""), result.get("language")),
+                punctuation_only=True,
+            )
         elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
             segments = [{"start": 0, "end": int(duration * 1000), "text": result["text"]}]

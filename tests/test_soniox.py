@@ -285,10 +285,8 @@ class BuildSegmentsTests(unittest.TestCase):
 
         result = validate_project({"segments": segments})
         self.assertTrue(result.ok, msg=str([e.to_json() for e in result.errors]))
-        # 尾部 " Now, don't" 只有 2 词（< min_words 3），按设计并入前一句
-        self.assertEqual(len(segments), 1)
-        self.assertEqual(segments[0]["text"], "The editing process. Now, don't")
-        self.assertEqual(segments[0]["speaker"], "1")
+        self.assertEqual([s["text"] for s in segments], ["The editing process.", " Now, don't"])
+        self.assertTrue(all(s["speaker"] == "1" for s in segments))
 
 
 class SpeakerColorTests(unittest.TestCase):

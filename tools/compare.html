@@ -124,6 +124,11 @@
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    flex: none;
+    align-content: flex-start;
+    max-height: min(30vh, 260px);
+    overflow-y: auto;
+    padding: 2px;
   }
   .card {
     background: var(--bg-panel);
@@ -182,9 +187,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 7px;
+    margin-top: 8px;
     gap: 8px;
+    flex-wrap: wrap;
   }
+  .card-actions .switch { margin-left: 0; }
+  .card.is-hidden { border-left-color: var(--border-strong); }
+  .card.is-hidden .dot { background: var(--text-muted); }
+  .card.is-hidden .name { color: var(--text-secondary); }
   .card-actions .btn { font-size: 12px; padding: 3px 9px; }
   .card-actions .btn.active { border-color: var(--accent); color: var(--accent); }
   .card-sim { font-size: 13px; font-weight: 600; }
@@ -516,6 +526,8 @@
   .btn.primary:hover { background:var(--accent-hover); color:var(--accent-text); }
   .ref-badge { color:var(--accent-text); }
   .card { min-width:0; flex:1 1 230px; box-shadow:none; }
+  :root { --series-9:#ee93ba; --series-10:#9aadb9; }
+  :root[data-theme="light"] { --series-9:#a44072; --series-10:#536b7b; }
   .dropzone { max-width:100%; }
   .toolbar input { min-width:0; max-width:100%; }
   .card-stats, .statusbar, .time-cell { font-variant-numeric:tabular-nums; }
@@ -563,6 +575,7 @@
   <h1 id="compareHeading" class="compare-heading" hidden></h1>
   <section id="cards" class="cards"></section>
   <section id="warnBox" class="warnbox" hidden></section>
+  <p id="hiddenEmpty" class="tool-empty" role="status" hidden>所有文件均已隐藏</p>
   <section id="tableWrap" class="table-scroll" hidden></section>
   <section id="wavePanel" class="wave-panel" hidden>
     <div id="waveResizer" class="wave-resizer" data-tool-tip="拖动调整高度"></div>
@@ -593,7 +606,7 @@
     <div class="dropzone" id="dropzone">
       <div class="dz-icon">📄</div>
       <h2>拖入 SRT 或 .mosp 工程开始对比</h2>
-      <p>支持同时拖入多个文件，每个文件一列并按时间对齐</p>
+      <p>最多加载 10 个文件，每个显示中的文件一列并按时间对齐</p>
       <button id="addBtn2" class="btn primary" type="button">选择文件</button>
       <p class="hint">把某个文件「设为基准」后，可查看逐句字符相似度与差异高亮</p>
     </div>
@@ -605,7 +618,8 @@
 <script>
 'use strict';
 
-const PALETTE = Array.from({length:8}, (_, i) => `var(--series-${i + 1})`);
+const MAX_FILES = 10;
+const PALETTE = Array.from({ length: MAX_FILES }, (_, i) => `var(--series-${i + 1})`);
 const LCS_CELL_LIMIT = 4_000_000;
 const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
 
@@ -616,6 +630,7 @@ const els = {};
 for (const id of ['addBtn', 'addBtn2', 'fileInput', 'clearBtn', 'diffOnly', 'search', 'cards', 'warnBox', 'tableWrap', 'wavePanel', 'waveBody', 'waveScroll', 'waveResizer', 'zxIn', 'zxOut', 'zyIn', 'zyOut', 'waveReset', 'compareHeading', 'empty', 'status', 'dropOverlay', 'toast']) {
   els[id] = document.getElementById(id);
 }
+els.hiddenEmpty = document.getElementById('hiddenEmpty');
 
 const WAVE_LAYOUT_KEY = 'moy.compare.waveLayout.v1';
 els.resetFilters = document.getElementById('resetFilters');
@@ -825,6 +840,7 @@ async function buildFileEntry(file) {
     displayName: file.name.replace(/\.(srt|mosp|json)$/i, ''),
     kind,
     model,
+    hidden: false,
     color: PALETTE[state.files.length % PALETTE.length],
     segments,
     warnings,
@@ -847,14 +863,24 @@ async function addFiles(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
   let added = 0;
+  let reachedLimit = false;
   for (const file of files) {
+    if (state.files.length >= MAX_FILES) {
+      reachedLimit = true;
+      break;
+    }
     const lowerName = file.name.toLowerCase();
     if (!ACCEPT_EXTENSIONS.has(lowerName.slice(lowerName.lastIndexOf('.')))) {
       toast(`跳过不支持的文件：${file.name}`, 'warn');
       continue;
     }
     try {
-      state.files.push(await buildFileEntry(file));
+      const entry = await buildFileEntry(file);
+      if (state.files.length >= MAX_FILES) {
+        reachedLimit = true;
+        break;
+      }
+      state.files.push(entry);
       added += 1;
     } catch (error) {
       toast(`无法解析 ${file.name}：${error.message || error}`, 'error');
@@ -864,8 +890,9 @@ async function addFiles(fileList) {
     assignColors();
     // 原条件 state.files.length === 1 && files.length > 1 只在「多选里只有
     // 一个文件解析成功」时触发，真正加载出多个文件时反而不提示，与本意相反。
-    if (state.files.length > 1 && !state.refId) toast('提示：多个文件已加载，可再选一个「基准」查看相似度');
+    if (!reachedLimit && state.files.length > 1 && !state.refId) toast('提示：多个文件已加载，可再选一个「基准」查看相似度');
   }
+  if (reachedLimit) toast(`最多加载 ${MAX_FILES} 个文件，已跳过其余文件。隐藏文件仍计入上限。`, 'warn');
   render();
 }
 
@@ -886,8 +913,8 @@ function clearAll() {
   render();
 }
 
-function getRef() {
-  return state.files.find((entry) => entry.id === state.refId) || null;
+function visibleFiles() {
+  return state.files.filter((entry) => !entry.hidden);
 }
 
 const LEADING_SEPARATOR_RE = /^[\s\-_.·・－—~～+（）()\[\]「」]+/u;
@@ -915,10 +942,10 @@ function computeNameView() {
       videoName = prefix.replace(TRAILING_SEPARATOR_RE, '');
     }
   }
-  return { shorts, videoName };
+  return { labels: new Map(state.files.map((entry, index) => [entry.id, shorts[index]])), videoName };
 }
 
-let currentNameView = { shorts: [], videoName: '' };
+let currentNameView = { labels: new Map(), videoName: '' };
 
 function renderHeading() {
   if (!state.files.length) {
@@ -995,9 +1022,9 @@ function lcsCompare(aTokens, bTokens) {
   return { lcs: dp[n * width + m], lenA: n, lenB: m, matchedA, matchedB };
 }
 
-function buildRows() {
+function buildRows(files = visibleFiles()) {
   const all = [];
-  state.files.forEach((entry, fileIndex) => {
+  files.forEach((entry, fileIndex) => {
     entry.segments.forEach((segment) => {
       all.push({ fileIndex, start: segment.start, end: segment.end, text: segment.text });
     });
@@ -1006,34 +1033,18 @@ function buildRows() {
   const rows = [];
   let cursor = 0;
   while (cursor < all.length) {
-    let rowStart = all[cursor].start;
+    const rowStart = all[cursor].start;
     let rowEnd = all[cursor].end;
-    const members = [all[cursor]];
-    const taken = new Set([cursor]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (let i = cursor + 1; i < all.length; i++) {
-        if (taken.has(i)) continue;
-        const candidate = all[i];
-        if (candidate.start < rowEnd) {
-          taken.add(i);
-          members.push(candidate);
-          rowStart = Math.min(rowStart, candidate.start);
-          rowEnd = Math.max(rowEnd, candidate.end);
-          changed = true;
-        }
-      }
-    }
-    cursor += 1;
-    while (cursor < all.length && taken.has(cursor)) cursor += 1;
-    const cells = state.files.map(() => ({ start: null, end: null, parts: [] }));
-    for (const member of members.sort((a, b) => a.start - b.start)) {
+    const cells = files.map(() => ({ start: null, end: null, parts: [] }));
+    // Sorted starts beyond the current end cannot join this overlap group.
+    do {
+      const member = all[cursor++];
+      rowEnd = Math.max(rowEnd, member.end);
       const cell = cells[member.fileIndex];
       if (cell.start === null || member.start < cell.start) cell.start = member.start;
       if (cell.end === null || member.end > cell.end) cell.end = member.end;
       cell.parts.push(member.text);
-    }
+    } while (cursor < all.length && all[cursor].start < rowEnd);
     cells.forEach((cell) => { cell.text = cell.parts.join('\n'); });
     rows.push({ start: rowStart, end: rowEnd, cells });
   }
@@ -1086,10 +1097,12 @@ function formatSim(sim) {
 }
 
 function renderCards(overallByFile) {
+  const scrollTop = els.cards.scrollTop;
   els.cards.textContent = '';
-  state.files.forEach((entry, index) => {
+  state.files.forEach((entry) => {
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = `card${entry.hidden ? ' is-hidden' : ''}`;
+    card.dataset.fileId = entry.id;
     card.style.setProperty('--c', entry.color);
     const head = document.createElement('div');
     head.className = 'card-head';
@@ -1098,7 +1111,7 @@ function renderCards(overallByFile) {
     const name = document.createElement('span');
     name.className = 'name';
     name.title = entry.name;
-    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    name.textContent = currentNameView.labels.get(entry.id) || entry.displayName;
     head.appendChild(dot);
     head.appendChild(name);
     if (entry.warnings.length) {
@@ -1111,13 +1124,14 @@ function renderCards(overallByFile) {
     if (entry.id === state.refId) {
       const badge = document.createElement('span');
       badge.className = 'ref-badge';
-      badge.textContent = '基准';
+      badge.textContent = entry.hidden ? '基准已隐藏' : '基准';
       head.appendChild(badge);
     }
     const close = document.createElement('button');
     close.className = 'x';
     close.type = 'button';
     close.title = '移除';
+    close.setAttribute('aria-label', `移除 ${entry.name}`);
     close.textContent = '✕';
     close.addEventListener('click', () => removeFile(entry.id));
     head.appendChild(close);
@@ -1140,10 +1154,29 @@ function renderCards(overallByFile) {
 
     const actions = document.createElement('div');
     actions.className = 'card-actions';
+    const visibility = document.createElement('label');
+    visibility.className = 'switch';
+    const control = document.createElement('input');
+    control.type = 'checkbox';
+    control.checked = !entry.hidden;
+    control.setAttribute('role', 'switch');
+    control.setAttribute('aria-label', `在对比中显示 ${entry.name}`);
+    const track = document.createElement('span');
+    track.className = 'switch-track';
+    track.setAttribute('aria-hidden', 'true');
+    visibility.append(control, track, entry.hidden ? '已隐藏' : '显示');
+    control.addEventListener('change', () => {
+      entry.hidden = !control.checked;
+      revealedWaveRow = null;
+      render();
+      els.cards.querySelector(`[data-file-id="${entry.id}"] input`)?.focus({ preventScroll: true });
+    });
+    actions.appendChild(visibility);
     const refBtn = document.createElement('button');
     refBtn.type = 'button';
     refBtn.className = `btn${entry.id === state.refId ? ' active' : ''}`;
     refBtn.textContent = entry.id === state.refId ? '取消基准' : '设为基准';
+    refBtn.disabled = entry.hidden;
     refBtn.addEventListener('click', () => {
       state.refId = state.refId === entry.id ? null : entry.id;
       if (!state.refId) {
@@ -1164,6 +1197,7 @@ function renderCards(overallByFile) {
     card.appendChild(actions);
     els.cards.appendChild(card);
   });
+  els.cards.scrollTop = scrollTop;
 }
 
 function renderWarnBox() {
@@ -1181,12 +1215,13 @@ function renderWarnBox() {
   }
 }
 
-function renderTable(rows, overallByFile, sumsByFile) {
+function renderTable(files, rows, overallByFile, sumsByFile, diffOnly = false) {
   renderedWaveRows.clear();
   els.tableWrap.textContent = '';
-  els.tableWrap.hidden = false;
-  const count = state.files.length;
-  const refIndex = state.files.findIndex((entry) => entry.id === state.refId);
+  const count = files.length;
+  els.tableWrap.hidden = !count;
+  if (!count) return 0;
+  const refIndex = files.findIndex((entry) => entry.id === state.refId);
   const hasRef = refIndex >= 0;
   const grid = document.createElement('div');
   grid.className = 'grid';
@@ -1200,7 +1235,7 @@ function renderTable(rows, overallByFile, sumsByFile) {
   corner.textContent = '时间';
   grid.appendChild(corner);
 
-  state.files.forEach((entry, index) => {
+  files.forEach((entry, index) => {
     const head = document.createElement('div');
     head.className = 'hcell';
     const hname = document.createElement('div');
@@ -1211,7 +1246,7 @@ function renderTable(rows, overallByFile, sumsByFile) {
     const name = document.createElement('span');
     name.className = 'name';
     name.title = entry.name;
-    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    name.textContent = currentNameView.labels.get(entry.id) || entry.displayName;
     hname.appendChild(dot);
     hname.appendChild(name);
     if (entry.id === state.refId) {
@@ -1243,12 +1278,12 @@ function renderTable(rows, overallByFile, sumsByFile) {
   for (const row of rows) {
     const rowTokens = hasRef ? normTokens(row.cells[refIndex].text) : null;
     const rowNorm = rowTokens ? rowTokens.map((token) => token.ch).join('') : null;
-    const rowDiffers = hasRef && state.files.some((entry, index) => {
+    const rowDiffers = hasRef && files.some((entry, index) => {
       if (index === refIndex) return false;
       const cellNorm = normTokens(row.cells[index].text).map((token) => token.ch).join('');
       return cellNorm !== rowNorm;
     });
-    if (state.diffOnly && !rowDiffers && row.start !== revealedWaveRow) continue;
+    if (diffOnly && !rowDiffers && row.start !== revealedWaveRow) continue;
     if (search) {
       const haystack = row.cells.map((cell) => cell.text).join('\n').toLowerCase();
       if (!haystack.includes(search) && row.start !== revealedWaveRow) continue;
@@ -1277,7 +1312,7 @@ function renderTable(rows, overallByFile, sumsByFile) {
     timeCell.appendChild(jump);
     grid.appendChild(timeCell);
 
-    state.files.forEach((entry, index) => {
+    files.forEach((entry, index) => {
       const cell = row.cells[index];
       const cellEl = document.createElement('div');
       rowElements.push(cellEl);
@@ -1377,17 +1412,16 @@ function jumpToWave(ms) {
   els.wavePanel.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
-function renderWavePanel() {
+function renderWavePanel(files = visibleFiles()) {
   const body = els.waveBody;
   const scroll = els.waveScroll;
-  const duration = state.files.length
-    ? Math.max(...state.files.map((entry) => entry.stats.spanEnd))
+  const duration = files.length
+    ? Math.max(...files.map((entry) => entry.stats.spanEnd))
     : 0;
   if (!duration) {
     els.wavePanel.hidden = true;
     body.textContent = '';
     waveRenderInfo = null;
-    waveMarkerMs = null;
     return;
   }
   const prevScrollLeft = scroll.scrollLeft;
@@ -1417,7 +1451,7 @@ function renderWavePanel() {
   headRow.appendChild(ruler);
   body.appendChild(headRow);
 
-  state.files.forEach((entry, index) => {
+  files.forEach((entry) => {
     const row = document.createElement('div');
     row.className = 'wave-row';
     const label = document.createElement('div');
@@ -1429,7 +1463,7 @@ function renderWavePanel() {
     const name = document.createElement('span');
     name.className = 'lname';
     name.dataset.toolTip = entry.name;
-    name.textContent = currentNameView.shorts[index] || entry.displayName;
+    name.textContent = currentNameView.labels.get(entry.id) || entry.displayName;
     const count = document.createElement('span');
     count.className = 'lcount';
     count.textContent = `${entry.stats.count}`;
@@ -1593,14 +1627,14 @@ els.waveResizer.addEventListener('pointerdown', (event) => {
   els.waveResizer.addEventListener('pointercancel', onUp);
 });
 
-function computeSims(rows) {
-  const refIndex = state.files.findIndex((entry) => entry.id === state.refId);
+function computeSims(files, rows) {
+  const refIndex = files.findIndex((entry) => entry.id === state.refId);
   if (refIndex < 0) return { overallByFile: new Map(), sumsByFile: new Map() };
   const sums = new Map();
   for (const row of rows) {
     const refTokens = normTokens(row.cells[refIndex].text);
     if (!refTokens.length) continue;
-    state.files.forEach((entry, index) => {
+    files.forEach((entry, index) => {
       if (index === refIndex) return;
       const cellTokens = normTokens(row.cells[index].text);
       if (!cellTokens.length) return;
@@ -1623,13 +1657,18 @@ function computeSims(rows) {
 
 function render() {
   const hasFiles = state.files.length > 0;
+  const files = visibleFiles();
+  const refVisible = files.some(entry => entry.id === state.refId);
+  const canFilterDiff = files.length > 1 && refVisible;
   currentNameView = computeNameView();
   els.empty.hidden = hasFiles;
+  els.hiddenEmpty.hidden = !hasFiles || files.length > 0;
   els.addBtn2.hidden = hasFiles;
   els.clearBtn.disabled = !hasFiles;
-  els.search.disabled = !hasFiles;
+  els.search.disabled = !files.length;
   els.resetFilters.disabled = !hasFiles;
-  els.diffOnly.disabled = !state.refId;
+  els.diffOnly.disabled = !canFilterDiff;
+  els.diffOnly.checked = canFilterDiff && state.diffOnly;
   renderHeading();
 
   if (!hasFiles) {
@@ -1647,19 +1686,24 @@ function render() {
     return;
   }
 
-  const rows = buildRows();
+  const rows = buildRows(files);
   waveRows = rows;
-  const { overallByFile, sumsByFile } = computeSims(rows);
+  const { overallByFile, sumsByFile } = computeSims(files, rows);
   renderCards(overallByFile);
   renderWarnBox();
-  const shownRows = renderTable(rows, overallByFile, sumsByFile);
-  renderWavePanel();
+  const shownRows = renderTable(files, rows, overallByFile, sumsByFile, els.diffOnly.checked);
+  renderWavePanel(files);
 
   els.status.textContent = '';
   const total = document.createElement('span');
-  total.textContent = `${state.files.length} 个文件 · ${shownRows}/${rows.length} 个对齐组`;
+  const fileCount = files.length === state.files.length ? `${files.length} 个文件` : `显示 ${files.length}/${state.files.length} 个文件`;
+  total.textContent = `${fileCount} · ${shownRows}/${rows.length} 个对齐组`;
   els.status.appendChild(total);
-  if (!state.refId) {
+  if (state.refId && !refVisible) {
+    const hint = document.createElement('span');
+    hint.textContent = '基准已隐藏；重新显示后恢复差异对比。';
+    els.status.appendChild(hint);
+  } else if (!state.refId && files.length > 1) {
     const hint = document.createElement('span');
     hint.textContent = '提示：在文件卡片上「设为基准」后可查看逐句相似度与差异高亮';
     els.status.appendChild(hint);

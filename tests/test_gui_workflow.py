@@ -362,7 +362,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
-        self.assertEqual(command[command.index("--extra-strong-punct") + 1], "?!;")
+        self.assertIn("--extra-strong-punct=?!;", command)
 
         empty = TranscriptionRequest(
             media_path=self.media_path,
@@ -372,7 +372,18 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
 
-        self.assertEqual(empty_command[empty_command.index("--extra-strong-punct") + 1], "")
+        self.assertIn("--extra-strong-punct=", empty_command)
+
+    def test_all_transcription_providers_receive_the_same_split_punctuation(self) -> None:
+        for provider in ("qwen", "soniox", "doubao", "tencent", "openai", "bcut", "moss", "local"):
+            for symbols in ("~", "", "-~"):
+                with self.subTest(provider=provider, symbols=symbols):
+                    request = TranscriptionRequest(
+                        media_path=self.media_path, srt_path=self.srt_path,
+                        provider=provider, extra_strong_punct=symbols,
+                    )
+                    command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+                    self.assertIn(f"--extra-strong-punct={symbols}", command)
 
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(

@@ -21,6 +21,7 @@ if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
 from maw.console import configure_utf8_stdio  # noqa: E402
+from maw.asr.segmentation import add_split_punctuation_argument, configure_extra_strong_punct  # noqa: E402
 from maw.output_naming import format_elapsed, format_maw_stat  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.language import (  # noqa: E402
@@ -116,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-words", type=int, default=DEFAULT_MAX_WORDS, help="英文单条字幕最大单词数")
     parser.add_argument("--min-words", type=int, default=DEFAULT_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument("--gap-split", type=int, default=500, help="静音超过多少毫秒时切句")
+    add_split_punctuation_argument(parser)
     parser.add_argument(
         "--strip-tail-punct", default="",
         help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
@@ -173,6 +175,7 @@ def load_hotword_files(paths: Sequence[str]) -> list[str]:
 def main(argv: Sequence[str] | None = None) -> int:
     configure_utf8_stdio()
     args = build_parser().parse_args(argv)
+    configure_extra_strong_punct(args.extra_strong_punct)
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists() or not input_path.is_file():
         print(f"错误: 输入文件不存在: {input_path}")

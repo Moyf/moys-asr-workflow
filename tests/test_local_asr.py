@@ -341,7 +341,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         # 重切仍保留原始文字与标点。
         self.assertEqual("".join(seg["text"] for seg in segments), text)
 
-    def test_segment_only_continuous_short_cues_pass_through(self) -> None:
+    def test_segment_only_continuous_short_cues_keep_effective_punctuation_cut(self) -> None:
         source = {"start": 1000, "end": 3000, "text": "嗯，好的。", "speaker": "S02"}
         result = LocalTranscription(
             "嗯，好的。",
@@ -356,10 +356,9 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 
         segments = build_local_segments(result, duration_ms=4000, max_len=15)
 
-        self.assertEqual([seg["text"] for seg in segments], ["嗯，好的。"])
-        self.assertEqual([seg["start"] for seg in segments], [1000])
-        self.assertEqual([seg["end"] for seg in segments], [3000])
-        self.assertNotIn("items", segments[0])
+        self.assertEqual([seg["text"] for seg in segments], ["嗯，", "好的。"])
+        self.assertEqual([(s["start"], s["end"]) for s in segments], [(1000, 1800), (1800, 3000)])
+        self.assertTrue(all("items" not in s and s["speaker"] == "S02" for s in segments))
 
     def test_oversized_coarse_segment_resplits_within_max_len(self) -> None:
         text = "本地模型，AI校准和翻译，双语字幕，免费ASR，这些功能全都加上了。这么长一句话！"
@@ -790,6 +789,32 @@ class LocalAsrFlowTests(unittest.TestCase):
                 self.assertGreater(len(segments), 1)
                 self.assertEqual("".join(segment["text"] for segment in segments), result.text)
 
+    def test_qwen_zero_width_character_after_full_stop_stays_with_next_cue(self) -> None:
+        words = [
+            ("我昨天晚上去录音", 0.0, 2.24),
+            ("了", 2.24, 2.32),
+            ("我", 3.2, 3.2),
+            ("昨", 3.2, 3.28),
+            ("天晚上又去录歌了", 3.28, 6.0),
+        ]
+        text = "我昨天晚上去录音了。我昨天晚上又去录歌了。"
+        runtime = SimpleNamespace(transcribe=lambda **kwargs: [SimpleNamespace(
+            text=text, language="Chinese",
+            time_stamps=[
+                SimpleNamespace(text=word, start_time=start, end_time=end)
+                for word, start, end in words
+            ],
+        )])
+        result = QwenAsrEngine(forced_aligner="test-aligner")._transcribe_one(
+            runtime, Path("sample.wav"), language="zh", hotwords=[], on_event=None,
+        )
+        segments = build_local_segments(result, duration_ms=6000)
+        self.assertEqual(
+            [(s["text"], s["start"], s["end"]) for s in segments],
+            [("我昨天晚上去录音了。", 0, 2320), ("我昨天晚上又去录歌了。", 3200, 6000)],
+        )
+        self.assertEqual(result.items[2], {"text": "我昨", "start": 3200, "end": 3280})
+
     def test_qwen_zero_width_word_does_not_turn_long_audio_into_chunk_cues(self) -> None:
         text = "Hello there world. Next sentence works!"
         runtime = SimpleNamespace(transcribe=lambda **kwargs: [SimpleNamespace(
@@ -932,6 +957,24 @@ class LocalAsrFlowTests(unittest.TestCase):
         engine = create_local_engine("firered", use_punc=False)
 
         self.assertFalse(engine.use_punc)
+
+    def test_firered_ct_punc_text_obeys_shared_split_configuration(self) -> None:
+        from maw.asr.segmentation import configure_extra_strong_punct
+
+        self.addCleanup(configure_extra_strong_punct, None)
+        items = [{"text": "前面。", "start": 0, "end": 500}, {"text": "后面。", "start": 500, "end": 1000}]
+        native = [{**item, "items": [item]} for item in items]
+        backend = SimpleNamespace(decode=lambda _: SimpleNamespace(
+            text="前面后面", tokens=["前", "面", "后", "面"],
+            timestamps=[0.0, 0.25, 0.5, 0.75], duration_ms=1000,
+        ))
+        engine = FireRedAsrEngine()
+        with mock.patch("maw.local_asr.punctuate_timed_tokens", return_value=native):
+            result = engine._decode_one(backend, Path("sample.wav"), language="zh", on_event=None)
+        configure_extra_strong_punct("")
+        self.assertEqual([s["text"] for s in build_local_segments(result, duration_ms=1000)], ["前面。后面。"])
+        configure_extra_strong_punct("。")
+        self.assertEqual([s["text"] for s in build_local_segments(result, duration_ms=1000)], ["前面。", "后面。"])
 
     def test_engine_factory_supports_whisper(self) -> None:
         engine = create_local_engine("whisper")

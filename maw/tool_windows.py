@@ -17,7 +17,7 @@ from maw.project import ProjectValidationFailed
 
 _COMPARE_EXTENSIONS = frozenset({".srt", ".mosp", ".json"})
 _PROJECT_EXTENSIONS = frozenset({".mosp", ".json"})
-_MAX_FILES = 4
+_MAX_TRANSCRIPT_FILES = 10
 
 
 def _skipped_note(names: list[str], lang: str) -> str:
@@ -31,17 +31,31 @@ def transcript_compare_payload(paths: Sequence[Path], *, lang: str = "zh") -> di
     """Raw subtitle bytes for tools/compare.html; the page owns decoding."""
     files: list[dict[str, str]] = []
     skipped: list[str] = []
+    limit_reached = False
     for path in paths:
-        if len(files) >= _MAX_FILES:
+        if len(files) >= _MAX_TRANSCRIPT_FILES:
+            limit_reached = True
             break
-        if not path.is_file() or path.suffix.lower() not in _COMPARE_EXTENSIONS:
+        if path.suffix.lower() not in _COMPARE_EXTENSIONS:
             skipped.append(path.name)
             continue
-        files.append({
-            "name": path.name,
-            "bytes": base64.b64encode(path.read_bytes()).decode("ascii"),
-        })
-    return {"files": files, "warning": _skipped_note(skipped, lang)}
+        try:
+            if not path.is_file():
+                skipped.append(path.name)
+                continue
+            raw = path.read_bytes()
+        except OSError:
+            skipped.append(path.name)
+            continue
+        files.append({"name": path.name, "bytes": base64.b64encode(raw).decode("ascii")})
+    notes = [_skipped_note(skipped, lang)]
+    if limit_reached:
+        notes.append(
+            f"Only the first {_MAX_TRANSCRIPT_FILES} files were loaded."
+            if lang == "en"
+            else f"最多加载 {_MAX_TRANSCRIPT_FILES} 个文件，已跳过其余文件。"
+        )
+    return {"files": files, "warning": " ".join(filter(None, notes))}
 
 
 def timestamp_compare_payload(paths: Sequence[Path], *, lang: str = "zh") -> dict[str, object]:

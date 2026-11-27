@@ -202,7 +202,7 @@ def normalize_plan(raw: object) -> dict[str, object]:
         if step_id == "match":
             extra = step.get("extraSplitPunctuation")
             preserve = step.get("preservePunctuation")
-            if isinstance(extra, list) and isinstance(preserve, list):
+            if legacy_plan and isinstance(extra, list) and isinstance(preserve, list):
                 legacy_preserved = {"？", "！", "?", "!"}
                 migrated = [
                     symbol

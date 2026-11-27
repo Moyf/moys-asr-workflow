@@ -83,6 +83,7 @@ class QwenTimestampRepairTests(unittest.TestCase):
 
     def test_isolated_zero_duration_item_merges_into_next_segment(self) -> None:
         # 与 CLI 默认一致的强断句配置（模块级状态按测试显式设置）。
+        self.addCleanup(configure_extra_strong_punct, None)
         configure_extra_strong_punct("，。？！；,.")
         items = [
             {"text": "正常。", "start": 0, "end": 1000},
@@ -583,7 +584,7 @@ class QwenExtraStrongPunctTests(unittest.TestCase):
         configure_extra_strong_punct("")
 
     def tearDown(self) -> None:
-        configure_extra_strong_punct("")
+        configure_extra_strong_punct(None)
 
     def test_extra_punct_breaks_cjk_groups(self) -> None:
         items = [

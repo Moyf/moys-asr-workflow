@@ -9,6 +9,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from maw.asr.common import generate_srt
+from maw.asr.segmentation import configure_extra_strong_punct
 
 from maw.asr.openai import (
     DEFAULT_BASE_URL,
@@ -120,6 +122,32 @@ class OpenAiAsrTests(unittest.TestCase):
 
         self.assertEqual(result["segments"], [{"start": 0, "end": 2500, "text": "hello"}])
         self.assertEqual(result["timestamp_granularity"], "segment")
+
+    def test_segment_only_export_keeps_separators_with_text(self) -> None:
+        self.addCleanup(configure_extra_strong_punct, None)
+        cases = [
+            (None, "前一句。\n后一句", ["前一句。\n", "后一句"]),
+            (None, "前一句。\r\n\n后一句", ["前一句。\r\n\n", "后一句"]),
+            ("-。", "前一句。-后一句", ["前一句。", "-后一句"]),
+            ("-。", "前一句。-", ["前一句。-"]),
+            ("-", "上半句-下半句", ["上半句-", "下半句"]),
+        ]
+        for punctuation, text, expected in cases:
+            with self.subTest(text=text, punctuation=punctuation):
+                configure_extra_strong_punct(punctuation)
+                result = parse_timestamped_response({
+                    "text": text, "language": "zh",
+                    "segments": [{"start": 0, "end": 1.2, "text": text}],
+                })
+                segments = _segments_from_result(result, max_len=18, min_len=5, gap_split=500)
+                self.assertEqual([s["text"] for s in segments], expected)
+                self.assertEqual("".join(s["text"] for s in segments), text)
+                self.assertEqual(segments[0]["start"], 0)
+                self.assertEqual(segments[-1]["end"], 1200)
+                for left, right in zip(segments, segments[1:]):
+                    self.assertEqual(left["end"], right["start"])
+                self.assertTrue(all("items" not in s for s in segments))
+                self.assertEqual(generate_srt(segments).count(" --> "), len(expected))
 
     def test_parse_timestamped_long_seconds_and_explicit_milliseconds(self) -> None:
         result = parse_timestamped_response({

@@ -7,10 +7,13 @@
 """
 
 import json
+from importlib import import_module
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from maw.postprocess_match import (
     DEFAULT_EXTRA_SPLIT_PUNCTUATION,
@@ -39,6 +42,22 @@ def source_text(relative_path: str) -> str:
 
 
 class PunctuationDefaultsContractTests(unittest.TestCase):
+    def test_all_entrypoints_apply_split_configuration_before_transcribing(self) -> None:
+        providers = ("qwen", "soniox", "doubao", "tencent", "openai", "bcut", "moss", "local")
+        for provider in providers:
+            module = import_module(f"maw.asr.{provider}")
+            for symbols in (None, "", "~", "-~"):
+                with self.subTest(provider=provider, symbols=symbols):
+                    argv = [module.__name__, "clip.wav"]
+                    if symbols is not None:
+                        argv.append(f"--extra-strong-punct={symbols}")
+                    with patch.object(sys, "argv", argv), patch.object(
+                        module, "configure_extra_strong_punct", side_effect=InterruptedError,
+                    ) as configure:
+                        with self.assertRaises(InterruptedError):
+                            module.main()
+                    configure.assert_called_once_with(symbols)
+
     def launcher_plans(self, split: list[str], preserve: list[str]) -> dict:
         result = subprocess.run(
             ["node", str(ROOT / "tests/helpers/launcher-plan-export.mjs")],
@@ -87,7 +106,7 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
 
     def test_canonical_defaults_keep_expected_semantics(self) -> None:
         # 切句与删除解耦：完整断句清单保持，默认全部保留。
-        self.assertEqual(EXPECTED_BREAK, "，。？！；,.;")
+        self.assertEqual(EXPECTED_BREAK, "，。？！；,.;?!")
         self.assertEqual(EXPECTED_KEEP, EXPECTED_BREAK)
         self.assertEqual(EXPECTED_STRIP, "")
         # CLI 默认值的规范声明常量与派生值一致。
@@ -107,6 +126,15 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
         match = next(step for step in plan["steps"] if step["id"] == "match")
         self.assertEqual(match["extraSplitPunctuation"], ["、"])
         self.assertEqual(match["preservePunctuation"], [])
+
+    def test_explicit_empty_current_split_list_is_not_repopulated_by_preserve_settings(self) -> None:
+        from maw.postprocess_pipeline import POSTPROCESS_PLAN_VERSION, normalize_plan
+        plan = normalize_plan({"version": POSTPROCESS_PLAN_VERSION, "steps": [{
+            "id": "match", "extraSplitPunctuation": [], "preservePunctuation": ["？", "!"],
+        }]})
+        match = next(step for step in plan["steps"] if step["id"] == "match")
+        self.assertEqual(match["extraSplitPunctuation"], [])
+        self.assertEqual(match["preservePunctuation"], ["？", "!"])
 
     def test_local_engine_tail_punct_follows_shared_constants(self) -> None:
         text = source_text("maw/local_asr.py")
