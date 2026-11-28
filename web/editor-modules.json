@@ -649,6 +649,12 @@
       "exportName": "initMaweAssPreviewRefresh"
     },
     {
+      "file": "editor/media/editor-safe-area-guides.js",
+      "kind": "init",
+      "name": "safe-area-guides-init",
+      "exportName": "initMaweSafeAreaGuides"
+    },
+    {
       "file": "editor/cues/editor-wiring-edit-shortcuts.js",
       "kind": "init",
       "name": "edit-shortcuts-wiring-init",

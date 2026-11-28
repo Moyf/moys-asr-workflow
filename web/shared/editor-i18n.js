@@ -1175,6 +1175,7 @@
     '描边颜色': 'Outline color', '文本颜色': 'Text color',
     '媒体': 'Media',  '语言': 'Language', '主题': 'Theme', '浅色': 'Light', '深色': 'Dark', '自动': 'Auto', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
       '悬停预览画面': 'Preview frame on hover', 'JKL 播放键': 'JKL playback keys',
+    '显示安全区参考线': 'Show safe area guides', '在视频画面上叠加 5% 与 10% 安全区参考线，用于判断字幕距画面边缘的距离': 'Overlay 5% and 10% safe area guides on the video to judge how far subtitles sit from the frame edges',
     '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
     '跳转时长': 'Seek duration', '每次跳转': 'Each jump', '跳转步长': 'Seek step', '媒体控制按钮和左右方向键每次跳转的毫秒数': 'Milliseconds to jump with the media controls and left/right arrow keys', '媒体控制按钮和左右方向键每次跳转的时间幅度': 'Time amount to jump with the media controls and left/right arrow keys', '控制按钮和左右方向键的跳转步长（单位：ms）': 'Seek step for the transport controls and left/right arrow keys (unit: ms)', '控制按钮和左右方向键的跳转步长。': 'Seek step for the transport controls and arrow keys.',
     '时间基准': 'Timebase', '时间单位': 'Time unit', '毫秒': 'Milliseconds', '帧': 'Frames',

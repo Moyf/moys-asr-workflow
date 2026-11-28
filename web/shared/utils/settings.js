@@ -63,6 +63,8 @@ export function createUtilsModule(dependencies) {
     mainSplitModeOverride: null,
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
     overlayEnabled: true, extensionOverlayEnabled: true, assMode: false,
+    // 播放器安全区参考线：Premiere 风格双框（5% / 10%），默认关闭，仅本机偏好。
+    safeAreaGuidesEnabled: false,
     assFrameStagePreview: false, assFrameAutoRender: true,
     assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, assCommentEnabled: true, assItalicEnabled: true, multiSubtitleRowHeight: 168,
     subtitleColorPaletteEnabled: false,
@@ -144,6 +146,8 @@ export function createUtilsModule(dependencies) {
       extensionOverlayEnabled: savedSettings.extensionOverlayEnabled !== false,
       // ASS 字幕模式是预览偏好，默认关闭以保持旧版 CSS 预览行为。
       assMode: savedSettings.assMode === true,
+      // 安全区参考线是纯视觉预览偏好，默认关闭。
+      safeAreaGuidesEnabled: savedSettings.safeAreaGuidesEnabled === true,
       // 暂停叠加实际帧默认关闭；自动渲染默认开启（保持既有体验）。
       assFrameStagePreview: savedSettings.assFrameStagePreview === true,
       assFrameAutoRender: savedSettings.assFrameAutoRender !== false,

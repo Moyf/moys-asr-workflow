@@ -57,6 +57,9 @@ export function initMaweDom() {
   const stickerOverlayToggle = document.getElementById('sticker-overlay-toggle');
 
 
+  const safeAreaGuidesToggle = document.getElementById('safe-area-guides-toggle');
+
+
   const subtitleFontSizeSelect = document.getElementById('subtitle-font-size');
 
 
@@ -1040,6 +1043,7 @@ export function initMaweDom() {
     extensionOverlayToggleWrap,
     extensionOverlayToggle,
     stickerOverlayToggle,
+    safeAreaGuidesToggle,
     subtitleFontSizeSelect,
     subtitleFontFamilySelect,
     subtitleFontFamilyScanButton,

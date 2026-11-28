@@ -118,6 +118,8 @@ export function initMaweSettings() {
   extensionOverlayEnabled: true,
   // ASS 字幕模式只改变播放器预览，默认关闭以保持原有 CSS 预览。
   assMode: false,
+  // 播放器安全区参考线（Premiere 风格 5% / 10% 双框）；默认关闭，仅本机偏好。
+  safeAreaGuidesEnabled: false,
   // 暂停时把 libass 实际渲染帧叠加到播放器画面；默认关闭，只在【ASS 实际画面】窗口内开启。
   assFrameStagePreview: false,
   // 暂停 / seek 停止 / 样式修改时自动重新渲染实际帧；关闭后仅手动渲染。

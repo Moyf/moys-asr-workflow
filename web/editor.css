@@ -641,6 +641,30 @@
     padding: 3px 7px; border-radius: var(--radius-sm); font-size: 11px;
     color: #fff; background: rgba(0, 0, 0, .65);
   }
+  /* 安全区参考线：层盒 = 视频实际绘制矩形（contain 数学，由
+     editor-safe-area-guides.js 定位），内部矩形/刻线用百分比与屏幕像素
+     描述，随层盒自动缩放。白芯 + 黑晕双描边，深浅画面都可辨认；
+     纯视觉参考：不拦截指针与焦点，不参与导出 / 烧录 / 实际帧。 */
+  .safe-area-guides {
+    position: absolute; z-index: 5; display: block; pointer-events: none;
+  }
+  .safe-area-guides[hidden] { display: none; }
+  .safe-area-guides .safe-area-rect {
+    position: absolute; border: 1px solid rgba(255, 255, 255, .95);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+  }
+  /* 外框四边各内缩 5%，内框 10%；左右按层宽、上下按层高（层盒即画面）。 */
+  .safe-area-guides .safe-area-outer { left: 5%; top: 5%; width: 90%; height: 90%; }
+  .safe-area-guides .safe-area-inner { left: 10%; top: 10%; width: 80%; height: 80%; }
+  .safe-area-guides .safe-area-tick {
+    position: absolute; background: rgba(255, 255, 255, .95);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+  }
+  /* 内框四边中点刻线：14px 屏幕像素长度，垂直于边、横跨边线两侧各 7px。 */
+  .safe-area-guides .safe-area-tick-n { left: calc(50% - .5px); top: calc(10% - 7px); width: 1px; height: 14px; }
+  .safe-area-guides .safe-area-tick-s { left: calc(50% - .5px); top: calc(90% - 7px); width: 1px; height: 14px; }
+  .safe-area-guides .safe-area-tick-w { left: calc(10% - 7px); top: calc(50% - .5px); width: 14px; height: 1px; }
+  .safe-area-guides .safe-area-tick-e { left: calc(90% - 7px); top: calc(50% - .5px); width: 14px; height: 1px; }
   .media-controls {
     display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
     min-height: 34px; margin-top: 4px; padding: 5px 7px;

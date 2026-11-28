@@ -1,4 +1,5 @@
 import { observeAssSubtitlePreviewPlayer, scheduleAssSubtitlePreviewRefresh } from './editor-ass-preview-refresh.js';
+import { observeSafeAreaGuidesPlayer } from './editor-safe-area-guides.js';
 
 export function initMediaPlaybackModule() {
 // 媒体播放：播放器事件、占位符、速率与 seek 控制。
@@ -214,6 +215,7 @@ export function initMediaPlaybackModule() {
     window.MaweGapPlayback?.bindPlayer(mediaElement);
     window.MaweAssFrame?.bindPlayer(mediaElement);
     observeAssSubtitlePreviewPlayer(mediaElement);
+    observeSafeAreaGuidesPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
     mediaElement.addEventListener('seeking', () => {
