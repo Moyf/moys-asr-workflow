@@ -12,6 +12,8 @@ let tempDir;
 let server;
 let portraitServer;
 let audioServer;
+let changeServer;
+let hasVp9Encoder = false;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 
 test.beforeAll(async () => {
@@ -39,9 +41,30 @@ test.beforeAll(async () => {
   const audioMedia = join(tempDir, 'synthetic.wav');
   generateWav(audioMedia, 4);
   audioServer = await startServer(audioProject, audioMedia, await findFreePort());
+  // 变画幅素材：两段不同分辨率 VP9 WebM 拼接（Chromium 解码到切换点会触发
+  // <video> 的 resize 事件）；无 libvpx-vp9 编码器时跳过对应用例。
+  hasVp9Encoder = /\blibvpx-vp9\b/.test(execFileSync(ffmpeg, ['-hide_banner', '-encoders'], { encoding: 'utf8' }));
+  if (hasVp9Encoder) {
+    const encode = (size, name) => execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', `testsrc2=s=${size}:d=2:r=10`, '-c:v', 'libvpx-vp9',
+      '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '500k', '-y', join(tempDir, name)]);
+    encode('640x360', 'resize-landscape.webm');
+    encode('360x640', 'resize-portrait.webm');
+    writeFileSync(join(tempDir, 'resize-list.txt'),
+      `file '${join(tempDir, 'resize-landscape.webm')}'\nfile '${join(tempDir, 'resize-portrait.webm')}'\n`);
+    const changeMedia = join(tempDir, 'change.webm');
+    execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-safe', '0',
+      '-i', join(tempDir, 'resize-list.txt'), '-c', 'copy', '-y', changeMedia]);
+    const changeProject = join(tempDir, 'change.json');
+    writeFileSync(changeProject, JSON.stringify({ media: 'change.webm',
+      segments: [{ start: 0, end: 4000, text: '变画幅 OwO' }],
+      waveform: generateWaveformPayload(4000) }));
+    changeServer = await startServer(changeProject, changeMedia, await findFreePort());
+  }
 });
 
 test.afterAll(async () => {
+  await changeServer?.stop();
   await audioServer?.stop();
   await portraitServer?.stop();
   await server?.stop();
@@ -231,6 +254,33 @@ test('switching media re-anchors the guides to the new player element', async ({
   expect(swapped.tag).toBe('VIDEO');
   expect(swapped.guidesParent).toContain('player-stage');
   expect(swapped.layerRatio).toBeCloseTo(9 / 16, 1);
+});
+
+test('follows a mid-stream resolution change via the video element resize event', async ({ page }) => {
+  test.skip(!hasVp9Encoder, 'Requires a libvpx-vp9 FFmpeg to build a resolution-changing WebM');
+  await gotoEditor(page, changeServer.url);
+  await toggleGuides(page, true);
+  await expectGuidesMatchDisplayRect(page);
+  // 固定视频元素盒：默认布局下固有尺寸变化会连带轻微重排（实测 377x186→377x190），
+  // ResizeObserver 会掩盖缺失的监听；钉住盒子才是「盒不变而固有尺寸变化」的
+  // 纯 resize 事件场景，事件仍由浏览器真实触发（不做事件 mock）。
+  await page.evaluate(() => {
+    const player = document.getElementById('player');
+    const rect = player.getBoundingClientRect();
+    player.style.height = `${rect.height}px`;
+  });
+  // 播放跨过 2s 画幅切换点：loadedmetadata 不再触发、布局盒未变，只有
+  // <video> 的 resize 事件能触发刷新。
+  await page.evaluate(() => { document.getElementById('player').currentTime = 1; });
+  await page.locator('#media-play-toggle').click();
+  await page.waitForFunction(() => document.getElementById('player')?.videoWidth === 360, null, { timeout: 15000 });
+  await expectGuidesMatchDisplayRect(page);
+  const ratio = await page.evaluate(() => {
+    const layer = document.getElementById('safe-area-guides').getBoundingClientRect();
+    return Math.round((layer.width / layer.height) * 100) / 100;
+  });
+  expect(ratio).toBeCloseTo(9 / 16, 1);
+  await page.locator('#media-play-toggle').click();
 });
 
 test('guides stay visible while the paused ASS actual frame overlays the stage', async ({ page }) => {

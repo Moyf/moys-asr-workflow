@@ -115,13 +115,17 @@ export function initMaweSafeAreaGuides() {
     if (observedPlayer === player) return;
     if (observedPlayer) {
       resizeObserver?.unobserve(observedPlayer);
-      observedPlayer.removeEventListener('loadedmetadata', scheduleRefresh);
-      observedPlayer.removeEventListener('emptied', scheduleRefresh);
+      for (const name of ['loadedmetadata', 'emptied', 'resize']) {
+        observedPlayer.removeEventListener(name, scheduleRefresh);
+      }
     }
     observedPlayer = player || null;
     if (!observedPlayer) return;
-    observedPlayer.addEventListener('loadedmetadata', scheduleRefresh);
-    observedPlayer.addEventListener('emptied', scheduleRefresh);
+    for (const name of ['loadedmetadata', 'emptied', 'resize']) {
+      observedPlayer.addEventListener(name, scheduleRefresh);
+    }
+    // resize 是 HTMLVideoElement 的固有尺寸事件：播放器盒不变而
+    // videoWidth/Height 变化（流中途变画幅）时只有它能触发刷新。
     resizeObserver?.observe(observedPlayer);
     scheduleRefresh();
   }
@@ -141,13 +145,7 @@ export function initMaweSafeAreaGuides() {
   });
 
   guidesService.ready = true;
-  guidesService.refresh = refresh;
   guidesService.observePlayer = observePlayer;
   observePlayer(MaweCoreState.player);
   refresh();
-  window.MaweSafeAreaGuides = Object.freeze({
-    refresh,
-    scheduleRefresh,
-    observePlayer,
-  });
 }

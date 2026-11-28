@@ -12,6 +12,42 @@
 
 无 blocker / major。3 条 nit / 接受的取舍，逐条如下；均已处置或明确接受并写入交付说明。
 
+## 后续独立审查处置（2026-11-28 第二轮）
+
+协调者复审原提交（e41294ee）后提出三项后续项，处置如下：
+
+### R1 · 已处置 · 补监听 HTMLVideoElement 的 `resize` 事件
+
+- 问题：`editor-safe-area-guides.js` 的 observePlayer 只听 `loadedmetadata` / `emptied` 并观察元素
+  布局尺寸；播放器盒不变而固有尺寸变化（流中途变画幅）的场景没有刷新来源。
+- 处置：监听列表加入 `resize`，换出元素同步解除（`for (const name of ['loadedmetadata', 'emptied', 'resize'])`）。
+- 验证（真实素材、无事件 mock）：ffmpeg libvpx-vp9 编码两段不同分辨率（640×360 / 360×640）WebM
+  用 concat demuxer 拼接成变画幅素材；真实编辑器页播放跨过 2s 切换点，Chromium 恰好触发一次
+  元素 `resize`（640×360 → 360×640），参考线随新 contain 矩形刷新，实测
+  `layer {left:134.95, width:106.88, height:190}` vs 期望 `{left:134.96, width:106.88, height:190}`。
+- 红绿双向验证与一个重要实测发现：**默认 wave-right 布局下，固有尺寸变化会连带元素盒轻微重排
+  （ResizeObserver 实测 377x186 → 377x190），仅移除 resize 监听时用例不会变红**——RO 只是碰巧
+  兜住。因此 e2e 用例先内联钉住视频元素盒高度（固定盒是真实布局形态，事件仍由浏览器真实触发），
+  隔离出「盒不变而固有尺寸变化」的纯 resize 场景：
+  - 红（移除监听 + 固定盒）：`follows a mid-stream resolution change` 1 failed（参考线停留在
+    旧横屏矩形）；
+  - 绿（恢复监听）：同用例 passed，全 spec 8 passed。
+- 该场景固化为 e2e 用例「follows a mid-stream resolution change via the video element resize event」
+  （无 libvpx-vp9 编码器时 `test.skip`）。
+
+### R2 · 已处置 · 删除未消费的门面与状态
+
+- 问题：`guidesService.refresh`、`window.MaweSafeAreaGuides` 与 `editor-globals.d.ts` 的
+  `MaweSafeAreaGuides` 声明均无消费方（git grep 证实）。
+- 处置：三者删除；保留 `guidesService.ready` 守卫与 `observeSafeAreaGuidesPlayer` 导出
+  （`editor-media-playback.js` 的媒体重绑通路继续消费）。CHANGELOG 条目按「面向用户的一句话」
+  简化，画幅/刻线/不拦截指针等细节已在 `docs/user/EDITOR_GUIDE.md` 第 6 节。
+
+### R3 · 已处置 · F3 记录更正
+
+- 见上文 F3「已更正」小节：原「PlayRes 改变暂停 PNG 画幅导致错位」的说法经源码与双路实测否定，
+  已改为更正记录；无需改动 ASS 渲染器或独立窗口。
+
 ## Findings
 
 ### F1 · nit（已处置）· 纯白画面上白芯不可见，黑晕对比不足
@@ -32,14 +68,20 @@
   `pointer-events: none`、实际帧状态下仍可见（`tests/e2e/safe-area-guides.spec.mjs` 第 7 个用例）。
   若评审倾向 Premiere 的「参考线盖在一切之上」，把 z-index 提到 10 以上即可，属一行改动。
 
-### F3 · 接受的边界 · ASS 实际帧分辨率与素材画幅不一致时参考线不跟随帧
+### F3 · 已更正（2026-11-28 复核）· PlayRes 与暂停实际帧画幅
 
-- 说明：参考线锚定视频元素的实际绘制矩形（`editor-safe-area-guides.js` 的 `videoDisplayRect()`）。
-  若工程把 ASS 分辨率自定义成与素材宽高比不同，暂停实际帧（按舞台盒 contain 绘制）与参考线的
-  框会错位。任务口径是「叠层基于播放器中实际视频绘制矩形」，ASS 独立窗口不在范围内，故按视频
-  矩形实现并接受该边界；常见配置（ASS 分辨率 = 素材分辨率）下两者重合。
-- 证据：真实 libass 渲染流程实测 `.artifacts/safe-area-manual/ass-stage-actual-frame.png`，
-  像素检测在该截图仍找到参考线亮线；`ass-stage-ready` 状态下 `guidesHidden=false`、`guidesZ=5`。
+- 首轮记录曾称「工程把 ASS 分辨率自定义成与素材宽高比不同时，暂停实际帧与参考线的框会错位」。
+  **复核后该说法不成立，予以更正**：
+  1. 渲染端：`server-editor/serve.py` 的 `render_ass_frame_png`（1430-1469 行）视频路径滤镜只有
+     `format=rgb24,ass=filename='frame.ass'`（1467 行），不做任何按 PlayRes 的缩放输出；
+  2. 预览端：`currentAssVideoResolution()`（`web/editor/io/editor-export-srt.js:269`）始终取
+     媒体元数据 / 播放器固有尺寸，预览 ASS 的 PlayRes 本来就等于素材分辨率。
+- 实测证据（沿用真实 ASS 暂停帧流程，见 `.artifacts/verify-safe-area-playres.mjs`）：
+  - UI 流程：ASS 模式 + 实际画面窗口标题报告 `00:02.000 · 640 × 360 · 无损 PNG`（= 视频尺寸）；
+  - 同一 `/api/ass-frame` 端点提交 PlayRes 1920×1280（3:2，与 16:9 素材不同比）的 ASS 脚本，
+    返回 PNG 实测仍为 640×360。
+- 结论：暂停 PNG 画幅恒等于视频画幅，与视频矩形锚定的参考线不会因 PlayRes 产生错位；
+  不需要为此改动 ASS 渲染器或扩展独立窗口。
 
 ### F4 · nit（已核对，非缺陷）· EN 模式下 `el.title` 为空
 

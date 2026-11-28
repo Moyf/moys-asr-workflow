@@ -202,7 +202,6 @@ interface Window {
   MaweDomPanelsWiring: any;
   MaweFloatingPanel: any;
   MawePreviewGeometry: any;
-  MaweSafeAreaGuides: any;
   MaweSettingsPanels: any;
   MaweFontGeometryWiring: any;
   MaweBurnVideoExport?: any;
