@@ -150,6 +150,7 @@ if (MaweDom.exportSpeakerNamesAsSuffixToggle) {
 if (MaweDom.autoSaveProjectToggle) MaweDom.autoSaveProjectToggle.checked = MaweSettings.EDITOR_SETTINGS.autoSaveProject;
 if (MaweDom.autoSaveIntervalInput) MaweDom.autoSaveIntervalInput.value = String(MaweSettings.EDITOR_SETTINGS.autoSaveIntervalSeconds);
 if (MaweDom.stickerOverlayToggle) MaweDom.stickerOverlayToggle.checked = MaweSettings.EDITOR_SETTINGS.stickerOverlayEnabled;
+if (MaweDom.safeAreaGuidesToggle) MaweDom.safeAreaGuidesToggle.checked = MaweSettings.EDITOR_SETTINGS.safeAreaGuidesEnabled;
 if (MaweDom.clickBehaviorSelect) MaweDom.clickBehaviorSelect.value = MaweSettings.EDITOR_SETTINGS.clickBehavior;
 if (MaweDom.stickerBurnModeSelect) MaweDom.stickerBurnModeSelect.value = MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed';
 if (MaweDom.clickTargetSelect) MaweDom.clickTargetSelect.value = MaweSettings.EDITOR_SETTINGS.clickTarget;

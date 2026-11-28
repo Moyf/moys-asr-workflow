@@ -211,6 +211,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/cues/editor-wiring-overlay-split-merge.js",
                 "editor/cues/editor-wiring-list-navigation.js",
                 "editor/media/editor-ass-preview-refresh.js",
+                "editor/media/editor-safe-area-guides.js",
                 "editor/media/editor-wiring-keyboard-guards.js",
                 "editor/cues/editor-wiring-word-timing.js",
                 "editor/media/editor-wiring-media-controls.js",

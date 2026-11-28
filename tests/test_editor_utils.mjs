@@ -651,6 +651,10 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  // 安全区参考线：默认关闭，仅显式 true 记忆开启。
+  assert.equal(settings.safeAreaGuidesEnabled, false);
+  assert.equal(helpers.normalizeEditorSettings({ safeAreaGuidesEnabled: true }).safeAreaGuidesEnabled, true);
+  assert.equal(helpers.normalizeEditorSettings({ safeAreaGuidesEnabled: 1 }).safeAreaGuidesEnabled, false);
   assert.equal(settings.assEmphasisSyntax, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'none' }).assEmphasisSyntax, 'none');
   assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'single' }).assEmphasisSyntax, 'both');
